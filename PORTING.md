@@ -188,3 +188,30 @@ branches/stashes, console firmware inputs and the Saturn remain untouched.
   rejected/incomplete trials are preserved and distinguished from acceptance.
   Fork issues remain disabled and no open fork PR requires closure; original
   upstream requests remain unchanged. No native safety candidate remains queued.
+
+## Firmware save-safety series
+
+This owner-authorized series starts at public `7d1d461`, retaining the v0.8
+baseline, completed ports, default main and historical master. Ports are direct
+source commits with new public evidence; private sources/history are read-only.
+No PRs, USB integration, added runtime diagnostics, private patch framework,
+experimental journal/native-format migration or device operation is included.
+
+| Candidate / original reference | Public checkpoint | Dependencies, validation and limits |
+| --- | --- | --- |
+| Build qualification prerequisite | [0371ff8](https://github.com/papsg/SAROO/commit/0371ff8); [codex/firmware-build](https://github.com/papsg/SAROO/tree/codex/firmware-build) | MIT host-only Rust command stages public inputs and invokes the original menu Makefile with cached pinned GCC/Yaul, no image pull/container networking and a local Unix-socket endpoint. Preserves new output cohorts, bounds build time and verifies ELF/body/font/code/BSS/stack. Workspace fmt/clippy/tests, real baseline/candidate builds and output-preservation/path-refusal controls pass. Existing firmware build remains available; no runtime feature or hardware acceptance. [Usage and source-contract citations](https://github.com/papsg/SAROO/blob/main/tools/README.md#isolated-firmware-qualification). |
+| SATURN-SAVE-002 dirty-window masks; `d8fe6875` | [1239a7d](https://github.com/papsg/SAROO/commit/1239a7d); [codex/firmware-save-dirty-mask](https://github.com/papsg/SAROO/tree/codex/firmware-save-dirty-mask) | Explicit sanitizer prerequisite for resizing, separated from the original combined commit. Three actual-C methods / 194 invocations per profile exercise all 64 positions at three starts, repeated/combined marks and slot-device preservation. Seven UBSan subcases fail on baseline; corrected ASan/UBSan and O2 pass. Full SH-2 object/ELF/image are byte-identical, with unchanged 75,056 code/data, 7,180 BSS, 16,384 stack and 32,452 body margin. [Exact C11 section/pages, original paps-g authorship, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-SAVE-SAFETY.md#saturn-save-002-unsigned-dirty-window-shifts). No observed game crash or issue #363 resolution is claimed. |
+| SATURN-SAVE-001 resizing/allocation persistence; `d8fe6875` | Next | Follow dirty-mask prerequisite; independently reproduce allocation/size/refusal and metadata reload behavior. |
+| SATURN-SAVE-003 archive validation; `c97d2d70` | Queued | Bounds, ownership and damaged-archive preservation; account for validation traffic. |
+| SATURN-SAVE-005 dirty clear; `a9ddfcc6` | Queued | Clear only confirmed flushes; preserve failure/retry ownership. |
+| SATURN-SAVE-005 header batching; `a9ddfcc6` | Separate evaluation | Independently qualify cache ownership, header traffic and resource costs. |
+| MCU-SAVE-001 startup; `aa74eb3e` | Queued | Include necessary `169cb468` incomplete-tail correction; omit private startup diagnostic instrumentation. |
+| MCU-SAVE-001 runtime; `d05062a1` | Queued | Checked transfers, full identity, bounds/ownership and publication; include `169cb468`. |
+| MCU-SAVE-001 Saturn API; `1f90bc28` | Queued | Propagate failure and preserve pending data/retry ownership. |
+
+Only the dirty-mask candidate and its build prerequisite are integrated so far;
+the remaining firmware work is active. All verified branches/main are pushed.
+Fork issues remain disabled and no open fork PR needs closure. No upstream
+request was modified. Private sources/branches/stashes/caches, installed firmware
+and Saturn remain untouched. New checks establish host/source and target-link
+behavior only, with no bus/cache/IRQ, SD durability or game qualification.
