@@ -24,7 +24,7 @@ Last updated: 2026-11-08.
 | Dutch | [#324](https://github.com/tpunix/SAROO/pull/324) | Queued | Retain reviewed wording and verify complete labels. |
 | Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | Queued | Retain existing language IDs and prior additions. |
 | Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | Queued | Required licensed glyphs, fixed-label shaping and language-series prerequisites. Native-speaker review remains a separate limit. |
-| English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [Prepared branch](https://github.com/papsg/SAROO/tree/codex/english-documentation) | 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. No runtime or hardware claim. Pending integration onto the rebuilt main. |
+| English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [73922db](https://github.com/papsg/SAROO/commit/73922db), on main | Deduplicates #343. 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. The integrated tree and all compiled inputs/hashes match the verified branch. No runtime or hardware claim. |
 | Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 | Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 
@@ -38,10 +38,11 @@ open. Requests in `tpunix/SAROO` are left unchanged.
 
 At the owner's request, the first two contributions were recreated as direct
 commits on 2026-11-08. The two PR merge commits were removed from main's history.
-The complete Git tree is identical to the former main at `7e505af`; original
+The recreated two-fix checkpoint `5920eb9` is identical to the former main at `7e505af`; original
 authorship and coauthor credit are preserved. Fresh language and MEMS sanitizer
 regressions pass. The former history is also retained in a local archive tag.
 GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull/1)
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
-fork issue or superseded open PR needs closure.
+fork issue or superseded open PR needs closure. This was checked again after
+the English contribution integrated; the fork has no open PRs.
