@@ -28,7 +28,7 @@ Last updated: 2026-11-08.
 | Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | [9429f53](https://github.com/papsg/SAROO/commit/9429f53), on main | ID 18 with all 20 fixed labels. Credits Array in a Matrix; our shaping, wording/font/caller adaptations are explicit. Requires language bounds, bounded menu text, ID sequence and CJK stage. Four Arabic methods pass 36 independent oracle cases, 648 earlier-language actual-C formatter/raster controls, 8,496 original atlas pixels, exact font rebuild and 59 production glyph checks. 2,280 lookups, 342 complete errors, existing menu/peripheral checks and four Rust failure/boundary tests pass. Both pre-Arabic main and candidate fully compile/link; only main.o/language.o change. +1,040 linked code/data, +1,216 font/image bytes; BSS/stack unchanged. Source licenses and Unicode section citations in [doc/ARABIC.md](https://github.com/papsg/SAROO/blob/main/doc/ARABIC.md). Native-speaker and Saturn appearance/timing remain unqualified. |
 | English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [73922db](https://github.com/papsg/SAROO/commit/73922db), on main | Deduplicates #343. 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. The integrated tree and all compiled inputs/hashes match the verified branch. No runtime or hardware claim. |
 | Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | [e3e3337](https://github.com/papsg/SAROO/commit/e3e3337), on main | Credits Damián Parrino; our transactional/validation/ownership corrections are explicit. Uses public v0.8 geometry; native 9f41183 prerequisite above is integrated. Seven Python methods/421 Node tests, 24 actual ASan/UBSan native CLI exports, an independent full-capacity encoder, 18 offline Chrome workflows, two stale-selection cases and complete 4,095-slot/256 MiB edit/download preserve every unedited byte. Original destructive-growth and wrong-layout controls fail. HTML/linked exports/parser identities and Rust fmt/clippy/tests pass. [Reproduction, exact Sega/XML/source citations and notices](https://github.com/papsg/SAROO/blob/main/tools/savetool/web/README.md). Other browsers/mobile capacity, SD persistence and physical Saturn behavior remain unqualified. Firmware inputs unchanged. |
-| Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
+| Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | [54d0c72](https://github.com/papsg/SAROO/commit/54d0c72), on main | Separate application credits Damián Parrino and identifies our preservation/validation/ownership corrections. Three Python methods/26 Node tests, independent binary encoders, original-proposal negative/positive controls and actual unchanged ASan/UBSan native CLI controls pass. Fourteen offline Chrome workflows, four delayed-file choices and two stale-render cases pass. The full 16,384-cover/400.5 MiB application test edits the last record and compares every unedited downloaded byte. Quantizer parity, deterministic HTML/linked exports, Rust and save-editor controls pass. [Public reproduction, primary source citations and compatibility limits](https://github.com/papsg/SAROO/blob/main/tools/covertool/web/README.md). v0.8 firmware lookup still covers only 2,048 records; legacy CLI limits and physical/browser qualification limits remain explicit. No firmware changes. |
 
 Verified topic checkpoints (each is an ancestor of current main):
 
@@ -48,16 +48,18 @@ Verified topic checkpoints (each is an ancestor of current main):
 | #374 native field-read prerequisite | [codex/save-unsigned-fields](https://github.com/papsg/SAROO/tree/codex/save-unsigned-fields) |
 | #107 | [codex/arabic-localization](https://github.com/papsg/SAROO/tree/codex/arabic-localization) |
 | #374 save editor | [codex/browser-save-editor](https://github.com/papsg/SAROO/tree/codex/browser-save-editor) |
+| #374 cover editor | [codex/browser-cover-editor](https://github.com/papsg/SAROO/tree/codex/browser-cover-editor) |
 
 The former PR branches `codex/language-hash-bounds`, `codex/mems-overwrite`
 and `codex/english-documentation` preserve superseded history. Current direct
 integrations use the checkpoint branches above; the historical branches are
 not instructions to restore their ancestry.
 
-Eleven of the twelve requested contributions are integrated. The browser cover
-editor remains. Bounded menu text and native unsigned
-field reads are explicit prerequisites and are not counted in that total. All topic branches and
-this ledger are pushed.
+All twelve requested contributions are verified and integrated directly into
+[`main` at 54d0c72](https://github.com/papsg/SAROO/commit/54d0c7244db481b9218447dc902b928b5e6bb760).
+Bounded menu text and native unsigned field reads are explicit prerequisites and
+are not counted in that total. All verified topic checkpoints and this ledger
+are pushed. There is no required candidate left queued or in progress.
 
 The Arabic checkpoint clears the earlier available-toolchain missing-libc limitation:
 both preceding public `67c51f3` and Arabic `9429f53` fully compile/link all sixteen
@@ -85,5 +87,42 @@ GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
 fork issue or superseded open PR needs closure. This was checked again after
-the English, Latin-language, CJK, controller, Arabic, native-field and browser-save integrations; the
+the English, Latin-language, CJK, controller, Arabic, native-field and both browser-editor integrations; the
 fork has no open PRs. No original upstream request has been changed.
+
+## Completion audit — 2026-11-08
+
+- All twelve contribution commits are ancestors of main; all have original-PR
+  citations and original author/coauthor credit. Necessary prerequisites and our
+  adaptations are explicit. Controller #378/#379 and English #343 overlaps have
+  evidence-supported duplicate dispositions in the related contribution records.
+- Hardware-facing controller claims cite exact Sega/Hitachi sections/pages in
+  [PERIPHERALS.md](https://github.com/papsg/SAROO/blob/main/doc/PERIPHERALS.md).
+  The save editor cites Backup Library §2.1, BupDate p. 41, BupDir p. 42 and
+  function specifications 10/11 p. 48. Project-defined cover formats cite v0.8
+  source functions instead of attributing their format to a Sega requirement.
+  Unicode/font/dependency sources and notices remain with the relevant changes.
+- The complete public host suite passes on the final tree, including language,
+  bounded text, fonts, peripherals, Arabic, native field reads, both browser
+  cores and Rust tools. The browser suites and complete 256 MiB save / 400.5 MiB
+  cover application checks pass against their exact published HTML hashes.
+  Per-contribution documents give public reproduction commands and valid controls.
+- MCU/menu/FPGA build inputs have not changed since the fully linked Arabic
+  checkpoint. The two browser contributions and native unsigned-field fix are
+  host changes. The earlier link/build receipts retain their actual scope;
+  no new physical hardware, game, editorial or other-browser acceptance is claimed.
+- The v0.8 baseline remains an ancestor, main remains the default, and historical
+  master remains `594a15e59de12fd75b8fa9dd4431d743005b6cf3`. The sixteen focused
+  commits after the baseline contain twelve contributions, two prerequisites and
+  two controller follow-ups; no merge commit or later upstream import was added.
+- The final source tree is clean and published. No new PR was opened. Fork issues
+  remain disabled and no open PR needs closure; the historical closed fork PRs
+  remain records. Original upstream requests are unchanged.
+- Builds and evidence are confined to the public workspace. The private SAROO
+  workspace, its branches/stashes and the Saturn were left unchanged. No device
+  operations, unrelated research or subagents were used for these ports.
+
+Outstanding limits above describe separate qualification or existing-baseline
+work, not unfinished port candidates. In particular, firmware cover lookup and
+legacy native-cover utility limitations are documented rather than silently
+folded into the browser contribution.
