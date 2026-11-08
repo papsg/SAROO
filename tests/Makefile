@@ -4,9 +4,12 @@ CFLAGS = -std=c99 -O1 -g -Wall -Wextra -Werror
 SANITIZERS = -fsanitize=address,undefined -fno-omit-frame-pointer
 BUILD_DIR = build
 
-.PHONY: check check-language check-menu-text check-language-catalog clean
+.PHONY: check check-language check-menu-text check-language-catalog check-font clean
 
-check: check-language check-menu-text check-language-catalog
+check: check-language check-menu-text check-language-catalog check-font
+
+check-font:
+	$(PYTHON) -B -m unittest discover -s . -p test_font_coverage.py -v
 
 check-language-catalog:
 	$(PYTHON) -B -m unittest discover -s . -p test_language_catalog.py -v

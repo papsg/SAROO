@@ -70,7 +70,7 @@ credits. Existing IDs retain their meanings.
 | `HW/` | Original hardware design files and change history. |
 | `tools/savetool/` | Native save-archive utility. |
 | `tools/covertool/` | Native cover-database utility. |
-| `tools/bdfont/` | Font sources, selection lists and generator. |
+| [`tools/bdfont/`](tools/bdfont/README.md) | Font sources, selection lists, generator and verified coverage. |
 
 The original menu instructions name SaturnOrbit's SH-ELF compiler; its Makefile
 expects `sh-elf-gcc`, assembler and binutils, including an available target C
