@@ -49,7 +49,7 @@ int write_file(char *file, void *buf, int size)
 u32 get_be32(void *p)
 {
 	u8 *d = (u8*)p;
-	return (d[0]<<24) | (d[1]<<16) | (d[2]<<8) | d[3];
+	return ((u32)d[0]<<24) | ((u32)d[1]<<16) | ((u32)d[2]<<8) | (u32)d[3];
 
 }
 
