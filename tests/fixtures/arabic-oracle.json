@@ -1,0 +1,239 @@
+{
+  "provenance": {
+    "engines": [
+      "arabic-reshaper 3.0.0",
+      "python-bidi 0.6.7"
+    ],
+    "method": "Independent shaping and bidi with explicit LTR embeddings for authored numeric/Latin runs. Recorded reference; not a native-speaker review."
+  },
+  "cases": [
+    {
+      "slot": 0,
+      "arguments": [
+        1,
+        214
+      ],
+      "expected": "(1/214) ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 0,
+      "arguments": [
+        214,
+        214
+      ],
+      "expected": "(214/214) ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 0,
+      "arguments": [
+        1,
+        1
+      ],
+      "expected": "(1/1) ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 1,
+      "arguments": [
+        1,
+        214
+      ],
+      "expected": "(1/214) ﻒﻠﻤﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 1,
+      "arguments": [
+        214,
+        214
+      ],
+      "expected": "(214/214) ﻒﻠﻤﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 1,
+      "arguments": [
+        1,
+        1
+      ],
+      "expected": "(1/1) ﻒﻠﻤﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 2,
+      "arguments": [],
+      "expected": "...ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﺭﺎﺟ"
+    },
+    {
+      "slot": 3,
+      "arguments": [
+        0
+      ],
+      "expected": "0 !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 3,
+      "arguments": [
+        1
+      ],
+      "expected": "1 !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 3,
+      "arguments": [
+        -1
+      ],
+      "expected": "-1 !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 3,
+      "arguments": [
+        -2147483648
+      ],
+      "expected": "-2147483648 !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 3,
+      "arguments": [
+        2147483647
+      ],
+      "expected": "2147483647 !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 4,
+      "arguments": [],
+      "expected": "...ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﺭﺎﺟ"
+    },
+    {
+      "slot": 5,
+      "arguments": [
+        0
+      ],
+      "expected": "0 !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 5,
+      "arguments": [
+        1
+      ],
+      "expected": "1 !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 5,
+      "arguments": [
+        -1
+      ],
+      "expected": "-1 !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 5,
+      "arguments": [
+        -2147483648
+      ],
+      "expected": "-2147483648 !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 5,
+      "arguments": [
+        2147483647
+      ],
+      "expected": "2147483647 !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ"
+    },
+    {
+      "slot": 6,
+      "arguments": [],
+      "expected": "ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ"
+    },
+    {
+      "slot": 7,
+      "arguments": [],
+      "expected": "ﻡﺎﻈﻨﻟﺍ ﺹﺍﺮﻗﺃ ﻞﻐﺸﻣ"
+    },
+    {
+      "slot": 8,
+      "arguments": [],
+      "expected": "ﺔﺒﻌﻠﻟﺍ ﺹﺮﻗ ﻞﻴﻐﺸﺗ"
+    },
+    {
+      "slot": 9,
+      "arguments": [],
+      "expected": "ﻲﻠﺴﻠﺴﺘﻟﺍ ﺢﻴﺤﺼﺘﻟﺍ ﺔﻴﻓﺮﻃ"
+    },
+    {
+      "slot": 10,
+      "arguments": [],
+      "expected": "ﻲﺋﺎﻨﺜﻟﺍ ﻒﻠﻤﻟﺍ ﻞﻴﻐﺸﺗ"
+    },
+    {
+      "slot": 11,
+      "arguments": [],
+      "expected": "ﺖﺑﺎﺜﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺚﻳﺪﺤﺗ"
+    },
+    {
+      "slot": 12,
+      "arguments": [],
+      "expected": "!ﺔﻗﺎﻄﻟﺍ ﻞﺼﻔﺗ ﻻ ...ﺚﻳﺪﺤﺘﻟﺍ ﺭﺎﺟ"
+    },
+    {
+      "slot": 13,
+      "arguments": [],
+      "expected": "!ﺚﻳﺪﺤﺘﻟﺍ ﻞﺸﻓ"
+    },
+    {
+      "slot": 14,
+      "arguments": [],
+      "expected": "!ﻞﻴﻐﺸﺘﻟﺍ ﺪﻋﺃ !ﺚﻳﺪﺤﺘﻟﺍ ﻞﻤﺘﻛﺍ"
+    },
+    {
+      "slot": 15,
+      "arguments": [],
+      "expected": "SAROO ﻉﻼﻗﺇ ﺔﻤﺋﺎﻗ"
+    },
+    {
+      "slot": 16,
+      "arguments": [],
+      "expected": "...ﺹﺮﻘﻟﺍ ﺺﺤﻓ ﺭﺎﺟ"
+    },
+    {
+      "slot": 17,
+      "arguments": [],
+      "expected": "!ﺹﺮﻗ ﻰﻠﻋ ﺭﻮﺜﻌﻟﺍ ﻢﺘﻳ ﻢﻟ"
+    },
+    {
+      "slot": 18,
+      "arguments": [
+        0
+      ],
+      "expected": "0 !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ"
+    },
+    {
+      "slot": 18,
+      "arguments": [
+        1
+      ],
+      "expected": "1 !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ"
+    },
+    {
+      "slot": 18,
+      "arguments": [
+        -1
+      ],
+      "expected": "-1 !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ"
+    },
+    {
+      "slot": 18,
+      "arguments": [
+        -2147483648
+      ],
+      "expected": "-2147483648 !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ"
+    },
+    {
+      "slot": 18,
+      "arguments": [
+        2147483647
+      ],
+      "expected": "2147483647 !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ"
+    },
+    {
+      "slot": 19,
+      "arguments": [],
+      "expected": "ﺏﺎﻌﻟﻷﺍ ﺔﺌﻓ ﺮﺘﺧﺍ"
+    }
+  ]
+}

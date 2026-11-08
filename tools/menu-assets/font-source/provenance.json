@@ -1,0 +1,34 @@
+{
+  "source_repository": "https://github.com/hajimehoshi/bitmapfont",
+  "source_commit": "8cffbe61878377cb76a201780888de233557abbb",
+  "font_author": "MansourSorosoro (Eternal Dream Arabization), as attributed by the original README",
+  "font_license": "OFL-1.1",
+  "library_license": "Apache-2.0",
+  "files": {
+    "bitmapfont/README.md": {
+      "url": "https://raw.githubusercontent.com/hajimehoshi/bitmapfont/8cffbe61878377cb76a201780888de233557abbb/README.md",
+      "sha256": "5299977dfeab6be970e9b3eab6b504d1382ee93ce992b1a6dabfdc9b08e52fd2"
+    },
+    "bitmapfont/LICENSE": {
+      "url": "https://raw.githubusercontent.com/hajimehoshi/bitmapfont/8cffbe61878377cb76a201780888de233557abbb/LICENSE",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    "bitmapfont/internal/arabic/fe70-feff.png": {
+      "url": "https://raw.githubusercontent.com/hajimehoshi/bitmapfont/8cffbe61878377cb76a201780888de233557abbb/internal/arabic/fe70-feff.png",
+      "sha256": "27fe9daeb1d8b5cf00745427d4dfdc55fd7b7a8258d49c3a07192f87a37b23fe"
+    },
+    "OFL-1.1.txt": {
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/OFL-1.1.txt",
+      "sha256": "8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd"
+    }
+  },
+  "derived": {
+    "file": "arabic12.bdf",
+    "sha256": "3aaabbba0b5001af60cb289e6781afe2b4f82a4422ab7a6c3519aa4a67f5d3b3",
+    "producer": "CPython 3.12.14 / Pillow 12.3.0",
+    "operation": "Copy each atlas cell without resampling; retain all 12 rows, original 6/12-pixel advances and three-row top bearing. 144 presentation-form cells; normal firmware selects required glyphs.",
+    "historical_sha256": "d8f0fafdaae45ad4ef1bf8f07c4497210f670618d192f30e0bc83fbc400ccd1b",
+    "historical_recipe_sha256": "bc7fad4d7316855596f3fad0aeb707954b02a1e90074224e9226e3d14dcce3bb",
+    "header_adaptation": "Declare PIXEL_SIZE 12 and update STARTPROPERTIES to 3 for the original SAROO converter. Glyphs, offsets and bitmap rows unchanged."
+  }
+}

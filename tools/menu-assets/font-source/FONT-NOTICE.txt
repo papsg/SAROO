@@ -1,0 +1,6 @@
+Arabic bitmap drawings by MansourSorosoro (Eternal Dream Arabization).
+The original bitmapfont README attributes these drawings under OFL-1.1.
+The derived saroo-arabic-12 BDF preserves the source pixels and remains
+under OFL-1.1; see OFL-1.1.txt. Original README, source atlases and library
+notices are preserved under bitmapfont/. No author endorsement is implied.
+The library code has separate Apache-2.0 terms in bitmapfont/LICENSE.

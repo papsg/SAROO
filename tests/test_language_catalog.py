@@ -18,11 +18,13 @@ class LanguageCatalogTests(unittest.TestCase):
         font_array = re.search(r"font_latin\[\] = \{(.*?)\};", font_source, re.S)[1]
         font = bytes(int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{2})", font_array))
         glyphs = {}
-        for index in range(int.from_bytes(font[:2], "big")):
-            record = font[2+index*5:7+index*5]
-            code = int.from_bytes(record[:2], "big")
-            offset = int.from_bytes(record[2:], "big")
-            glyphs[code] = font[offset:offset+3]
+        for data in ((ROOT / "Firm_Saturn/font_cjk.bin").read_bytes(), font):
+            # The renderer gives the Latin table precedence over the appended font.
+            for index in range(int.from_bytes(data[:2], "big")):
+                record = data[2+index*5:7+index*5]
+                code = int.from_bytes(record[:2], "big")
+                offset = int.from_bytes(record[2:], "big")
+                glyphs[code] = data[offset:offset+3]
         checked = 0
         for name in names:
             body = re.search(r"static char \*"+name+r"\[LANG_STR_NR\] = \{(.*?)\};", source, re.S)[1]
@@ -30,7 +32,7 @@ class LanguageCatalogTests(unittest.TestCase):
             self.assertEqual(len(labels), 20, name)
             for key, label in enumerate(labels):
                 arguments = label.count("%d")
-                self.assertEqual(arguments, 2 if key in (0, 1) else 1 if key in (3, 5) else 0,
+                self.assertEqual(arguments, 2 if key in (0, 1) else 1 if key in (3, 5, 18) else 0,
                                  (name, key, label))
                 versions = [label]
                 if arguments == 2:
@@ -46,7 +48,7 @@ class LanguageCatalogTests(unittest.TestCase):
                         position += advance
                     self.assertLessEqual(max(position, rightmost), 288, (name, key, rendered))
                     checked += 1
-        print(f"{len(names)} new language tables: {checked} complete labels/error variants fit shipped Latin glyphs and 288 pixels")
+        print(f"{len(names)} new language tables: {checked} complete labels/error variants fit shipped glyphs and 288 pixels")
 
 
 if __name__ == "__main__":

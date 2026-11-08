@@ -1,0 +1,2 @@
+# Only the independent Arabic atlas-pixel oracle needs this package.
+Pillow==12.3.0

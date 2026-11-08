@@ -1172,7 +1172,7 @@ int main_handle(int ctrl)
 			// Is burned game CD
 			retv = jhl_auth_hack(100000);
 			if(retv!=2){
-				menu_error(&main_menu, "%s%d", TT("不是游戏光盘!"), retv);
+				menu_error(&main_menu, TT("不是游戏光盘!%d"), retv);
 				cdblock_off();
 				return 0;
 			}
@@ -1180,7 +1180,7 @@ int main_handle(int ctrl)
 		}else if(retv!=4){
 			// 是数据CD
 			// Is data CD
-			menu_error(&main_menu, "%s%d", TT("不是游戏光盘!"), retv);
+			menu_error(&main_menu, TT("不是游戏光盘!%d"), retv);
 			cdblock_off();
 			return 0;
 		}

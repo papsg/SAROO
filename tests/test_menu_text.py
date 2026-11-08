@@ -29,6 +29,11 @@ class MenuTextTests(unittest.TestCase):
             code += "#define HAS_MENU_ERROR 1\n" + helper[0] + "\n"
         code += "static void test_game_error(MENU_DESC *menu, int retv)\n{\n"
         code += call[0] + "\n}\n"
+        disc_calls = re.findall(r'menu_error\(&main_menu, TT\("不是游戏光盘!%d"\), retv\);', main)
+        if len(disc_calls) != 2:
+            raise AssertionError("both disc errors must format the whole translated message")
+        code += "static void test_disc_error(MENU_DESC *menu, int retv)\n{\n"
+        code += disc_calls[0].replace("&main_menu", "menu") + "\n}\n"
         (directory / "menu_error_source.inc").write_text(code)
         cls.binary = directory / "menu-text"
         subprocess.run([os.environ.get("CC", "cc"), "-std=c99", "-O1", "-g",

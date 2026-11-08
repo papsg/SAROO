@@ -19,7 +19,8 @@ From the repository root:
 
 ```sh
 make -C tools/bdfont
-tools/bdfont/bdfont tools/bdfont/bdf/wqy13px.bdf -l tools/bdfont/cjk.txt -adj 1 -c Firm_Saturn/font_cjk.bin
+mkdir -p tests/build
+tools/bdfont/bdfont tools/bdfont/bdf/wqy13px.bdf -l tools/bdfont/cjk.txt -adj 1 -c tests/build/cjk-only.bin
 make -C tests check-font
 ```
 
@@ -45,3 +46,8 @@ source/host qualification, not native Saturn rendering or physical timing.
 The separate trailing-period filename discussion in the original PR remains
 unresolved; ASCII period was already present, and this font addition does not
 establish a filename fix.
+
+The complete shipped font now also includes the separate [Arabic contribution](../../doc/ARABIC.md).
+The command above regenerates the CJK-only stage; [tools/README.md](../README.md)
+documents the complete merge. Removing only the 59 Arabic records must reconstruct
+this CJK font exactly. Tests check both stages and the complete composed asset.

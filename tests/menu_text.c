@@ -115,8 +115,8 @@ static void translated_errors(void)
                 char expected[256];
                 unsigned before = displays;
                 if (kind == 2) {
-                    snprintf(expected, sizeof(expected), "%s%d", TT("不是游戏光盘!"), values[v]);
-                    menu_error(&menu, "%s%d", TT("不是游戏光盘!"), values[v]);
+                    snprintf(expected, sizeof(expected), TT("不是游戏光盘!%d"), values[v]);
+                    test_disc_error(&menu, values[v]);
                 } else {
                     char *format = TT(kind ? "文件加载失败! %d" : "游戏启动失败! %d");
                     snprintf(expected, sizeof(expected), format, values[v]);

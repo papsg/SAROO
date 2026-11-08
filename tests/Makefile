@@ -4,9 +4,17 @@ CFLAGS = -std=c99 -O1 -g -Wall -Wextra -Werror
 SANITIZERS = -fsanitize=address,undefined -fno-omit-frame-pointer
 BUILD_DIR = build
 
-.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals clean
+.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets clean
 
-check: check-language check-menu-text check-language-catalog check-font check-peripherals
+check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets
+
+check-arabic:
+	$(PYTHON) -B -m unittest discover -s . -p test_arabic.py -v
+
+check-menu-assets:
+	cargo fmt --manifest-path ../tools/Cargo.toml --check
+	cargo clippy --locked --manifest-path ../tools/Cargo.toml --all-targets -- -D warnings
+	cargo test --locked --manifest-path ../tools/Cargo.toml
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

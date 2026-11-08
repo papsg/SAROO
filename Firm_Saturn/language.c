@@ -42,7 +42,7 @@ static char *lang_zhcn[LANG_STR_NR] = {
 	"SAROO Boot Menu",
 	"检查光盘中......",
 	"未发现光盘!",
-	"不是游戏光盘!",
+	"不是游戏光盘!%d",
 	"选择游戏分类",
 };
 
@@ -66,7 +66,7 @@ static char *lang_en[LANG_STR_NR] = {
 	"SAROO Boot Menu",
 	"Checking Disc ......",
 	"No Disc Found!",
-	"Not a Game Disc!",
+	"Not a Game Disc!%d",
 	"Select Game Category",
 };
 
@@ -90,7 +90,7 @@ static char *lang_ptbr[LANG_STR_NR] = {
 	"SAROO Menu de Inicialização",
 	"Verificando o disco ......",
 	"Sem CD!",
-	"Não é um disco de jogo!",
+	"Não é um disco de jogo!%d",
 	"Selecionar categoria de jogo",
 };
 
@@ -114,7 +114,7 @@ static char *lang_ja[LANG_STR_NR] = {
 	"SAROO ブートメニュー",
 	"ディスクを確認しています......",
 	"ディスクが入っていません",
-	"ゲームディスクではありません",
+	"ゲームディスクではありません%d",
 	"ジャンル選択",
 };
 
@@ -138,7 +138,7 @@ static char *lang_fr[LANG_STR_NR] = {
 	"SAROO Menu de démarrage",
 	"Vérification du disque...",
 	"Aucun disque trouvé !",
-	"Disque de jeu non détecté !",
+	"Disque de jeu non détecté !%d",
 	"Sélectionnez la catégorie de jeu",
 };
 
@@ -162,7 +162,7 @@ static char *lang_ru[LANG_STR_NR] = {
 	"Главное меню SAROO",
 	"Проверка диска ...",
 	"Диск не найден!",
-	"Не игровой диск!",
+	"Не игровой диск!%d",
 	"Выберите категорию игры",
 };
 
@@ -186,7 +186,7 @@ static char *lang_zhtw[LANG_STR_NR] = {
 	"SAROO 主選單",
 	"檢查光碟中......",
 	"未發現光碟!",
-	"不是遊戲光碟!",
+	"不是遊戲光碟!%d",
 	"選擇遊戲分類",
 };
 
@@ -210,7 +210,7 @@ static char *lang_de[LANG_STR_NR] = {
 	"SAROO Hauptmenü",
 	"Prüfe CD ......",
 	"Keine CD gefunden!",
-	"Keine Spiele-CD!",
+	"Keine Spiele-CD!%d",
 	"Spielkategorie auswählen",
 };
 
@@ -233,7 +233,7 @@ static char *lang_es[LANG_STR_NR] = {
 	"SAROO Menú de arranque",
 	"Comprobando disco .....",
 	"¡Disco no encontrado!",
-	"¡No es un disco de juego!",
+	"¡No es un disco de juego!%d",
 	"Seleccionar categoría de juego",
 };
 
@@ -257,7 +257,7 @@ static char *lang_it[LANG_STR_NR] = {
 	"Menu di avvio SAROO",
 	"Controllo disco ......",
 	"Nessun disco trovato!",
-	"Nessun disco di gioco trovato!",
+	"Nessun disco di gioco trovato!%d",
 	"Seleziona categoria di gioco",
 };
 
@@ -281,7 +281,7 @@ static char *lang_pl[LANG_STR_NR] = {
 	"Menu rozruchowe SAROO",
 	"Sprawdzanie dysku ......",
 	"Nie znaleziono dysku!",
-	"Nie znaleziono płyty z grą!",
+	"Nie znaleziono płyty z grą!%d",
 	"Wybierz kategorię gry",
 };
 
@@ -305,7 +305,7 @@ static char *lang_swe[LANG_STR_NR] = {
 	"SAROO Boot Menu",
 	"Kontrollerar skivan ......",
 	"Hittade ingen skiva!",
-	"Inte en giltig spel skiva!",
+	"Inte en giltig spel skiva!%d",
 	"Välj spelkategori",
 };
 
@@ -329,7 +329,7 @@ static char *lang_el[LANG_STR_NR] = {
 	"Μενού Εκκίνησης SAROO",
 	"Έλεγχος Δίσκου ......",
 	"Δεν Βρέθηκε Δίσκος!",
-	"Δεν Είναι Δίσκος Παιχνιδιού!",
+	"Δεν Είναι Δίσκος Παιχνιδιού!%d",
 	"Επίλεξε Κατηγορία Παιχνιδιού",
 };
 
@@ -353,7 +353,7 @@ static char *lang_ro[LANG_STR_NR] = {
 	"Meniul SAROO de pornire",
 	"Se verifică discul ......",
 	"Nu s-a detectat nici nu disc!",
-	"Nu s-a detectat un disc cu jocuri compatibil!",
+	"Nu s-a detectat un disc cu jocuri compatibil!%d",
 	"Selectați categoria de jocuri",
 };
 
@@ -377,7 +377,7 @@ static char *lang_pt[LANG_STR_NR] = {
 	"SAROO Menu de Inicialização",
 	"A Verificar o disco ......",
 	"Sem CD!",
-	"Não é um disco de jogo!",
+	"Não é um disco de jogo!%d",
 	"Selecionar categoria de jogo",
 };
 
@@ -401,7 +401,7 @@ static char *lang_cym[LANG_STR_NR] = {
 	"Dewislen Cychwyn SAROO",
 	"Yn Gwirio Disg ......",
 	"Heb Ddarganfod Disg!",
-	"Nid Disg Gêm!",
+	"Nid Disg Gêm!%d",
 	"Dewiswch Categori Gêm",
 };
 
@@ -425,7 +425,7 @@ static char *lang_nl[LANG_STR_NR] = {
 	"SAROO Opstartmenu",
 	"Schijf wordt gecontroleerd ......",
 	"Geen CD!",
-	"Geen spelschijf!",
+	"Geen spelschijf!%d",
 	"Selecteer spelcategorie",
 };
 
@@ -449,8 +449,33 @@ static char *lang_ca[LANG_STR_NR] = {
 	"SAROO Menú d'arrencada",
 	"Comprovant disc .....",
 	"Disc no trobat!",
-	"No és un disc de joc!",
+	"No és un disc de joc!%d",
 	"Seleccionar categoria de joc",
+};
+
+
+/* Generated fixed labels: tools/menu-assets/arabic.json; see doc/ARABIC.md. */
+static char *lang_ar[LANG_STR_NR] = {
+    "(%d/%d) ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ",
+    "(%d/%d) ﻒﻠﻤﻟﺍ ﺮﺘﺧﺍ",
+    "...ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﺭﺎﺟ",
+    "%d !ﺔﺒﻌﻠﻟﺍ ﻞﻴﻐﺸﺗ ﻞﺸﻓ",
+    "...ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﺭﺎﺟ",
+    "%d !ﻒﻠﻤﻟﺍ ﻞﻴﻤﺤﺗ ﻞﺸﻓ",
+    "ﺔﺒﻌﻠﻟﺍ ﺮﺘﺧﺍ",
+    "ﻡﺎﻈﻨﻟﺍ ﺹﺍﺮﻗﺃ ﻞﻐﺸﻣ",
+    "ﺔﺒﻌﻠﻟﺍ ﺹﺮﻗ ﻞﻴﻐﺸﺗ",
+    "ﻲﻠﺴﻠﺴﺘﻟﺍ ﺢﻴﺤﺼﺘﻟﺍ ﺔﻴﻓﺮﻃ",
+    "ﻲﺋﺎﻨﺜﻟﺍ ﻒﻠﻤﻟﺍ ﻞﻴﻐﺸﺗ",
+    "ﺖﺑﺎﺜﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺚﻳﺪﺤﺗ",
+    "!ﺔﻗﺎﻄﻟﺍ ﻞﺼﻔﺗ ﻻ ...ﺚﻳﺪﺤﺘﻟﺍ ﺭﺎﺟ",
+    "!ﺚﻳﺪﺤﺘﻟﺍ ﻞﺸﻓ",
+    "!ﻞﻴﻐﺸﺘﻟﺍ ﺪﻋﺃ !ﺚﻳﺪﺤﺘﻟﺍ ﻞﻤﺘﻛﺍ",
+    "SAROO ﻉﻼﻗﺇ ﺔﻤﺋﺎﻗ",
+    "...ﺹﺮﻘﻟﺍ ﺺﺤﻓ ﺭﺎﺟ",
+    "!ﺹﺮﻗ ﻰﻠﻋ ﺭﻮﺜﻌﻟﺍ ﻢﺘﻳ ﻢﻟ",
+    "%d !ﺔﺒﻌﻟ ﺹﺮﻗ ﺲﻴﻟ",
+    "ﺏﺎﻌﻟﻷﺍ ﺔﺌﻓ ﺮﺘﺧﺍ",
 };
 
 
@@ -473,6 +498,7 @@ static char **lang_list[] = {
 	lang_cym,
 	lang_nl,
 	lang_ca,
+	lang_ar,
 };
 
 static const int lang_nr = sizeof(lang_list)/sizeof(lang_list[0]);

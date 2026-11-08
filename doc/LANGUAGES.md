@@ -10,15 +10,17 @@ section of `/SAROO/saroocfg.txt`; no MCU or FPGA change is required.
 | 15 | Welsh / Cymraeg | [#299](https://github.com/tpunix/SAROO/pull/299), Widge-5 |
 | 16 | Dutch | [#324](https://github.com/tpunix/SAROO/pull/324), Caio Henrique Antonio |
 | 17 | Catalan | [#360](https://github.com/tpunix/SAROO/pull/360), Xavier vallespin van der Ploeg |
+| 18 | Arabic | [#107](https://github.com/tpunix/SAROO/pull/107), Array in a Matrix; corrected adaptation in this fork |
 
-Each addition supplies all twenty fixed menu labels and uses the existing Latin
-font. This fork preserves the original hash-table bounds fix and uses bounded
+Each addition supplies all twenty fixed menu labels. IDs 14–17 use the existing
+Latin font; [Arabic](ARABIC.md) adds licensed glyphs and build-time fixed-label
+shaping. This fork preserves the original hash-table bounds fix and uses bounded
 error formatting before adding translations. Original unrelated reformatting
 and incorrect proposed configuration IDs are not imported.
 
 `make -C tests check` verifies lookup/cycling, complete translated errors and
 title capacities. `make -C tests check-language-catalog` checks every new label's glyph coverage and pixel
-advance/ink extent against the shipped font and the 288-pixel cleared status
+advance/ink extent against the shipped fonts and the 288-pixel cleared status
 width. These are source/host checks, not physical menu or game qualification.
 Independent native-speaker editorial review remains outstanding.
 

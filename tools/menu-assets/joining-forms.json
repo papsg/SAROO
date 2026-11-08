@@ -1,0 +1,172 @@
+{
+  "أ": {
+    "final": "ﺄ",
+    "isolated": "ﺃ"
+  },
+  "إ": {
+    "final": "ﺈ",
+    "isolated": "ﺇ"
+  },
+  "ئ": {
+    "final": "ﺊ",
+    "initial": "ﺋ",
+    "isolated": "ﺉ",
+    "medial": "ﺌ"
+  },
+  "ا": {
+    "final": "ﺎ",
+    "isolated": "ﺍ"
+  },
+  "ب": {
+    "final": "ﺐ",
+    "initial": "ﺑ",
+    "isolated": "ﺏ",
+    "medial": "ﺒ"
+  },
+  "ة": {
+    "final": "ﺔ",
+    "isolated": "ﺓ"
+  },
+  "ت": {
+    "final": "ﺖ",
+    "initial": "ﺗ",
+    "isolated": "ﺕ",
+    "medial": "ﺘ"
+  },
+  "ث": {
+    "final": "ﺚ",
+    "initial": "ﺛ",
+    "isolated": "ﺙ",
+    "medial": "ﺜ"
+  },
+  "ج": {
+    "final": "ﺞ",
+    "initial": "ﺟ",
+    "isolated": "ﺝ",
+    "medial": "ﺠ"
+  },
+  "ح": {
+    "final": "ﺢ",
+    "initial": "ﺣ",
+    "isolated": "ﺡ",
+    "medial": "ﺤ"
+  },
+  "خ": {
+    "final": "ﺦ",
+    "initial": "ﺧ",
+    "isolated": "ﺥ",
+    "medial": "ﺨ"
+  },
+  "د": {
+    "final": "ﺪ",
+    "isolated": "ﺩ"
+  },
+  "ر": {
+    "final": "ﺮ",
+    "isolated": "ﺭ"
+  },
+  "س": {
+    "final": "ﺲ",
+    "initial": "ﺳ",
+    "isolated": "ﺱ",
+    "medial": "ﺴ"
+  },
+  "ش": {
+    "final": "ﺶ",
+    "initial": "ﺷ",
+    "isolated": "ﺵ",
+    "medial": "ﺸ"
+  },
+  "ص": {
+    "final": "ﺺ",
+    "initial": "ﺻ",
+    "isolated": "ﺹ",
+    "medial": "ﺼ"
+  },
+  "ط": {
+    "final": "ﻂ",
+    "initial": "ﻃ",
+    "isolated": "ﻁ",
+    "medial": "ﻄ"
+  },
+  "ظ": {
+    "final": "ﻆ",
+    "initial": "ﻇ",
+    "isolated": "ﻅ",
+    "medial": "ﻈ"
+  },
+  "ع": {
+    "final": "ﻊ",
+    "initial": "ﻋ",
+    "isolated": "ﻉ",
+    "medial": "ﻌ"
+  },
+  "غ": {
+    "final": "ﻎ",
+    "initial": "ﻏ",
+    "isolated": "ﻍ",
+    "medial": "ﻐ"
+  },
+  "ف": {
+    "final": "ﻒ",
+    "initial": "ﻓ",
+    "isolated": "ﻑ",
+    "medial": "ﻔ"
+  },
+  "ق": {
+    "final": "ﻖ",
+    "initial": "ﻗ",
+    "isolated": "ﻕ",
+    "medial": "ﻘ"
+  },
+  "ك": {
+    "final": "ﻚ",
+    "initial": "ﻛ",
+    "isolated": "ﻙ",
+    "medial": "ﻜ"
+  },
+  "ل": {
+    "final": "ﻞ",
+    "initial": "ﻟ",
+    "isolated": "ﻝ",
+    "medial": "ﻠ"
+  },
+  "لأ": {
+    "final": "ﻸ",
+    "isolated": "ﻷ"
+  },
+  "لإ": {
+    "final": "ﻺ",
+    "isolated": "ﻹ"
+  },
+  "لا": {
+    "final": "ﻼ",
+    "isolated": "ﻻ"
+  },
+  "م": {
+    "final": "ﻢ",
+    "initial": "ﻣ",
+    "isolated": "ﻡ",
+    "medial": "ﻤ"
+  },
+  "ن": {
+    "final": "ﻦ",
+    "initial": "ﻧ",
+    "isolated": "ﻥ",
+    "medial": "ﻨ"
+  },
+  "و": {
+    "final": "ﻮ",
+    "isolated": "ﻭ"
+  },
+  "ى": {
+    "final": "ﻰ",
+    "isolated": "ﻯ"
+  },
+  "ي": {
+    "final": "ﻲ",
+    "initial": "ﻳ",
+    "isolated": "ﻱ",
+    "medial": "ﻴ"
+  }
+}

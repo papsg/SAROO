@@ -17,7 +17,7 @@ static unsigned be24(const u8 *p) { return (unsigned)p[0]*65536+(unsigned)p[1]*2
 
 int main(int argc, char **argv)
 {
-    assert(argc == 3);
+    assert(argc == 4);
     FILE *file = fopen(argv[1], "rb");
     assert(file && !fseek(file, 0, SEEK_END));
     long length = ftell(file);
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
         assert(!memcmp(actual, expected, sizeof(actual)));
         ++checked;
     }
-    assert(feof(file) && checked == 108);
+    assert(feof(file) && checked == (unsigned)strtoul(argv[3], NULL, 10));
     fclose(file);
     free(data);
     printf("%u required glyphs pass production lookup, UTF-8 decoding and guarded raster checks\n", checked);
