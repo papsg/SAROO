@@ -375,7 +375,7 @@ static char **lang_list[] = {
 	lang_ro,
 };
 
-static const int lang_nr = sizeof(lang_list)/4;
+static const int lang_nr = sizeof(lang_list)/sizeof(lang_list[0]);
 
 static char **lang_cur;
 
@@ -401,7 +401,7 @@ char *TT(char *str)
 		return str;
 
 	u32 hash = str_hash(str);
-	STR_ENTRY *entry = lang_str_table[hash&0xff];
+	STR_ENTRY *entry = lang_str_table[hash&0x3f];
 	while(entry){
 		if(hash==entry->hash){
 			//printk("TT: %s(%08x) -> %d %s\n", str, hash, entry->index, lang_cur[entry->index]);
@@ -428,7 +428,7 @@ void lang_init(void)
 		lang_str[i].hash = str_hash(lang_zhcn[i]);
 		lang_str[i].index = i;
 
-		int t = (lang_str[i].hash)&0xff;
+		int t = (lang_str[i].hash)&0x3f;
 		if(lang_str_table[t]){
 			lang_str[i].next = lang_str_table[t];
 		}
