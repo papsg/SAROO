@@ -15,24 +15,55 @@ Last updated: 2026-11-08.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
-| Language hash-table bounds | [#377](https://github.com/tpunix/SAROO/pull/377) | [6fb42d0](https://github.com/papsg/SAROO/commit/6fb42d0), on main | Independent. ASan/UBSan passes 1,680 lookups over 14 languages; original and individual old-mask controls fail. SH-2 objects compile; complete link lacks the original libc in the available toolchain. No new hardware qualification. |
+| Language hash-table bounds | [#377](https://github.com/tpunix/SAROO/pull/377) | [6fb42d0](https://github.com/papsg/SAROO/commit/6fb42d0), on main | Independent. ASan/UBSan passes 1,680 lookups over 14 languages; original and individual old-mask controls fail. SH-2 objects compile at this checkpoint; current assembled-main link qualification is recorded below. No new hardware qualification. |
 | MEMS overwrite corruption | [#372](https://github.com/tpunix/SAROO/pull/372) | [5920eb9](https://github.com/papsg/SAROO/commit/5920eb9), on main | Independent. Nine overwrite scenarios fail on v0.8; read-only export passes. All five actual-CLI methods pass after correction under ASan/UBSan and normal O2. No physical Saturn qualification. |
-| Bounded menu text prerequisite | Our correction for the language series | [f6bdc5e](https://github.com/papsg/SAROO/commit/f6bdc5e), on main | Existing Greek code-1 error reproduces a 40-byte stack overflow. Six error paths and two titles now use actual capacities; custom formatter termination/integer/width handling is bounded. Three ASan/UBSan methods cover 252 errors, titles, 12,880 capacity/length pairs and valid controls. Independent old-caller and old-formatter controls fail. All 16 menu units compile; final SH-2 formatter preserves null/size guards with scoped compiler flags. Complete-link and hardware limits remain. |
-| Controller/multitap parsing | [#380](https://github.com/tpunix/SAROO/pull/380) | [86c7caf](https://github.com/papsg/SAROO/commit/86c7caf), [67c51f3](https://github.com/papsg/SAROO/commit/67c51f3), on main | Deduplicates #378/#379; original hardware report remains attributed. Twelve actual-code ASan/UBSan methods cover 13,422 normal-owner packets, all sockets, lengths, mouse/pad, malformed/busy/timeout/wrap and independent write-only controls. Porting also exposed and fixed the existing BIN input export losing service after IRQ handoff; a same-parser complete-page polling path preserves it. Post-admission busy test strengthened in [ecbf2a7](https://github.com/papsg/SAROO/commit/ecbf2a7). All 16 units compile; final main rebuilt, direct-pad object byte-identical. +1,052 object text/readonly and 24 BSS bytes. Exact Sega/Hitachi references in doc/PERIPHERALS.md. Complete-link, clock and physical-device limits remain. |
-| Missing CJK coverage | [#203](https://github.com/tpunix/SAROO/pull/203) | [8ac9a8b](https://github.com/papsg/SAROO/commit/8ac9a8b), on main | 108 added records match the original attached firmware; all 10,628 baseline records and source notices preserved. Five original drawings already exist in v0.8. Three ASan/UBSan font methods and combined language/menu checks pass; original asset fails missing coverage and regeneration. Existing converter reproduces the complete new font after explicitly retaining the old U+000C selection. +3,289 loaded bytes; production code unchanged. Full-link/physical qualification and trailing-period filename limits remain. |
-| European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256) | [a494e69](https://github.com/papsg/SAROO/commit/a494e69), on main | Original 20 labels at ID 14; IDs 0–13 unchanged. Requires language bounds and bounded menu text. ASan/UBSan: 1,800 lookups, 270 complete errors, title/formatter controls. Shipped-font glyphs and 288-pixel width checks pass. SH-2 language object compiles. Editorial, full-link and hardware limits remain. |
-| Welsh | [#299](https://github.com/tpunix/SAROO/pull/299) | [73c1fbe](https://github.com/papsg/SAROO/commit/73c1fbe), on main | Original 20 labels at ID 15 after Portuguese; existing IDs unchanged. ASan/UBSan: 1,920 lookups, 288 complete errors, title/formatter controls. All new glyph/288-pixel checks and SH-2 language compilation pass. No related open fork PR; issues disabled. Editorial, full-link and hardware limits remain. |
-| Dutch | [#324](https://github.com/tpunix/SAROO/pull/324) | [461d658](https://github.com/papsg/SAROO/commit/461d658), on main | ID 16. Four documented wording adaptations; sixteen labels unchanged. Original wording fails at 328 pixels; corrected glyph/288-pixel checks pass. ASan/UBSan: 2,040 lookups, 306 complete errors and title/formatter controls. SH-2 language compilation passes. Editorial, full-link and hardware limits remain. |
-| Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | [360d03d](https://github.com/papsg/SAROO/commit/360d03d), on main | Original 20 labels at ID 17; IDE workspace files excluded. ASan/UBSan: 2,160 lookups, 324 complete errors and title/formatter controls. All 80 added labels/full signed-error variants pass shipped-glyph and 288-pixel checks. SH-2 language compilation passes. Editorial, full-link and hardware limits remain. |
-| Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | Queued | Required licensed glyphs, fixed-label shaping and language-series prerequisites. Native-speaker review remains a separate limit. |
+| Bounded menu text prerequisite | Our correction for the language series | [f6bdc5e](https://github.com/papsg/SAROO/commit/f6bdc5e), on main | Existing Greek code-1 error reproduces a 40-byte stack overflow. Six error paths and two titles now use actual capacities; custom formatter termination/integer/width handling is bounded. Three ASan/UBSan methods cover 252 errors, titles, 12,880 capacity/length pairs and valid controls. Independent old-caller and old-formatter controls fail. All 16 menu units compile; final SH-2 formatter preserves null/size guards with scoped compiler flags. Hardware limits remain; the assembled-menu link limitation is cleared below. |
+| Controller/multitap parsing | [#380](https://github.com/tpunix/SAROO/pull/380) | [86c7caf](https://github.com/papsg/SAROO/commit/86c7caf), [67c51f3](https://github.com/papsg/SAROO/commit/67c51f3), on main | Deduplicates #378/#379; original hardware report remains attributed. Twelve actual-code ASan/UBSan methods cover 13,422 normal-owner packets, all sockets, lengths, mouse/pad, malformed/busy/timeout/wrap and independent write-only controls. Porting also exposed and fixed the existing BIN input export losing service after IRQ handoff; a same-parser complete-page polling path preserves it. Post-admission busy test strengthened in [ecbf2a7](https://github.com/papsg/SAROO/commit/ecbf2a7). All 16 units compile; final main rebuilt, direct-pad object byte-identical. +1,052 object text/readonly and 24 BSS bytes. Exact Sega/Hitachi references in doc/PERIPHERALS.md. Clock and physical-device limits remain; current assembled main fully links. |
+| Missing CJK coverage | [#203](https://github.com/tpunix/SAROO/pull/203) | [8ac9a8b](https://github.com/papsg/SAROO/commit/8ac9a8b), on main | 108 added records match the original attached firmware; all 10,628 baseline records and source notices preserved. Five original drawings already exist in v0.8. Three ASan/UBSan font methods and combined language/menu checks pass; original asset fails missing coverage and regeneration. Existing converter reproduces the complete new font after explicitly retaining the old U+000C selection. +3,289 loaded bytes; production code unchanged. Physical qualification and trailing-period filename limits remain. |
+| European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256) | [a494e69](https://github.com/papsg/SAROO/commit/a494e69), on main | Original 20 labels at ID 14; IDs 0–13 unchanged. Requires language bounds and bounded menu text. ASan/UBSan: 1,800 lookups, 270 complete errors, title/formatter controls. Shipped-font glyphs and 288-pixel width checks pass. SH-2 language object compiles. Editorial and hardware limits remain. |
+| Welsh | [#299](https://github.com/tpunix/SAROO/pull/299) | [73c1fbe](https://github.com/papsg/SAROO/commit/73c1fbe), on main | Original 20 labels at ID 15 after Portuguese; existing IDs unchanged. ASan/UBSan: 1,920 lookups, 288 complete errors, title/formatter controls. All new glyph/288-pixel checks and SH-2 language compilation pass. No related open fork PR; issues disabled. Editorial and hardware limits remain. |
+| Dutch | [#324](https://github.com/tpunix/SAROO/pull/324) | [461d658](https://github.com/papsg/SAROO/commit/461d658), on main | ID 16. Four documented wording adaptations; sixteen labels unchanged. Original wording fails at 328 pixels; corrected glyph/288-pixel checks pass. ASan/UBSan: 2,040 lookups, 306 complete errors and title/formatter controls. SH-2 language compilation passes. Editorial and hardware limits remain. |
+| Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | [360d03d](https://github.com/papsg/SAROO/commit/360d03d), on main | Original 20 labels at ID 17; IDE workspace files excluded. ASan/UBSan: 2,160 lookups, 324 complete errors and title/formatter controls. All 80 added labels/full signed-error variants pass shipped-glyph and 288-pixel checks. SH-2 language compilation passes. Editorial and hardware limits remain. |
+| Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | [9429f53](https://github.com/papsg/SAROO/commit/9429f53), on main | ID 18 with all 20 fixed labels. Credits Array in a Matrix; our shaping, wording/font/caller adaptations are explicit. Requires language bounds, bounded menu text, ID sequence and CJK stage. Four Arabic methods pass 36 independent oracle cases, 648 earlier-language actual-C formatter/raster controls, 8,496 original atlas pixels, exact font rebuild and 59 production glyph checks. 2,280 lookups, 342 complete errors, existing menu/peripheral checks and four Rust failure/boundary tests pass. Both pre-Arabic main and candidate fully compile/link; only main.o/language.o change. +1,040 linked code/data, +1,216 font/image bytes; BSS/stack unchanged. Source licenses and Unicode section citations in [doc/ARABIC.md](https://github.com/papsg/SAROO/blob/main/doc/ARABIC.md). Native-speaker and Saturn appearance/timing remain unqualified. |
 | English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [73922db](https://github.com/papsg/SAROO/commit/73922db), on main | Deduplicates #343. 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. The integrated tree and all compiled inputs/hashes match the verified branch. No runtime or hardware claim. |
 | Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 | Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 
-Nine of the twelve requested contributions are integrated. Arabic, the browser
-save editor and browser cover editor remain. Bounded menu text is an additional
+Verified topic checkpoints (each is an ancestor of current main):
+
+| Original contribution | Branch |
+| --- | --- |
+| #377, #372 | [codex/direct-history](https://github.com/papsg/SAROO/tree/codex/direct-history) |
+| Bounded menu-text prerequisite | [codex/menu-text-capacity](https://github.com/papsg/SAROO/tree/codex/menu-text-capacity) |
+| #68/#352 | [codex/english-direct](https://github.com/papsg/SAROO/tree/codex/english-direct) |
+| #256 | [codex/european-portuguese](https://github.com/papsg/SAROO/tree/codex/european-portuguese) |
+| #299 | [codex/welsh](https://github.com/papsg/SAROO/tree/codex/welsh) |
+| #324 | [codex/dutch](https://github.com/papsg/SAROO/tree/codex/dutch) |
+| #360 | [codex/catalan](https://github.com/papsg/SAROO/tree/codex/catalan) |
+| #203 | [codex/cjk-coverage](https://github.com/papsg/SAROO/tree/codex/cjk-coverage) |
+| #380 core | [codex/menu-peripherals](https://github.com/papsg/SAROO/tree/codex/menu-peripherals) |
+| #380 busy control | [codex/peripheral-busy-control](https://github.com/papsg/SAROO/tree/codex/peripheral-busy-control) |
+| #380 guest-input compatibility | [codex/guest-input-compat](https://github.com/papsg/SAROO/tree/codex/guest-input-compat) |
+| #107 | [codex/arabic-localization](https://github.com/papsg/SAROO/tree/codex/arabic-localization) |
+
+The former PR branches `codex/language-hash-bounds`, `codex/mems-overwrite`
+and `codex/english-documentation` preserve superseded history. Current direct
+integrations use the checkpoint branches above; the historical branches are
+not instructions to restore their ancestry.
+
+Ten of the twelve requested contributions are integrated. The browser save
+editor and browser cover editor remain. Bounded menu text is an additional
 explicit prerequisite and is not counted in that total. All topic branches and
 this ledger are pushed.
+
+The Arabic checkpoint clears the earlier available-toolchain missing-libc limitation:
+both preceding public `67c51f3` and current `9429f53` fully compile/link all sixteen
+menu units with GCC 13.2.0 / Yaul 0.3.1-3, using the existing Yaul memory functions
+and GCC runtime. Exact reproduction commands and measured extents are in
+[doc/ARABIC.md](https://github.com/papsg/SAROO/blob/main/doc/ARABIC.md#build-qualification).
+ELF/body/font bounds and all twenty linked Arabic strings/ID registration pass.
+Previous object-only receipts retain their historical scope; full linking does
+not establish physical Saturn behavior.
 
 Historical implementation evidence guides these ports; it does not qualify a
 newly assembled public branch. Every contribution records fresh checks and outstanding
@@ -51,5 +82,5 @@ GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
 fork issue or superseded open PR needs closure. This was checked again after
-the English, Latin-language, CJK and controller contributions integrated; the
+the English, Latin-language, CJK, controller and Arabic contributions integrated; the
 fork has no open PRs. No original upstream request has been changed.
