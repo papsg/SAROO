@@ -358,6 +358,30 @@ static char *lang_ro[LANG_STR_NR] = {
 };
 
 
+static char *lang_pt[LANG_STR_NR] = {
+	"Selecionar Jogo(%d/%d)",
+	"Selecionar Ficheiro(%d/%d)",
+	"A Inicializar o Jogo ......",
+	"Erro ao inicializar o jogo! %d",
+	"A Carregar o ficheiro ......",
+	"Erro ao carregar o ficheiro!  %d",
+	"Selecionar Jogo",
+	"Leitor de CD do Sistema",
+	"Carregar o Disco do Jogo",
+	"Shell de Depuração serial",
+	"A Carregar o Binário",
+	"Atualizar a Firmware",
+	"A Atualizar... Não desligue o sistema!",
+	"Erro ao atualizar!",
+	"Finalizado, reinicie o sistema!",
+	"SAROO Menu de Inicialização",
+	"A Verificar o disco ......",
+	"Sem CD!",
+	"Não é um disco de jogo!",
+	"Selecionar categoria de jogo",
+};
+
+
 static char **lang_list[] = {
 	lang_zhcn,
 	lang_en,
@@ -373,6 +397,7 @@ static char **lang_list[] = {
 	lang_swe,
 	lang_el,
 	lang_ro,
+	lang_pt,
 };
 
 static const int lang_nr = sizeof(lang_list)/sizeof(lang_list[0]);

@@ -57,7 +57,8 @@ Japanese 3, French 4, Russian 5, Traditional Chinese 6, German 7, Spanish 8,
 Italian 9, Polish 10, Swedish 11, Greek 12 and Romanian 13. The comment in the
 original configuration example stops at Swedish; the actual
 [language table](Firm_Saturn/language.c) also contains Greek and Romanian.
-Later language contributions may extend this list without reassigning old IDs.
+The [additional language list](doc/LANGUAGES.md) gives newer IDs and contributor
+credits. Existing IDs retain their meanings.
 
 ## Source and tools
 

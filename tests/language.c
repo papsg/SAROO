@@ -15,7 +15,7 @@ int main(void)
 {
     char **expected[] = {lang_zhcn, lang_en, lang_ptbr, lang_ja, lang_fr,
         lang_ru, lang_zhtw, lang_de, lang_es, lang_it, lang_pl, lang_swe,
-        lang_el, lang_ro};
+        lang_el, lang_ro, lang_pt};
     const unsigned count = sizeof(expected)/sizeof(expected[0]);
     unsigned lookups = 0;
 
