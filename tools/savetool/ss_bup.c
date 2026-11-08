@@ -157,10 +157,11 @@ int ss_bup_export(int slot_id, int index, int exp_type)
                 if (load_blist(binfo, block) < 0 || read_data(binfo, save_buf+0x40) < 0)
                     return -1;
 
-				char fname[16];
+				char fname[SAVE_FILENAME_SIZE];
 				int fsize = get_be32(save_buf+0x1c);
 				put_be32(save_buf+0x0c, crc32b(save_buf+0x10, fsize+0x30));
-				sprintf(fname, "%s%s", save_buf+0x10, exp_type ? BUP_EXTENSION : ".SRO");
+				if(save_filename(fname, save_buf+0x10, exp_type ? BUP_EXTENSION : ".SRO")<0)
+					return -1;
 
 				// if Export format is .BUP, set new header
 				if (exp_type==1){
@@ -177,7 +178,8 @@ int ss_bup_export(int slot_id, int index, int exp_type)
 					memcpy(save_buf, &bup_header, BUP_HEADER_SIZE);
 				}
 
-				write_file(fname, save_buf, fsize+0x40);
+				if(export_save_file(fname, save_buf, fsize+0x40)<0)
+					return -1;
 
 				printf("Export Save_%d: %s\n", index, fname);
 				return 0;

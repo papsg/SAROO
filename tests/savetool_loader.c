@@ -5,12 +5,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 static int mode, open_handles, live_allocations, seeks;
+static int stream_fd = -1;
 static FILE *checked_open(const char *name, const char *access)
 {
     if (!name || mode == 2) return NULL;
     FILE *fp = fopen(name, access);
+    if (fp) ++open_handles;
+    return fp;
+}
+static FILE *checked_fdopen(int fd, const char *access)
+{
+    stream_fd = fd;
+    if (mode == 2) return NULL;
+    FILE *fp = fdopen(fd, access);
     if (fp) ++open_handles;
     return fp;
 }
@@ -60,6 +71,7 @@ static int checked_close(FILE *fp)
 }
 
 #define fopen checked_open
+#define fdopen checked_fdopen
 #define fseek checked_seek
 #define ftell checked_tell
 #define malloc checked_malloc
@@ -71,6 +83,7 @@ static int checked_close(FILE *fp)
 #include "main.c"
 #undef main
 #undef fopen
+#undef fdopen
 #undef fseek
 #undef ftell
 #undef malloc
@@ -102,6 +115,10 @@ int main(int argc, char **argv)
         assert(result == NULL && size == 0);
     }
     assert(open_handles == 0 && live_allocations == 0);
+    if (stream_fd >= 0) {
+        errno = 0;
+        assert(fcntl(stream_fd, F_GETFD) == -1 && errno == EBADF);
+    }
     puts("actual load_file ownership and error outcome passed");
     return 0;
 }

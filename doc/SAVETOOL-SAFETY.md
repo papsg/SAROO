@@ -391,3 +391,113 @@ Run the coupled suite above. It executes the actual CLI and included reader;
 no private toolchain or device is required. These are host-format checks, not
 physical Saturn or game qualification. Checked file replacement and derived
 paths remain the final separate contribution.
+
+## SAVETOOL-006: checked file replacement and derived paths
+
+At public `b6df5de`, `write_file` truncates the destination before writing it.
+Short writes and close errors can leave partial data; archive mutation and all
+three exporters ignore the result and can print success. Save-derived names are
+also interpreted as host paths, allowing traversal, symlink following and export
+over the input archive or a hardlink alias.
+
+The writer now prepares a private temporary in the destination directory, writes
+all bytes while handling short/interrupted writes, synchronizes/closes it and
+renames it over the destination. It then synchronizes the parent directory.
+Checked errors before replacement leave the previous destination intact. A
+failure after rename reports that replacement completed and returns failure;
+the complete new file is already visible. Mutation and export callers propagate
+that result, and success messages follow checked persistence.
+
+Ordinary owner/group/mode are retained. On macOS, metadata copying also retains
+ACLs and extended attributes. Immutable/append-only destinations are refused
+before staging; the code includes both user and system flag masks. New exports
+use private `mkstemp` permissions. Explicit archive symlinks are resolved at load
+and their targets replaced while preserving the links. Derived output symlinks,
+directories and special files are refused. Input-archive aliases cannot be
+overwritten by export. Inputs must be regular files; inferred `.bin` paths do
+not follow links or block opening a FIFO. Explicit import paths retain support
+for regular-file symlinks and subdirectories.
+
+Derived names preserve ASCII letters/digits, spaces, dots, underscores and
+hyphens. Other bytes, including percent, are percent-escaped: `A/B` produces
+`A%2FB.SRO`, while literal `A%2FB` produces `A%252FB.SRO`. The same rule applies
+to BUP export and inferred `.bin` import, with a buffer covering all eleven
+bytes at maximum expansion. Exported metadata retains its original raw name.
+This retains existing overwrite behavior for an already chosen export filename;
+it does not resolve filesystem case-folding or equal visible-name collisions.
+
+### Sources and attribution
+
+The original behavior/callers are in
+[`write_file`, `bup_flush` and archive dispatch at b6df5de](https://github.com/papsg/SAROO/blob/b6df5de/tools/savetool/main.c)
+and its three archive modules. Host publication semantics are checked against
+Apple's primary manuals:
+[`rename(2)`, DESCRIPTION](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/rename.2.html),
+[`fsync(2)`, DESCRIPTION](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html),
+and
+[`copyfile(3)`, DESCRIPTION / COPYFILE_METADATA](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/copyfile.3.html).
+Bundled Darwin `open(2)`, `write(2)` and `close(2)` manuals additionally establish
+the checked descriptor flags, return values and errors. Cached Apple metadata
+implementation evidence corroborates flag propagation; it is not asserted to be
+the installed library's exact source. These are host filesystem requirements,
+not Sega firmware rules.
+
+This is our maintenance correction originally authored by `paps-g` as
+`c8ee25f7`, with the necessary `3151c6f5` macOS protection refinement (SSR-042).
+The public port independently revalidates both, retains original SRO/BUP/MEMS
+attribution, builds the stage name with bounded copies, preserves an early
+creation error across cleanup, and adapts the earlier loader fault fixture to
+`fdopen`, including descriptor closure. A whitespace-only correction removes a
+misleading-indentation warning in the preceding slot port without changing C
+tokens. No private framework, console service or cover-tool writer is imported.
+
+### Verification and limits
+
+Ten actual-CLI methods cover write/create/sync/close/rename/metadata failures,
+new-file refusal, short/interrupted completion, post-rename errors, all archive
+exporters, escaped paths, aliases/special files, explicit/inferred inputs, long
+archive names, archive symlinks and native metadata. The preceding public source
+has 218 failed assertions, 24 missing escaped-output errors and six FIFO timeouts
+in this corpus. An incomplete initial integration and a failed control setup are
+retained separately and excluded from acceptance.
+
+Removing only the protection guard from the corrected writer produces eighteen
+failed cleanup assertions and eighteen retained stages, with all originals
+intact. Twelve ordinary native metadata controls still pass. The corrected CLI
+passes all thirty cases under both sanitizer and optimized profiles, retaining
+tested owner/group/mode/xattrs and refusing protected files without stages.
+The existing four ACL/archive-link controls also pass. Only generated disposable
+files receive user flags; system/privileged flags are compiled but not applied.
+
+All 47 combined native methods pass ASan/UBSan and normal O2. Fault interception,
+the exact-size reader and direct loader shims remain separate sanitized test
+executables in both profiles; the release binary has no fault-environment hook.
+Two unsigned-reader and seven web-save methods pass, including all 24 native/
+browser exports. Public reproduction remains
+`make -C tests check-native-save check-save-endian check-web-save`.
+
+For the ordinary optimized CLI profile, from the repository root:
+
+```sh
+mkdir -p tests/build/savetool
+cc -std=gnu11 -O2 -g -Wall -fno-strict-aliasing \
+  tools/savetool/main.c tools/savetool/sr_bup.c \
+  tools/savetool/ss_bup.c tools/savetool/sr_mems.c \
+  -o tests/build/savetool/sst-release
+SAROO_SAVETOOL_BINARY="$PWD/tests/build/savetool/sst-release" \
+  make -C tests check-native-save
+```
+
+This new port is qualified on Apple Silicon macOS as a host utility. No new
+Intel/Linux/Windows, physical storage, Saturn or game qualification is claimed.
+The non-Apple fallback preserves owner/group/mode, with no ACL/xattr claim.
+Atomic replacement changes the inode; other hardlinks retain the old file.
+Concurrent writers/metadata changes, arbitrary cleanup failures and termination
+are outside this contract. A killed process can leave its private temporary.
+There is no rollback after rename or arbitrary power-loss guarantee: Apple's
+`fsync` manual explicitly distinguishes host flushing from drive persistence.
+
+All seven requested native safety contributions are now represented here. The
+earlier sections retain each checkpoint's then-remaining scope; their following
+series members are implemented above. These bounded changes do not claim general
+save-tool safety or alter the console firmware's separate storage behavior.

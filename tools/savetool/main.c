@@ -4,6 +4,13 @@
 #include "string.h"
 #include <limits.h>
 #include <stdint.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <copyfile.h>
+#endif
 #include "bup.h"
 #include "bup_format.h"
 
@@ -14,15 +21,24 @@
 /* SAROO slots use a fixed 4,096-unit container, including its directory. */
 #define MAX_SAROO_BYTES (4096u * 65536u)
 
-u8 *load_file(char *name, int *size)
+static u8 *load_file_impl(char *name, int *size, int local)
 {
     FILE *fp;
     u8 *buf = NULL;
     long length;
+    struct stat st;
+    int fd;
 
     *size = 0;
-    if(name==NULL || (fp=fopen(name, "rb"))==NULL)
+    if(name==NULL)
         return NULL;
+    fd = open(name, O_RDONLY | O_NONBLOCK | (local ? O_NOFOLLOW : 0));
+    if(fd<0)
+        return NULL;
+    if(fstat(fd, &st)<0 || !S_ISREG(st.st_mode) || (fp=fdopen(fd, "rb"))==NULL){
+        close(fd);
+        return NULL;
+    }
     if(fseek(fp, 0, SEEK_END)!=0 || (length=ftell(fp))<0 ||
        length>INT_MAX || (uintmax_t)length>SIZE_MAX/2 ||
        fseek(fp, 0, SEEK_SET)!=0)
@@ -45,18 +61,164 @@ failed:
 }
 
 
+u8 *load_file(char *name, int *size)
+{
+    return load_file_impl(name, size, 0);
+}
+
+/* Stage on the destination filesystem. Before rename, a checked error leaves
+ * the old destination intact; after rename, report synchronization failure. */
 int write_file(char *file, void *buf, int size)
 {
-	FILE *fp;
-	int written;
+    char *directory = NULL, *temporary = NULL, *slash;
+    int fd = -1, old = -1, parent = -1, error, replaced = 0;
+    size_t done = 0, length;
+    struct stat st;
 
-	fp = fopen(file, "wb");
-	if(fp==NULL)
-		return -1;
-	written = fwrite(buf, 1, size, fp);
-	fclose(fp);
+    if(file==NULL || !*file || size<0 || (size && buf==NULL)){
+        errno = EINVAL;
+        return -1;
+    }
+    directory = strdup(file);
+    if(directory==NULL)
+        goto failed;
+    slash = strrchr(directory, '/');
+    if(slash==NULL)
+        strcpy(directory, ".");
+    else if(slash==directory)
+        slash[1] = 0;
+    else
+        *slash = 0;
+    parent = open(directory, O_RDONLY | O_DIRECTORY);
+    if(parent<0)
+        goto failed;
 
-	return written;
+    /* Explicit archive links are resolved at load. Derived destinations must
+     * be regular files and must not follow links or block opening a FIFO. */
+    if(lstat(file, &st)==0){
+        if(!S_ISREG(st.st_mode)){
+            errno = EINVAL;
+            goto failed;
+        }
+        old = open(file, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+        if(old<0 || fstat(old, &st)<0)
+            goto failed;
+        if(!S_ISREG(st.st_mode)){
+            errno = EINVAL;
+            goto failed;
+        }
+#ifdef __APPLE__
+        /* Copying these flags to the stage can prevent ordinary cleanup. */
+        if(st.st_flags & (UF_IMMUTABLE | UF_APPEND | SF_IMMUTABLE | SF_APPEND)){
+            errno = EPERM;
+            goto failed;
+        }
+#endif
+    }else if(errno!=ENOENT){
+        goto failed;
+    }
+    length = strlen(directory);
+    if(length>SIZE_MAX-sizeof("/.saroo-save-XXXXXX")){
+        errno = ENAMETOOLONG;
+        goto failed;
+    }
+    temporary = malloc(length+sizeof("/.saroo-save-XXXXXX"));
+    if(temporary==NULL)
+        goto failed;
+    memcpy(temporary, directory, length);
+    memcpy(temporary+length, "/.saroo-save-XXXXXX", sizeof("/.saroo-save-XXXXXX"));
+    fd = mkstemp(temporary);
+    if(fd<0){
+        error = errno;
+        free(temporary);
+        temporary = NULL;
+        errno = error;
+        goto failed;
+    }
+    if(old>=0){
+        struct stat staged;
+        if(fstat(fd, &staged)<0 ||
+           ((staged.st_uid!=st.st_uid || staged.st_gid!=st.st_gid) &&
+            fchown(fd, st.st_uid, st.st_gid)<0))
+            goto failed;
+#ifdef __APPLE__
+        if(fcopyfile(old, fd, NULL, COPYFILE_METADATA)<0)
+            goto failed;
+#else
+        if(fchmod(fd, st.st_mode & 07777)<0)
+            goto failed;
+#endif
+        error = close(old);
+        old = -1;
+        if(error<0)
+            goto failed;
+    }
+    while(done<(size_t)size){
+        ssize_t count = write(fd, (u8 *)buf+done, (size_t)size-done);
+        if(count<0 && errno==EINTR)
+            continue;
+        if(count<=0){
+            if(count==0)
+                errno = EIO;
+            goto failed;
+        }
+        done += (size_t)count;
+    }
+    if(fsync(fd)<0)
+        goto failed;
+    error = close(fd);
+    fd = -1; /* Do not retry a failed close on a potentially reused descriptor. */
+    if(error<0)
+        goto failed;
+    if(rename(temporary, file)<0)
+        goto failed;
+    replaced = 1;
+    if(fsync(parent)<0)
+        goto failed;
+    error = close(parent);
+    parent = -1;
+    if(error<0)
+        goto failed;
+    free(temporary);
+    free(directory);
+    return size;
+
+failed:
+    error = errno;
+    if(fd>=0) close(fd);
+    if(old>=0) close(old);
+    if(parent>=0) close(parent);
+    if(temporary && !replaced) unlink(temporary);
+    fprintf(stderr, "%s: %s: %s\n", file,
+            replaced ? "Replacement completed; directory synchronization failed"
+                     : "Save write failed before replacement", strerror(error));
+    free(temporary);
+    free(directory);
+    errno = error;
+    return -1;
+}
+
+/* Escape percent too, keeping literal escape text distinct from escaped bytes. */
+int save_filename(char out[SAVE_FILENAME_SIZE], const u8 *name, const char *suffix)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t i, pos = 0;
+    if(name==NULL || !name[0] || suffix==NULL ||
+       (strcmp(suffix, ".SRO") && strcmp(suffix, ".BUP") && strcmp(suffix, ".bin")))
+        return -1;
+    for(i=0; i<11 && name[i]; i++){
+        unsigned char c = name[i];
+        if((c>='A' && c<='Z') || (c>='a' && c<='z') ||
+           (c>='0' && c<='9') || c==' ' || c=='.' || c=='_' || c=='-'){
+            out[pos++] = c;
+        }else{
+            out[pos++] = '%';
+            out[pos++] = hex[c>>4];
+            out[pos++] = hex[c&15];
+        }
+    }
+    memcpy(out+pos, suffix, 5);
+    return 0;
 }
 
 
@@ -145,7 +307,7 @@ static void load_savebup(SAVEINFO *sinfo, const u8 *fbuf, int fsize)
 }
 
 
-SAVEINFO *load_saveraw(char *save_name)
+static SAVEINFO *load_saveraw_impl(char *save_name, int local)
 {
     SAVEINFO *sinfo = &saveinfo;
     u8 *fbuf;
@@ -156,7 +318,7 @@ SAVEINFO *load_saveraw(char *save_name)
         printf("An input save filename is required.\n");
         return NULL;
     }
-    fbuf = load_file(save_name, &fsize);
+    fbuf = load_file_impl(save_name, &fsize, local);
     if(fbuf==NULL){
         printf("Failed to load file %s!\n", save_name);
         return NULL;
@@ -202,6 +364,16 @@ invalid:
     return NULL;
 }
 
+SAVEINFO *load_saveraw(char *save_name)
+{
+    return load_saveraw_impl(save_name, 0);
+}
+
+SAVEINFO *load_saveraw_local(char *save_name)
+{
+    return load_saveraw_impl(save_name, 1);
+}
+
 /******************************************************************************/
 
 // 0: SAROO save file
@@ -212,11 +384,26 @@ static int bup_type;
 static u8 *bup_buf;
 static int bup_size;
 static char *bup_name = NULL;
+static char *bup_path = NULL;
 
 
-void bup_flush(void)
+int bup_flush(void)
 {
-	write_file(bup_name, bup_buf, bup_size);
+    if(write_file(bup_path, bup_buf, bup_size)!=bup_size)
+        return -1;
+    printf("Updated archive: %s\n", bup_path);
+    return 0;
+}
+
+int export_save_file(char *file, void *buf, int size)
+{
+    struct stat source, target;
+    if(bup_path && stat(bup_path, &source)==0 && stat(file, &target)==0 &&
+       source.st_dev==target.st_dev && source.st_ino==target.st_ino){
+        fprintf(stderr, "%s: Export would replace its input archive.\n", file);
+        return -1;
+    }
+    return write_file(file, buf, size)==size ? 0 : -1;
 }
 
 
@@ -233,8 +420,7 @@ int bup_create(char *game_id)
 	}
 	if(retv>0){
 		bup_size = retv; /* Creation returns the complete required archive length. */
-		bup_flush();
-		return 0;
+		return bup_flush();
 	}
 
 	return retv;
@@ -253,7 +439,7 @@ int bup_import(int slot_id, int save_id, char *save_name)
 		retv = sr_mems_import(slot_id, save_id, save_name);
 	}
 	if(retv==0){
-		bup_flush();
+		retv = bup_flush();
 	}
 
 	return retv;
@@ -272,7 +458,7 @@ int bup_delete(int slot_id, int save_id)
 		retv = sr_mems_delete(slot_id, save_id);
 	}
 	if(retv==0){
-		bup_flush();
+		retv = bup_flush();
 	}
 
 	return retv;
@@ -319,7 +505,11 @@ static int odd_saturn_signature(const u8 *bytes)
 
 int bup_load(char *bup_name)
 {
-    bup_buf = load_file(bup_name, &bup_size);
+    free(bup_path);
+    bup_path = bup_name ? realpath(bup_name, NULL) : NULL;
+    if(bup_path==NULL)
+        return -1;
+    bup_buf = load_file(bup_path, &bup_size);
     if(bup_buf==NULL)
         return -1;
 

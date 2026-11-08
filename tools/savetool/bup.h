@@ -37,7 +37,11 @@ u32 crc32b(u8 *data, int size);
 
 void set_bitmap(u8 *bmp, int index, int val);
 SAVEINFO *load_saveraw(char *save_name);
-void bup_flush(void);
+int bup_flush(void);
+#define SAVE_FILENAME_SIZE (11 * 3 + 5)
+int save_filename(char out[SAVE_FILENAME_SIZE], const u8 *name, const char *suffix);
+int export_save_file(char *file, void *buf, int size);
+SAVEINFO *load_saveraw_local(char *save_name);
 
 int sr_bup_init(u8 *buf, int bytes);
 int sr_bup_list(int slot_id);

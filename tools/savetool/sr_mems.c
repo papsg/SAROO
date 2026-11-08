@@ -154,10 +154,11 @@ int sr_mems_export(int slot_id, int save_id, int exp_type)
 
 			access_data(block, save_buf+0x40, 0);
 
-			char fname[16];
+			char fname[SAVE_FILENAME_SIZE];
 			int fsize = get_be32(save_buf+0x1c);
 			put_be32(save_buf+0x0c, crc32b(save_buf+0x10, fsize+0x30));
-			sprintf(fname, "%s%s", save_buf+0x10, exp_type ? BUP_EXTENSION : ".SRO");
+			if(save_filename(fname, save_buf+0x10, exp_type ? BUP_EXTENSION : ".SRO")<0)
+				return -1;
 
 			// if Export format is .BUP, set new header
 			if (exp_type==1){
@@ -174,7 +175,8 @@ int sr_mems_export(int slot_id, int save_id, int exp_type)
 				memcpy(save_buf, &bup_header, BUP_HEADER_SIZE);
 			}
 
-			write_file(fname, save_buf, fsize+0x40);
+			if(export_save_file(fname, save_buf, fsize+0x40)<0)
+				return -1;
 
 			printf("Export Save_%d: %s\n", index, fname);
 			return 0;
@@ -293,7 +295,6 @@ static int create_save(int directory, SAVEINFO *save)
     memset(bp, 0, 16);
     memcpy(bp, save->file_name, 11);
     put_be16(bp+14, blocks[0]);
-    printf("Import %s.\n", save->file_name);
     return 0;
 }
 
@@ -325,12 +326,15 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
 	if(block){
 		// overwrite
 		u8 *sbp;
-		char sname[20];
-		if(save_name==NULL){
-			snprintf(sname, sizeof(sname), "%.11s.bin", bp);
-			save_name = sname;
-		}
-		save = load_saveraw(save_name);
+		char sname[SAVE_FILENAME_SIZE];
+        if(save_name==NULL){
+            if(save_filename(sname, bp, ".bin")<0)
+                return -1;
+            save_name = sname;
+            save = load_saveraw_local(save_name);
+        }else{
+            save = load_saveraw(save_name);
+        }
 		if(save==NULL)
 			return -1;
 
@@ -348,7 +352,6 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
         }
 		*(u32*)(sbp+0x1c) = save->date;
 		access_data(block, save->dbuf, 2);
-		printf("Import %.11s from %s.\n", bp, save_name);
 		return 0;
 	}
 	if(save_id>=0){
@@ -413,7 +416,6 @@ int sr_mems_delete(int slot_id, int save_id)
 
 	put_be16(&MEMS->free_block, free_block);
 
-	printf("Delete Save_%d.\n", save_id);
 
 	return 0;
 }
