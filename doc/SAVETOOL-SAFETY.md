@@ -341,3 +341,53 @@ Run the coupled suite above; the standard source/binary overrides also apply.
 This is host validation of the selected archive/slot, not physical Saturn or
 storage power-loss qualification. The Saturn reader and output persistence are
 the following separate contributions.
+
+## SAVETOOL-005: read-only Saturn backup tables and payloads
+
+The preceding public `b1f3ac4` does not validate table pointers, cross-save
+ownership or payload capacity. For saves of at most thirty bytes it bypasses
+the table altogether, starting the payload two bytes before the required zero
+terminator has been consumed. Its two-byte copy also writes past an exact-size
+destination when the payload length is odd.
+
+The reader now parses every terminated table, including one-block saves and
+tables spanning noncontiguous blocks. It bounds references and table positions,
+rejects duplicate/shared ownership, reserves all save headers before payloads,
+and proves the payload fits the complete allocation before copying. Bounded byte
+extents handle the final odd byte. Listing respects eleven-byte stored names.
+Initialization receives the actual extent, decodes exactly 32 KiB plain or
+64 KiB odd-byte dumps, and validates the full decoded signature. The earlier
+SAVETOOL-003 dispatch bounds remain; larger cartridge formats remain unsupported.
+Import, deletion and creation remain unavailable for Saturn-format inputs.
+
+The starting source is
+[`BUPINFO`, `load_blist`, `read_data` and `scan_save`](https://github.com/papsg/SAROO/blob/b1f3ac4/tools/savetool/ss_bup.c).
+The raw format is independently cross-checked against Slinga's
+[`SAT_START_BLOCK_HEADER`, tags and internal-block constants](https://github.com/slinga-homebrew/libslinga/blob/7083be5d5a135a3553bbf9f51432cffb7889ca21/devices/sat/sat.h)
+and
+[`read_sat_table_from_block` / `read_save_from_sat_table`](https://github.com/slinga-homebrew/libslinga/blob/7083be5d5a135a3553bbf9f51432cffb7889ca21/devices/sat/sat.c).
+The latter explicitly skips the terminating zero word before payload access.
+These are format references; no libslinga implementation is imported. Cached
+reference sources and their MIT notice are preserved in local evidence. The
+existing public browser `validateSaturn` is an additional compatibility control.
+
+Our correction was originally authored by `paps-g` as `75ccd91b` on 2026-09-05.
+This public port independently revalidates it, uses the checked extent to select
+the encoding, and preserves existing BUP/SRO feature authorship and notices.
+
+The five-method historical corpus has 185 scenarios: 100 SRO/BUP exports across
+25 lengths and both encodings, two fragmented multi-save cases, 78 malformed
+operations, four unsupported extent/signature cases and an exact three-byte
+destination harness. The preceding public source fails 113 subcases, including
+an ASan heap overwrite in that harness; the four dispatch-limit cases already
+pass because of SAVETOOL-003. A sixth public method adds six unchanged-input
+controls proving mutation commands remain unsupported. All pass with ASan/UBSan
+and normal O2; the directly included exact-size reader stays sanitized in both
+runs. Checks retain payload, size, comment, language, date, CRC and source bytes.
+The independent fixture reaches the 29,550-byte full-allocation boundary; this
+is a raw-layout calculation, not a game's measured save capacity.
+
+Run the coupled suite above. It executes the actual CLI and included reader;
+no private toolchain or device is required. These are host-format checks, not
+physical Saturn or game qualification. Checked file replacement and derived
+paths remain the final separate contribution.

@@ -39,97 +39,95 @@ static u8 *get_block_addr(BUPINFO *binfo, int id)
 }
 
 
-static void load_blist(BUPINFO *binfo, int block)
+/* Every save has a terminated table, including a one-block save. Table words
+ * and payload continue after the four-byte tags of noncontiguous blocks. */
+static int load_blist(BUPINFO *binfo, int first)
 {
-	int nbp, dp, i;
-	u8 *bp;
-
-	binfo->blist[0] = block;
-	binfo->bsize = 1;
-	bp = get_block_addr(binfo, block);
-
-	binfo->dsize = get_be32(bp+0x1e);
-	if(binfo->dsize<=0x1e){
-		// 数据可以放在起始块内
-		binfo->nbp = 1;
-		binfo->dp = 0x22;
-		return;
-	}else{
-		nbp = 1;
-		dp = 0x22;
-		i = 1;
-		while(1){
-			block = get_be16(bp+dp);
-			if(block==0)
-				break;
-
-			binfo->blist[i] = block;
-			i += 1;
-			dp += 2;
-			if(dp==binfo->block_size){
-				// 当前块用完了，取得块列表中下一块的地址。
-				bp = get_block_addr(binfo, binfo->blist[nbp]);
-				nbp += 1;
-				dp = 4;
-			}
-		}
-		dp += 2;
-		if(dp==binfo->block_size){
-			nbp += 1;
-			dp = 4;
-		}
-
-		binfo->bsize = i;
-		binfo->nbp = nbp;
-		binfo->dp = dp;
-	}
+    u8 seen[64] = {0};
+    u8 *bp;
+    unsigned cursor = 0, offset = 34, count = 1, block, capacity;
+    u32 size;
+    if (first < 2 || first >= 512)
+        return -1;
+    bp = get_block_addr(binfo, first);
+    size = get_be32(bp + 30);
+    if (size > sizeof(bup_mem))
+        return -1;
+    binfo->blist[0] = first;
+    seen[first / 8] |= 1u << (first % 8);
+    for (;;) {
+        if (offset == 64) {
+            cursor++;
+            offset = 4;
+        }
+        if (cursor >= count)
+            return -1;
+        bp = get_block_addr(binfo, binfo->blist[cursor]);
+        block = get_be16(bp + offset);
+        offset += 2;
+        if (!block)
+            break;
+        if (block < 2 || block >= 512 || count >= 510 ||
+            (seen[block / 8] & (1u << (block % 8))))
+            return -1;
+        seen[block / 8] |= 1u << (block % 8);
+        binfo->blist[count++] = block;
+    }
+    capacity = 64 - offset + (count - cursor - 1) * 60;
+    if (size > capacity)
+        return -1;
+    binfo->dsize = size;
+    binfo->bsize = count;
+    binfo->nbp = cursor + 1;
+    binfo->dp = offset;
+    return 0;
 }
-
 
 static int read_data(BUPINFO *binfo, u8 *data)
 {
-	u8 *bp;
-	int dp, nbp, dsize;
-
-	dsize = binfo->dsize;
-	nbp = binfo->nbp;
-
-	bp = get_block_addr(binfo, binfo->blist[nbp-1]);
-	dp = binfo->dp;
-	//printf("read_data: %d %d\n", binfo->blist[nbp-1], dp);
-	while(dsize>0){
-		*(u16*)data = *(u16*)(bp+dp);
-		dp += 2;
-		data += 2;
-		dsize -= 2;
-		if(dp==binfo->block_size){
-			// 当前块用完了，取得块列表中下一块的地址。
-			bp = get_block_addr(binfo, binfo->blist[nbp]);
-			//printf("next block: %d %08x dsize=%04x\n", binfo->blist[nbp], bp, dsize);
-			nbp += 1;
-			dp = 4;
-		}
-	}
-
-	return 0;
+    int cursor = binfo->nbp - 1, offset = binfo->dp, remaining = binfo->dsize;
+    while (remaining > 0) {
+        int count;
+        if (offset == 64) {
+            cursor++;
+            offset = 4;
+        }
+        if (cursor >= binfo->bsize)
+            return -1;
+        count = 64 - offset;
+        if (count > remaining)
+            count = remaining;
+        memcpy(data, get_block_addr(binfo, binfo->blist[cursor]) + offset, count);
+        data += count;
+        remaining -= count;
+        offset += count;
+    }
+    return 0;
 }
 
-
-static void scan_save(BUPINFO *binfo)
+static int scan_save(BUPINFO *binfo)
 {
-	int i;
-	u8 *bp;
-
-	memset(binfo->block_map, 0, 64);
-	binfo->block_map[0] = 0x03;
-
-	for(i=2; i<binfo->total_block; i++){
-		bp = get_block_addr(binfo, i);
-		if(get_be32(bp)==0x80000000){
-			// 找到了save起始块
-			load_blist(binfo, i);
-		}
-	}
+    int block, i;
+    memset(binfo->block_map, 0, sizeof(binfo->block_map));
+    binfo->block_map[0] = 3;
+    /* Claim every header before data, including later physical headers. */
+    for (block = 2; block < 512; block++)
+        if (get_be32(get_block_addr(binfo, block)) == 0x80000000)
+            set_bitmap(binfo->block_map, block, 1);
+    for (block = 2; block < 512; block++) {
+        u8 *bp = get_block_addr(binfo, block);
+        if (get_be32(bp) != 0x80000000)
+            continue;
+        if (!bp[4] || load_blist(binfo, block) < 0)
+            return -1;
+        for (i = 1; i < binfo->bsize; i++) {
+            unsigned id = binfo->blist[i], mask = 1u << (id % 8);
+            if (binfo->block_map[id / 8] & mask)
+                return -1;
+            binfo->block_map[id / 8] |= mask;
+        }
+    }
+    return 0;
 }
 
 
@@ -156,8 +154,8 @@ int ss_bup_export(int slot_id, int index, int exp_type)
 				save_buf[0x2b] = bp[0x0f];          // Language
 				memcpy(save_buf+0x2c, bp+0x1a, 4);  // Date
 
-				load_blist(binfo, block);
-				read_data(binfo, save_buf+0x40);
+                if (load_blist(binfo, block) < 0 || read_data(binfo, save_buf+0x40) < 0)
+                    return -1;
 
 				char fname[16];
 				int fsize = get_be32(save_buf+0x1c);
@@ -221,7 +219,7 @@ int ss_bup_list(int slot_id)
 		bp = get_block_addr(binfo, i);
 		if(get_be32(bp)==0x80000000){
 			// 找到了save起始块
-			printf("Save_%d: %s\n", snum, bp+4);
+			printf("Save_%d: %.11s\n", snum, bp+4);
 			snum += 1;
 		}
 	}
@@ -230,30 +228,31 @@ int ss_bup_list(int slot_id)
 }
 
 
-int ss_bup_init(u8 *bbuf)
+int ss_bup_init(u8 *bbuf, int bytes)
 {
-	BUPINFO *binfo = GET_BUP_INFO();
-	int i;
-
-	if(bbuf[1]=='B' && bbuf[3]=='a' && bbuf[5]=='c' && bbuf[7]=='k'){
-		ss_bup_type = 0;
-		for(i=0; i<32768; i++){
-			bup_mem[i] = bbuf[i*2+1];
-		}
-	}else if(strncmp((char*)bbuf, "BackUpRam Format", 16)==0){
-		ss_bup_type = 1;
-		memcpy(bup_mem, bbuf, 32768);
-	}
-
-	memset(binfo, 0, sizeof(BUPINFO));
-
-	binfo->total_size = 0x8000;
-	binfo->total_block = 512;
-	binfo->block_size = 64;
-
-	scan_save(binfo);
-
-	return 0;
+    BUPINFO *binfo = GET_BUP_INFO();
+    int i;
+    if (bytes == 65536) {
+        ss_bup_type = 0;
+        for (i = 0; i < 32768; i++)
+            bup_mem[i] = bbuf[i * 2 + 1];
+    } else if (bytes == 32768) {
+        ss_bup_type = 1;
+        memcpy(bup_mem, bbuf, 32768);
+    } else {
+        return -1;
+    }
+    if (memcmp(bup_mem, "BackUpRam Format", 16) != 0)
+        return -1;
+    memset(binfo, 0, sizeof(BUPINFO));
+    binfo->total_size = 32768;
+    binfo->total_block = 512;
+    binfo->block_size = 64;
+    if (scan_save(binfo) < 0) {
+        printf("Invalid Saturn backup block table or payload extent.\n");
+        return -1;
+    }
+    return 0;
 }
 
 

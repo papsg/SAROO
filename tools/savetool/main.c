@@ -332,11 +332,11 @@ int bup_load(char *bup_name)
     }
     if(bup_size==0x8000 && memcmp(bup_buf, "BackUpRam Format", 16)==0){
         bup_type = 1;
-        return ss_bup_init(bup_buf);
+        return ss_bup_init(bup_buf, bup_size);
     }
     if(bup_size==0x10000 && odd_saturn_signature(bup_buf)){
         bup_type = 1;
-        return ss_bup_init(bup_buf);
+        return ss_bup_init(bup_buf, bup_size);
     }
     if(bup_size>=0x800000 && memcmp(bup_buf, "SaroMems", 8)==0){
         bup_type = 2;
