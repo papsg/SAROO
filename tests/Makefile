@@ -10,6 +10,7 @@ check: check-language check-menu-text check-language-catalog check-font check-pe
 
 check-native-save:
 	$(PYTHON) -B -m unittest discover -s . -p 'test_mems_*.py' -v
+	$(PYTHON) -B -m unittest discover -s . -p 'test_savetool_*.py' -v
 
 check-web-cover:
 	$(PYTHON) -B -m unittest discover -s . -p test_web_cover.py -v

@@ -2,6 +2,8 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
+#include <limits.h>
+#include <stdint.h>
 #include "bup.h"
 #include "bup_format.h"
 
@@ -9,25 +11,37 @@
 /******************************************************************************/
 
 
+/* SAROO slots use a fixed 4,096-unit container, including its directory. */
+#define MAX_SAROO_BYTES (4096u * 65536u)
+
 u8 *load_file(char *name, int *size)
 {
-	FILE *fp;
-	u8 *buf;
+    FILE *fp;
+    u8 *buf = NULL;
+    long length;
 
-	fp = fopen(name, "rb");
-	if(fp==NULL){
-		return NULL;
-	}
+    *size = 0;
+    if(name==NULL || (fp=fopen(name, "rb"))==NULL)
+        return NULL;
+    if(fseek(fp, 0, SEEK_END)!=0 || (length=ftell(fp))<0 ||
+       length>INT_MAX || (uintmax_t)length>SIZE_MAX/2 ||
+       fseek(fp, 0, SEEK_SET)!=0)
+        goto failed;
+    /* Keep the existing spare allocation used when appending a SAROO slot. */
+    buf = malloc(length ? (size_t)length*2 : 1);
+    if(buf==NULL || fread(buf, 1, (size_t)length, fp)!=(size_t)length || ferror(fp))
+        goto failed;
+    if(fclose(fp)!=0){
+        free(buf);
+        return NULL;
+    }
+    *size = (int)length;
+    return buf;
 
-	fseek(fp, 0, SEEK_END);
-	*size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	buf = (u8*)malloc((*size)*2);
-	fread(buf, *size, 1, fp);
-	fclose(fp);
-
-	return buf;
+failed:
+    free(buf);
+    fclose(fp);
+    return NULL;
 }
 
 
@@ -133,43 +147,59 @@ static void load_savebup(SAVEINFO *sinfo, const u8 *fbuf, int fsize)
 
 SAVEINFO *load_saveraw(char *save_name)
 {
-	SAVEINFO *sinfo = &saveinfo;
-	u8 *fbuf;
-	int fsize;
-	u32 crc;
+    SAVEINFO *sinfo = &saveinfo;
+    u8 *fbuf;
+    int fsize, is_bup;
+    u32 crc, data_size;
 
-	fbuf = load_file(save_name, &fsize);
-	if(fbuf==NULL){
-		printf("Faield to load file %s!\n", save_name);
-		return NULL;
-	}
-	if(strcmp((char*)fbuf, "SSAVERAW") && memcmp(fbuf, VMEM_MAGIC_STRING, VMEM_MAGIC_STRING_LEN)){
-		printf("%s: Not a supported Saturn save file! (%s/%s)\n", save_name, "SSAVERAW", VMEM_MAGIC_STRING);
-		return NULL;
-	}
+    if(save_name==NULL){
+        printf("An input save filename is required.\n");
+        return NULL;
+    }
+    fbuf = load_file(save_name, &fsize);
+    if(fbuf==NULL){
+        printf("Failed to load file %s!\n", save_name);
+        return NULL;
+    }
+    /* Both transports have complete 64-byte headers and a bounded payload. */
+    if(fsize<BUP_HEADER_SIZE || (size_t)(fsize-BUP_HEADER_SIZE)>sizeof(save_buf)){
+        printf("%s: Invalid save file length.\n", save_name);
+        goto invalid;
+    }
+    is_bup = memcmp(fbuf, VMEM_MAGIC_STRING, VMEM_MAGIC_STRING_LEN)==0;
+    /* SSAVERAW is eight bytes; the following four bytes are unused. */
+    if(!is_bup && memcmp(fbuf, "SSAVERAW", 8)!=0){
+        printf("%s: Not a supported Saturn save file!\n", save_name);
+        goto invalid;
+    }
+    data_size = get_be32(fbuf+(is_bup ? 0x2c : 0x1c));
+    if(data_size!=(u32)(fsize-BUP_HEADER_SIZE)){
+        printf("%s: Declared save size does not match its payload.\n", save_name);
+        goto invalid;
+    }
+    if(is_bup){
+        load_savebup(sinfo, fbuf, fsize);
+    }else{
+        crc = get_be32(fbuf+0x0c);
+        if(crc && crc!=crc32b(fbuf+0x10, fsize-0x10)){
+            printf("%s: CRC32 mismatch; import rejected.\n", save_name);
+            goto invalid;
+        }
+        memset(sinfo, 0, sizeof(SAVEINFO));
+        memcpy(sinfo->file_name, fbuf+0x10, 11);
+        memcpy(sinfo->comment, fbuf+0x20, 10);
+        memcpy(&sinfo->data_size, fbuf+0x1c, 4);
+        memcpy(&sinfo->date, fbuf+0x2c, 4);
+        sinfo->language = fbuf[0x2b];
+        memcpy(save_buf, fbuf+BUP_HEADER_SIZE, data_size);
+        sinfo->dbuf = save_buf;
+    }
+    free(fbuf);
+    return sinfo;
 
-	// check if it's a Vmem save file, and load the data
-	if(memcmp(fbuf, VMEM_MAGIC_STRING, VMEM_MAGIC_STRING_LEN)==0 && fsize>BUP_HEADER_SIZE){
-		load_savebup(sinfo, fbuf, fsize);
-		return sinfo;
-	}
-
-	memset(sinfo, 0, sizeof(SAVEINFO));
-	memcpy(sinfo->file_name, fbuf+0x10, 11);
-	memcpy(sinfo->comment, fbuf+0x20, 10);
-	memcpy(&sinfo->data_size, fbuf+0x1c, 4);
-	memcpy(&sinfo->date, fbuf+0x2c, 4);
-	sinfo->language = fbuf[0x2b];
-
-	memcpy(save_buf, fbuf+0x40, fsize-0x40);
-	sinfo->dbuf = save_buf;
-
-	crc = get_be32(fbuf+0x0c);
-	if (crc && crc != crc32b(fbuf+0x10, fsize-0x10)){
-		printf("Warning: CRC32 mismatch for %s!\n", save_name);
-	}
-
-	return sinfo;
+invalid:
+    free(fbuf);
+    return NULL;
 }
 
 /******************************************************************************/
@@ -277,30 +307,44 @@ int bup_list(int slot_id)
 }
 
 
+static int odd_saturn_signature(const u8 *bytes)
+{
+    const char *signature = "BackUpRam Format";
+    int i;
+    for(i=0; i<16; i++)
+        if(bytes[i*2+1]!=(u8)signature[i])
+            return 0;
+    return 1;
+}
+
 int bup_load(char *bup_name)
 {
-	bup_buf = load_file(bup_name, &bup_size);
-	if(bup_buf==NULL)
-		return -1;
+    bup_buf = load_file(bup_name, &bup_size);
+    if(bup_buf==NULL)
+        return -1;
 
-	if(strcmp((char*)bup_buf, "Saroo Save File")==0){
-		bup_type = 0;
-		return sr_bup_init(bup_buf);
-	}
-	if(strncmp((char*)bup_buf, "BackUpRam Format", 16)==0){
-		bup_type = 1;
-		return ss_bup_init(bup_buf);
-	}
-	if(bup_buf[1]=='B' && bup_buf[3]=='a' && bup_buf[5]=='c' && bup_buf[7]=='k'){
-		bup_type = 1;
-		return ss_bup_init(bup_buf);
-	}
-	if(strncmp((char*)bup_buf, "SaroMems", 8)==0){
-		bup_type = 2;
-		return sr_mems_init(bup_buf);
-	}
-
-	return -2;
+    /* Establish each reader's complete input extent before format dispatch.
+     * Internal metadata and block ownership are the readers' responsibility. */
+    if(bup_size>=0x10000 && (u32)bup_size<=MAX_SAROO_BYTES && bup_size%0x10000==0 &&
+       memcmp(bup_buf, "Saroo Save File", sizeof("Saroo Save File"))==0){
+        bup_type = 0;
+        return sr_bup_init(bup_buf);
+    }
+    if(bup_size==0x8000 && memcmp(bup_buf, "BackUpRam Format", 16)==0){
+        bup_type = 1;
+        return ss_bup_init(bup_buf);
+    }
+    if(bup_size==0x10000 && odd_saturn_signature(bup_buf)){
+        bup_type = 1;
+        return ss_bup_init(bup_buf);
+    }
+    if(bup_size>=0x800000 && memcmp(bup_buf, "SaroMems", 8)==0){
+        bup_type = 2;
+        return sr_mems_init(bup_buf);
+    }
+    free(bup_buf);
+    bup_buf = NULL;
+    return -2;
 }
 
 

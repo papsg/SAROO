@@ -65,7 +65,9 @@ class BrowserSaveTests(unittest.TestCase):
                     result = subprocess.run(arguments, cwd=self.directory, capture_output=True, text=True,
                                             timeout=10, env={**os.environ, "UBSAN_OPTIONS": "halt_on_error=1",
                                                              "ASAN_OPTIONS": "detect_leaks=0"})
-                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                    self.assertEqual(result.returncode, 0,
+                                     f"{output['file']} volume {output['volume']} save {index} {extension}:\n"
+                                     +result.stdout+result.stderr)
                     self.assertNotIn("AddressSanitizer", result.stderr)
                     self.assertNotIn("runtime error:", result.stderr)
                     expected = self.directory / (save["prefix"]+"."+extension)
