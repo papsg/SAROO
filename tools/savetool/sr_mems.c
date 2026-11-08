@@ -153,6 +153,60 @@ int sr_mems_export(int slot_id, int save_id, int exp_type)
 }
 
 
+/* Plan a resized replacement without releasing the live save's allocation.
+ * Keep its header/directory identity; old data blocks may satisfy growth. */
+static int resize_save(int header, u32 new_size)
+{
+    u8 bitmap[sizeof(MEMS->bitmap)];
+    u16 blocks[(1024-64)/2-1];
+    u8 *bp;
+    u32 old_size;
+    int old_count, new_count, count, available, i, block;
+
+    if(header<8 || header>=8064 || new_size>sizeof(blocks)/sizeof(blocks[0])*1024u)
+        return -1;
+    bp = get_block_addr(header);
+    old_size = get_be32(bp+0x0c);
+    if(old_size>sizeof(blocks)/sizeof(blocks[0])*1024u)
+        return -1;
+    old_count = old_size<=960 ? 0 : (old_size+1023)/1024;
+    new_count = new_size<=960 ? 0 : (new_size+1023)/1024;
+    memcpy(bitmap, MEMS->bitmap, sizeof(bitmap));
+    if(!(bitmap[header/8] & (1u<<(header%8))))
+        return -1;
+    for(i=0; i<old_count; i++){
+        block = get_be16(bp+64+i*2);
+        if(block<8 || block>=8064 || block==header || !(bitmap[block/8] & (1u<<(block%8))))
+            return -1;
+        /* Clearing only the private bit also rejects repeated old blocks. */
+        bitmap[block/8] &= ~(1u<<(block%8));
+    }
+    count = available = 0;
+    for(block=8; block<8064; block++){
+        if(!(bitmap[block/8] & (1u<<(block%8)))){
+            if(count<new_count){
+                blocks[count++] = block;
+                bitmap[block/8] |= 1u<<(block%8);
+            }else{
+                available++;
+            }
+        }
+    }
+    if(count!=new_count)
+        return -1;
+
+    /* No admission failure remains. access_data writes the replacement next. */
+    memset(bp+64, 0, 1024-64);
+    for(i=0; i<new_count; i++)
+        put_be16(bp+64+i*2, blocks[i]);
+    put_be32(bp+0x0c, new_size);
+    memcpy(MEMS->bitmap, bitmap, sizeof(bitmap));
+    free_block = available;
+    put_be16(&MEMS->free_block, free_block);
+    return 0;
+}
+
+
 int sr_mems_import(int slot_id, int save_id, char *save_name)
 {
 	SAVEINFO *save;
@@ -191,7 +245,16 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
 
 		// bp points to the 16-byte directory entry, not the save block.
 		// The date lives in the save header, so update it there.
-		sbp = get_block_addr(block);
+        if(block<8 || block>=8064){
+            printf("Invalid MEMS save header.\n");
+            return -1;
+        }
+        sbp = get_block_addr(block);
+        if(get_be32(sbp+0x0c)!=get_be32(&save->data_size) &&
+           resize_save(block, get_be32(&save->data_size))<0){
+            printf("Replacement save cannot fit the MEMS block layout.\n");
+            return -1;
+        }
 		*(u32*)(sbp+0x1c) = save->date;
 		access_data(block, save->dbuf, 2);
 		printf("Import %s from %s.\n", bp, save_name);
