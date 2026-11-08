@@ -283,3 +283,61 @@ source directory; `SAROO_SAVETOOL_BINARY` can select a normal O2 build. This is
 host archive admission, not physical Saturn or power-loss qualification. SAROO
 slot validation, Saturn-reader correction and checked output persistence remain
 the following independent series members.
+
+## SAVETOOL-005: SAROO slots, resizing and creation
+
+At public `f922ed8`, selection checks a directory location before bounding its
+index and has no archive extent. A missing slot signature triggers an implicit
+in-memory format that a later import can persist over damaged data. Linked
+headers can cycle; block sizes and payload bitmaps are not validated. Resizing
+has the obsolete-size defect already corrected for MEMS. Creation can reuse a
+directory hole but still grow the file, miss duplicates beyond that hole, copy
+beyond a short ID or write past a full directory.
+
+The slot reader now receives the complete archive extent. It bounds selected
+indices to stored slots 1–4,095, rejects populated directory entries beyond
+storage, and validates the selected slot's signature, 64 KiB extent, 128-byte
+blocks and reserved allocation. Header links are bounded and unique; payload
+bits must have complete, exclusive ownership and match the declared size.
+Damaged slots are refused without formatting. Allocated orphans remain reserved;
+free counts are recounted locally without changing read-only inputs.
+
+Different-size overwrites plan replacement allocation in two private 64-byte
+bitmaps before mutation, keeping the header and list position. New imports
+require a nonempty name, representable size and sufficient real free space.
+The 510 × 128-byte maximum payload is unchanged. Display/inferred names are
+bounded to eleven bytes. Creation pads one-to-sixteen-byte IDs, checks the whole
+directory for duplicates, reuses holes without extending storage, and appends
+one complete unit only when needed. A full directory refuses before access.
+Its internal return value now supplies the complete required archive length.
+
+These are project-defined archive rules, established by
+[`BUPHEADER`, `sr_bup_format`, `access_data` and the starting reader](https://github.com/papsg/SAROO/blob/f922ed8/tools/savetool/sr_bup.c)
+and independently used by the existing public
+[`validateSlot` browser reader](https://github.com/papsg/SAROO/blob/f922ed8/tools/savetool/web/src/save-codec.mjs).
+The dispatcher and creation contract are in the starting
+[`main.c`](https://github.com/papsg/SAROO/blob/f922ed8/tools/savetool/main.c).
+Sega's internal-backup layout does not define these SAROO archive fields. This
+port retains the public v0.8 layout; it excludes our later native-backup migration.
+
+Our maintenance correction was originally authored by `paps-g` as `a6d7e31e`
+on 2026-09-05. This port independently revalidates it after the preceding series,
+retains existing source/format attribution, and adapts the historical tests to
+the public source build rather than importing private preparers.
+
+The preceding source fails 117 subcases and reaches five bounded timeouts in
+the seven-method historical corpus. All eight public slot methods now pass
+with ASan/UBSan and normal O2. Controls cover invalid indices/storage, 100
+malformed selected-slot operations, resize growth/shrink/zero/full boundaries,
+unchanged allocation refusals, stale counts/orphans, IDs/holes/duplicates/append
+and the full 256 MiB directory limit. Additional controls exercise six successful
+SRO/BUP creations through the full 65,280-byte payload, allocation at fragmented
+blocks 100/510/511, creation from an empty 64 KiB archive, and four unchanged
+read-only stale-count inputs. The fragmented stale-count control also fails
+independently against the preceding public source. Fresh exports, neighbors,
+allocation/free counts, raw metadata and complete refusal identity are checked.
+
+Run the coupled suite above; the standard source/binary overrides also apply.
+This is host validation of the selected archive/slot, not physical Saturn or
+storage power-loss qualification. The Saturn reader and output persistence are
+the following separate contributions.

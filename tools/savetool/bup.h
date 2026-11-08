@@ -39,7 +39,7 @@ void set_bitmap(u8 *bmp, int index, int val);
 SAVEINFO *load_saveraw(char *save_name);
 void bup_flush(void);
 
-int sr_bup_init(u8 *buf);
+int sr_bup_init(u8 *buf, int bytes);
 int sr_bup_list(int slot_id);
 int sr_bup_export(int slot_id, int save_id, int exp_type);
 int sr_bup_import(int slot_id, int save_id, char *save_name);

@@ -232,7 +232,7 @@ int bup_create(char *game_id)
 		retv =  sr_mems_create(game_id);
 	}
 	if(retv>0){
-		bup_size += retv;
+		bup_size = retv; /* Creation returns the complete required archive length. */
 		bup_flush();
 		return 0;
 	}
@@ -328,7 +328,7 @@ int bup_load(char *bup_name)
     if(bup_size>=0x10000 && (u32)bup_size<=MAX_SAROO_BYTES && bup_size%0x10000==0 &&
        memcmp(bup_buf, "Saroo Save File", sizeof("Saroo Save File"))==0){
         bup_type = 0;
-        return sr_bup_init(bup_buf);
+        return sr_bup_init(bup_buf, bup_size);
     }
     if(bup_size==0x8000 && memcmp(bup_buf, "BackUpRam Format", 16)==0){
         bup_type = 1;

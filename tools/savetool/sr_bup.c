@@ -10,6 +10,7 @@
 
 static u8 *bup_buf;
 static u8 *bup_mem;
+static int bup_slots;
 
 #define	BUP_NON                 (1)
 #define	BUP_UNFORMAT            (2)
@@ -50,6 +51,94 @@ typedef struct {
 
 static u16 block_size;
 static u16 free_block;
+
+static int claim_slot_block(u8 *seen, unsigned block)
+{
+    unsigned mask = 1u << (block % 8);
+    if (block < 1 || block >= 512 || !(BUPMEM->bitmap[block / 8] & mask) ||
+        (seen[block / 8] & mask))
+        return -1;
+    seen[block / 8] |= mask;
+    return 0;
+}
+
+static int validate_slot(void)
+{
+    u8 seen[64] = {0};
+    unsigned header, block, count, available = 0;
+    if (get_be32(&BUPMEM->magic0) != 0x5361726f ||
+        get_be32(&BUPMEM->magic1) != 0x53617665 ||
+        get_be32(&BUPMEM->total_size) != 65536 ||
+        get_be16(&BUPMEM->block_size) != 128 || !(BUPMEM->bitmap[0] & 1))
+        return -1;
+    /* Reserve all headers before admitting data; repeated headers are cycles. */
+    header = get_be16(&BUPMEM->first_save);
+    while (header) {
+        if (claim_slot_block(seen, header) < 0)
+            return -1;
+        header = get_be16(bup_mem + header * 128 + 62);
+    }
+    header = get_be16(&BUPMEM->first_save);
+    while (header) {
+        u8 *bp = bup_mem + header * 128;
+        u32 size = get_be32(bp + 12);
+        if (!bp[0] || size > 510u * 128)
+            return -1;
+        count = 0;
+        for (block = 0; block < 512; block++) {
+            if (bp[64 + block / 8] & (1u << (block % 8))) {
+                if (claim_slot_block(seen, block) < 0)
+                    return -1;
+                count++;
+            }
+        }
+        if (count != (size + 127) / 128)
+            return -1;
+        header = get_be16(bp + 62);
+    }
+    for (block = 1; block < 512; block++)
+        if (!(BUPMEM->bitmap[block / 8] & (1u << (block % 8))))
+            available++;
+    block_size = 128;
+    free_block = available;
+    return 0;
+}
+
+/* Admission established unique ownership. Retain the header/list position and
+ * plan replacement data in private bitmaps before changing any archive byte. */
+static int resize_slot_save(unsigned header, u32 size)
+{
+    u8 bitmap[64], data_bitmap[64] = {0};
+    u8 *bp = bup_mem + header * 128;
+    unsigned block, needed, count = 0, available = 0;
+    if (size > 510u * 128)
+        return -1;
+    memcpy(bitmap, BUPMEM->bitmap, sizeof(bitmap));
+    for (block = 1; block < 512; block++)
+        if (bp[64 + block / 8] & (1u << (block % 8)))
+            bitmap[block / 8] &= ~(1u << (block % 8));
+    needed = (size + 127) / 128;
+    for (block = 1; block < 512; block++) {
+        unsigned mask = 1u << (block % 8);
+        if (!(bitmap[block / 8] & mask)) {
+            if (count < needed) {
+                bitmap[block / 8] |= mask;
+                data_bitmap[block / 8] |= mask;
+                count++;
+            } else {
+                available++;
+            }
+        }
+    }
+    if (count != needed)
+        return -1;
+    memcpy(BUPMEM->bitmap, bitmap, sizeof(bitmap));
+    memcpy(bp + 64, data_bitmap, sizeof(data_bitmap));
+    put_be32(bp + 12, size);
+    free_block = available;
+    put_be16(&BUPMEM->free_block, free_block);
+    return 0;
+}
 
 /******************************************************************************/
 
@@ -155,25 +244,18 @@ static int sr_bup_format(u8 *gameid)
 
 static int sr_bup_select(int slot_id)
 {
-	char sname[20];
-
-	if(slot_id<0 || *(u32*)(bup_buf+slot_id*16)==0)
-		return -1;
-
-	memcpy(sname, bup_buf+slot_id*16, 16);
-	sname[16] = 0;
-	printf("[%s] :\n", sname);
-	bup_mem = bup_buf+slot_id*0x10000;
-
-	// Check "SaroSave"
-	if(get_be32(&BUPMEM->magic0)!=0x5361726f || get_be32(&BUPMEM->magic1)!=0x53617665){
-		printf("  empty bup memory, need format.\n");
-		sr_bup_format(bup_buf+slot_id*16);
-	}
-
-	block_size = get_be16(&BUPMEM->block_size);
-	free_block = get_be16(&BUPMEM->free_block);
-	return 0;
+    char sname[17];
+    if (slot_id < 1 || slot_id >= bup_slots || !bup_buf[slot_id * 16])
+        return -1;
+    bup_mem = bup_buf + slot_id * 65536;
+    if (validate_slot() < 0) {
+        printf("Invalid SAROO slot metadata.\n");
+        return -1;
+    }
+    memcpy(sname, bup_buf + slot_id * 16, 16);
+    sname[16] = 0;
+    printf("[%s] :\n", sname);
+    return 0;
 }
 
 
@@ -263,16 +345,21 @@ int sr_bup_import(int slot_id, int save_id, char *save_name)
 		// overwrite
 		char sname[20];
 		if(save_name==NULL){
-			sprintf(sname, "%s.bin", bp);
+			snprintf(sname, sizeof(sname), "%.11s.bin", bp);
 			save_name = sname;
 		}
 		save = load_saveraw(save_name);
 		if(save==NULL)
 			return -1;
 
+        if (get_be32(bp + 12) != get_be32(&save->data_size) &&
+            resize_slot_save(block, get_be32(&save->data_size)) < 0) {
+            printf("Replacement save cannot fit this slot.\n");
+            return -1;
+        }
 		*(u32*)(bp+0x1c) = save->date;
 		access_data(block, save->dbuf, 2);
-		printf("Import %s from %s.\n", bp, save_name);
+		printf("Import %.11s from %s.\n", bp, save_name);
 		return 0;
 	}
 	if(save_id>=0){
@@ -287,6 +374,8 @@ int sr_bup_import(int slot_id, int save_id, char *save_name)
 
 	// 计算所需的块数量。起始块+块列表块+数据块
 	int dsize = get_be32(&save->data_size);
+    if (!save->file_name[0] || dsize > 510 * 128)
+        return -1;
 	block_need = (dsize+block_size-1)/(block_size);
 	printf("block_need=%d\n", block_need+1);
 	if((block_need+1) > free_block){
@@ -381,25 +470,31 @@ int sr_bup_delete(int slot_id, int save_id)
 }
 
 
+/* Return the complete required archive extent; reusing a hole does not grow it. */
 int sr_bup_create(char *game_id)
 {
-	int i;
-
-	printf("sr_bup_create: [%s]\n", game_id);
-
-	for(i=1; i<4096; i++){
-		if(*(u32*)(bup_buf+i*16)==0)
-			break;
-		if(strncmp((char*)bup_buf+i*16, game_id, 16)==0)
-			return 0;
-	}
-
-	memcpy(bup_buf+i*16, game_id, 16);
-
-	bup_mem = bup_buf+i*0x10000;
-	sr_bup_format((u8*)game_id);
-
-	return 0x10000;
+    u8 id[16] = {0};
+    size_t length;
+    int i, empty = -1;
+    if (game_id == NULL || !(length = strnlen(game_id, 17)) || length > 16)
+        return -1;
+    memcpy(id, game_id, length);
+    for (i = 1; i < 4096; i++) {
+        if (!bup_buf[i * 16]) {
+            if (empty < 0)
+                empty = i;
+        } else if (memcmp(bup_buf + i * 16, id, 16) == 0) {
+            return 0;
+        }
+    }
+    if (empty < 0 || empty > bup_slots)
+        return -1;
+    bup_mem = bup_buf + empty * 65536;
+    sr_bup_format(id);
+    memcpy(bup_buf + empty * 16, id, 16);
+    if (empty == bup_slots)
+        bup_slots++;
+    return bup_slots * 65536;
 }
 
 
@@ -410,10 +505,10 @@ int sr_bup_list(int slot_id)
 
 	if(slot_id==-1){
 		// List all slot
-		for(i=1; i<4096; i++){
+		for(i=1; i<bup_slots; i++){
 			char sname[20];
-			if(*(u32*)(bup_buf+i*16)==0)
-				break;
+			if(!bup_buf[i*16])
+				continue;
 			memcpy(sname, bup_buf+i*16, 16);
 			sname[16] = 0;
 			printf("Slot_%-2d: [%s]\n", i, sname);
@@ -432,7 +527,7 @@ int sr_bup_list(int slot_id)
 			bsize = (dsize+block_size-1)/(block_size);
 			bsize += 1;
 
-			printf("  Save_%-3d: %s  size=%5x  block=%d\n", i, bp, dsize, bsize);
+			printf("  Save_%-3d: %.11s  size=%5x  block=%d\n", i, bp, dsize, bsize);
 			block = get_be16(bp+0x3e);
 			i += 1;
 		}
@@ -444,10 +539,18 @@ int sr_bup_list(int slot_id)
 }
 
 
-int sr_bup_init(u8 *bbuf)
+int sr_bup_init(u8 *bbuf, int bytes)
 {
-	bup_buf = bbuf;
-	return 0;
+    int i;
+    if (bytes < 65536 || bytes % 65536 || bytes > 4096 * 65536)
+        return -1;
+    bup_buf = bbuf;
+    bup_slots = bytes / 65536;
+    /* Directory holes are valid; populated IDs must have complete storage. */
+    for (i = bup_slots; i < 4096; i++)
+        if (bup_buf[i * 16])
+            return -1;
+    return 0;
 }
 
 
