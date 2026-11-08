@@ -27,7 +27,7 @@ Last updated: 2026-11-08.
 | Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | [360d03d](https://github.com/papsg/SAROO/commit/360d03d), on main | Original 20 labels at ID 17; IDE workspace files excluded. ASan/UBSan: 2,160 lookups, 324 complete errors and title/formatter controls. All 80 added labels/full signed-error variants pass shipped-glyph and 288-pixel checks. SH-2 language compilation passes. Editorial and hardware limits remain. |
 | Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | [9429f53](https://github.com/papsg/SAROO/commit/9429f53), on main | ID 18 with all 20 fixed labels. Credits Array in a Matrix; our shaping, wording/font/caller adaptations are explicit. Requires language bounds, bounded menu text, ID sequence and CJK stage. Four Arabic methods pass 36 independent oracle cases, 648 earlier-language actual-C formatter/raster controls, 8,496 original atlas pixels, exact font rebuild and 59 production glyph checks. 2,280 lookups, 342 complete errors, existing menu/peripheral checks and four Rust failure/boundary tests pass. Both pre-Arabic main and candidate fully compile/link; only main.o/language.o change. +1,040 linked code/data, +1,216 font/image bytes; BSS/stack unchanged. Source licenses and Unicode section citations in [doc/ARABIC.md](https://github.com/papsg/SAROO/blob/main/doc/ARABIC.md). Native-speaker and Saturn appearance/timing remain unqualified. |
 | English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [73922db](https://github.com/papsg/SAROO/commit/73922db), on main | Deduplicates #343. 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. The integrated tree and all compiled inputs/hashes match the verified branch. No runtime or hardware claim. |
-| Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Port in progress | Reviewed transactional modules and pinned, licensed offline XML parser are being ported. Archive/XML/text/worker source checks pass; the native field-reader prerequisite above is now integrated. Full native interchange, linked worker/browser checks and final feature integration remain. |
+| Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | [e3e3337](https://github.com/papsg/SAROO/commit/e3e3337), on main | Credits Damián Parrino; our transactional/validation/ownership corrections are explicit. Uses public v0.8 geometry; native 9f41183 prerequisite above is integrated. Seven Python methods/421 Node tests, 24 actual ASan/UBSan native CLI exports, an independent full-capacity encoder, 18 offline Chrome workflows, two stale-selection cases and complete 4,095-slot/256 MiB edit/download preserve every unedited byte. Original destructive-growth and wrong-layout controls fail. HTML/linked exports/parser identities and Rust fmt/clippy/tests pass. [Reproduction, exact Sega/XML/source citations and notices](https://github.com/papsg/SAROO/blob/main/tools/savetool/web/README.md). Other browsers/mobile capacity, SD persistence and physical Saturn behavior remain unqualified. Firmware inputs unchanged. |
 | Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 
 Verified topic checkpoints (each is an ancestor of current main):
@@ -47,14 +47,15 @@ Verified topic checkpoints (each is an ancestor of current main):
 | #380 guest-input compatibility | [codex/guest-input-compat](https://github.com/papsg/SAROO/tree/codex/guest-input-compat) |
 | #374 native field-read prerequisite | [codex/save-unsigned-fields](https://github.com/papsg/SAROO/tree/codex/save-unsigned-fields) |
 | #107 | [codex/arabic-localization](https://github.com/papsg/SAROO/tree/codex/arabic-localization) |
+| #374 save editor | [codex/browser-save-editor](https://github.com/papsg/SAROO/tree/codex/browser-save-editor) |
 
 The former PR branches `codex/language-hash-bounds`, `codex/mems-overwrite`
 and `codex/english-documentation` preserve superseded history. Current direct
 integrations use the checkpoint branches above; the historical branches are
 not instructions to restore their ancestry.
 
-Ten of the twelve requested contributions are integrated. The browser save
-editor and browser cover editor remain. Bounded menu text and native unsigned
+Eleven of the twelve requested contributions are integrated. The browser cover
+editor remains. Bounded menu text and native unsigned
 field reads are explicit prerequisites and are not counted in that total. All topic branches and
 this ledger are pushed.
 
@@ -84,5 +85,5 @@ GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
 fork issue or superseded open PR needs closure. This was checked again after
-the English, Latin-language, CJK, controller, Arabic and native-field prerequisite integrated; the
+the English, Latin-language, CJK, controller, Arabic, native-field and browser-save integrations; the
 fork has no open PRs. No original upstream request has been changed.
