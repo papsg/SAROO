@@ -367,6 +367,50 @@ static void lifecycle(void)
 #endif
 }
 
+static void guest(void)
+{
+    /* conio_getc remains exported at 0x02000f24 for loaded programs. The
+     * menu handler is removed at handoff, so a complete single-page reply
+     * must remain usable without borrowing the guest's interrupt vector. */
+    const Packet cases[] = {
+        {{0xf1, 2, 0xfb, 0xff, 0xf0}, 5, 0x0400},
+        {{0xf0, 0xf1, 2, 0xef, 0xff}, 5, 0x1000},
+        {{0xf1, 2, 0xfb, 0xff, 0xf1, 2, 0xef, 0xff}, 8, 0x1400},
+        {{0xf1, 0x23, 0, 0, 0, 0xf1, 2, 0xef, 0xff}, 9, 0x1000},
+    };
+    for (unsigned which = 0; which < (PAD_TEST_LEGACY ? 2 : 4); ++which) {
+      const Packet *packet = &cases[which];
+      reset(0);
+#if !PAD_TEST_LEGACY
+      pad_suspend();
+      assert(!interrupt_enabled && !system_manager_interrupt);
+#endif
+      begin();
+      /* SF busy remains nonblocking while this program owns the vector. */
+      for (unsigned i = 0; i < 4; ++i) assert(poll() == -1);
+      for (unsigned i = 0; i < 32; ++i)
+          test_oreg[2*i] = i < packet->size ? packet->bytes[i] : 0xa5;
+      SR = 0xc0; SF = 0;
+      assert(poll() == (int)packet->expected);
+#if !PAD_TEST_LEGACY
+      assert(!interrupt_enabled && !system_manager_interrupt && reads == packet->size);
+      pad_resume();
+      assert(interrupt_enabled && system_manager_interrupt);
+#endif
+    }
+#if !PAD_TEST_LEGACY
+    /* A continued response has no polled page-ready acknowledgement here.
+     * Leave it unread and bound recovery; only the menu owns the full ISR. */
+    reset(1000); pad_suspend(); begin();
+    SF = 0; SR = 0xe0;
+    assert(poll() == -1 && reads == 0 && IREG0 == 0);
+    clock_now += EXPECTED_PAD_TIMEOUT;
+    assert(poll() == -1 && reads == 0 && IREG0 == 0x40);
+    assert(!interrupt_enabled && !system_manager_interrupt);
+    pad_resume();
+#endif
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -379,6 +423,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "transport")) transport();
     else if (!strcmp(argv[1], "timing")) timing();
     else if (!strcmp(argv[1], "lifecycle")) lifecycle();
+    else if (!strcmp(argv[1], "guest")) guest();
     else return 2;
     printf("%s: pass (%u packets; %u calls)\n", argv[1], packets, calls);
     return 0;

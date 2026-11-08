@@ -66,6 +66,7 @@ static struct {
 static volatile int pad_result;
 /* Last CONT issued by this menu; IREG0 is write-only (ST-169). */
 static volatile u8 pad_cont;
+static u8 pad_menu_owner;
 static u8 pad_pages, pad_vblank_seen;
 static u32 pad_deadline, pad_vblank_ready;
 
@@ -118,8 +119,10 @@ static void pad_interrupt_enable(int enable)
 void pad_suspend(void)
 {
 	pad_interrupt_enable(0);
+	pad_menu_owner = 0;
 	/* The next owner may change IREG0; retire this transaction. */
 	pad_state = 0;
+	pad_vblank_seen = 0;
 }
 
 void pad_resume(void)
@@ -128,6 +131,7 @@ void pad_resume(void)
 	pad_state = 0;
 	pad_vblank_seen = 0;
 	pad_cont = 0;
+	pad_menu_owner = 1;
 	pad_interrupt_enable(1);
 }
 
@@ -239,6 +243,19 @@ static void pad_interrupt(void)
 	pad_cont ^= 0x80;
 	IREG0 = pad_cont;
 }
+
+/* The fixed conio_getc export is also used by loaded programs with the menu
+ * IRQ removed. SF-clear/NPE-clear permits a complete single-page poll
+ * (ST-169 Type-D note), without changing that program's vector or mask. */
+static int __attribute__((noinline)) pad_poll_result(void)
+{
+	pad_interrupt();
+	if(pad_state!=2)
+		return -1;
+	int result = pad_result;
+	pad_state = 3;
+	return result;
+}
 #else
 void pad_suspend(void) {}
 void pad_resume(void) {}
@@ -291,6 +308,8 @@ int pad_read(void)
 			}
 			pad_interrupt_unlock(sr);
 		}
+		if(pad_state==1 && !pad_menu_owner && !(SF&1) && !(SR&0x20))
+			return pad_poll_result();
 	}else if(pad_state==2){
 		int result = pad_result;
 		pad_state = 3;

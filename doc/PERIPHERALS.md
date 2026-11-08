@@ -40,9 +40,17 @@ The menu registers its handler and changes the cached interrupt mask through
 the BIOS services. CPU masking protects the timeout/result race. Binary
 execution, BIOS boot and CD-player takeover remove/mask the handler before
 transferring control or replacing BIOS vectors; returning paths restore it.
+The existing `conio_getc` function-table export remains usable by loaded BIN
+programs after that handoff. With the menu handler absent, a complete
+SF-clear/NPE-clear single-page reply is polled through the same parser, as
+permitted by ST-169's Type-D note. This preserves regular-controller callbacks
+without changing the loaded program's vector or interrupt mask. Continued
+collections require the menu-owned handler; the polled path leaves partial
+replies unread and bounds cancellation. The callback assumes the inherited
+menu timer/video state, as do the original menu helper interfaces.
 The existing direct-pad build mode retains its original behavior. No custom
 diagnostic mode or direct-pad timing experiment is imported.
-With the pinned SH-2 compiler, the changed objects add 944 text/readonly bytes
+With the pinned SH-2 compiler, the changed objects add 1,052 text/readonly bytes
 and 24 BSS bytes, with unchanged initialized data. These are object-section
 totals, not a complete linked-image or physical-stack measurement. The streaming
 state itself is eight bytes; no heap or packet allocation is added.
@@ -65,7 +73,7 @@ state itself is eight bytes; no heap or packet allocation is added.
 
 ## Reproducible checks and limits
 
-Run `make -C tests check-peripherals`. Eleven ASan/UBSan methods compile the
+Run `make -C tests check-peripherals`. Twelve ASan/UBSan methods compile the
 actual input subsystem with register/interrupt backing and an advancing test
 clock. They cover 13,422 complete packets: 233 direct/type/length cases,
 4,096 two-multitap occupancy combinations, 8,192 mouse/pad combinations and
@@ -74,13 +82,18 @@ malformed/incomplete data, interrupt readiness, field admission, timeout/wrap,
 late interrupts, handler lifecycle and the actual FRT signed/unsigned boundary.
 The busy case advances past admission before checking that 1,000 polls preserve
 SF and COMREG; deleting the SF guard fails this control.
+The existing-export control passes with the original polling code and catches
+the first IRQ adaptation's lost input after handler removal. The corrected
+path covers both direct ports, combined input, skipped mouse data, SF-busy
+yielding and bounded rejection of continued replies while preserving the
+loaded program's interrupt ownership.
 
 The independent IREG0 fixture varies all 256 readback values and every
 cancellation/handoff page position. It validates issued bytes, not a readable
 mirror of writes. Restoring read-modify-write CONT/BREAK expressions fails all
 four of those checks. The baseline and exact original PR parser fail eight
-behavior checks and time out in the busy test; the lifecycle-only legacy
-control passes, and its unavailable continued collector test is skipped.
+behavior checks and time out in the busy test; the lifecycle and existing-export
+legacy controls pass, and its unavailable continued collector test is skipped.
 
 These are actual-code host protocol checks. BIOS dispatch, electrical timing,
 real multitaps/third-party devices, particular gun combinations and game

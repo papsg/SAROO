@@ -78,6 +78,7 @@ class MenuPeripheralTests(unittest.TestCase):
     def test_interrupt_readiness_timeout_and_recovery(self): self.invoke("transport")
     def test_vblank_admission_and_stale_field(self): self.invoke("timing")
     def test_interrupt_lifecycle(self): self.invoke("lifecycle")
+    def test_existing_export_after_binary_handoff(self): self.invoke("guest")
 
     def test_actual_counter_signed_boundary_and_wrap(self):
         result = subprocess.run([str(self.counter)], capture_output=True, text=True,
