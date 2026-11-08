@@ -18,7 +18,7 @@ Last updated: 2026-11-08.
 | Language hash-table bounds | [#377](https://github.com/tpunix/SAROO/pull/377) | [6fb42d0](https://github.com/papsg/SAROO/commit/6fb42d0), on main | Independent. ASan/UBSan passes 1,680 lookups over 14 languages; original and individual old-mask controls fail. SH-2 objects compile; complete link lacks the original libc in the available toolchain. No new hardware qualification. |
 | MEMS overwrite corruption | [#372](https://github.com/tpunix/SAROO/pull/372) | [5920eb9](https://github.com/papsg/SAROO/commit/5920eb9), on main | Independent. Nine overwrite scenarios fail on v0.8; read-only export passes. All five actual-CLI methods pass after correction under ASan/UBSan and normal O2. No physical Saturn qualification. |
 | Bounded menu text prerequisite | Our correction for the language series | [f6bdc5e](https://github.com/papsg/SAROO/commit/f6bdc5e), on main | Existing Greek code-1 error reproduces a 40-byte stack overflow. Six error paths and two titles now use actual capacities; custom formatter termination/integer/width handling is bounded. Three ASan/UBSan methods cover 252 errors, titles, 12,880 capacity/length pairs and valid controls. Independent old-caller and old-formatter controls fail. All 16 menu units compile; final SH-2 formatter preserves null/size guards with scoped compiler flags. Complete-link and hardware limits remain. |
-| Controller/multitap parsing | [#380](https://github.com/tpunix/SAROO/pull/380) | Queued | Deduplicate #378/#379. Port the corrected protocol implementation and exact Sega references. |
+| Controller/multitap parsing | [#380](https://github.com/tpunix/SAROO/pull/380) | [86c7caf](https://github.com/papsg/SAROO/commit/86c7caf), [67c51f3](https://github.com/papsg/SAROO/commit/67c51f3), on main | Deduplicates #378/#379; original hardware report remains attributed. Twelve actual-code ASan/UBSan methods cover 13,422 normal-owner packets, all sockets, lengths, mouse/pad, malformed/busy/timeout/wrap and independent write-only controls. Porting also exposed and fixed the existing BIN input export losing service after IRQ handoff; a same-parser complete-page polling path preserves it. Post-admission busy test strengthened in [ecbf2a7](https://github.com/papsg/SAROO/commit/ecbf2a7). All 16 units compile; final main rebuilt, direct-pad object byte-identical. +1,052 object text/readonly and 24 BSS bytes. Exact Sega/Hitachi references in doc/PERIPHERALS.md. Complete-link, clock and physical-device limits remain. |
 | Missing CJK coverage | [#203](https://github.com/tpunix/SAROO/pull/203) | [8ac9a8b](https://github.com/papsg/SAROO/commit/8ac9a8b), on main | 108 added records match the original attached firmware; all 10,628 baseline records and source notices preserved. Five original drawings already exist in v0.8. Three ASan/UBSan font methods and combined language/menu checks pass; original asset fails missing coverage and regeneration. Existing converter reproduces the complete new font after explicitly retaining the old U+000C selection. +3,289 loaded bytes; production code unchanged. Full-link/physical qualification and trailing-period filename limits remain. |
 | European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256) | [a494e69](https://github.com/papsg/SAROO/commit/a494e69), on main | Original 20 labels at ID 14; IDs 0–13 unchanged. Requires language bounds and bounded menu text. ASan/UBSan: 1,800 lookups, 270 complete errors, title/formatter controls. Shipped-font glyphs and 288-pixel width checks pass. SH-2 language object compiles. Editorial, full-link and hardware limits remain. |
 | Welsh | [#299](https://github.com/tpunix/SAROO/pull/299) | [73c1fbe](https://github.com/papsg/SAROO/commit/73c1fbe), on main | Original 20 labels at ID 15 after Portuguese; existing IDs unchanged. ASan/UBSan: 1,920 lookups, 288 complete errors, title/formatter controls. All new glyph/288-pixel checks and SH-2 language compilation pass. No related open fork PR; issues disabled. Editorial, full-link and hardware limits remain. |
@@ -29,10 +29,10 @@ Last updated: 2026-11-08.
 | Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 | Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 
-Eight of the twelve requested contributions are integrated. Controller/multitap
-handling, Arabic, the browser save editor and browser cover editor
-remain. Bounded menu text is an additional explicit prerequisite, not an eighth
-completed requested contribution. All topic branches and this ledger are pushed.
+Nine of the twelve requested contributions are integrated. Arabic, the browser
+save editor and browser cover editor remain. Bounded menu text is an additional
+explicit prerequisite and is not counted in that total. All topic branches and
+this ledger are pushed.
 
 Historical implementation evidence guides these ports; it does not qualify a
 newly assembled public branch. Every contribution records fresh checks and outstanding
@@ -51,4 +51,5 @@ GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
 fork issue or superseded open PR needs closure. This was checked again after
-the English and Latin-language contributions integrated; the fork has no open PRs.
+the English, Latin-language, CJK and controller contributions integrated; the
+fork has no open PRs. No original upstream request has been changed.
