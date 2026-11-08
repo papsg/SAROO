@@ -2,6 +2,8 @@
 #ifndef _MAIN_H_
 #define _MAIN_H_
 
+#include <stdarg.h>
+
 /*****************************************************************************/
 
 typedef unsigned  char u8;
@@ -295,6 +297,7 @@ extern int gets_from_stm32;
 
 extern void (*printk_putc)(int ch);
 int printk(char *fmt, ...);
+int vsnprintf(char *buf, int size, char *fmt, va_list args);
 int snprintf(char *buf, int size, char *fmt, ...);
 #define sprintf(buf, fmt, ...) snprintf(buf, 1024, fmt, __VA_ARGS__)
 
@@ -412,6 +415,7 @@ void add_menu_item(MENU_DESC *menu, char *item);
 int menu_run(MENU_DESC *menu);
 
 void menu_status(MENU_DESC *menu, char *string);
+void menu_error(MENU_DESC *menu, char *format, ...);
 void draw_menu_frame(MENU_DESC *menu);
 void menu_update(MENU_DESC *menu, int new);
 int menu_default(MENU_DESC *menu, int ctrl);

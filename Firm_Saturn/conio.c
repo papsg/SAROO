@@ -768,6 +768,19 @@ void menu_status(MENU_DESC *menu, char *string)
 }
 
 
+void menu_error(MENU_DESC *menu, char *format, ...)
+{
+	/* Complete existing/new Latin error translations and a signed 32-bit code
+	 * need at most 66 bytes including NUL. Keep scratch on the error path. */
+	char text[68];
+	va_list args;
+	va_start(args, format);
+	int length = vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	if(length) menu_status(menu, text);
+}
+
+
 void add_menu_item(MENU_DESC *menu, char *item)
 {
 	strncpy(menu->items[menu->num], item, 96);

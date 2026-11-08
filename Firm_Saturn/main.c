@@ -643,9 +643,9 @@ static void fill_selmenu(void)
 
 	int disp_page = (total_page)? page+1 : 0;
 	if(sel_mode==0){
-		sprintf(sel_menu.title, TT("选择游戏(%d/%d)"), disp_page, total_page);
+		snprintf(sel_menu.title, sizeof(sel_menu.title), TT("选择游戏(%d/%d)"), disp_page, total_page);
 	}else{
-		sprintf(sel_menu.title, TT("选择文件(%d/%d)"), disp_page, total_page);
+		snprintf(sel_menu.title, sizeof(sel_menu.title), TT("选择文件(%d/%d)"), disp_page, total_page);
 	}
 }
 
@@ -767,17 +767,13 @@ static int sel_handle(int ctrl)
 				retv = bios_cd_cmd(0);
 			}
 			if(retv){
-				char buf[40];
-				sprintf(buf, TT("游戏启动失败! %d"), retv);
-				menu_status(menu, buf);
+				menu_error(menu, TT("游戏启动失败! %d"), retv);
 			}
 		}else{
 			menu_status(menu, TT("加载文件中......"));
 			retv = run_binary(index, 1);
 			if(retv){
-				char buf[40];
-				sprintf(buf, TT("文件加载失败! %d"), retv);
-				menu_status(menu, buf);
+				menu_error(menu, TT("文件加载失败! %d"), retv);
 			}
 		}
 	}else if(BUTTON_DOWN(ctrl, PAD_Z)){
@@ -798,9 +794,7 @@ static int sel_handle(int ctrl)
 			cdblock_on(0);
 			retv = run_binary(index, 1);
 			if(retv){
-				char buf[40];
-				sprintf(buf, TT("文件加载失败! %d"), retv);
-				menu_status(menu, buf);
+				menu_error(menu, TT("文件加载失败! %d"), retv);
 			}
 		}
 	}else if(BUTTON_DOWN(ctrl, PAD_LEFT)){
@@ -966,9 +960,7 @@ int main_handle(int ctrl)
 			// Is burned game CD
 			retv = jhl_auth_hack(100000);
 			if(retv!=2){
-				char buf[64];
-				sprintf(buf, "%s%d", TT("不是游戏光盘!"), retv);
-				menu_status(&main_menu, buf);
+				menu_error(&main_menu, "%s%d", TT("不是游戏光盘!"), retv);
 				cdblock_off();
 				return 0;
 			}
@@ -976,9 +968,7 @@ int main_handle(int ctrl)
 		}else if(retv!=4){
 			// 是数据CD
 			// Is data CD
-			char buf[64];
-			sprintf(buf, "%s%d", TT("不是游戏光盘!"), retv);
-			menu_status(&main_menu, buf);
+			menu_error(&main_menu, "%s%d", TT("不是游戏光盘!"), retv);
 			cdblock_off();
 			return 0;
 		}
@@ -994,9 +984,7 @@ int main_handle(int ctrl)
 		}
 		retv = bios_cd_cmd(type);
 		if(retv){
-			char buf[40];
-			sprintf(buf, TT("游戏启动失败! %d"), retv);
-			menu_status(&main_menu, buf);
+			menu_error(&main_menu, TT("游戏启动失败! %d"), retv);
 			cdblock_off();
 		}
 		return 0;

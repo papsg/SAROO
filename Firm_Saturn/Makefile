@@ -55,6 +55,9 @@ $(EXE)	: $(OBJ)
 
 $(OBJ): main.h smpc.h vdp2.h font_latin.h
 
+# This custom formatter has different capacity/return semantics from libc.
+obj/printk.o: FLAGS += -fno-builtin
+
 
 obj/%.o :	%.c
 	$(call ECHO_CMD, "CC     ", $@, $(CC) -c $< -o $@ $(FLAGS))
