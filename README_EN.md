@@ -60,6 +60,9 @@ original configuration example stops at Swedish; the actual
 The [additional language list](doc/LANGUAGES.md) gives newer IDs and contributor
 credits. Existing IDs retain their meanings.
 
+The [controller protocol notes](doc/PERIPHERALS.md) describe continued input
+collection, both ports/multitaps, primary Sega references and qualification limits.
+
 ## Source and tools
 
 | Directory | Contents |

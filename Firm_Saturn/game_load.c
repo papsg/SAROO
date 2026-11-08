@@ -242,6 +242,7 @@ static void _call_04c8(void)
 void my_cdplayer(void)
 {
 	void (*go)(int);
+	pad_suspend();
 
 	if(debug_flag&1) sci_init();
 	printk("\nLoad my multiPlayer ...\n");
@@ -335,6 +336,7 @@ void my_cdplayer(void)
 
 	go = (void*)0x06000680;
 	go(0);
+	pad_resume();
 }
 
 
@@ -560,7 +562,9 @@ int bios_cd_cmd(int type)
 	*(u16*)(0x0600220c) = 9;
 
 	int (*go)(void) = (void*)0x18d2;
+	pad_suspend();
 	retv = go();
+	pad_resume();
 
 	printk("bios_loadcd_boot  retv=%d\n", retv);
 

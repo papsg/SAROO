@@ -226,6 +226,12 @@ extern const int HZ;
 
 void reset_timer(void);
 u32 get_timer(void);
+/* Call within half of the wrapping 32-bit counter's range. */
+static inline int timer_reached(u32 now, u32 deadline)
+{
+	return (u32)(now-deadline) < 0x80000000u;
+}
+
 void usleep(u32 us);
 void msleep(u32 ms);
 
@@ -250,6 +256,8 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch);
 #define PAD_LT      (1<<3)
 
 int pad_read(void);
+void pad_suspend(void);
+void pad_resume(void);
 
 int smpc_cmd(int cmd);
 

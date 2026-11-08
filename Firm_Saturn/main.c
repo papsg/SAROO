@@ -54,67 +54,255 @@ void LE32W(void *ptr, u32 val)
 /**********************************************************/
 
 
-static int pad_state;
+static volatile int pad_state;
+
+#ifndef PADMODE_DIRECT
+/* Consume the SMPC's two port records without retaining a packet buffer. */
+enum { PAD_PORT, PAD_ID, PAD_LENGTH, PAD_DATA };
+static struct {
+	u16 buttons;
+	u8 phase, ports, devices, type, size, used;
+} pad_stream;
+static volatile int pad_result;
+/* Last CONT issued by this menu; IREG0 is write-only (ST-169). */
+static volatile u8 pad_cont;
+static u8 pad_pages, pad_vblank_seen;
+static u32 pad_deadline, pad_vblank_ready;
+
+static void pad_interrupt(void);
+
+static u32 pad_interrupt_lock(void)
+{
+#ifdef __sh__
+	u32 sr;
+	__asm__ volatile ("stc sr,%0" : "=r" (sr) :: "memory");
+	__asm__ volatile ("ldc %0,sr" :: "r" (sr | 0xf0u) : "memory", "t");
+	return sr;
+#else
+	return pad_test_interrupt_lock();
+#endif
+}
+
+static void pad_interrupt_unlock(u32 sr)
+{
+#ifdef __sh__
+	__asm__ volatile ("ldc %0,sr" :: "r" (sr) : "memory", "t");
+#else
+	pad_test_interrupt_unlock(sr);
+#endif
+}
+
+static void pad_interrupt_enable(int enable)
+{
+#ifdef __sh__
+	/* The BIOS owns the SCU vector table and cached interrupt mask. */
+	void (*set_handler)(u32, void (*)(void)) = (void*)REG32(0x06000300);
+	void (*change_mask)(u32, u32) = (void*)REG32(0x06000344);
+	u32 sr = pad_interrupt_lock();
+	if(enable){
+		set_handler(0x47, pad_interrupt);
+		change_mask(~0x80u, 0);
+		/* System-manager priority is eight; retain all non-mask SR bits. */
+		pad_interrupt_unlock((sr & ~0xf0u) | 0x70u);
+	}else{
+		change_mask(~0u, 0x80);
+		set_handler(0x47, 0);
+		/* Transfers of control historically leave menu interrupts disabled. */
+		pad_interrupt_unlock(sr | 0xf0u);
+	}
+#else
+	pad_test_interrupt_enable(enable, pad_interrupt);
+#endif
+}
+
+void pad_suspend(void)
+{
+	pad_interrupt_enable(0);
+	/* The next owner may change IREG0; retire this transaction. */
+	pad_state = 0;
+}
+
+void pad_resume(void)
+{
+	/* Resume with fresh admission, never an old owner's CONT history. */
+	pad_state = 0;
+	pad_vblank_seen = 0;
+	pad_cont = 0;
+	pad_interrupt_enable(1);
+}
+
+static int pad_next_device(void)
+{
+	if(--pad_stream.devices){
+		pad_stream.phase = PAD_ID;
+		return 0;
+	}
+	pad_stream.phase = PAD_PORT;
+	return --pad_stream.ports == 0;
+}
+
+/* 1: both ports complete; 0: another byte needed; -1: invalid 15-byte mode. */
+static int pad_parse_byte(u8 data)
+{
+	switch(pad_stream.phase){
+	case PAD_PORT:
+		pad_stream.devices = data & 0x0f;
+		if((data & 0xf0)==0xf0 && pad_stream.devices>1)
+			return -1;
+		if(pad_stream.devices==0)
+			return --pad_stream.ports == 0;
+		pad_stream.phase = PAD_ID;
+		break;
+	case PAD_ID:
+		pad_stream.type = data >> 4;
+		/* Type F is an empty/unknown socket; its low nibble is not a size. */
+		if(pad_stream.type==0x0f)
+			return pad_next_device();
+		pad_stream.size = data & 0x0f;
+		pad_stream.used = 0;
+		pad_stream.phase = pad_stream.size ? PAD_DATA : PAD_LENGTH;
+		break;
+	case PAD_LENGTH:
+		/* Extended peripherals are truncated to 15 data bytes in this mode. */
+		if(data!=15)
+			return -1;
+		pad_stream.size = data;
+		pad_stream.phase = PAD_DATA;
+		break;
+	case PAD_DATA:
+		/* Digital, analog and keyboard formats share these button fields. */
+		if(pad_stream.size>=2 && (pad_stream.type==0 ||
+		   pad_stream.type==1 || pad_stream.type==3)){
+			if(pad_stream.used==0)
+				pad_stream.buttons |= (u16)(data ^ 0xff) << 8;
+			else if(pad_stream.used==1)
+				pad_stream.buttons |= (data ^ 0xff) & 0xf8;
+		}
+		if(++pad_stream.used==pad_stream.size)
+			return pad_next_device();
+		break;
+	}
+	return 0;
+}
+
+static void pad_end(int result, int abort)
+{
+	if(abort){
+		/* Keep CONT unchanged: CONT and BREAK together is prohibited. */
+		IREG0 = pad_cont | 0x40;
+	}
+	pad_result = result;
+	pad_state = 2;
+}
+
+/* Keep the frequent not-ready path free of the parser register-save frame. */
+static int __attribute__((noinline)) pad_begin(void)
+{
+	memset(&pad_stream, 0, sizeof(pad_stream));
+	pad_stream.ports = 2;
+	pad_pages = 0;
+	pad_deadline = get_timer() + MS2TICK(100);
+	SF = 0x01;
+	pad_cont = 0;
+	IREG0 = pad_cont;
+	IREG1 = 0x08;
+	IREG2 = 0xf0;
+	pad_state = 1;
+	COMREG = 0x10;
+	return -1;
+}
+
+static void pad_interrupt(void)
+{
+	if(pad_state!=1)
+		return;
+	u8 status = SR;
+	if((status & 0x8f)!=0x80 ||
+	   (status & 0x40)!=(pad_pages==0 ? 0x40 : 0)){
+		pad_end(-1, 1);
+		return;
+	}
+	++pad_pages;
+	for(unsigned i=0; i<32; ++i){
+		int result = pad_parse_byte(REG8(SMPC_BASE+0x21+i*2));
+		if(result){
+			int complete = result>0 && (status&0x20)==0;
+			pad_end(complete ? pad_stream.buttons : -1, status&0x20);
+			return;
+		}
+	}
+	/* Two ports, at most 15 sockets each, 17 bytes per extended record. */
+	if((status&0x20)==0 || pad_pages>=16){
+		pad_end(-1, status&0x20);
+		return;
+	}
+	pad_cont ^= 0x80;
+	IREG0 = pad_cont;
+}
+#else
+void pad_suspend(void) {}
+void pad_resume(void) {}
+#endif
 
 int pad_read(void)
 {
-	u32 bits=0, bits1=0;
-	u8 *oreg;
-	int p;
-
 #ifdef PADMODE_DIRECT
+	u32 bits=0;
 	PDR1 = 0x60; bits |= (PDR1 & 0x8) << 0;
 	PDR1 = 0x40; bits |= (PDR1 & 0xf) << 8;
 	PDR1 = 0x20; bits |= (PDR1 & 0xf) << 12;
 	PDR1 = 0x00; bits |= (PDR1 & 0xf) << 4;
-    bits ^= 0xfFF8;
+	return bits ^ 0xfff8;
 #else
 	if(pad_state==0){
-		if((TVSTAT&0x0008)==0)
+		if((TVSTAT&0x0008)==0){
+			pad_vblank_seen = 0;
 			return -1;
-		while(SF&0x01);
-		SF = 0x01;
-		IREG0 = 0x00;
-		IREG1 = 0x08;
-		IREG2 = 0xf0;
-		COMREG = 0x10;
-		pad_state = 1;
-		return -1;
+		}
+		if(!pad_vblank_seen){
+			/* The inherited FRT counts system_clock/128. Ninety ticks
+			 * exceed 300 us at both documented 26.8/28.6 MHz CPU modes. */
+			pad_vblank_seen = 1;
+			pad_vblank_ready = get_timer() + 90;
+			return -1;
+		}
+		u32 now = get_timer();
+		/* If foreground work skipped an entire field, do not reuse an old
+		 * deadline in a later VBlank. Ten ms is longer than either region's
+		 * blanking interval and shorter than its field. */
+		if(timer_reached(now, pad_vblank_ready + MS2TICK(10))){
+			pad_vblank_seen = 0;
+			return -1;
+		}
+		if(!timer_reached(now, pad_vblank_ready) || (SF&1))
+			return -1;
+		if((TVSTAT&0x0008)==0){
+			pad_vblank_seen = 0;
+			return -1;
+		}
+		return pad_begin();
 	}else if(pad_state==1){
-		if(SF&1){
-			return -1;
+		if(timer_reached(get_timer(), pad_deadline)){
+			u32 sr = pad_interrupt_lock();
+			if(pad_state==1){
+				/* Timeout has no value to publish; end this field directly. */
+				IREG0 = pad_cont | 0x40;
+				pad_state = 3;
+			}
+			pad_interrupt_unlock(sr);
 		}
-
-		oreg = (u8*)0x20100021;
-		p = 0;
-
-		// read PAD1
-		if(oreg[p]==0xf1){
-			bits = (oreg[p+4]<<8) | (oreg[p+6]);
-			bits ^= 0xFFFF;
-			p += (oreg[p+2]&0x0f)*2;
-		}else{
-			p += 2;
-		}
-		// read PAD2
-		if(oreg[p]==0xf1){
-			bits1 = (oreg[p+4]<<8) | (oreg[p+6]);
-			bits1 ^= 0xFFFF;
-			bits |= bits1;
-		}
-
-		IREG0 = 0x40;
-		pad_state = 2;
 	}else if(pad_state==2){
+		int result = pad_result;
+		pad_state = 3;
+		return result;
+	}else if(pad_state==3){
 		if((TVSTAT&0x0008)==0){
 			pad_state = 0;
+			pad_vblank_seen = 0;
 		}
-		return -1;
 	}
+	return -1;
 #endif
-
-	//printk("pad_read: %04x\n", bits);
-	return bits;
 }
 
 
@@ -127,14 +315,17 @@ void pad_init(void)
     DDR1 = 0x60;
     IOSEL = IOSEL1;
 #else
+	pad_vblank_seen = 0;
 	DDR1 = 0;
 	DDR2 = 0;
 	EXLE = 0;
     IOSEL = 0;
 
-	IREG0 = 0x00;
+	pad_cont = 0;
+	IREG0 = pad_cont;
 	IREG1 = 0x08;
 	IREG2 = 0xf0;
+	pad_resume();
 #endif
 }
 
@@ -191,7 +382,7 @@ u32 get_timer(void)
 #else
 
 const int HZ = 208496; /* for NTSC: 320 lines mode */
-static int timer_base;
+static u32 timer_base;
 
 void reset_timer(void)
 {
@@ -697,7 +888,9 @@ int run_binary(int index, int run)
 	if(run){
 		printk("Jump to %08x ...\n", load_addr);
 		void (*go)(void) = (void(*)(void))(load_addr+offset);
+		pad_suspend();
 		go();
+		pad_resume();
 	}else{
 		printk("Load to %08x ...\n", load_addr);
 	}
