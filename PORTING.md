@@ -23,11 +23,16 @@ Last updated: 2026-11-08.
 | European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256) | [a494e69](https://github.com/papsg/SAROO/commit/a494e69), on main | Original 20 labels at ID 14; IDs 0–13 unchanged. Requires language bounds and bounded menu text. ASan/UBSan: 1,800 lookups, 270 complete errors, title/formatter controls. Shipped-font glyphs and 288-pixel width checks pass. SH-2 language object compiles. Editorial, full-link and hardware limits remain. |
 | Welsh | [#299](https://github.com/tpunix/SAROO/pull/299) | [73c1fbe](https://github.com/papsg/SAROO/commit/73c1fbe), on main | Original 20 labels at ID 15 after Portuguese; existing IDs unchanged. ASan/UBSan: 1,920 lookups, 288 complete errors, title/formatter controls. All new glyph/288-pixel checks and SH-2 language compilation pass. No related open fork PR; issues disabled. Editorial, full-link and hardware limits remain. |
 | Dutch | [#324](https://github.com/tpunix/SAROO/pull/324) | [461d658](https://github.com/papsg/SAROO/commit/461d658), on main | ID 16. Four documented wording adaptations; sixteen labels unchanged. Original wording fails at 328 pixels; corrected glyph/288-pixel checks pass. ASan/UBSan: 2,040 lookups, 306 complete errors and title/formatter controls. SH-2 language compilation passes. Editorial, full-link and hardware limits remain. |
-| Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | Queued | Retain existing language IDs and prior additions. |
+| Catalan | [#360](https://github.com/tpunix/SAROO/pull/360) | [360d03d](https://github.com/papsg/SAROO/commit/360d03d), on main | Original 20 labels at ID 17; IDE workspace files excluded. ASan/UBSan: 2,160 lookups, 324 complete errors and title/formatter controls. All 80 added labels/full signed-error variants pass shipped-glyph and 288-pixel checks. SH-2 language compilation passes. Editorial, full-link and hardware limits remain. |
 | Arabic | [#107](https://github.com/tpunix/SAROO/pull/107) | Queued | Required licensed glyphs, fixed-label shaping and language-series prerequisites. Native-speaker review remains a separate limit. |
 | English documentation/comments | [#68](https://github.com/tpunix/SAROO/pull/68), [#352](https://github.com/tpunix/SAROO/pull/352) | [73922db](https://github.com/papsg/SAROO/commit/73922db), on main | Deduplicates #343. 77 ASCII comments preserve every original source byte; all eight affected SH-2 objects are byte-identical. Source-checked English README/developer notes and local links verified. The integrated tree and all compiled inputs/hashes match the verified branch. No runtime or hardware claim. |
 | Browser save editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
 | Browser cover editor | [#374](https://github.com/tpunix/SAROO/pull/374) | Queued | Separate application contribution with the reviewed format/safety corrections. |
+
+Seven of the twelve requested contributions are integrated. Controller/multitap
+handling, CJK coverage, Arabic, the browser save editor and browser cover editor
+remain. Bounded menu text is an additional explicit prerequisite, not an eighth
+completed requested contribution. All topic branches and this ledger are pushed.
 
 Historical implementation evidence guides these ports; it does not qualify a
 newly assembled public branch. Every contribution records fresh checks and outstanding
@@ -46,4 +51,4 @@ GitHub retains the closed historical [PR #1](https://github.com/papsg/SAROO/pull
 and [PR #2](https://github.com/papsg/SAROO/pull/2) records; these do not describe
 the current main's ancestry. The fork currently has issues disabled; no related
 fork issue or superseded open PR needs closure. This was checked again after
-the English contribution integrated; the fork has no open PRs.
+the English and Latin-language contributions integrated; the fork has no open PRs.
