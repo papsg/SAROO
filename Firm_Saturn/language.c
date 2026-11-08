@@ -406,6 +406,30 @@ static char *lang_cym[LANG_STR_NR] = {
 };
 
 
+static char *lang_nl[LANG_STR_NR] = {
+	"Spel Selecteren (%d/%d)",
+	"Bestand Selecteren (%d/%d)",
+	"Spel wordt geïnitialiseerd ......",
+	"Spel starten mislukt! %d",
+	"Bestand wordt geladen ......",
+	"Bestand laden mislukt! %d",
+	"Spel Selecteren",
+	"Systeem CD-speler",
+	"Spelschijf Laden",
+	"Seriële Debugshell",
+	"Binair bestand laden",
+	"Firmware Bijwerken",
+	"Bijwerken... Niet uitschakelen!",
+	"Fout bij het bijwerken!",
+	"Voltooid, herstart het systeem!",
+	"SAROO Opstartmenu",
+	"Schijf wordt gecontroleerd ......",
+	"Geen CD!",
+	"Geen spelschijf!",
+	"Selecteer spelcategorie",
+};
+
+
 static char **lang_list[] = {
 	lang_zhcn,
 	lang_en,
@@ -423,6 +447,7 @@ static char **lang_list[] = {
 	lang_ro,
 	lang_pt,
 	lang_cym,
+	lang_nl,
 };
 
 static const int lang_nr = sizeof(lang_list)/sizeof(lang_list[0]);

@@ -8,6 +8,7 @@ section of `/SAROO/saroocfg.txt`; no MCU or FPGA change is required.
 | --- | --- | --- |
 | 14 | European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256), Hudson Brendon |
 | 15 | Welsh / Cymraeg | [#299](https://github.com/tpunix/SAROO/pull/299), Widge-5 |
+| 16 | Dutch | [#324](https://github.com/tpunix/SAROO/pull/324), Caio Henrique Antonio |
 
 Each addition supplies all twenty fixed menu labels and uses the existing Latin
 font. This fork preserves the original hash-table bounds fix and uses bounded
@@ -19,3 +20,9 @@ title capacities. `make -C tests check-language-catalog` checks every new label'
 advance/ink extent against the shipped font and the 288-pixel cleared status
 width. These are source/host checks, not physical menu or game qualification.
 Independent native-speaker editorial review remains outstanding.
+
+The Dutch contribution adapts four labels: `Spel starten mislukt! %d`,
+`Bestand laden mislukt! %d`, `Bijwerken... Niet uitschakelen!`, and
+`Binair bestand laden`. The first three keep complete messages within the
+cleared status width, including full signed error codes; the fourth retains the
+reviewed grammatical correction. Other Dutch labels match the original proposal.
