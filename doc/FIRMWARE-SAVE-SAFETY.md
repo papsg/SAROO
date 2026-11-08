@@ -135,3 +135,89 @@ source/profile overrides and isolated target-build command above also apply.
 Full metadata/ownership admission, dirty-flush bookkeeping, separately evaluated
 batching and MCU/error/retry changes remain following scope. This correction
 does not establish that a named game's historical save report is resolved.
+
+## SATURN-SAVE-003: validate metadata and block ownership
+
+At public `6e9c217`, read, verify, directory, delete and same-size overwrite still
+trust stored references. Malformed chains can loop or address outside storage;
+one save can claim another save's header or payload. A stale free counter can
+also admit an allocation that the bitmap cannot satisfy. Resize-only checks do
+not protect these other entry points.
+
+The service now checks device bounds, signature, fixed geometry, reserved bits,
+all live headers, representable payload sizes, allocated block references,
+table termination and unique ownership before exposing or modifying saves.
+Headers are claimed first, bounding slot-list cycles and preventing payloads
+from claiming another header. Inline MEMS bytes remain payload. Allocated orphan
+blocks stay reserved. Queries recount available space without repairing storage;
+successful mutations persist the corrected counter. Status respects requested
+payload size and directory capacity without underflowing at zero free blocks.
+
+Read/write/delete/verify use exact bounded names, so `ABC` cannot select
+`ABCDEF`; directory search retains prefix matching and its signed hit-count
+convention. Names are scanned for at most eleven bytes. Returned name/comment
+fields are terminated after their eleven/ten stored bytes. MEMS directory/header
+identity compares all eleven stored bytes, including bytes following a NUL.
+This storage consistency rule is separate from the API's terminated name lookup.
+Directory failure returns zero without changing the output table, rather than
+exposing a positive backup-error number as a count. The other APIs retain their
+unformatted/broken-storage error results. Zero-length payloads need no buffer.
+
+Sega's [ST-162-R1-092994 System Library User's Guide](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf)
+documents Backup Library §2.1 `BupDir` (printed p. 42, PDF p. 47: eleven-byte name
+and ten-byte comment plus terminators) and §2.3 functions No. 4–9 (printed
+pp. 45–47, PDF pp. 50–52: requested-size status, write/read/delete/verify results,
+and directory prefix/count behavior). The original local PDF and relevant
+pages were checked. Sega does not define SAROO's private archive bitmap/table or
+raw directory/header identity: those contracts come from the
+[`6e9c217` firmware layout and writer](https://github.com/papsg/SAROO/blob/6e9c217/Firm_Saturn/game_save.c).
+
+The original correction was authored by `paps-g` in `c97d2d70` on 2026-09-05.
+This public source port independently reproduces it after resizing. Added public
+identity controls incorporate the later full-field test insight: the original
+validator already used `memcmp`, so this is stronger coverage, not another
+firmware identity fix. Source notices and preceding contributions are preserved.
+
+Six actual-module methods execute 357 scenarios. The original 349-scenario
+matrix covers 329 malformed-storage operations, stale counts, exhaustion,
+maximum directory, exact/prefix/fixed-width names, API boundaries, initialization
+and status-size controls. The preceding public source produces 322 failures and
+twelve two-second case deadlines in that matrix; deadlines alone are not proof
+of infinite loops. Eight added identity cases fail on the preceding source
+under a longer ten-second observation. All 357 pass ASan/UBSan and normal O2.
+Changing only full-field `memcmp` to `strncmp` makes seven mismatch operations
+fail; an equal raw-field case still passes. Refusals check complete unchanged
+model disk images, allocation metadata and caller output. Valid mutations check
+neighbors and orphan reservation after modeled RAM reload.
+
+All eleven coupled dirty/resize/validation methods pass in both profiles.
+The complete pinned SH-2 build adds 1,200 code/data bytes and eight BSS bytes:
+77,216 code/data, 9,216 BSS, 16,384 reserved stack and 28,256 body margin. Image
+size remains 488,751 bytes with the unchanged font. Validation reuses the
+existing bitmap. GCC direct frames include 28 bytes for the archive check,
+36 for its per-save check and 104 for write; these exclude callees and interrupts
+and do not establish a calling game's available stack. The host builder now
+preserves compiler stack reports. Existing unrelated target warnings remain.
+
+Validation is uncached. A full 448-entry zero-size MEMS directory requires 448
+one-KiB header requests for status and 449 for a cold read, including reloading
+the chosen header: 458,752/459,776 modeled bytes and no payload-window loads.
+Slot validation reads resident RAM. These are command counts, not measured
+Saturn latency. Batching is evaluated separately; this checkpoint makes no
+claim of preserved game responsiveness.
+
+Startup preserves a nonblank damaged signature rather than formatting it.
+Automatic formatting still accepts a uniformly zero/FF inspected region: the
+whole 64 KiB slot, but only the loaded 8 KiB MEMS metadata. That MEMS predicate
+cannot distinguish a new archive from lost metadata with surviving payload;
+the later MCU startup member must reject existing invalid archives before menu
+service. The initialization fixture executes MEMS `bup_init` with a BIOS stub;
+the fixed-address slot BIOS startup path is source/target checked only.
+
+Use `make -C tests check-firmware-save`, its release profile and the isolated
+target-build command above. `SAROO_GAME_SAVE_SOURCE` reproduces the preceding
+source controls. The synchronous host model uses native typed-field byte order
+and reported-success MCU loads/flushes. It does not establish physical encoding,
+cache/IRQ/reentrancy/bus behavior, SD error recovery or power-loss atomicity.
+Dirty bookkeeping, actual MCU I/O errors, pending-data ownership and retry
+propagation follow in separate members. No particular game report is closed.

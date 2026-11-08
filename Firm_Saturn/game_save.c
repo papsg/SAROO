@@ -265,6 +265,11 @@ static int access_data(int block, u8 *data, int type)
 
 	bp = get_block_addr(START_BLOCK|block);
 	dsize = *(u32*)(bp+0x0c);
+    if (!dsize)
+        return 0;
+    if (data == NULL) {
+        return BUP_BROKEN;
+    }
 
 	if(bup_dev==1 && dsize<=960){
 		if(type==0){ // read
@@ -316,14 +321,17 @@ static int access_data(int block, u8 *data, int type)
 }
 
 
-static int find_save(char *file_name, int offset, int *last)
+static int find_save_kind(char *file_name, int offset, int *last, int prefix)
 {
 	int block, len, index;
 	u8 *bp;
 
-	len = strlen(file_name);
-	if(len>11)
-		len = 11;
+    if (file_name == NULL)
+        return -1;
+    for (len = 0; len < 11 && file_name[len]; len++);
+    if (!prefix && !len) {
+        return -1;
+    }
 
 	index = 0;
 
@@ -333,7 +341,7 @@ static int find_save(char *file_name, int offset, int *last)
 
 		while(block){
 			bp = get_block_addr(block);
-			if(strncmp(file_name, (char*)bp, len)==0){
+			if(strncmp(file_name, (char*)bp, len)==0 && (prefix || len==11 || bp[len]==0)){
 				if(index==offset){
 					printk("  found at %04x\n", block);
 					return block;
@@ -352,7 +360,7 @@ static int find_save(char *file_name, int offset, int *last)
 			if(bp[0]==0 && last && *last==-1){
 				*last = i;
 			}
-			if(bp[0] && strncmp(file_name, (char*)bp, len)==0){
+			if(bp[0] && strncmp(file_name, (char*)bp, len)==0 && (prefix || len==11 || bp[len]==0)){
 				if(index==offset){
 					block = *(u16*)(bp+0x0e);
 					printk("  found at %04x\n", block);
@@ -371,6 +379,153 @@ static int find_save(char *file_name, int offset, int *last)
 }
 
 
+static int find_save(char *name, int offset, int *last)
+{
+    return find_save_kind(name, offset, last, 1);
+}
+
+static int find_exact_save(char *name, int *last)
+{
+    return find_save_kind(name, 0, last, 0);
+}
+
+/* Validation and resizing run sequentially and share this scratch space.
+ * No archive bytes change until all headers and block ownership are valid. */
+static u8 resize_bitmap[1008];
+static u16 resize_blocks[510];
+static int checked_free, checked_saves;
+
+static int claim_block(int block)
+{
+    int first = bup_dev ? 8 : 1;
+    int total = bup_dev ? 8064 : 512;
+    u8 *bitmap = bup_dev ? (u8 *)MEMS->bitmap : (u8 *)BUPMEM->bitmap;
+    if (block < first || block >= total ||
+        !(bitmap[block / 8] & (1u << (block % 8))) ||
+        (resize_bitmap[block / 8] & (1u << (block % 8))))
+        return BUP_BROKEN;
+    resize_bitmap[block / 8] |= 1u << (block % 8);
+    return 0;
+}
+
+static int validate_save_blocks(int header, u8 *entry)
+{
+    u8 *bp = get_block_addr(START_BLOCK | header);
+    u32 size = *(u32 *)(bp + 12);
+    int count = 0, expected, i, block;
+    if (!bp[0] || size > (bup_dev ? 479u * 1024 : 510u * 128) ||
+        (entry && memcmp(bp, entry, 11)))
+        return BUP_BROKEN;
+    if (bup_dev && size <= 960)
+        return 0; /* Inline bytes are payload, not a pointer table. */
+    expected = (size + (bup_dev ? 1023 : 127)) / (bup_dev ? 1024 : 128);
+    for (i = 0; i < (bup_dev ? expected : 512); i++) {
+        if (bup_dev) {
+            block = *(u16 *)(bp + 64 + i * 2);
+        } else {
+            if (!(bp[64 + i / 8] & (1u << (i % 8))))
+                continue;
+            block = i;
+        }
+        if (claim_block(block))
+            return BUP_BROKEN;
+        count++;
+    }
+    if (count != expected ||
+        (bup_dev && *(u16 *)(bp + 64 + expected * 2) != 0))
+        return BUP_BROKEN;
+    return 0;
+}
+
+static int check_backup(int dev)
+{
+    int block, i;
+    u8 *entry, *bitmap;
+    if (dev < 0 || dev > 1)
+        return BUP_NON;
+    bup_dev = dev;
+    if (dev == 0) {
+        if (BUPMEM->magic0 != 0x5361726f || BUPMEM->magic1 != 0x53617665)
+            return BUP_UNFORMAT;
+        if (BUPMEM->total_size != 65536 || BUPMEM->block_size != 128 ||
+            !(BUPMEM->bitmap[0] & 1))
+            return BUP_BROKEN;
+        bitmap = (u8 *)BUPMEM->bitmap;
+    } else {
+        if (MEMS->magic0 != 0x5361726f || MEMS->magic1 != 0x4d656d73)
+            return BUP_UNFORMAT;
+        if (MEMS->total_size != 0x800000 || MEMS->bitmap[0] != 255)
+            return BUP_BROKEN;
+        bitmap = (u8 *)MEMS->bitmap;
+    }
+    memset(resize_bitmap, 0, sizeof(resize_bitmap));
+    checked_saves = 0;
+    /* Reserve every live header first, so data can never claim another header.
+     * A repeated slot header also terminates a malformed linked-list cycle. */
+    if (dev == 0) {
+        block = BUPMEM->first_save;
+        while (block) {
+            if (claim_block(block))
+                return BUP_BROKEN;
+            checked_saves++;
+            entry = get_block_addr(block);
+            block = *(u16 *)(entry + 62);
+        }
+        block = BUPMEM->first_save;
+        while (block) {
+            if (validate_save_blocks(block, NULL))
+                return BUP_BROKEN;
+            entry = get_block_addr(block);
+            block = *(u16 *)(entry + 62);
+        }
+    } else {
+        for (i = 0; i < 448; i++) {
+            entry = (u8 *)MEMS_HEADER + 1024 + i * 16;
+            if (entry[0]) {
+                if (claim_block(*(u16 *)(entry + 14)))
+                    return BUP_BROKEN;
+                checked_saves++;
+            }
+        }
+        for (i = 0; i < 448; i++) {
+            entry = (u8 *)MEMS_HEADER + 1024 + i * 16;
+            if (entry[0] && validate_save_blocks(*(u16 *)(entry + 14), entry))
+                return BUP_BROKEN;
+        }
+    }
+    /* Extra allocated blocks remain reserved. Recount rather than trusting the
+     * persisted free count; publish a corrected count only during a mutation. */
+    checked_free = 0;
+    for (i = dev ? 8 : 1; i < (dev ? 8064 : 512); i++)
+        if (!(bitmap[i / 8] & (1u << (i % 8))))
+            checked_free++;
+    return 0;
+}
+
+static void set_free_count(void)
+{
+    if (bup_dev) MEMS->free_block = checked_free;
+    else BUPMEM->free_block = checked_free;
+}
+
+/* Only untouched storage is initialized automatically. A damaged signature
+ * in nonblank storage must remain available for recovery or explicit format. */
+static int backup_blank(int dev)
+{
+    const volatile u8 *bp = dev ? (u8 *)MEMS_HEADER : (u8 *)BUP_MEM_ADDR;
+    int size = dev ? 8192 : 65536;
+    u8 value = bp[0];
+    if (value != 0 && value != 255)
+        return 0;
+    for (int i = 1; i < size; i++)
+        if (bp[i] != value)
+            return 0;
+    return 1;
+}
+
+
+
+
 /******************************************************************************/
 
 
@@ -380,7 +535,7 @@ int sro_bup_sel_part(int dev, int num)
 {
 	printk("bup_sel_part(%d): %d\n", dev, num);
 
-	if(dev>=2)
+	if(dev<0 || dev>=2)
 		return BUP_NON;
 
 	return 0;
@@ -391,7 +546,7 @@ int sro_bup_format(int dev)
 {
 	printk("bup_format(%d)\n", dev);
 
-	if(dev>1)
+	if(dev<0 || dev>1)
 		return BUP_NON;
 
 	if(dev==0){
@@ -401,8 +556,8 @@ int sro_bup_format(int dev)
 		BUPMEM->magic1 = 0x53617665;
 		BUPMEM->total_size = 0x10000;
 		BUPMEM->block_size = 0x80;
-		memcpy(&BUPMEM->gameid, (u8*)0x06000c20, 16);
-		memset(&BUPMEM->bitmap, 0, 0x40);
+		memcpy((u8 *)BUPMEM->gameid, (u8*)0x06000c20, 16);
+		memset((u8 *)BUPMEM->bitmap, 0, 0x40);
 		BUPMEM->first_save = 0x0000;
 		BUPMEM->free_block = 512-1;
 		BUPMEM->bitmap[0] = 0x01;
@@ -426,41 +581,28 @@ int sro_bup_format(int dev)
 
 int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
 {
-	printk("bup_stat(%d): dsize=%d\n", dev, dsize);
-
-	if(dev>1)
-		return BUP_NON;
-
-	if(dev==0){
-		if(BUPMEM->magic0!=0x5361726f || BUPMEM->magic1!=0x53617665)
-			return BUP_UNFORMAT;
-
-		stat->total_size = BUPMEM->total_size;
-		stat->block_size = BUPMEM->block_size;
-		stat->free_block = BUPMEM->free_block;
-		stat->total_block = stat->total_size / stat->block_size;
-		stat->free_size = (stat->free_block-1) * stat->block_size;
-		stat->data_num = stat->free_block/2;
-	}else{
-		if(MEMS->magic0!=0x5361726f || MEMS->magic1!=0x4d656d73)
-			return BUP_UNFORMAT;
-
-		stat->total_size = MEMS->total_size;
-		stat->block_size = 1024;
-		stat->free_block = MEMS->free_block;
-		stat->total_block = 1008*8;
-		stat->free_size = (stat->free_block-1)*1024;
-		stat->data_num = stat->free_block/2;
-	}
-
-	return 0;
+    int result = check_backup(dev);
+    u32 count, limit = dev ? 479u * 1024 : 510u * 128;
+    if (result)
+        return result;
+    if (stat == NULL)
+        return BUP_BROKEN;
+    stat->total_size = dev ? 0x800000 : 65536;
+    stat->block_size = dev ? 1024 : 128;
+    stat->total_block = dev ? 8064 : 512;
+    stat->free_block = checked_free;
+    stat->free_size = checked_free ? (checked_free - 1) * stat->block_size : 0;
+    stat->data_num = 0;
+    if ((u32)dsize <= limit) {
+        count = dev && dsize <= 960 ? 0 :
+                ((u32)dsize + stat->block_size - 1) / stat->block_size;
+        stat->data_num = checked_free / (count + 1);
+        if (dev && stat->data_num > (u32)(448 - checked_saves))
+            stat->data_num = 448 - checked_saves;
+    }
+    return 0;
 }
 
-
-/* Like the existing caches, this workspace belongs to the synchronous backup
- * service. Keep allocation planning outside the caller's game stack. */
-static u8 resize_bitmap[1008];
-static u16 resize_blocks[510];
 
 static int resize_save(int header, u32 new_size)
 {
@@ -547,10 +689,14 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 	int block_need, block, hdr, last, i;
 	u8 *bp;
 
-	printk("bup_write(%d): %s data=%08x dsize=%08x\n", dev, dir->file_name, data, dir->data_size);
-	bup_dev = dev;
-	if(dev>1)
-		return BUP_NON;
+    int result = check_backup(dev);
+    if (result)
+        return result;
+    if (dir == NULL || !dir->file_name[0] || (dir->data_size && data == NULL))
+        return BUP_BROKEN;
+    if (dir->data_size > (dev ? 479u * 1024 : 510u * 128))
+        return BUP_NOT_ENOUGH_MEMORY;
+    printk("bup_write(%d): %.11s data=%08x dsize=%08x\n", dev, dir->file_name, data, dir->data_size);
 
 	// 计算所需的块数量。
 	int block_size = (dev==0) ? 128 : 1024;
@@ -561,7 +707,7 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 	}
 
 	// 1. 根据dir查找存档
-	block = find_save(dir->file_name, 0, &last);
+	block = find_exact_save(dir->file_name, &last);
 
 	// 2. 如果找到，且允许覆盖，则覆盖写入
 	if(block>0){
@@ -575,13 +721,15 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
             if (result)
                 return result;
         }
+        if (!resized)
+            set_free_count();
         *(u32 *)(bp + 28) = dir->date;
         access_data(block, data, 2);
 
 		if(dev==0){
 			bup_update(BUPSAVE);
 		}else{
-			bup_update((resized ? MEMS_HDR : 0) | MEMS_SAV | (block_need ? MEMS_BUF : 0));
+			bup_update(MEMS_HDR | MEMS_SAV | (block_need ? MEMS_BUF : 0));
 		}
 		printk("Over write.\n");
 		return 0;
@@ -590,13 +738,14 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 	// 3. 未找到。新建存档。
 	if (dir->data_size > (dev ? 479u * 1024 : 510u * 128) || (dev == 1 && last < 0))
 		return BUP_NOT_ENOUGH_MEMORY;
-	int free_block = (dev==0) ? BUPMEM->free_block: *(u16*)(MEMS_HEADER+0x0c);
+	int free_block = checked_free;
 	printk("block_need=%d\n", block_need+1);
 	if((block_need+1) > free_block){
 		return BUP_NOT_ENOUGH_MEMORY;
 	}
 
 	// 分配起始块
+    set_free_count();
 	block = get_free_block(0);
 	hdr = block;
 
@@ -649,51 +798,40 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 
 int sro_bup_read(int dev, char *file_name, u8 *data)
 {
-	int block;
-	char nbuf[12];
-
-	memcpy(nbuf, file_name, 11);
-	nbuf[11] = 0;
-	file_name = nbuf;
-
-	printk("bup_read(%d): %s  data=%08x\n", dev, file_name, data);
-	bup_dev = dev;
-	if(dev>1)
-		return BUP_NON;
-
-	block = find_save(file_name, 0, NULL);
+    int block;
+    int result = check_backup(dev);
+    if (result)
+        return result;
+    if (file_name == NULL || !file_name[0])
+        return BUP_NOT_FOUND;
+    printk("bup_read(%d): %.11s  data=%08x\n", dev, file_name, data);
+    block = find_exact_save(file_name, NULL);
 	if(block<0){
 		return BUP_NOT_FOUND;
 	}
 
-	access_data(block, data, 0);
-
-	return 0;
+	return access_data(block, data, 0);
 }
 
 
 int sro_bup_delete(int dev, char *file_name)
 {
-	int block, last, has_data;
-	u8 *bp;
-	char nbuf[12];
-
-	memcpy(nbuf, file_name, 11);
-	nbuf[11] = 0;
-	file_name = nbuf;
-
-	printk("bup_delete(%d): %s\n", dev, file_name);
-	bup_dev = dev;
-	if(dev>1)
-		return BUP_NON;
-
-	block = find_save(file_name, 0, &last);
+    int block, last, has_data;
+    u8 *bp;
+    int result = check_backup(dev);
+    if (result)
+        return result;
+    if (file_name == NULL || !file_name[0])
+        return BUP_NOT_FOUND;
+    printk("bup_delete(%d): %.11s\n", dev, file_name);
+    block = find_exact_save(file_name, &last);
 	if(block<0){
 		return BUP_NOT_FOUND;
 	}
 
 	bp = get_block_addr(START_BLOCK|block);
 
+    set_free_count();
 	has_data = 1;
 	// 释放开始块
 	// Release the starting block.
@@ -753,17 +891,11 @@ int sro_bup_delete(int dev, char *file_name)
 
 int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 {
-	int block, fnum;
-	char nbuf[12];
-	u8 *bp;
-
-	memcpy(nbuf, file_name, 11);
-	nbuf[11] = 0;
-	printk("bup_dir(%d): %s  %d\n", dev, nbuf, tbsize);
-
-	bup_dev = dev;
-	if(dev>1)
-		return 0;
+    int block, fnum;
+    u8 *bp;
+    if (check_backup(dev) || file_name == NULL || tbsize < 0 || (tbsize && dir == NULL))
+        return 0;
+    printk("bup_dir(%d): %.11s  %d\n", dev, file_name, tbsize);
 
 	int block_size = (dev==0) ? 128 : 1024;
 
@@ -776,9 +908,11 @@ int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 
 		if(fnum<tbsize){
 			bp = get_block_addr(START_BLOCK|block);
-			memcpy(dir->file_name, (char*)(bp+0), 12);
+			memcpy(dir->file_name, (char*)(bp+0), 11);
+            dir->file_name[11] = 0;
 			dir->data_size = *(u32*)(bp+0x0c);
-			memcpy(dir->comment, bp+0x10, 11);
+			memcpy(dir->comment, bp+0x10, 10);
+            dir->comment[10] = 0;
 			dir->language = bp[0x1b];
 			dir->date = *(u32*)(bp+0x1c);
 			dir->block_size = (dir->data_size + block_size-1)/block_size;
@@ -797,19 +931,14 @@ int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 
 int sro_bup_verify(int dev, char *file_name, u8 *data)
 {
-	int block;
-	char nbuf[12];
-
-	memcpy(nbuf, file_name, 11);
-	nbuf[11] = 0;
-	file_name = nbuf;
-
-	printk("bup_verify(%d): %s\n", dev, file_name);
-	bup_dev = dev;
-	if(dev>1)
-		return BUP_NON;
-
-	block = find_save(file_name, 0, NULL);
+    int block;
+    int result = check_backup(dev);
+    if (result)
+        return result;
+    if (file_name == NULL || !file_name[0])
+        return BUP_NOT_FOUND;
+    printk("bup_verify(%d): %.11s\n", dev, file_name);
+    block = find_exact_save(file_name, NULL);
 	if(block<0){
 		return BUP_NOT_FOUND;
 	}
@@ -1062,14 +1191,14 @@ void bup_init(u8 *lib_addr, u8 *work_addr, void *cfg_ptr)
 
 	if(use_sys_bup==0){
 		// Check "SaroSave"
-		if(BUPMEM->magic0!=0x5361726f || BUPMEM->magic1!=0x53617665){
+		if((BUPMEM->magic0!=0x5361726f || BUPMEM->magic1!=0x53617665) && backup_blank(0)){
 			printk("  empty bup memory, need format.\n");
 			bup_format(0);
 		}
 	}
 
 	// Check "SaroMems"
-	if(MEMS->magic0!=0x5361726f || MEMS->magic1!=0x4d656d73){
+	if((MEMS->magic0!=0x5361726f || MEMS->magic1!=0x4d656d73) && backup_blank(1)){
 		printk("  empty memory card, need format.\n");
 		bup_format(1);
 	}

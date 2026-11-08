@@ -8,7 +8,7 @@ _Alignas(8) u8 test_shared[0x23000];
 u16 test_arg;
 static u16 command;
 static u8 slot_disk[0x10000], mems_disk[0x800000];
-static int disk_header, disk_window, flushes;
+static int disk_header, disk_window, flushes, loads_header, loads_window;
 
 /* Model the MCU's synchronous load_smems/flush_smems commands, including its
  * separate header buffer and overlapping 64 KiB data window. Persistent bytes
@@ -25,10 +25,12 @@ static u16 *test_command(void)
         if (id) {
             if (test_arg & 0x8000) {
                 assert(id < 8192);
+                loads_header++;
                 memcpy((void *)MEMS_TMP, mems_disk + id * 1024, 1024);
                 disk_header = id;
             } else {
                 assert(id + 64 <= 8192);
+                loads_window++;
                 memcpy((void *)MEMS_BUFFER, mems_disk + id * 1024, 65536);
                 disk_window = id;
             }
@@ -77,7 +79,7 @@ static void initialize(void)
     MEMS->bitmap[0] = 255;
     memcpy(slot_disk, test_shared, sizeof(slot_disk));
     memcpy(mems_disk, (void *)MEMS_HEADER, 8192);
-    flushes = 0;
+    flushes = loads_header = loads_window = 0;
 }
 
 static u8 *payload(int size, int seed)

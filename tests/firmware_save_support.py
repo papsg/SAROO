@@ -38,10 +38,10 @@ class FirmwareSaveTest(unittest.TestCase):
 
     def invoke(self, *args):
         result = subprocess.run([str(self.binary), *map(str, args)], capture_output=True,
-                                text=True, errors="replace", timeout=10,
+                                text=True, errors="replace", timeout=getattr(self, "timeout", 10),
                                 env={**os.environ, "UBSAN_OPTIONS": "halt_on_error=1",
                                      "ASAN_OPTIONS": "detect_leaks=0"})
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
         self.assertNotIn("runtime error:", result.stderr)
         self.assertNotIn("AddressSanitizer", result.stderr)
-        return result
+        return result.stdout
