@@ -9,6 +9,7 @@ u16 test_arg;
 static u16 command;
 static u8 slot_disk[0x10000], mems_disk[0x800000];
 static int disk_header, disk_window, flushes, loads_header, loads_window;
+static int load_failure, flush_failure;
 
 /* Model the MCU's synchronous load_smems/flush_smems commands, including its
  * separate header buffer and overlapping 64 KiB data window. Persistent bytes
@@ -31,7 +32,7 @@ static u16 *test_command(void)
             } else {
                 assert(id + 64 <= 8192);
                 loads_window++;
-                memcpy((void *)MEMS_BUFFER, mems_disk + id * 1024, 65536);
+                memcpy((void *)MEMS_BUFFER, mems_disk + id * 1024, load_failure ? 32768 : 65536);
                 disk_window = id;
             }
         }
@@ -48,6 +49,10 @@ static u16 *test_command(void)
             memcpy(mems_disk + disk_window * 1024, (void *)MEMS_BUFFER, 65536);
         flushes++;
     }
+    /* The real dispatcher publishes the helper result before clearing SS_CMD.
+     * A failed flush here is deliberately late/uncertain, not a rollback. */
+    test_arg = (command == SSCMD_SMEMS || command == SSCMD_SSAVE) ? flush_failure :
+               (command == SSCMD_LMEMS && !(test_arg & 0x8000)) ? load_failure : 0;
     command = 0;
     return &command;
 }
@@ -80,6 +85,7 @@ static void initialize(void)
     memcpy(slot_disk, test_shared, sizeof(slot_disk));
     memcpy(mems_disk, (void *)MEMS_HEADER, 8192);
     flushes = loads_header = loads_window = 0;
+    load_failure = flush_failure = 0;
 }
 
 static u8 *payload(int size, int seed)

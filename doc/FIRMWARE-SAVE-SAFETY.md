@@ -221,3 +221,48 @@ and reported-success MCU loads/flushes. It does not establish physical encoding,
 cache/IRQ/reentrancy/bus behavior, SD error recovery or power-loss atomicity.
 Dirty bookkeeping, actual MCU I/O errors, pending-data ownership and retry
 propagation follow in separate members. No particular game report is closed.
+
+## SATURN-SAVE-005: release dirty bits after a successful buffer flush
+
+`bup_update` previously left both payload-window dirty words set after a
+successful MEMS flush. A later read that changed windows could therefore write
+already committed bytes again. It now clears those words only when the requested
+flush included `MEMS_BUF` and the completed command reports zero. Header-only
+and slot flushes do not release payload dirty state; a nonzero result preserves
+both words for retry. Cache start/end/header ownership is unchanged.
+
+This independently ports the dirty-bookkeeping part of `paps-g`'s `a9ddfcc6`
+(2026-09-05). Header batching is a separate following evaluation. No new command,
+runtime diagnostic or storage format is introduced. The relevant contract is
+the existing [`SSCMD_SMEMS` dispatcher](https://github.com/papsg/SAROO/blob/b084a3c/Firm_MCU/Saturn/saturn_main.c)
+and [`flush_smems`](https://github.com/papsg/SAROO/blob/b084a3c/Firm_MCU/Saturn/saturn_utils.c):
+publish the helper result in `SS_ARG`, then clear `SS_CMD`. Sega's API result
+rules do not specify these SAROO-private dirty words or command registers.
+
+The current MCU still ignores actual seek/read/write/sync errors and reports
+success. Clearing on its acknowledgement does not establish SD durability.
+FatFs's [`f_sync` return-values and description](https://elm-chan.org/fsw/ff/doc/sync.html)
+explicitly allow errors and describe flushing an open file's cached state.
+Checked MCU transfers and full Saturn error/eviction/retry ownership follow in
+later members; this change alone does not fix a caller that discards state
+after a failed eviction.
+
+Two actual-module methods run 33 scenarios: all eight valid MEMS/slot flush flag
+combinations with zero/negative/two positive reported statuses, plus a 65-block
+write followed immediately by read/verify across windows. Failed-status cases
+retry the same flush successfully and check both dirty words and owner indices.
+The model publishes completion status in the real dispatcher's order. Its
+injected flush failure occurs after copying bytes, representing uncertain late
+failure rather than rollback. The preceding source fails seventeen scenarios.
+All 33 now pass ASan/UBSan and O2. Removing the success guard fails twelve
+cases; removing the buffer-flag guard fails four header/slot controls.
+
+All thirteen coupled firmware methods pass in both profiles. Complete SH-2
+compilation adds 32 code/data bytes to 77,248, with BSS 9,216, reserved stack
+16,384 and body margin 28,224. The image/font sizes remain unchanged. Direct
+compiler frames are unchanged, including zero bytes for `bup_update`; this
+does not account for transitive/IRQ use or game stack headroom. No extra flush
+command is issued by this change, and the read-after-write case issues none.
+These are synchronous host logic and target-link checks, with the physical,
+concurrency and durability limits stated above. Use the same public firmware
+test/build commands and source/profile overrides to reproduce them.

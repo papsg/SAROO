@@ -122,6 +122,12 @@ static void bup_update(int flag)
 	SS_ARG = arg;
 	SS_CMD = cmd;
 	while(SS_CMD);
+    /* A successful buffer flush commits these dirty bits. A different command
+     * or a reported failure does not release this window for read-only reuse. */
+    if ((flag & MEMS_BUF) && SS_ARG == 0) {
+        mblk_bmp[0] = 0;
+        mblk_bmp[1] = 0;
+    }
 }
 
 
