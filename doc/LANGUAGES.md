@@ -9,6 +9,7 @@ section of `/SAROO/saroocfg.txt`; no MCU or FPGA change is required.
 | 14 | European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256), Hudson Brendon |
 | 15 | Welsh / Cymraeg | [#299](https://github.com/tpunix/SAROO/pull/299), Widge-5 |
 | 16 | Dutch | [#324](https://github.com/tpunix/SAROO/pull/324), Caio Henrique Antonio |
+| 17 | Catalan | [#360](https://github.com/tpunix/SAROO/pull/360), Xavier vallespin van der Ploeg |
 
 Each addition supplies all twenty fixed menu labels and uses the existing Latin
 font. This fork preserves the original hash-table bounds fix and uses bounded
