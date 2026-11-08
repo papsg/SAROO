@@ -235,9 +235,9 @@ static void mbuf_mark(int id)
 
 	id -= mblk_start;
 	if(id<32){
-		mblk_bmp[0] |= 1<<id;
+		mblk_bmp[0] |= 1u<<id;
 	}else{
-		mblk_bmp[1] |= 1<<(id-32);
+		mblk_bmp[1] |= 1u<<(id-32);
 	}
 }
 
