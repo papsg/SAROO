@@ -15,7 +15,7 @@ Last updated: 2026-11-08.
 | Contribution | Original request | Fork PR / status | Dependencies and qualification |
 | --- | --- | --- | --- |
 | Language hash-table bounds | [#377](https://github.com/tpunix/SAROO/pull/377) | [#1](https://github.com/papsg/SAROO/pull/1), open | Independent. ASan/UBSan passes 1,680 lookups over 14 languages; original and individual old-mask controls fail. SH-2 objects compile; complete link lacks the original libc in the available toolchain. No new hardware qualification. |
-| MEMS overwrite corruption | [#372](https://github.com/tpunix/SAROO/pull/372) | Preparing | Independent source fix; fresh native CLI regression pending. |
+| MEMS overwrite corruption | [#372](https://github.com/tpunix/SAROO/pull/372) | [#2](https://github.com/papsg/SAROO/pull/2), open | Independent. Nine overwrite scenarios fail on v0.8; read-only export passes. All five actual-CLI methods pass after correction under ASan/UBSan and normal O2. No physical Saturn qualification. |
 | Controller/multitap parsing | [#380](https://github.com/tpunix/SAROO/pull/380) | Queued | Deduplicate #378/#379. Port the corrected protocol implementation and exact Sega references. |
 | Missing CJK coverage | [#203](https://github.com/tpunix/SAROO/pull/203) | Queued | Preserve existing font records and source notices; missing-glyph subset only. |
 | European Portuguese | [#256](https://github.com/tpunix/SAROO/pull/256) | Queued | Retain existing language IDs; bounds fix is a prerequisite. |
