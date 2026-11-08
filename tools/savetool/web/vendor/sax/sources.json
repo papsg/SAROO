@@ -1,0 +1,27 @@
+{
+  "observed_utc": "2026-09-08T06:27:49.969306+00:00",
+  "version": "1.6.1",
+  "head": "961ceeefcc5186005466f2085aeb36f31b161e37",
+  "files": {
+    "lib/sax.js": {
+      "url": "https://raw.githubusercontent.com/isaacs/sax-js/961ceeefcc5186005466f2085aeb36f31b161e37/lib/sax.js",
+      "sha256": "1cdc1270d987cb0f6ee66dd8efb01c50511aa14d17b6163bbbffb21df8cf1c06",
+      "bytes": 50818
+    },
+    "LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/isaacs/sax-js/961ceeefcc5186005466f2085aeb36f31b161e37/LICENSE.md",
+      "sha256": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004",
+      "bytes": 1552
+    },
+    "package.json": {
+      "url": "https://raw.githubusercontent.com/isaacs/sax-js/961ceeefcc5186005466f2085aeb36f31b161e37/package.json",
+      "sha256": "d7e5ff764b48b9532d1b9a8b481b8d54336e6309e362571e993645b790bea657",
+      "bytes": 789
+    },
+    "README.md": {
+      "url": "https://raw.githubusercontent.com/isaacs/sax-js/961ceeefcc5186005466f2085aeb36f31b161e37/README.md",
+      "sha256": "9e6bd0717598300f338b4313c37b42cb334a0ead62902a03741147f15f4ebf1a",
+      "bytes": 8519
+    }
+  }
+}

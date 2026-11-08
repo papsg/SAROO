@@ -1,0 +1,20 @@
+{
+  "app": "save",
+  "format": 1,
+  "inputs": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "src/save-app.mjs": "661bf6fad9e8a99ac9a9833e22a22a476357f61565003b0875013414d413a347",
+    "src/save-codec.mjs": "c62ea6c548b505109786c29d60ab4207624c37c5e95c79cefe5a2a2b2b7e7fde",
+    "src/save-fields.mjs": "ba5db7fc57ad69453a83b77e9f8e7405af4abf46e976094083cbf055cb865bfa",
+    "src/save-text.mjs": "b698f55560ca197581569703d0b9cb279a9693c41917a9df6ce3312bb6060b2c",
+    "src/save-worker.mjs": "b3a3bf14278adbedd3a0d1146fb4804f685a80b9908e025234e89590ca451ede",
+    "src/save-xml.mjs": "394441ce2775f66ca584bb6f377b7b9decca158792e5da19515df1847352361b",
+    "src/save.html": "e632d87c203bc55209cb9b727ec86b7ba960d646a2cdc59b16e5668a0889813f",
+    "vendor/sax/LICENSE.md": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004",
+    "vendor/sax/lib/sax.js": "1cdc1270d987cb0f6ee66dd8efb01c50511aa14d17b6163bbbffb21df8cf1c06"
+  },
+  "output": {
+    "bytes": 185735,
+    "sha256": "bffff88a0697146e229aa6d606af74bd99332e6c3a5ad49d1c6f116ea7b46c09"
+  }
+}

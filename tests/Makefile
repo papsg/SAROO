@@ -4,17 +4,34 @@ CFLAGS = -std=c99 -O1 -g -Wall -Wextra -Werror
 SANITIZERS = -fsanitize=address,undefined -fno-omit-frame-pointer
 BUILD_DIR = build
 
-.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets clean
+.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-save-endian check-web-save check-web-save-browser check-web-save-capacity clean
 
-check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets
+check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-host-tools check-save-endian check-web-save
+
+check-save-endian:
+	$(PYTHON) -B -m unittest discover -s . -p test_save_endian.py -v
+
+check-web-save:
+	$(PYTHON) -B -m unittest discover -s . -p 'test_web_save*.py' -v
+
+check-web-save-browser:
+	$(PYTHON) -B web_save_ui.py build/web-save-ui-tests
+	node web_save_browser.cjs build/web-save-ui-tests ../tools/savetool/web/index.html
+	node web_save_render.cjs ../tools/savetool/web/index.html build/web-save-ui-tests build/web-save-render
+
+check-web-save-capacity:
+	$(PYTHON) -B web_save_ui.py --capacity build/web-save-capacity
+	node web_save_app_capacity.cjs build/web-save-capacity/full-saroo.bin build/web-save-app-capacity ../tools/savetool/web/index.html
 
 check-arabic:
 	$(PYTHON) -B -m unittest discover -s . -p test_arabic.py -v
 
-check-menu-assets:
-	cargo fmt --manifest-path ../tools/Cargo.toml --check
-	cargo clippy --locked --manifest-path ../tools/Cargo.toml --all-targets -- -D warnings
-	cargo test --locked --manifest-path ../tools/Cargo.toml
+check-menu-assets: check-host-tools
+
+check-host-tools:
+	cargo fmt --manifest-path ../tools/Cargo.toml --all --check
+	cargo clippy --locked --manifest-path ../tools/Cargo.toml --workspace --all-targets -- -D warnings
+	cargo test --locked --manifest-path ../tools/Cargo.toml --workspace
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

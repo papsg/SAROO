@@ -1,0 +1,1066 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+<title>SAROO Save Library</title>
+<style>
+:root{color-scheme:dark;--bg:#111920;--panel:#1b2934;--ink:#eef4f5;--muted:#a8bdc9;--edge:#3e5664;--accent:#8de2cc;--error:#ffb9aa;font:15px/1.5 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:1180px;margin:auto;padding:32px 26px 48px}header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:26px}h1{font-size:30px;letter-spacing:-.6px;margin:0}h2{font-size:21px;margin:0 0 12px}p{margin:8px 0}.eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--accent)}.muted,small{color:var(--muted)}small{display:block;font-size:12px}.offline{border:1px solid var(--edge);padding:7px 12px;border-radius:20px;font-size:12px;white-space:nowrap}button,a.download{display:inline-block;font:inherit;font-weight:600;color:var(--ink);background:#2a4050;border:1px solid var(--edge);border-radius:7px;padding:9px 13px;text-decoration:none;cursor:pointer}button:hover{background:#385767}button.primary,a.download{background:var(--accent);color:#10302b;border-color:var(--accent)}button.danger{color:var(--error)}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:3px}input,select{font:inherit;background:#101d27;border:1px solid #557180;border-radius:6px;padding:8px;color:var(--ink);width:100%;min-width:0}label{display:grid;gap:5px}label.check{display:flex;align-items:center;gap:8px;font-size:13px}label.check input{width:auto}.row,.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.toolbar{background:var(--panel);border:1px solid var(--edge);padding:15px;border-radius:11px}.spacer{flex:1}.notice{background:var(--panel);padding:12px 16px;border-radius:8px;overflow-wrap:anywhere;margin:15px 0}.error,#editor-error{color:var(--error)}.archive-heading{margin:24px 0 18px;overflow-wrap:anywhere}.workspace{display:grid;grid-template-columns:250px 1fr;gap:24px}.panel{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:18px;min-width:0}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.panel-heading h2{margin:0}.volume{width:100%;text-align:left;overflow-wrap:anywhere;margin-top:8px;font-size:14px}.volume.selected{border-color:var(--accent);background:#22483f}.save-row{display:flex;justify-content:space-between;align-items:center;gap:15px;width:100%;text-align:left;margin-top:9px;padding:12px 14px;overflow-wrap:anywhere}.save-row strong{display:block}.save-detail{text-align:right;flex-shrink:0;font-size:13px}.pagination{justify-content:center;margin-top:16px;font-size:12px}.pagination button{font-size:12px;padding:7px 10px}.empty{padding:45px 20px;text-align:center;color:var(--muted)}#welcome{border:1px dashed var(--edge);border-radius:12px;margin-top:20px;padding:52px 22px}#welcome h2{color:var(--ink)}[hidden]{display:none!important}progress{flex:1;min-width:100px;accent-color:var(--accent)}dialog{background:var(--panel);color:var(--ink);border:1px solid #5e7c8c;border-radius:13px;width:830px;max-width:calc(100vw - 28px);max-height:calc(100vh - 30px);padding:24px;overflow:auto}dialog::backdrop{background:#040b12bd}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.wide{grid-column:1/-1}.field-pair{display:grid;grid-template-columns:110px 1fr;gap:14px}.dialog-actions{border-top:1px solid var(--edge);padding-top:18px;margin-top:20px}.import{background:#14232e;border-radius:8px;padding:12px 14px}details{margin-top:14px}summary{cursor:pointer;color:var(--muted)}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#hex{white-space:pre;overflow:auto;background:#0e1c26;border:1px solid var(--edge);border-radius:8px;padding:12px;font:12px/1.7 ui-monospace,SFMono-Regular,monospace;min-height:58px}.hex-controls{margin-top:14px}.hex-controls label{width:140px;font-size:12px}.hex-controls button{align-self:end}.export-controls{border-top:1px solid var(--edge);padding-top:16px;margin-top:18px}.export-controls select{width:145px}footer{margin-top:32px;font-size:12px;color:var(--muted)}footer a{color:var(--accent)}@media(max-width:700px){main{padding:20px 14px}.offline{display:none}.workspace{grid-template-columns:1fr}.panel{padding:14px}dialog{padding:18px}.fields{grid-template-columns:1fr}.field-pair{grid-template-columns:100px 1fr}.save-row{align-items:flex-start}.toolbar{gap:8px}h1{font-size:26px}}@media(max-width:400px){.save-row{display:block}.save-detail{text-align:left;margin-top:8px}}
+.hex-byte{display:inline;width:2ch;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-weight:400}.hex-byte:hover{background:var(--accent);color:#10302b}
+</style>
+<main>
+  <header><div><div class="eyebrow">SAROO / BACKUP</div><h1>Save Library</h1><p class="muted">Inspect, edit and move your Saturn saves.</p></div><span class="offline">Local files · works offline</span></header>
+  <div class="toolbar" aria-label="Archive actions"><button id="open" data-work>Open archive</button><button id="new-saroo" data-work>New SAROO</button><button id="new-mems" data-work>New memory card</button><span class="spacer"></span><button id="export" class="primary" data-work>Export archive</button></div>
+  <input id="archive-file" type="file" accept=".bin,.bkr,.bup" hidden>
+  <div id="activity" class="notice row" hidden><span id="activity-text">Working…</span><progress id="progress"></progress><button id="cancel">Cancel</button></div>
+  <p id="message" class="notice" role="status" hidden></p>
+  <div id="archive-download" class="notice row" hidden><a id="download" class="download">Download archive</a><span class="muted">Keep your existing backup until you have verified the downloaded file.</span></div>
+  <div class="archive-heading"><strong id="archive-name">No archive open</strong><small id="archive-state">Starting editor…</small></div>
+  <div id="welcome" class="empty"><h2>Keep your progress.</h2><p>Open SS_SAVE.BIN or SS_MEMS.BIN from your backup,<br>or start a new archive and import individual saves.</p><p>Saturn internal-memory dumps can also be opened for reading and export.<br>You can drop an archive anywhere on this page.</p></div>
+  <div id="workspace" class="workspace" hidden>
+    <aside class="panel"><div class="panel-heading"><h2>Games</h2><button id="add-slot" data-write>Add game</button></div><input id="volume-search" type="search" aria-label="Search games" placeholder="Search game ID" maxlength="64" data-work><div id="volumes"></div><p id="volume-empty" class="empty" hidden></p><nav id="volume-pages" class="row pagination" aria-label="Game pages" hidden><button id="volume-previous">Previous</button><span id="volume-label"></span><button id="volume-next">Next</button></nav></aside>
+    <section class="panel"><div class="panel-heading"><div><h2>Saves</h2><small id="slot-state"></small></div><button id="add-save" data-write>Add save</button></div><input id="save-search" type="search" aria-label="Search saves" placeholder="Search filename or comment" maxlength="128" data-work><p id="slot-error" class="notice error" role="status" hidden></p><div id="saves"></div><p id="save-empty" class="empty"></p><nav id="save-pages" class="row pagination" aria-label="Save pages" hidden><button id="save-previous">Previous</button><span id="save-label"></span><button id="save-next">Next</button></nav></section>
+  </div>
+  <footer>Browser tools proposed by <a href="https://github.com/tpunix/SAROO/pull/374" target="_blank" rel="noreferrer">Damián Parrino / PR #374</a>. Corrected implementation in this fork · GPLv3.<br>XML support uses sax-js · Blue Oak Model License 1.0.0. <a href="#dependency-license" onclick="document.getElementById('dependency-license').open=true">License</a>.<br>Files stay in your browser. Downloads do not write directly to your SD card.</footer>
+  <details id="application-license"><summary>Application license — GNU GPLv3</summary><pre>                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. &lt;https://fsf.org/&gt;
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+
+  For example, if you distribute copies of such a program, whether
+gratis or for a fee, you must pass on to the recipients the same
+freedoms that you received.  You must make sure that they, too, receive
+or can get the source code.  And you must show them these terms so they
+know their rights.
+
+  Developers that use the GNU GPL protect your rights with two steps:
+(1) assert copyright on the software, and (2) offer you this License
+giving you legal permission to copy, distribute and/or modify it.
+
+  For the developers&#x27; and authors&#x27; protection, the GPL clearly explains
+that there is no warranty for this free software.  For both users&#x27; and
+authors&#x27; sake, the GPL requires that modified versions be marked as
+changed, so that their problems will not be attributed erroneously to
+authors of previous versions.
+
+  Some devices are designed to deny users access to install or run
+modified versions of the software inside them, although the manufacturer
+can do so.  This is fundamentally incompatible with the aim of
+protecting users&#x27; freedom to change the software.  The systematic
+pattern of such abuse occurs in the area of products for individuals to
+use, which is precisely where it is most unacceptable.  Therefore, we
+have designed this version of the GPL to prohibit the practice for those
+products.  If such problems arise substantially in other domains, we
+stand ready to extend this provision to those domains in future versions
+of the GPL, as needed to protect the freedom of users.
+
+  Finally, every program is threatened constantly by software patents.
+States should not allow patents to restrict development and use of
+software on general-purpose computers, but in those that do, we wish to
+avoid the special danger that patents applied to a free program could
+make it effectively proprietary.  To prevent this, the GPL assures that
+patents cannot be used to render the program non-free.
+
+  The precise terms and conditions for copying, distribution and
+modification follow.
+
+                       TERMS AND CONDITIONS
+
+  0. Definitions.
+
+  &quot;This License&quot; refers to version 3 of the GNU General Public License.
+
+  &quot;Copyright&quot; also means copyright-like laws that apply to other kinds of
+works, such as semiconductor masks.
+
+  &quot;The Program&quot; refers to any copyrightable work licensed under this
+License.  Each licensee is addressed as &quot;you&quot;.  &quot;Licensees&quot; and
+&quot;recipients&quot; may be individuals or organizations.
+
+  To &quot;modify&quot; a work means to copy from or adapt all or part of the work
+in a fashion requiring copyright permission, other than the making of an
+exact copy.  The resulting work is called a &quot;modified version&quot; of the
+earlier work or a work &quot;based on&quot; the earlier work.
+
+  A &quot;covered work&quot; means either the unmodified Program or a work based
+on the Program.
+
+  To &quot;propagate&quot; a work means to do anything with it that, without
+permission, would make you directly or secondarily liable for
+infringement under applicable copyright law, except executing it on a
+computer or modifying a private copy.  Propagation includes copying,
+distribution (with or without modification), making available to the
+public, and in some countries other activities as well.
+
+  To &quot;convey&quot; a work means any kind of propagation that enables other
+parties to make or receive copies.  Mere interaction with a user through
+a computer network, with no transfer of a copy, is not conveying.
+
+  An interactive user interface displays &quot;Appropriate Legal Notices&quot;
+to the extent that it includes a convenient and prominently visible
+feature that (1) displays an appropriate copyright notice, and (2)
+tells the user that there is no warranty for the work (except to the
+extent that warranties are provided), that licensees may convey the
+work under this License, and how to view a copy of this License.  If
+the interface presents a list of user commands or options, such as a
+menu, a prominent item in the list meets this criterion.
+
+  1. Source Code.
+
+  The &quot;source code&quot; for a work means the preferred form of the work
+for making modifications to it.  &quot;Object code&quot; means any non-source
+form of a work.
+
+  A &quot;Standard Interface&quot; means an interface that either is an official
+standard defined by a recognized standards body, or, in the case of
+interfaces specified for a particular programming language, one that
+is widely used among developers working in that language.
+
+  The &quot;System Libraries&quot; of an executable work include anything, other
+than the work as a whole, that (a) is included in the normal form of
+packaging a Major Component, but which is not part of that Major
+Component, and (b) serves only to enable use of the work with that
+Major Component, or to implement a Standard Interface for which an
+implementation is available to the public in source code form.  A
+&quot;Major Component&quot;, in this context, means a major essential component
+(kernel, window system, and so on) of the specific operating system
+(if any) on which the executable work runs, or a compiler used to
+produce the work, or an object code interpreter used to run it.
+
+  The &quot;Corresponding Source&quot; for a work in object code form means all
+the source code needed to generate, install, and (for an executable
+work) run the object code and to modify the work, including scripts to
+control those activities.  However, it does not include the work&#x27;s
+System Libraries, or general-purpose tools or generally available free
+programs which are used unmodified in performing those activities but
+which are not part of the work.  For example, Corresponding Source
+includes interface definition files associated with source files for
+the work, and the source code for shared libraries and dynamically
+linked subprograms that the work is specifically designed to require,
+such as by intimate data communication or control flow between those
+subprograms and other parts of the work.
+
+  The Corresponding Source need not include anything that users
+can regenerate automatically from other parts of the Corresponding
+Source.
+
+  The Corresponding Source for a work in source code form is that
+same work.
+
+  2. Basic Permissions.
+
+  All rights granted under this License are granted for the term of
+copyright on the Program, and are irrevocable provided the stated
+conditions are met.  This License explicitly affirms your unlimited
+permission to run the unmodified Program.  The output from running a
+covered work is covered by this License only if the output, given its
+content, constitutes a covered work.  This License acknowledges your
+rights of fair use or other equivalent, as provided by copyright law.
+
+  You may make, run and propagate covered works that you do not
+convey, without conditions so long as your license otherwise remains
+in force.  You may convey covered works to others for the sole purpose
+of having them make modifications exclusively for you, or provide you
+with facilities for running those works, provided that you comply with
+the terms of this License in conveying all material for which you do
+not control copyright.  Those thus making or running the covered works
+for you must do so exclusively on your behalf, under your direction
+and control, on terms that prohibit them from making any copies of
+your copyrighted material outside their relationship with you.
+
+  Conveying under any other circumstances is permitted solely under
+the conditions stated below.  Sublicensing is not allowed; section 10
+makes it unnecessary.
+
+  3. Protecting Users&#x27; Legal Rights From Anti-Circumvention Law.
+
+  No covered work shall be deemed part of an effective technological
+measure under any applicable law fulfilling obligations under article
+11 of the WIPO copyright treaty adopted on 20 December 1996, or
+similar laws prohibiting or restricting circumvention of such
+measures.
+
+  When you convey a covered work, you waive any legal power to forbid
+circumvention of technological measures to the extent such circumvention
+is effected by exercising rights under this License with respect to
+the covered work, and you disclaim any intention to limit operation or
+modification of the work as a means of enforcing, against the work&#x27;s
+users, your or third parties&#x27; legal rights to forbid circumvention of
+technological measures.
+
+  4. Conveying Verbatim Copies.
+
+  You may convey verbatim copies of the Program&#x27;s source code as you
+receive it, in any medium, provided that you conspicuously and
+appropriately publish on each copy an appropriate copyright notice;
+keep intact all notices stating that this License and any
+non-permissive terms added in accord with section 7 apply to the code;
+keep intact all notices of the absence of any warranty; and give all
+recipients a copy of this License along with the Program.
+
+  You may charge any price or no price for each copy that you convey,
+and you may offer support or warranty protection for a fee.
+
+  5. Conveying Modified Source Versions.
+
+  You may convey a work based on the Program, or the modifications to
+produce it from the Program, in the form of source code under the
+terms of section 4, provided that you also meet all of these conditions:
+
+    a) The work must carry prominent notices stating that you modified
+    it, and giving a relevant date.
+
+    b) The work must carry prominent notices stating that it is
+    released under this License and any conditions added under section
+    7.  This requirement modifies the requirement in section 4 to
+    &quot;keep intact all notices&quot;.
+
+    c) You must license the entire work, as a whole, under this
+    License to anyone who comes into possession of a copy.  This
+    License will therefore apply, along with any applicable section 7
+    additional terms, to the whole of the work, and all its parts,
+    regardless of how they are packaged.  This License gives no
+    permission to license the work in any other way, but it does not
+    invalidate such permission if you have separately received it.
+
+    d) If the work has interactive user interfaces, each must display
+    Appropriate Legal Notices; however, if the Program has interactive
+    interfaces that do not display Appropriate Legal Notices, your
+    work need not make them do so.
+
+  A compilation of a covered work with other separate and independent
+works, which are not by their nature extensions of the covered work,
+and which are not combined with it such as to form a larger program,
+in or on a volume of a storage or distribution medium, is called an
+&quot;aggregate&quot; if the compilation and its resulting copyright are not
+used to limit the access or legal rights of the compilation&#x27;s users
+beyond what the individual works permit.  Inclusion of a covered work
+in an aggregate does not cause this License to apply to the other
+parts of the aggregate.
+
+  6. Conveying Non-Source Forms.
+
+  You may convey a covered work in object code form under the terms
+of sections 4 and 5, provided that you also convey the
+machine-readable Corresponding Source under the terms of this License,
+in one of these ways:
+
+    a) Convey the object code in, or embodied in, a physical product
+    (including a physical distribution medium), accompanied by the
+    Corresponding Source fixed on a durable physical medium
+    customarily used for software interchange.
+
+    b) Convey the object code in, or embodied in, a physical product
+    (including a physical distribution medium), accompanied by a
+    written offer, valid for at least three years and valid for as
+    long as you offer spare parts or customer support for that product
+    model, to give anyone who possesses the object code either (1) a
+    copy of the Corresponding Source for all the software in the
+    product that is covered by this License, on a durable physical
+    medium customarily used for software interchange, for a price no
+    more than your reasonable cost of physically performing this
+    conveying of source, or (2) access to copy the
+    Corresponding Source from a network server at no charge.
+
+    c) Convey individual copies of the object code with a copy of the
+    written offer to provide the Corresponding Source.  This
+    alternative is allowed only occasionally and noncommercially, and
+    only if you received the object code with such an offer, in accord
+    with subsection 6b.
+
+    d) Convey the object code by offering access from a designated
+    place (gratis or for a charge), and offer equivalent access to the
+    Corresponding Source in the same way through the same place at no
+    further charge.  You need not require recipients to copy the
+    Corresponding Source along with the object code.  If the place to
+    copy the object code is a network server, the Corresponding Source
+    may be on a different server (operated by you or a third party)
+    that supports equivalent copying facilities, provided you maintain
+    clear directions next to the object code saying where to find the
+    Corresponding Source.  Regardless of what server hosts the
+    Corresponding Source, you remain obligated to ensure that it is
+    available for as long as needed to satisfy these requirements.
+
+    e) Convey the object code using peer-to-peer transmission, provided
+    you inform other peers where the object code and Corresponding
+    Source of the work are being offered to the general public at no
+    charge under subsection 6d.
+
+  A separable portion of the object code, whose source code is excluded
+from the Corresponding Source as a System Library, need not be
+included in conveying the object code work.
+
+  A &quot;User Product&quot; is either (1) a &quot;consumer product&quot;, which means any
+tangible personal property which is normally used for personal, family,
+or household purposes, or (2) anything designed or sold for incorporation
+into a dwelling.  In determining whether a product is a consumer product,
+doubtful cases shall be resolved in favor of coverage.  For a particular
+product received by a particular user, &quot;normally used&quot; refers to a
+typical or common use of that class of product, regardless of the status
+of the particular user or of the way in which the particular user
+actually uses, or expects or is expected to use, the product.  A product
+is a consumer product regardless of whether the product has substantial
+commercial, industrial or non-consumer uses, unless such uses represent
+the only significant mode of use of the product.
+
+  &quot;Installation Information&quot; for a User Product means any methods,
+procedures, authorization keys, or other information required to install
+and execute modified versions of a covered work in that User Product from
+a modified version of its Corresponding Source.  The information must
+suffice to ensure that the continued functioning of the modified object
+code is in no case prevented or interfered with solely because
+modification has been made.
+
+  If you convey an object code work under this section in, or with, or
+specifically for use in, a User Product, and the conveying occurs as
+part of a transaction in which the right of possession and use of the
+User Product is transferred to the recipient in perpetuity or for a
+fixed term (regardless of how the transaction is characterized), the
+Corresponding Source conveyed under this section must be accompanied
+by the Installation Information.  But this requirement does not apply
+if neither you nor any third party retains the ability to install
+modified object code on the User Product (for example, the work has
+been installed in ROM).
+
+  The requirement to provide Installation Information does not include a
+requirement to continue to provide support service, warranty, or updates
+for a work that has been modified or installed by the recipient, or for
+the User Product in which it has been modified or installed.  Access to a
+network may be denied when the modification itself materially and
+adversely affects the operation of the network or violates the rules and
+protocols for communication across the network.
+
+  Corresponding Source conveyed, and Installation Information provided,
+in accord with this section must be in a format that is publicly
+documented (and with an implementation available to the public in
+source code form), and must require no special password or key for
+unpacking, reading or copying.
+
+  7. Additional Terms.
+
+  &quot;Additional permissions&quot; are terms that supplement the terms of this
+License by making exceptions from one or more of its conditions.
+Additional permissions that are applicable to the entire Program shall
+be treated as though they were included in this License, to the extent
+that they are valid under applicable law.  If additional permissions
+apply only to part of the Program, that part may be used separately
+under those permissions, but the entire Program remains governed by
+this License without regard to the additional permissions.
+
+  When you convey a copy of a covered work, you may at your option
+remove any additional permissions from that copy, or from any part of
+it.  (Additional permissions may be written to require their own
+removal in certain cases when you modify the work.)  You may place
+additional permissions on material, added by you to a covered work,
+for which you have or can give appropriate copyright permission.
+
+  Notwithstanding any other provision of this License, for material you
+add to a covered work, you may (if authorized by the copyright holders of
+that material) supplement the terms of this License with terms:
+
+    a) Disclaiming warranty or limiting liability differently from the
+    terms of sections 15 and 16 of this License; or
+
+    b) Requiring preservation of specified reasonable legal notices or
+    author attributions in that material or in the Appropriate Legal
+    Notices displayed by works containing it; or
+
+    c) Prohibiting misrepresentation of the origin of that material, or
+    requiring that modified versions of such material be marked in
+    reasonable ways as different from the original version; or
+
+    d) Limiting the use for publicity purposes of names of licensors or
+    authors of the material; or
+
+    e) Declining to grant rights under trademark law for use of some
+    trade names, trademarks, or service marks; or
+
+    f) Requiring indemnification of licensors and authors of that
+    material by anyone who conveys the material (or modified versions of
+    it) with contractual assumptions of liability to the recipient, for
+    any liability that these contractual assumptions directly impose on
+    those licensors and authors.
+
+  All other non-permissive additional terms are considered &quot;further
+restrictions&quot; within the meaning of section 10.  If the Program as you
+received it, or any part of it, contains a notice stating that it is
+governed by this License along with a term that is a further
+restriction, you may remove that term.  If a license document contains
+a further restriction but permits relicensing or conveying under this
+License, you may add to a covered work material governed by the terms
+of that license document, provided that the further restriction does
+not survive such relicensing or conveying.
+
+  If you add terms to a covered work in accord with this section, you
+must place, in the relevant source files, a statement of the
+additional terms that apply to those files, or a notice indicating
+where to find the applicable terms.
+
+  Additional terms, permissive or non-permissive, may be stated in the
+form of a separately written license, or stated as exceptions;
+the above requirements apply either way.
+
+  8. Termination.
+
+  You may not propagate or modify a covered work except as expressly
+provided under this License.  Any attempt otherwise to propagate or
+modify it is void, and will automatically terminate your rights under
+this License (including any patent licenses granted under the third
+paragraph of section 11).
+
+  However, if you cease all violation of this License, then your
+license from a particular copyright holder is reinstated (a)
+provisionally, unless and until the copyright holder explicitly and
+finally terminates your license, and (b) permanently, if the copyright
+holder fails to notify you of the violation by some reasonable means
+prior to 60 days after the cessation.
+
+  Moreover, your license from a particular copyright holder is
+reinstated permanently if the copyright holder notifies you of the
+violation by some reasonable means, this is the first time you have
+received notice of violation of this License (for any work) from that
+copyright holder, and you cure the violation prior to 30 days after
+your receipt of the notice.
+
+  Termination of your rights under this section does not terminate the
+licenses of parties who have received copies or rights from you under
+this License.  If your rights have been terminated and not permanently
+reinstated, you do not qualify to receive new licenses for the same
+material under section 10.
+
+  9. Acceptance Not Required for Having Copies.
+
+  You are not required to accept this License in order to receive or
+run a copy of the Program.  Ancillary propagation of a covered work
+occurring solely as a consequence of using peer-to-peer transmission
+to receive a copy likewise does not require acceptance.  However,
+nothing other than this License grants you permission to propagate or
+modify any covered work.  These actions infringe copyright if you do
+not accept this License.  Therefore, by modifying or propagating a
+covered work, you indicate your acceptance of this License to do so.
+
+  10. Automatic Licensing of Downstream Recipients.
+
+  Each time you convey a covered work, the recipient automatically
+receives a license from the original licensors, to run, modify and
+propagate that work, subject to this License.  You are not responsible
+for enforcing compliance by third parties with this License.
+
+  An &quot;entity transaction&quot; is a transaction transferring control of an
+organization, or substantially all assets of one, or subdividing an
+organization, or merging organizations.  If propagation of a covered
+work results from an entity transaction, each party to that
+transaction who receives a copy of the work also receives whatever
+licenses to the work the party&#x27;s predecessor in interest had or could
+give under the previous paragraph, plus a right to possession of the
+Corresponding Source of the work from the predecessor in interest, if
+the predecessor has it or can get it with reasonable efforts.
+
+  You may not impose any further restrictions on the exercise of the
+rights granted or affirmed under this License.  For example, you may
+not impose a license fee, royalty, or other charge for exercise of
+rights granted under this License, and you may not initiate litigation
+(including a cross-claim or counterclaim in a lawsuit) alleging that
+any patent claim is infringed by making, using, selling, offering for
+sale, or importing the Program or any portion of it.
+
+  11. Patents.
+
+  A &quot;contributor&quot; is a copyright holder who authorizes use under this
+License of the Program or a work on which the Program is based.  The
+work thus licensed is called the contributor&#x27;s &quot;contributor version&quot;.
+
+  A contributor&#x27;s &quot;essential patent claims&quot; are all patent claims
+owned or controlled by the contributor, whether already acquired or
+hereafter acquired, that would be infringed by some manner, permitted
+by this License, of making, using, or selling its contributor version,
+but do not include claims that would be infringed only as a
+consequence of further modification of the contributor version.  For
+purposes of this definition, &quot;control&quot; includes the right to grant
+patent sublicenses in a manner consistent with the requirements of
+this License.
+
+  Each contributor grants you a non-exclusive, worldwide, royalty-free
+patent license under the contributor&#x27;s essential patent claims, to
+make, use, sell, offer for sale, import and otherwise run, modify and
+propagate the contents of its contributor version.
+
+  In the following three paragraphs, a &quot;patent license&quot; is any express
+agreement or commitment, however denominated, not to enforce a patent
+(such as an express permission to practice a patent or covenant not to
+sue for patent infringement).  To &quot;grant&quot; such a patent license to a
+party means to make such an agreement or commitment not to enforce a
+patent against the party.
+
+  If you convey a covered work, knowingly relying on a patent license,
+and the Corresponding Source of the work is not available for anyone
+to copy, free of charge and under the terms of this License, through a
+publicly available network server or other readily accessible means,
+then you must either (1) cause the Corresponding Source to be so
+available, or (2) arrange to deprive yourself of the benefit of the
+patent license for this particular work, or (3) arrange, in a manner
+consistent with the requirements of this License, to extend the patent
+license to downstream recipients.  &quot;Knowingly relying&quot; means you have
+actual knowledge that, but for the patent license, your conveying the
+covered work in a country, or your recipient&#x27;s use of the covered work
+in a country, would infringe one or more identifiable patents in that
+country that you have reason to believe are valid.
+
+  If, pursuant to or in connection with a single transaction or
+arrangement, you convey, or propagate by procuring conveyance of, a
+covered work, and grant a patent license to some of the parties
+receiving the covered work authorizing them to use, propagate, modify
+or convey a specific copy of the covered work, then the patent license
+you grant is automatically extended to all recipients of the covered
+work and works based on it.
+
+  A patent license is &quot;discriminatory&quot; if it does not include within
+the scope of its coverage, prohibits the exercise of, or is
+conditioned on the non-exercise of one or more of the rights that are
+specifically granted under this License.  You may not convey a covered
+work if you are a party to an arrangement with a third party that is
+in the business of distributing software, under which you make payment
+to the third party based on the extent of your activity of conveying
+the work, and under which the third party grants, to any of the
+parties who would receive the covered work from you, a discriminatory
+patent license (a) in connection with copies of the covered work
+conveyed by you (or copies made from those copies), or (b) primarily
+for and in connection with specific products or compilations that
+contain the covered work, unless you entered into that arrangement,
+or that patent license was granted, prior to 28 March 2007.
+
+  Nothing in this License shall be construed as excluding or limiting
+any implied license or other defenses to infringement that may
+otherwise be available to you under applicable patent law.
+
+  12. No Surrender of Others&#x27; Freedom.
+
+  If conditions are imposed on you (whether by court order, agreement or
+otherwise) that contradict the conditions of this License, they do not
+excuse you from the conditions of this License.  If you cannot convey a
+covered work so as to satisfy simultaneously your obligations under this
+License and any other pertinent obligations, then as a consequence you may
+not convey it at all.  For example, if you agree to terms that obligate you
+to collect a royalty for further conveying from those to whom you convey
+the Program, the only way you could satisfy both those terms and this
+License would be to refrain entirely from conveying the Program.
+
+  13. Use with the GNU Affero General Public License.
+
+  Notwithstanding any other provision of this License, you have
+permission to link or combine any covered work with a work licensed
+under version 3 of the GNU Affero General Public License into a single
+combined work, and to convey the resulting work.  The terms of this
+License will continue to apply to the part which is the covered work,
+but the special requirements of the GNU Affero General Public License,
+section 13, concerning interaction through a network will apply to the
+combination as such.
+
+  14. Revised Versions of this License.
+
+  The Free Software Foundation may publish revised and/or new versions of
+the GNU General Public License from time to time.  Such new versions will
+be similar in spirit to the present version, but may differ in detail to
+address new problems or concerns.
+
+  Each version is given a distinguishing version number.  If the
+Program specifies that a certain numbered version of the GNU General
+Public License &quot;or any later version&quot; applies to it, you have the
+option of following the terms and conditions either of that numbered
+version or of any later version published by the Free Software
+Foundation.  If the Program does not specify a version number of the
+GNU General Public License, you may choose any version ever published
+by the Free Software Foundation.
+
+  If the Program specifies that a proxy can decide which future
+versions of the GNU General Public License can be used, that proxy&#x27;s
+public statement of acceptance of a version permanently authorizes you
+to choose that version for the Program.
+
+  Later license versions may give you additional or different
+permissions.  However, no additional obligations are imposed on any
+author or copyright holder as a result of your choosing to follow a
+later version.
+
+  15. Disclaimer of Warranty.
+
+  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM &quot;AS IS&quot; WITHOUT WARRANTY
+OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+
+  16. Limitation of Liability.
+
+  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
+THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
+GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
+USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
+DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
+PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
+EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+  17. Interpretation of Sections 15 and 16.
+
+  If the disclaimer of warranty and limitation of liability provided
+above cannot be given local legal effect according to their terms,
+reviewing courts shall apply local law that most closely approximates
+an absolute waiver of all civil liability in connection with the
+Program, unless a warranty or assumption of liability accompanies a
+copy of the Program in return for a fee.
+
+                     END OF TERMS AND CONDITIONS
+
+            How to Apply These Terms to Your New Programs
+
+  If you develop a new program, and you want it to be of the greatest
+possible use to the public, the best way to achieve this is to make it
+free software which everyone can redistribute and change under these terms.
+
+  To do so, attach the following notices to the program.  It is safest
+to attach them to the start of each source file to most effectively
+state the exclusion of warranty; and each file should have at least
+the &quot;copyright&quot; line and a pointer to where the full notice is found.
+
+    &lt;one line to give the program&#x27;s name and a brief idea of what it does.&gt;
+    Copyright (C) &lt;year&gt;  &lt;name of author&gt;
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.
+
+Also add information on how to contact you by electronic and paper mail.
+
+  If the program does terminal interaction, make it output a short
+notice like this when it starts in an interactive mode:
+
+    &lt;program&gt;  Copyright (C) &lt;year&gt;  &lt;name of author&gt;
+    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w&#x27;.
+    This is free software, and you are welcome to redistribute it
+    under certain conditions; type `show c&#x27; for details.
+
+The hypothetical commands `show w&#x27; and `show c&#x27; should show the appropriate
+parts of the General Public License.  Of course, your program&#x27;s commands
+might be different; for a GUI interface, you would use an &quot;about box&quot;.
+
+  You should also get your employer (if you work as a programmer) or school,
+if any, to sign a &quot;copyright disclaimer&quot; for the program, if necessary.
+For more information on this, and how to apply and follow the GNU GPL, see
+&lt;https://www.gnu.org/licenses/&gt;.
+
+  The GNU General Public License does not permit incorporating your program
+into proprietary programs.  If your program is a subroutine library, you
+may consider it more useful to permit linking proprietary applications with
+the library.  If this is what you want to do, use the GNU Lesser General
+Public License instead of this License.  But first, please read
+&lt;https://www.gnu.org/licenses/why-not-lgpl.html&gt;.
+</pre></details>
+  <details id="dependency-license"><summary>XML dependency license</summary><pre># Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor&#x27;s
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+&lt;https://blueoakcouncil.org/license/1.0.0&gt;.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+***As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.***
+</pre></details>
+</main>
+<dialog id="editor" aria-labelledby="editor-title">
+  <div class="row"><h2 id="editor-title">Edit save</h2><span class="spacer"></span><small id="save-size"></small></div>
+  <div id="editor-activity" class="notice row" hidden><span id="editor-activity-text">Working…</span><progress id="editor-progress"></progress><button id="editor-cancel-operation">Cancel operation</button></div>
+  <div id="import-controls" class="import row"><button id="import-save" data-write>Import SRO / BUP / XML</button><label class="check"><input id="use-metadata" type="checkbox" data-write>Use imported name, comment and language</label><input id="save-file" type="file" accept=".sro,.bup,.bin,.xml,application/octet-stream,application/xml" hidden><small>Replacement keeps the current identity by default. New saves use the imported metadata.</small></div>
+  <div class="fields">
+    <label>Filename<input id="filename" maxlength="33" autocomplete="off" spellcheck="false" data-write><small>11 encoded bytes maximum</small></label>
+    <label>Comment<input id="comment" maxlength="30" autocomplete="off" spellcheck="false" data-write><small>10 encoded bytes maximum</small></label>
+    <label>Text encoding<select id="encoding" data-work><option value="shift-jis">Shift-JIS / Japanese</option><option value="utf-8">UTF-8</option><option value="bytes">Raw bytes · %HH escapes</option></select></label>
+    <div class="field-pair"><label>Language<input id="language" type="number" min="0" max="255" step="1" data-write></label><label>Date and time<input id="date" type="text" maxlength="17" placeholder="YYYY-MM-DD HH:MM" spellcheck="false" autocomplete="off" data-write></label></div>
+    <small id="encoding-note" class="wide"></small><small class="wide">Language codes: 0 Japanese, 1 English, 2 French, 3 German, 4 Spanish, 5 Italian. Other stored values are preserved. A blank date means unset.</small>
+  </div>
+  <details><summary>Encoded fields</summary><pre id="raw-fields"></pre></details>
+  <p id="metadata-note" class="notice" hidden>Supplemental XML notes or a nonzero counter are not stored by this archive format. Keep the original XML if you need them.</p>
+  <details id="payload"><summary>Payload bytes · hexadecimal editor</summary><pre id="hex"></pre><div class="row pagination"><button id="hex-previous" data-work>Previous</button><span id="hex-label"></span><button id="hex-next" data-work>Next</button></div><div class="row hex-controls"><label>Offset (hex)<input id="byte-offset" value="0" maxlength="6" data-work></label><button id="hex-go" data-work>Go to offset</button><label>Byte value (hex)<input id="byte-value" value="00" maxlength="2" data-write></label><button id="byte-apply" data-write>Set byte</button></div></details>
+  <div class="row export-controls"><select id="save-format" aria-label="Save export format" data-work><option value="SRO">SRO</option><option value="BUP">BUP</option><option value="XML">XML</option><option value="bin">Raw payload</option></select><button id="export-save" data-work>Export save</button><div id="save-download" hidden><a id="save-download-link" class="download">Download save</a></div></div>
+  <p id="editor-error" role="status"></p>
+  <div class="row dialog-actions"><button id="delete" class="danger" data-write>Delete save</button><span class="spacer"></span><button id="close-editor">Close</button><button id="apply" class="primary" data-write>Apply save</button></div>
+</dialog>
+<script id="worker-source" type="application/json">"'use strict';\nconst SAX = (() => { const exports = {};\n;(function (sax) {\n  // wrapper for non-node envs\n  sax.parser = function (strict, opt) {\n    return new SAXParser(strict, opt)\n  }\n  sax.SAXParser = SAXParser\n  sax.SAXStream = SAXStream\n  sax.createStream = createStream\n\n  // When we pass the MAX_BUFFER_LENGTH position, start checking for buffer overruns.\n  // When we check, schedule the next check for MAX_BUFFER_LENGTH - (max(buffer lengths)),\n  // since that's the earliest that a buffer overrun could occur.  This way, checks are\n  // as rare as required, but as often as necessary to ensure never crossing this bound.\n  // Furthermore, buffers are only tested at most once per write(), so passing a very\n  // large string into write() might have undesirable effects, but this is manageable by\n  // the caller, so it is assumed to be safe.  Thus, a call to write() may, in the extreme\n  // edge case, result in creating at most one complete copy of the string passed in.\n  // Set to Infinity to have unlimited buffers.\n  sax.MAX_BUFFER_LENGTH = 64 * 1024\n\n  var buffers = [\n    'comment',\n    'sgmlDecl',\n    'textNode',\n    'tagName',\n    'doctype',\n    'procInstName',\n    'procInstBody',\n    'entity',\n    'attribName',\n    'attribValue',\n    'cdata',\n    'script',\n  ]\n\n  sax.EVENTS = [\n    'text',\n    'processinginstruction',\n    'sgmldeclaration',\n    'doctype',\n    'comment',\n    'opentagstart',\n    'attribute',\n    'opentag',\n    'closetag',\n    'opencdata',\n    'cdata',\n    'closecdata',\n    'error',\n    'end',\n    'ready',\n    'script',\n    'opennamespace',\n    'closenamespace',\n  ]\n\n  function SAXParser(strict, opt) {\n    if (!(this instanceof SAXParser)) {\n      return new SAXParser(strict, opt)\n    }\n\n    var parser = this\n    clearBuffers(parser)\n    parser.q = parser.c = ''\n    parser.bufferCheckPosition = sax.MAX_BUFFER_LENGTH\n    parser.encoding = null;\n    parser.opt = opt || {}\n    parser.opt.lowercase = parser.opt.lowercase || parser.opt.lowercasetags\n    parser.looseCase = parser.opt.lowercase ? 'toLowerCase' : 'toUpperCase'\n    parser.opt.maxEntityCount = parser.opt.maxEntityCount || 512\n    parser.opt.maxEntityDepth = parser.opt.maxEntityDepth || 4\n    parser.entityCount = parser.entityDepth = 0\n    parser.tags = []\n    parser.closed = parser.closedRoot = parser.sawRoot = false\n    parser.tag = parser.error = null\n    parser.strict = !!strict\n    parser.noscript = !!(strict || parser.opt.noscript)\n    parser.state = S.BEGIN\n    parser.strictEntities = parser.opt.strictEntities\n    parser.ENTITIES =\n      parser.strictEntities ?\n        Object.create(sax.XML_ENTITIES)\n      : Object.create(sax.ENTITIES)\n    parser.attribList = []\n\n    // namespaces form a prototype chain.\n    // it always points at the current tag,\n    // which protos to its parent tag.\n    if (parser.opt.xmlns) {\n      parser.ns = Object.create(rootNS)\n    }\n\n    // disallow unquoted attribute values if not otherwise configured\n    // and strict mode is true\n    if (parser.opt.unquotedAttributeValues === undefined) {\n      parser.opt.unquotedAttributeValues = !strict\n    }\n\n    // mostly just for error reporting\n    parser.trackPosition = parser.opt.position !== false\n    if (parser.trackPosition) {\n      parser.position = parser.line = parser.column = 0\n    }\n    emit(parser, 'onready')\n  }\n\n  if (!Object.create) {\n    Object.create = function (o) {\n      function F() {}\n      F.prototype = o\n      var newf = new F()\n      return newf\n    }\n  }\n\n  if (!Object.keys) {\n    Object.keys = function (o) {\n      var a = []\n      for (var i in o) if (o.hasOwnProperty(i)) a.push(i)\n      return a\n    }\n  }\n\n  function checkBufferLength(parser) {\n    var maxAllowed = Math.max(sax.MAX_BUFFER_LENGTH, 10)\n    var maxActual = 0\n    for (var i = 0, l = buffers.length; i \u003c l; i++) {\n      var len = parser[buffers[i]].length\n      if (len > maxAllowed) {\n        // Text/cdata nodes can get big, and since they're buffered,\n        // we can get here under normal conditions.\n        // Avoid issues by emitting the text node now,\n        // so at least it won't get any bigger.\n        switch (buffers[i]) {\n          case 'textNode':\n            closeText(parser)\n            break\n\n          case 'cdata':\n            emitNode(parser, 'oncdata', parser.cdata)\n            parser.cdata = ''\n            break\n\n          case 'script':\n            emitNode(parser, 'onscript', parser.script)\n            parser.script = ''\n            break\n\n          default:\n            error(parser, 'Max buffer length exceeded: ' + buffers[i])\n        }\n      }\n      maxActual = Math.max(maxActual, len)\n    }\n    // schedule the next check for the earliest possible buffer overrun.\n    var m = sax.MAX_BUFFER_LENGTH - maxActual\n    parser.bufferCheckPosition = m + parser.position\n  }\n\n  function clearBuffers(parser) {\n    for (var i = 0, l = buffers.length; i \u003c l; i++) {\n      parser[buffers[i]] = ''\n    }\n  }\n\n  function flushBuffers(parser) {\n    closeText(parser)\n    if (parser.cdata !== '') {\n      emitNode(parser, 'oncdata', parser.cdata)\n      parser.cdata = ''\n    }\n    if (parser.script !== '') {\n      emitNode(parser, 'onscript', parser.script)\n      parser.script = ''\n    }\n  }\n\n  SAXParser.prototype = {\n    end: function () {\n      end(this)\n    },\n    write: write,\n    resume: function () {\n      this.error = null\n      return this\n    },\n    close: function () {\n      return this.write(null)\n    },\n    flush: function () {\n      flushBuffers(this)\n    },\n  }\n\n  var Stream\n  try {\n    Stream = require('stream').Stream\n  } catch (ex) {\n    Stream = function () {}\n  }\n  if (!Stream) Stream = function () {}\n\n  var streamWraps = sax.EVENTS.filter(function (ev) {\n    return ev !== 'error' && ev !== 'end'\n  })\n\n  function createStream(strict, opt) {\n    return new SAXStream(strict, opt)\n  }\n\n  function determineBufferEncoding(data, isEnd) {\n    // BOM-based detection is the most reliable signal when present.\n    if (data.length >= 2) {\n      if (data[0] === 0xff && data[1] === 0xfe) {\n        return 'utf-16le'\n      }\n\n      if (data[0] === 0xfe && data[1] === 0xff) {\n        return 'utf-16be'\n      }\n    }\n\n    if (data.length >= 3 && data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf) {\n      return 'utf8'\n    }\n\n    if (data.length >= 4) {\n      // XML documents without a BOM still start with \"\u003c?xml\", which is enough\n      // to distinguish UTF-16LE/BE from UTF-8 by looking at the zero bytes.\n      if (data[0] === 0x3c && data[1] === 0x00 && data[2] === 0x3f && data[3] === 0x00) {\n        return 'utf-16le'\n      }\n\n      if (data[0] === 0x00 && data[1] === 0x3c && data[2] === 0x00 && data[3] === 0x3f) {\n        return 'utf-16be'\n      }\n\n      return 'utf8'\n    }\n\n    return isEnd ? 'utf8' : null\n  }\n\n  function SAXStream(strict, opt) {\n    if (!(this instanceof SAXStream)) {\n      return new SAXStream(strict, opt)\n    }\n\n    Stream.apply(this)\n\n    this._parser = new SAXParser(strict, opt)\n    this.writable = true\n    this.readable = true\n\n    var me = this\n\n    this._parser.onend = function () {\n      me.emit('end')\n    }\n\n    this._parser.onerror = function (er) {\n      me.emit('error', er)\n\n      // if didn't throw, then means error was handled.\n      // go ahead and clear error, so we can write again.\n      me._parser.error = null\n    }\n\n    this._decoder = null\n    this._decoderBuffer = null\n    streamWraps.forEach(function (ev) {\n      Object.defineProperty(me, 'on' + ev, {\n        get: function () {\n          return me._parser['on' + ev]\n        },\n        set: function (h) {\n          if (!h) {\n            me.removeAllListeners(ev)\n            me._parser['on' + ev] = h\n            return h\n          }\n          me.on(ev, h)\n        },\n        enumerable: true,\n        configurable: false,\n      })\n    })\n  }\n\n  SAXStream.prototype = Object.create(Stream.prototype, {\n    constructor: {\n      value: SAXStream,\n    },\n  })\n\n  SAXStream.prototype._decodeBuffer = function (data, isEnd) {\n    if (this._decoderBuffer) {\n      // Keep incomplete leading bytes until we have enough data to infer the\n      // stream encoding, then decode the buffered prefix together with the next chunk.\n      data = Buffer.concat([this._decoderBuffer, data])\n      this._decoderBuffer = null\n    }\n\n    if (!this._decoder) {\n      var encoding = determineBufferEncoding(data, isEnd)\n      if (!encoding) {\n        // A very short first chunk may not contain enough bytes to detect the\n        // encoding yet, so defer decoding until the next write/end call.\n        this._decoderBuffer = data\n        return ''\n      }\n\n      // Store the detected transport encoding so strict mode can compare it\n      // with the optional encoding declared in the XML prolog later on.\n      this._parser.encoding = encoding\n      this._decoder = new TextDecoder(encoding)\n    }\n\n    return this._decoder.decode(data, { stream: !isEnd })\n  }\n\n  SAXStream.prototype.write = function (data) {\n    if (\n      typeof Buffer === 'function' &&\n      typeof Buffer.isBuffer === 'function' &&\n      Buffer.isBuffer(data)\n    ) {\n      data = this._decodeBuffer(data, false)\n    } else if (this._decoderBuffer) {\n      // Flush any buffered binary prefix before handling a string chunk.\n      // This only matters if the caller mixes Buffer and string writes (used in test).\n      var remaining = this._decodeBuffer(Buffer.alloc(0), true)\n      if (remaining) {\n        this._parser.write(remaining)\n        this.emit('data', remaining)\n      }\n    }\n\n    this._parser.write(data.toString())\n    this.emit('data', data)\n    return true\n  }\n\n  SAXStream.prototype.end = function (chunk) {\n    if (chunk && chunk.length) {\n      this.write(chunk)\n    }\n    // Flush any remaining decoded data from the TextDecoder\n    if (this._decoderBuffer) {\n      var finalChunk = this._decodeBuffer(Buffer.alloc(0), true)\n      if (finalChunk) {\n        this._parser.write(finalChunk)\n        this.emit('data', finalChunk)\n      }\n    } else if (this._decoder) {\n      var remaining = this._decoder.decode()\n      if (remaining) {\n        this._parser.write(remaining)\n        this.emit('data', remaining)\n      }\n    }\n    this._parser.end()\n    return true\n  }\n\n  SAXStream.prototype.on = function (ev, handler) {\n    var me = this\n    if (!me._parser['on' + ev] && streamWraps.indexOf(ev) !== -1) {\n      me._parser['on' + ev] = function () {\n        var args =\n          arguments.length === 1 ?\n            [arguments[0]]\n          : Array.apply(null, arguments)\n        args.splice(0, 0, ev)\n        me.emit.apply(me, args)\n      }\n    }\n\n    return Stream.prototype.on.call(me, ev, handler)\n  }\n\n  // this really needs to be replaced with character classes.\n  // XML allows all manner of ridiculous numbers and digits.\n  var CDATAre = /^\\[CDATA\\[$/i\n  var DOCTYPEre = /^DOCTYPE$/i\n  var XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace'\n  var XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/'\n  var rootNS = { xml: XML_NAMESPACE, xmlns: XMLNS_NAMESPACE }\n\n  // http://www.w3.org/TR/REC-xml/#NT-NameStartChar\n  // This implementation works on strings, a single character at a time\n  // as such, it cannot ever support astral-plane characters (10000-EFFFF)\n  // without a significant breaking change to either this  parser, or the\n  // JavaScript language.  Implementation of an emoji-capable xml parser\n  // is left as an exercise for the reader.\n  var nameStart =\n    /[:_A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD]/\n\n  var nameBody =\n    /[:_A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u00B7\\u0300-\\u036F\\u203F-\\u2040.\\d-]/\n\n  var entityStart =\n    /[#:_A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD]/\n  var entityBody =\n    /[#:_A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u00B7\\u0300-\\u036F\\u203F-\\u2040.\\d-]/\n\n  function isWhitespace(c) {\n    return c === ' ' || c === '\\n' || c === '\\r' || c === '\\t'\n  }\n\n  function isQuote(c) {\n    return c === '\"' || c === \"'\"\n  }\n\n  function isAttribEnd(c) {\n    return c === '>' || isWhitespace(c)\n  }\n\n  function isMatch(regex, c) {\n    return regex.test(c)\n  }\n\n  function notMatch(regex, c) {\n    return !isMatch(regex, c)\n  }\n\n  var S = 0\n  sax.STATE = {\n    BEGIN: S++, // leading byte order mark or whitespace\n    BEGIN_WHITESPACE: S++, // leading whitespace\n    TEXT: S++, // general stuff\n    TEXT_ENTITY: S++, // &amp and such.\n    OPEN_WAKA: S++, // \u003c\n    SGML_DECL: S++, // \u003c!BLARG\n    SGML_DECL_QUOTED: S++, // \u003c!BLARG foo \"bar\n    DOCTYPE: S++, // \u003c!DOCTYPE\n    DOCTYPE_QUOTED: S++, // \u003c!DOCTYPE \"//blah\n    DOCTYPE_DTD: S++, // \u003c!DOCTYPE \"//blah\" [ ...\n    DOCTYPE_DTD_QUOTED: S++, // \u003c!DOCTYPE \"//blah\" [ \"foo\n    COMMENT_STARTING: S++, // \u003c!-\n    COMMENT: S++, // \u003c!--\n    COMMENT_ENDING: S++, // \u003c!-- blah -\n    COMMENT_ENDED: S++, // \u003c!-- blah --\n    CDATA: S++, // \u003c![CDATA[ something\n    CDATA_ENDING: S++, // ]\n    CDATA_ENDING_2: S++, // ]]\n    PROC_INST: S++, // \u003c?hi\n    PROC_INST_BODY: S++, // \u003c?hi there\n    PROC_INST_ENDING: S++, // \u003c?hi \"there\" ?\n    OPEN_TAG: S++, // \u003cstrong\n    OPEN_TAG_SLASH: S++, // \u003cstrong /\n    ATTRIB: S++, // \u003ca\n    ATTRIB_NAME: S++, // \u003ca foo\n    ATTRIB_NAME_SAW_WHITE: S++, // \u003ca foo _\n    ATTRIB_VALUE: S++, // \u003ca foo=\n    ATTRIB_VALUE_QUOTED: S++, // \u003ca foo=\"bar\n    ATTRIB_VALUE_CLOSED: S++, // \u003ca foo=\"bar\"\n    ATTRIB_VALUE_UNQUOTED: S++, // \u003ca foo=bar\n    ATTRIB_VALUE_ENTITY_Q: S++, // \u003cfoo bar=\"&quot;\"\n    ATTRIB_VALUE_ENTITY_U: S++, // \u003cfoo bar=&quot\n    CLOSE_TAG: S++, // \u003c/a\n    CLOSE_TAG_SAW_WHITE: S++, // \u003c/a   >\n    SCRIPT: S++, // \u003cscript> ...\n    SCRIPT_ENDING: S++, // \u003cscript> ... \u003c\n  }\n\n  sax.XML_ENTITIES = Object.assign(Object.create(null), {\n    amp: '&',\n    gt: '>',\n    lt: '\u003c',\n    quot: '\"',\n    apos: \"'\",\n  })\n\n  sax.ENTITIES = Object.assign(Object.create(null), {\n    amp: '&',\n    gt: '>',\n    lt: '\u003c',\n    quot: '\"',\n    apos: \"'\",\n    AElig: 198,\n    Aacute: 193,\n    Acirc: 194,\n    Agrave: 192,\n    Aring: 197,\n    Atilde: 195,\n    Auml: 196,\n    Ccedil: 199,\n    ETH: 208,\n    Eacute: 201,\n    Ecirc: 202,\n    Egrave: 200,\n    Euml: 203,\n    Iacute: 205,\n    Icirc: 206,\n    Igrave: 204,\n    Iuml: 207,\n    Ntilde: 209,\n    Oacute: 211,\n    Ocirc: 212,\n    Ograve: 210,\n    Oslash: 216,\n    Otilde: 213,\n    Ouml: 214,\n    THORN: 222,\n    Uacute: 218,\n    Ucirc: 219,\n    Ugrave: 217,\n    Uuml: 220,\n    Yacute: 221,\n    aacute: 225,\n    acirc: 226,\n    aelig: 230,\n    agrave: 224,\n    aring: 229,\n    atilde: 227,\n    auml: 228,\n    ccedil: 231,\n    eacute: 233,\n    ecirc: 234,\n    egrave: 232,\n    eth: 240,\n    euml: 235,\n    iacute: 237,\n    icirc: 238,\n    igrave: 236,\n    iuml: 239,\n    ntilde: 241,\n    oacute: 243,\n    ocirc: 244,\n    ograve: 242,\n    oslash: 248,\n    otilde: 245,\n    ouml: 246,\n    szlig: 223,\n    thorn: 254,\n    uacute: 250,\n    ucirc: 251,\n    ugrave: 249,\n    uuml: 252,\n    yacute: 253,\n    yuml: 255,\n    copy: 169,\n    reg: 174,\n    nbsp: 160,\n    iexcl: 161,\n    cent: 162,\n    pound: 163,\n    curren: 164,\n    yen: 165,\n    brvbar: 166,\n    sect: 167,\n    uml: 168,\n    ordf: 170,\n    laquo: 171,\n    not: 172,\n    shy: 173,\n    macr: 175,\n    deg: 176,\n    plusmn: 177,\n    sup1: 185,\n    sup2: 178,\n    sup3: 179,\n    acute: 180,\n    micro: 181,\n    para: 182,\n    middot: 183,\n    cedil: 184,\n    ordm: 186,\n    raquo: 187,\n    frac14: 188,\n    frac12: 189,\n    frac34: 190,\n    iquest: 191,\n    times: 215,\n    divide: 247,\n    OElig: 338,\n    oelig: 339,\n    Scaron: 352,\n    scaron: 353,\n    Yuml: 376,\n    fnof: 402,\n    circ: 710,\n    tilde: 732,\n    Alpha: 913,\n    Beta: 914,\n    Gamma: 915,\n    Delta: 916,\n    Epsilon: 917,\n    Zeta: 918,\n    Eta: 919,\n    Theta: 920,\n    Iota: 921,\n    Kappa: 922,\n    Lambda: 923,\n    Mu: 924,\n    Nu: 925,\n    Xi: 926,\n    Omicron: 927,\n    Pi: 928,\n    Rho: 929,\n    Sigma: 931,\n    Tau: 932,\n    Upsilon: 933,\n    Phi: 934,\n    Chi: 935,\n    Psi: 936,\n    Omega: 937,\n    alpha: 945,\n    beta: 946,\n    gamma: 947,\n    delta: 948,\n    epsilon: 949,\n    zeta: 950,\n    eta: 951,\n    theta: 952,\n    iota: 953,\n    kappa: 954,\n    lambda: 955,\n    mu: 956,\n    nu: 957,\n    xi: 958,\n    omicron: 959,\n    pi: 960,\n    rho: 961,\n    sigmaf: 962,\n    sigma: 963,\n    tau: 964,\n    upsilon: 965,\n    phi: 966,\n    chi: 967,\n    psi: 968,\n    omega: 969,\n    thetasym: 977,\n    upsih: 978,\n    piv: 982,\n    ensp: 8194,\n    emsp: 8195,\n    thinsp: 8201,\n    zwnj: 8204,\n    zwj: 8205,\n    lrm: 8206,\n    rlm: 8207,\n    ndash: 8211,\n    mdash: 8212,\n    lsquo: 8216,\n    rsquo: 8217,\n    sbquo: 8218,\n    ldquo: 8220,\n    rdquo: 8221,\n    bdquo: 8222,\n    dagger: 8224,\n    Dagger: 8225,\n    bull: 8226,\n    hellip: 8230,\n    permil: 8240,\n    prime: 8242,\n    Prime: 8243,\n    lsaquo: 8249,\n    rsaquo: 8250,\n    oline: 8254,\n    frasl: 8260,\n    euro: 8364,\n    image: 8465,\n    weierp: 8472,\n    real: 8476,\n    trade: 8482,\n    alefsym: 8501,\n    larr: 8592,\n    uarr: 8593,\n    rarr: 8594,\n    darr: 8595,\n    harr: 8596,\n    crarr: 8629,\n    lArr: 8656,\n    uArr: 8657,\n    rArr: 8658,\n    dArr: 8659,\n    hArr: 8660,\n    forall: 8704,\n    part: 8706,\n    exist: 8707,\n    empty: 8709,\n    nabla: 8711,\n    isin: 8712,\n    notin: 8713,\n    ni: 8715,\n    prod: 8719,\n    sum: 8721,\n    minus: 8722,\n    lowast: 8727,\n    radic: 8730,\n    prop: 8733,\n    infin: 8734,\n    ang: 8736,\n    and: 8743,\n    or: 8744,\n    cap: 8745,\n    cup: 8746,\n    int: 8747,\n    there4: 8756,\n    sim: 8764,\n    cong: 8773,\n    asymp: 8776,\n    ne: 8800,\n    equiv: 8801,\n    le: 8804,\n    ge: 8805,\n    sub: 8834,\n    sup: 8835,\n    nsub: 8836,\n    sube: 8838,\n    supe: 8839,\n    oplus: 8853,\n    otimes: 8855,\n    perp: 8869,\n    sdot: 8901,\n    lceil: 8968,\n    rceil: 8969,\n    lfloor: 8970,\n    rfloor: 8971,\n    lang: 9001,\n    rang: 9002,\n    loz: 9674,\n    spades: 9824,\n    clubs: 9827,\n    hearts: 9829,\n    diams: 9830,\n  })\n\n  Object.keys(sax.ENTITIES).forEach(function (key) {\n    var e = sax.ENTITIES[key]\n    var s = typeof e === 'number' ? String.fromCharCode(e) : e\n    sax.ENTITIES[key] = s\n  })\n\n  for (var s in sax.STATE) {\n    sax.STATE[sax.STATE[s]] = s\n  }\n\n  // shorthand\n  S = sax.STATE\n\n  function emit(parser, event, data) {\n    parser[event] && parser[event](data)\n  }\n\n  function getDeclaredEncoding(body) {\n    var match = body && body.match(/(?:^|\\s)encoding\\s*=\\s*(['\"])([^'\"]+)\\1/i)\n    return match ? match[2] : null\n  }\n\n  function normalizeEncodingName(encoding) {\n    if (!encoding) {\n      return null\n    }\n\n    return encoding.toLowerCase().replace(/[^a-z0-9]/g, '')\n  }\n\n  function encodingsMatch(detectedEncoding, declaredEncoding) {\n    const detected = normalizeEncodingName(detectedEncoding)\n    const declared = normalizeEncodingName(declaredEncoding)\n\n    if (!detected || !declared) {\n      return true\n    }\n\n    if (declared === 'utf16') {\n      return detected === 'utf16le' || detected === 'utf16be'\n    }\n\n    return detected === declared\n  }\n\n  function validateXmlDeclarationEncoding(parser, data) {\n    if (\n      !parser.strict ||\n      !parser.encoding ||\n      !data ||\n      data.name !== 'xml'\n    ) {\n      return\n    }\n\n    var declaredEncoding = getDeclaredEncoding(data.body)\n    if (\n      declaredEncoding &&\n      !encodingsMatch(parser.encoding, declaredEncoding)\n    ) {\n      strictFail(\n        parser,\n        'XML declaration encoding ' +\n          declaredEncoding +\n          ' does not match detected stream encoding ' +\n          parser.encoding.toUpperCase()\n      )\n    }\n  }\n\n  function emitNode(parser, nodeType, data) {\n    if (parser.textNode) closeText(parser)\n    emit(parser, nodeType, data)\n  }\n\n  function closeText(parser) {\n    parser.textNode = textopts(parser.opt, parser.textNode)\n    if (parser.textNode) emit(parser, 'ontext', parser.textNode)\n    parser.textNode = ''\n  }\n\n  function textopts(opt, text) {\n    if (opt.trim) text = text.trim()\n    if (opt.normalize) text = text.replace(/\\s+/g, ' ')\n    return text\n  }\n\n  function error(parser, er) {\n    closeText(parser)\n    if (parser.trackPosition) {\n      er +=\n        '\\nLine: ' +\n        parser.line +\n        '\\nColumn: ' +\n        parser.column +\n        '\\nChar: ' +\n        parser.c\n    }\n    er = new Error(er)\n    parser.error = er\n    emit(parser, 'onerror', er)\n    return parser\n  }\n\n  function end(parser) {\n    if (parser.sawRoot && !parser.closedRoot)\n      strictFail(parser, 'Unclosed root tag')\n    if (\n      parser.state !== S.BEGIN &&\n      parser.state !== S.BEGIN_WHITESPACE &&\n      parser.state !== S.TEXT\n    ) {\n      error(parser, 'Unexpected end')\n    }\n    closeText(parser)\n    parser.c = ''\n    parser.closed = true\n    emit(parser, 'onend')\n    SAXParser.call(parser, parser.strict, parser.opt)\n    return parser\n  }\n\n  function strictFail(parser, message) {\n    if (typeof parser !== 'object' || !(parser instanceof SAXParser)) {\n      throw new Error('bad call to strictFail')\n    }\n    if (parser.strict) {\n      error(parser, message)\n    }\n  }\n\n  function newTag(parser) {\n    if (!parser.strict) parser.tagName = parser.tagName[parser.looseCase]()\n    var parent = parser.tags[parser.tags.length - 1] || parser\n    var tag = (parser.tag = { name: parser.tagName, attributes: {} })\n\n    // will be overridden if tag contails an xmlns=\"foo\" or xmlns:foo=\"bar\"\n    if (parser.opt.xmlns) {\n      tag.ns = parent.ns\n    }\n    parser.attribList.length = 0\n    emitNode(parser, 'onopentagstart', tag)\n  }\n\n  function qname(name, attribute) {\n    var i = name.indexOf(':')\n    var qualName = i \u003c 0 ? ['', name] : name.split(':')\n    var prefix = qualName[0]\n    var local = qualName[1]\n\n    // \u003cx \"xmlns\"=\"http://foo\">\n    if (attribute && name === 'xmlns') {\n      prefix = 'xmlns'\n      local = ''\n    }\n\n    return { prefix: prefix, local: local }\n  }\n\n  function attrib(parser) {\n    if (!parser.strict) {\n      parser.attribName = parser.attribName[parser.looseCase]()\n    }\n\n    if (\n      parser.attribList.indexOf(parser.attribName) !== -1 ||\n      parser.tag.attributes.hasOwnProperty(parser.attribName)\n    ) {\n      parser.attribName = parser.attribValue = ''\n      return\n    }\n\n    if (parser.opt.xmlns) {\n      var qn = qname(parser.attribName, true)\n      var prefix = qn.prefix\n      var local = qn.local\n\n      if (prefix === 'xmlns') {\n        // namespace binding attribute. push the binding into scope\n        if (local === 'xml' && parser.attribValue !== XML_NAMESPACE) {\n          strictFail(\n            parser,\n            'xml: prefix must be bound to ' +\n              XML_NAMESPACE +\n              '\\n' +\n              'Actual: ' +\n              parser.attribValue\n          )\n        } else if (\n          local === 'xmlns' &&\n          parser.attribValue !== XMLNS_NAMESPACE\n        ) {\n          strictFail(\n            parser,\n            'xmlns: prefix must be bound to ' +\n              XMLNS_NAMESPACE +\n              '\\n' +\n              'Actual: ' +\n              parser.attribValue\n          )\n        } else {\n          var tag = parser.tag\n          var parent = parser.tags[parser.tags.length - 1] || parser\n          if (tag.ns === parent.ns) {\n            tag.ns = Object.create(parent.ns)\n          }\n          tag.ns[local] = parser.attribValue\n        }\n      }\n\n      // defer onattribute events until all attributes have been seen\n      // so any new bindings can take effect. preserve attribute order\n      // so deferred events can be emitted in document order\n      parser.attribList.push([parser.attribName, parser.attribValue])\n    } else {\n      // in non-xmlns mode, we can emit the event right away\n      parser.tag.attributes[parser.attribName] = parser.attribValue\n      emitNode(parser, 'onattribute', {\n        name: parser.attribName,\n        value: parser.attribValue,\n      })\n    }\n\n    parser.attribName = parser.attribValue = ''\n  }\n\n  function openTag(parser, selfClosing) {\n    if (parser.opt.xmlns) {\n      // emit namespace binding events\n      var tag = parser.tag\n\n      // add namespace info to tag\n      var qn = qname(parser.tagName)\n      tag.prefix = qn.prefix\n      tag.local = qn.local\n      tag.uri = tag.ns[qn.prefix] || ''\n\n      if (tag.prefix && !tag.uri) {\n        strictFail(\n          parser,\n          'Unbound namespace prefix: ' + JSON.stringify(parser.tagName)\n        )\n        tag.uri = qn.prefix\n      }\n\n      var parent = parser.tags[parser.tags.length - 1] || parser\n      if (tag.ns && parent.ns !== tag.ns) {\n        Object.keys(tag.ns).forEach(function (p) {\n          emitNode(parser, 'onopennamespace', {\n            prefix: p,\n            uri: tag.ns[p],\n          })\n        })\n      }\n\n      // handle deferred onattribute events\n      // Note: do not apply default ns to attributes:\n      //   http://www.w3.org/TR/REC-xml-names/#defaulting\n      for (var i = 0, l = parser.attribList.length; i \u003c l; i++) {\n        var nv = parser.attribList[i]\n        var name = nv[0]\n        var value = nv[1]\n        var qualName = qname(name, true)\n        var prefix = qualName.prefix\n        var local = qualName.local\n        var uri = prefix === '' ? '' : tag.ns[prefix] || ''\n        var a = {\n          name: name,\n          value: value,\n          prefix: prefix,\n          local: local,\n          uri: uri,\n        }\n\n        // if there's any attributes with an undefined namespace,\n        // then fail on them now.\n        if (prefix && prefix !== 'xmlns' && !uri) {\n          strictFail(\n            parser,\n            'Unbound namespace prefix: ' + JSON.stringify(prefix)\n          )\n          a.uri = prefix\n        }\n        parser.tag.attributes[name] = a\n        emitNode(parser, 'onattribute', a)\n      }\n      parser.attribList.length = 0\n    }\n\n    parser.tag.isSelfClosing = !!selfClosing\n\n    // process the tag\n    parser.sawRoot = true\n    parser.tags.push(parser.tag)\n    emitNode(parser, 'onopentag', parser.tag)\n    if (!selfClosing) {\n      // special case for \u003cscript> in non-strict mode.\n      if (!parser.noscript && parser.tagName.toLowerCase() === 'script') {\n        parser.state = S.SCRIPT\n      } else {\n        parser.state = S.TEXT\n      }\n      parser.tag = null\n      parser.tagName = ''\n    }\n    parser.attribName = parser.attribValue = ''\n    parser.attribList.length = 0\n  }\n\n  function closeTag(parser) {\n    if (!parser.tagName) {\n      strictFail(parser, 'Weird empty close tag.')\n      parser.textNode += '\u003c/>'\n      parser.state = S.TEXT\n      return\n    }\n\n    if (parser.script) {\n      if (parser.tagName !== 'script') {\n        parser.script += '\u003c/' + parser.tagName + '>'\n        parser.tagName = ''\n        parser.state = S.SCRIPT\n        return\n      }\n      emitNode(parser, 'onscript', parser.script)\n      parser.script = ''\n    }\n\n    // first make sure that the closing tag actually exists.\n    // \u003ca>\u003cb>\u003c/c>\u003c/b>\u003c/a> will close everything, otherwise.\n    var t = parser.tags.length\n    var tagName = parser.tagName\n    if (!parser.strict) {\n      tagName = tagName[parser.looseCase]()\n    }\n    var closeTo = tagName\n    while (t--) {\n      var close = parser.tags[t]\n      if (close.name !== closeTo) {\n        // fail the first time in strict mode\n        strictFail(parser, 'Unexpected close tag')\n      } else {\n        break\n      }\n    }\n\n    // didn't find it.  we already failed for strict, so just abort.\n    if (t \u003c 0) {\n      strictFail(parser, 'Unmatched closing tag: ' + parser.tagName)\n      parser.textNode += '\u003c/' + parser.tagName + '>'\n      parser.state = S.TEXT\n      return\n    }\n    parser.tagName = tagName\n    var s = parser.tags.length\n    while (s-- > t) {\n      var tag = (parser.tag = parser.tags.pop())\n      parser.tagName = parser.tag.name\n      emitNode(parser, 'onclosetag', parser.tagName)\n\n      var x = {}\n      for (var i in tag.ns) {\n        x[i] = tag.ns[i]\n      }\n\n      var parent = parser.tags[parser.tags.length - 1] || parser\n      if (parser.opt.xmlns && tag.ns !== parent.ns) {\n        // remove namespace bindings introduced by tag\n        Object.keys(tag.ns).forEach(function (p) {\n          var n = tag.ns[p]\n          emitNode(parser, 'onclosenamespace', { prefix: p, uri: n })\n        })\n      }\n    }\n    if (t === 0) parser.closedRoot = true\n    parser.tagName = parser.attribValue = parser.attribName = ''\n    parser.attribList.length = 0\n    parser.state = S.TEXT\n  }\n\n  function parseEntity(parser) {\n    var entity = parser.entity\n    var entityLC = entity.toLowerCase()\n    var num\n    var numStr = ''\n\n    if (parser.ENTITIES[entity]) {\n      return parser.ENTITIES[entity]\n    }\n    if (parser.ENTITIES[entityLC]) {\n      return parser.ENTITIES[entityLC]\n    }\n    entity = entityLC\n    if (entity.charAt(0) === '#') {\n      if (entity.charAt(1) === 'x') {\n        entity = entity.slice(2)\n        num = parseInt(entity, 16)\n        numStr = num.toString(16)\n      } else {\n        entity = entity.slice(1)\n        num = parseInt(entity, 10)\n        numStr = num.toString(10)\n      }\n    }\n    entity = entity.replace(/^0+/, '')\n    if (\n      isNaN(num) ||\n      numStr.toLowerCase() !== entity ||\n      num \u003c 0 ||\n      num > 0x10ffff ||\n      !isXmlChar(num)\n    ) {\n      strictFail(parser, 'Invalid character entity')\n      return '&' + parser.entity + ';'\n    }\n\n    return String.fromCodePoint(num)\n  }\n\n  // Returns true if `num` is a code point that matches the XML `Char`\n  // production, false otherwise. Character references that resolve to a\n  // character outside this range (e.g. surrogates or restricted control\n  // characters) are not well-formed.\n  // https://www.w3.org/TR/REC-xml/#NT-Char\n  // https://www.w3.org/TR/REC-xml/#wf-Legalchar\n  function isXmlChar(num) {\n    return (\n      num === 0x9 ||\n      num === 0xa ||\n      num === 0xd ||\n      (num >= 0x20 && num \u003c= 0xd7ff) ||\n      (num >= 0xe000 && num \u003c= 0xfffd) ||\n      (num >= 0x10000 && num \u003c= 0x10ffff)\n    )\n  }\n\n  function beginWhiteSpace(parser, c) {\n    if (c === '\u003c') {\n      parser.state = S.OPEN_WAKA\n      parser.startTagPosition = parser.position\n    } else if (!isWhitespace(c)) {\n      // have to process this as a text node.\n      // weird, but happens.\n      strictFail(parser, 'Non-whitespace before first tag.')\n      parser.textNode = c\n      parser.state = S.TEXT\n    }\n  }\n\n  function charAt(chunk, i) {\n    var result = ''\n    if (i \u003c chunk.length) {\n      result = chunk.charAt(i)\n    }\n    return result\n  }\n\n  function write(chunk) {\n    var parser = this\n    if (this.error) {\n      throw this.error\n    }\n    if (parser.closed) {\n      return error(\n        parser,\n        'Cannot write after close. Assign an onready handler.'\n      )\n    }\n    if (chunk === null) {\n      return end(parser)\n    }\n    if (typeof chunk === 'object') {\n      chunk = chunk.toString()\n    }\n    var i = 0\n    var c = ''\n    while (true) {\n      c = charAt(chunk, i++)\n      parser.c = c\n\n      if (!c) {\n        break\n      }\n\n      if (parser.trackPosition) {\n        parser.position++\n        if (c === '\\n') {\n          parser.line++\n          parser.column = 0\n        } else {\n          parser.column++\n        }\n      }\n\n      switch (parser.state) {\n        case S.BEGIN:\n          parser.state = S.BEGIN_WHITESPACE\n          if (c === '\\uFEFF') {\n            continue\n          }\n          beginWhiteSpace(parser, c)\n          continue\n\n        case S.BEGIN_WHITESPACE:\n          beginWhiteSpace(parser, c)\n          continue\n\n        case S.TEXT:\n          if (parser.sawRoot && !parser.closedRoot) {\n            var starti = i - 1\n            while (c && c !== '\u003c' && c !== '&') {\n              c = charAt(chunk, i++)\n              if (c && parser.trackPosition) {\n                parser.position++\n                if (c === '\\n') {\n                  parser.line++\n                  parser.column = 0\n                } else {\n                  parser.column++\n                }\n              }\n            }\n            parser.textNode += chunk.substring(starti, i - 1)\n          }\n          if (\n            c === '\u003c' &&\n            !(parser.sawRoot && parser.closedRoot && !parser.strict)\n          ) {\n            parser.state = S.OPEN_WAKA\n            parser.startTagPosition = parser.position\n          } else {\n            if (\n              !isWhitespace(c) &&\n              (!parser.sawRoot || parser.closedRoot)\n            ) {\n              strictFail(parser, 'Text data outside of root node.')\n            }\n            if (c === '&') {\n              parser.state = S.TEXT_ENTITY\n            } else {\n              parser.textNode += c\n            }\n          }\n          continue\n\n        case S.SCRIPT:\n          // only non-strict\n          if (c === '\u003c') {\n            parser.state = S.SCRIPT_ENDING\n          } else {\n            parser.script += c\n          }\n          continue\n\n        case S.SCRIPT_ENDING:\n          if (c === '/') {\n            parser.state = S.CLOSE_TAG\n          } else {\n            parser.script += '\u003c' + c\n            parser.state = S.SCRIPT\n          }\n          continue\n\n        case S.OPEN_WAKA:\n          // either a /, ?, !, or text is coming next.\n          if (c === '!') {\n            parser.state = S.SGML_DECL\n            parser.sgmlDecl = ''\n          } else if (isWhitespace(c)) {\n            // wait for it...\n          } else if (isMatch(nameStart, c)) {\n            parser.state = S.OPEN_TAG\n            parser.tagName = c\n          } else if (c === '/') {\n            parser.state = S.CLOSE_TAG\n            parser.tagName = ''\n          } else if (c === '?') {\n            parser.state = S.PROC_INST\n            parser.procInstName = parser.procInstBody = ''\n          } else {\n            strictFail(parser, 'Unencoded \u003c')\n            // if there was some whitespace, then add that in.\n            if (parser.startTagPosition + 1 \u003c parser.position) {\n              var pad = parser.position - parser.startTagPosition\n              c = new Array(pad).join(' ') + c\n            }\n            parser.textNode += '\u003c' + c\n            parser.state = S.TEXT\n          }\n          continue\n\n        case S.SGML_DECL:\n          if (parser.sgmlDecl + c === '--') {\n            parser.state = S.COMMENT\n            parser.comment = ''\n            parser.sgmlDecl = ''\n            continue\n          }\n\n          if (\n            parser.doctype &&\n            parser.doctype !== true &&\n            parser.sgmlDecl\n          ) {\n            parser.state = S.DOCTYPE_DTD\n            parser.doctype += '\u003c!' + parser.sgmlDecl + c\n            parser.sgmlDecl = ''\n          } else if (CDATAre.test(parser.sgmlDecl + c)) {\n            emitNode(parser, 'onopencdata')\n            parser.state = S.CDATA\n            parser.sgmlDecl = ''\n            parser.cdata = ''\n          } else if (DOCTYPEre.test(parser.sgmlDecl + c)) {\n            parser.state = S.DOCTYPE\n            if (parser.doctype || parser.sawRoot) {\n              strictFail(\n                parser,\n                'Inappropriately located doctype declaration'\n              )\n            }\n            parser.doctype = ''\n            parser.sgmlDecl = ''\n          } else if (c === '>') {\n            emitNode(parser, 'onsgmldeclaration', parser.sgmlDecl)\n            parser.sgmlDecl = ''\n            parser.state = S.TEXT\n          } else if (isQuote(c)) {\n            parser.state = S.SGML_DECL_QUOTED\n            parser.sgmlDecl += c\n          } else {\n            parser.sgmlDecl += c\n          }\n          continue\n\n        case S.SGML_DECL_QUOTED:\n          if (c === parser.q) {\n            parser.state = S.SGML_DECL\n            parser.q = ''\n          }\n          parser.sgmlDecl += c\n          continue\n\n        case S.DOCTYPE:\n          if (c === '>') {\n            parser.state = S.TEXT\n            emitNode(parser, 'ondoctype', parser.doctype)\n            parser.doctype = true // just remember that we saw it.\n          } else {\n            parser.doctype += c\n            if (c === '[') {\n              parser.state = S.DOCTYPE_DTD\n            } else if (isQuote(c)) {\n              parser.state = S.DOCTYPE_QUOTED\n              parser.q = c\n            }\n          }\n          continue\n\n        case S.DOCTYPE_QUOTED:\n          parser.doctype += c\n          if (c === parser.q) {\n            parser.q = ''\n            parser.state = S.DOCTYPE\n          }\n          continue\n\n        case S.DOCTYPE_DTD:\n          if (c === ']') {\n            parser.doctype += c\n            parser.state = S.DOCTYPE\n          } else if (c === '\u003c') {\n            parser.state = S.OPEN_WAKA\n            parser.startTagPosition = parser.position\n          } else if (isQuote(c)) {\n            parser.doctype += c\n            parser.state = S.DOCTYPE_DTD_QUOTED\n            parser.q = c\n          } else {\n            parser.doctype += c\n          }\n          continue\n\n        case S.DOCTYPE_DTD_QUOTED:\n          parser.doctype += c\n          if (c === parser.q) {\n            parser.state = S.DOCTYPE_DTD\n            parser.q = ''\n          }\n          continue\n\n        case S.COMMENT:\n          if (c === '-') {\n            parser.state = S.COMMENT_ENDING\n          } else {\n            parser.comment += c\n          }\n          continue\n\n        case S.COMMENT_ENDING:\n          if (c === '-') {\n            parser.state = S.COMMENT_ENDED\n            parser.comment = textopts(parser.opt, parser.comment)\n            if (parser.comment) {\n              emitNode(parser, 'oncomment', parser.comment)\n            }\n            parser.comment = ''\n          } else {\n            parser.comment += '-' + c\n            parser.state = S.COMMENT\n          }\n          continue\n\n        case S.COMMENT_ENDED:\n          if (c !== '>') {\n            strictFail(parser, 'Malformed comment')\n            // allow \u003c!-- blah -- bloo --> in non-strict mode,\n            // which is a comment of \" blah -- bloo \"\n            parser.comment += '--' + c\n            parser.state = S.COMMENT\n          } else if (parser.doctype && parser.doctype !== true) {\n            parser.state = S.DOCTYPE_DTD\n          } else {\n            parser.state = S.TEXT\n          }\n          continue\n\n        case S.CDATA:\n          var starti = i - 1\n          while (c && c !== ']') {\n            c = charAt(chunk, i++)\n            if (c && parser.trackPosition) {\n              parser.position++\n              if (c === '\\n') {\n                parser.line++\n                parser.column = 0\n              } else {\n                parser.column++\n              }\n            }\n          }\n          parser.cdata += chunk.substring(starti, i - 1)\n          if (c === ']') {\n            parser.state = S.CDATA_ENDING\n          }\n          continue\n\n        case S.CDATA_ENDING:\n          if (c === ']') {\n            parser.state = S.CDATA_ENDING_2\n          } else {\n            parser.cdata += ']' + c\n            parser.state = S.CDATA\n          }\n          continue\n\n        case S.CDATA_ENDING_2:\n          if (c === '>') {\n            if (parser.cdata) {\n              emitNode(parser, 'oncdata', parser.cdata)\n            }\n            emitNode(parser, 'onclosecdata')\n            parser.cdata = ''\n            parser.state = S.TEXT\n          } else if (c === ']') {\n            parser.cdata += ']'\n          } else {\n            parser.cdata += ']]' + c\n            parser.state = S.CDATA\n          }\n          continue\n\n        case S.PROC_INST:\n          if (c === '?') {\n            parser.state = S.PROC_INST_ENDING\n          } else if (isWhitespace(c)) {\n            parser.state = S.PROC_INST_BODY\n          } else {\n            parser.procInstName += c\n          }\n          continue\n\n        case S.PROC_INST_BODY:\n          if (!parser.procInstBody && isWhitespace(c)) {\n            continue\n          } else if (c === '?') {\n            parser.state = S.PROC_INST_ENDING\n          } else {\n            parser.procInstBody += c\n          }\n          continue\n\n        case S.PROC_INST_ENDING:\n          if (c === '>') {\n            const procInstEndData = {\n              name: parser.procInstName,\n              body: parser.procInstBody,\n            }\n            validateXmlDeclarationEncoding(parser, procInstEndData)\n            emitNode(parser, 'onprocessinginstruction', procInstEndData)\n            parser.procInstName = parser.procInstBody = ''\n            parser.state = S.TEXT\n          } else {\n            parser.procInstBody += '?' + c\n            parser.state = S.PROC_INST_BODY\n          }\n          continue\n\n        case S.OPEN_TAG:\n          if (isMatch(nameBody, c)) {\n            parser.tagName += c\n          } else {\n            newTag(parser)\n            if (c === '>') {\n              openTag(parser)\n            } else if (c === '/') {\n              parser.state = S.OPEN_TAG_SLASH\n            } else {\n              if (!isWhitespace(c)) {\n                strictFail(parser, 'Invalid character in tag name')\n              }\n              parser.state = S.ATTRIB\n            }\n          }\n          continue\n\n        case S.OPEN_TAG_SLASH:\n          if (c === '>') {\n            openTag(parser, true)\n            closeTag(parser)\n          } else {\n            strictFail(\n              parser,\n              'Forward-slash in opening tag not followed by >'\n            )\n            parser.state = S.ATTRIB\n          }\n          continue\n\n        case S.ATTRIB:\n          // haven't read the attribute name yet.\n          if (isWhitespace(c)) {\n            continue\n          } else if (c === '>') {\n            openTag(parser)\n          } else if (c === '/') {\n            parser.state = S.OPEN_TAG_SLASH\n          } else if (isMatch(nameStart, c)) {\n            parser.attribName = c\n            parser.attribValue = ''\n            parser.state = S.ATTRIB_NAME\n          } else {\n            strictFail(parser, 'Invalid attribute name')\n          }\n          continue\n\n        case S.ATTRIB_NAME:\n          if (c === '=') {\n            parser.state = S.ATTRIB_VALUE\n          } else if (c === '>') {\n            strictFail(parser, 'Attribute without value')\n            parser.attribValue = parser.attribName\n            attrib(parser)\n            openTag(parser)\n          } else if (isWhitespace(c)) {\n            parser.state = S.ATTRIB_NAME_SAW_WHITE\n          } else if (isMatch(nameBody, c)) {\n            parser.attribName += c\n          } else {\n            strictFail(parser, 'Invalid attribute name')\n          }\n          continue\n\n        case S.ATTRIB_NAME_SAW_WHITE:\n          if (c === '=') {\n            parser.state = S.ATTRIB_VALUE\n          } else if (isWhitespace(c)) {\n            continue\n          } else {\n            strictFail(parser, 'Attribute without value')\n            parser.tag.attributes[parser.attribName] = ''\n            parser.attribValue = ''\n            emitNode(parser, 'onattribute', {\n              name: parser.attribName,\n              value: '',\n            })\n            parser.attribName = ''\n            if (c === '>') {\n              openTag(parser)\n            } else if (isMatch(nameStart, c)) {\n              parser.attribName = c\n              parser.state = S.ATTRIB_NAME\n            } else {\n              strictFail(parser, 'Invalid attribute name')\n              parser.state = S.ATTRIB\n            }\n          }\n          continue\n\n        case S.ATTRIB_VALUE:\n          if (isWhitespace(c)) {\n            continue\n          } else if (isQuote(c)) {\n            parser.q = c\n            parser.state = S.ATTRIB_VALUE_QUOTED\n          } else {\n            if (!parser.opt.unquotedAttributeValues) {\n              error(parser, 'Unquoted attribute value')\n            }\n            parser.state = S.ATTRIB_VALUE_UNQUOTED\n            parser.attribValue = c\n          }\n          continue\n\n        case S.ATTRIB_VALUE_QUOTED:\n          if (c !== parser.q) {\n            if (c === '&') {\n              parser.state = S.ATTRIB_VALUE_ENTITY_Q\n            } else {\n              parser.attribValue += c\n            }\n            continue\n          }\n          attrib(parser)\n          parser.q = ''\n          parser.state = S.ATTRIB_VALUE_CLOSED\n          continue\n\n        case S.ATTRIB_VALUE_CLOSED:\n          if (isWhitespace(c)) {\n            parser.state = S.ATTRIB\n          } else if (c === '>') {\n            openTag(parser)\n          } else if (c === '/') {\n            parser.state = S.OPEN_TAG_SLASH\n          } else if (isMatch(nameStart, c)) {\n            strictFail(parser, 'No whitespace between attributes')\n            parser.attribName = c\n            parser.attribValue = ''\n            parser.state = S.ATTRIB_NAME\n          } else {\n            strictFail(parser, 'Invalid attribute name')\n          }\n          continue\n\n        case S.ATTRIB_VALUE_UNQUOTED:\n          if (!isAttribEnd(c)) {\n            if (c === '&') {\n              parser.state = S.ATTRIB_VALUE_ENTITY_U\n            } else {\n              parser.attribValue += c\n            }\n            continue\n          }\n          attrib(parser)\n          if (c === '>') {\n            openTag(parser)\n          } else {\n            parser.state = S.ATTRIB\n          }\n          continue\n\n        case S.CLOSE_TAG:\n          if (!parser.tagName) {\n            if (isWhitespace(c)) {\n              continue\n            } else if (notMatch(nameStart, c)) {\n              if (parser.script) {\n                parser.script += '\u003c/' + c\n                parser.state = S.SCRIPT\n              } else {\n                strictFail(parser, 'Invalid tagname in closing tag.')\n              }\n            } else {\n              parser.tagName = c\n            }\n          } else if (c === '>') {\n            closeTag(parser)\n          } else if (isMatch(nameBody, c)) {\n            parser.tagName += c\n          } else if (parser.script) {\n            parser.script += '\u003c/' + parser.tagName + c\n            parser.tagName = ''\n            parser.state = S.SCRIPT\n          } else {\n            if (!isWhitespace(c)) {\n              strictFail(parser, 'Invalid tagname in closing tag')\n            }\n            parser.state = S.CLOSE_TAG_SAW_WHITE\n          }\n          continue\n\n        case S.CLOSE_TAG_SAW_WHITE:\n          if (isWhitespace(c)) {\n            continue\n          }\n          if (c === '>') {\n            closeTag(parser)\n          } else {\n            strictFail(parser, 'Invalid characters in closing tag')\n          }\n          continue\n\n        case S.TEXT_ENTITY:\n        case S.ATTRIB_VALUE_ENTITY_Q:\n        case S.ATTRIB_VALUE_ENTITY_U:\n          var returnState\n          var buffer\n          switch (parser.state) {\n            case S.TEXT_ENTITY:\n              returnState = S.TEXT\n              buffer = 'textNode'\n              break\n\n            case S.ATTRIB_VALUE_ENTITY_Q:\n              returnState = S.ATTRIB_VALUE_QUOTED\n              buffer = 'attribValue'\n              break\n\n            case S.ATTRIB_VALUE_ENTITY_U:\n              returnState = S.ATTRIB_VALUE_UNQUOTED\n              buffer = 'attribValue'\n              break\n          }\n\n          if (c === ';') {\n            var parsedEntity = parseEntity(parser)\n            if (\n              parser.opt.unparsedEntities &&\n              !Object.values(sax.XML_ENTITIES).includes(parsedEntity)\n            ) {\n              if ((parser.entityCount += 1) > parser.opt.maxEntityCount) {\n                error(\n                  parser,\n                  'Parsed entity count exceeds max entity count'\n                )\n              }\n\n              if ((parser.entityDepth += 1) > parser.opt.maxEntityDepth) {\n                error(\n                  parser,\n                  'Parsed entity depth exceeds max entity depth'\n                )\n              }\n\n              parser.entity = ''\n              parser.state = returnState\n              parser.write(parsedEntity)\n              parser.entityDepth -= 1\n            } else {\n              parser[buffer] += parsedEntity\n              parser.entity = ''\n              parser.state = returnState\n            }\n          } else if (\n            isMatch(parser.entity.length ? entityBody : entityStart, c)\n          ) {\n            parser.entity += c\n          } else {\n            strictFail(parser, 'Invalid character in entity name')\n            parser[buffer] += '&' + parser.entity + c\n            parser.entity = ''\n            parser.state = returnState\n          }\n\n          continue\n\n        default: /* istanbul ignore next */ {\n          throw new Error(parser, 'Unknown state: ' + parser.state)\n        }\n      }\n    } // while\n\n    if (parser.position >= parser.bufferCheckPosition) {\n      checkBufferLength(parser)\n    }\n    return parser\n  }\n\n  /*! http://mths.be/fromcodepoint v0.1.0 by @mathias */\n  /* istanbul ignore next */\n  if (!String.fromCodePoint) {\n    ;(function () {\n      var stringFromCharCode = String.fromCharCode\n      var floor = Math.floor\n      var fromCodePoint = function () {\n        var MAX_SIZE = 0x4000\n        var codeUnits = []\n        var highSurrogate\n        var lowSurrogate\n        var index = -1\n        var length = arguments.length\n        if (!length) {\n          return ''\n        }\n        var result = ''\n        while (++index \u003c length) {\n          var codePoint = Number(arguments[index])\n          if (\n            !isFinite(codePoint) || // `NaN`, `+Infinity`, or `-Infinity`\n            codePoint \u003c 0 || // not a valid Unicode code point\n            codePoint > 0x10ffff || // not a valid Unicode code point\n            floor(codePoint) !== codePoint // not an integer\n          ) {\n            throw RangeError('Invalid code point: ' + codePoint)\n          }\n          if (codePoint \u003c= 0xffff) {\n            // BMP code point\n            codeUnits.push(codePoint)\n          } else {\n            // Astral code point; split in surrogate halves\n            // http://mathiasbynens.be/notes/javascript-encoding#surrogate-formulae\n            codePoint -= 0x10000\n            highSurrogate = (codePoint >> 10) + 0xd800\n            lowSurrogate = (codePoint % 0x400) + 0xdc00\n            codeUnits.push(highSurrogate, lowSurrogate)\n          }\n          if (index + 1 === length || codeUnits.length > MAX_SIZE) {\n            result += stringFromCharCode.apply(null, codeUnits)\n            codeUnits.length = 0\n          }\n        }\n        return result\n      }\n      /* istanbul ignore next */\n      if (Object.defineProperty) {\n        Object.defineProperty(String, 'fromCodePoint', {\n          value: fromCodePoint,\n          configurable: true,\n          writable: true,\n        })\n      } else {\n        String.fromCodePoint = fromCodePoint\n      }\n    })()\n  }\n})(typeof exports === 'undefined' ? (this.sax = {}) : exports)\n\nreturn exports; })();\nconst Fields = (() => {\n\n/* SPDX-License-Identifier: GPL-3.0-only\n * Authored save metadata and SRO/BUP transport for SAROO PR #374 adaptation.\n * Format reference: maintained native savetool; proposal by Damián Parrino.\n */\nconst MAX_SAVE_BYTES = 1048576;\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst be16 = (bytes, offset) => (bytes[offset] \u003c\u003c 8) | bytes[offset + 1];\nconst be32 = (bytes, offset) => ((bytes[offset] \u003c\u003c 24) | (bytes[offset + 1] \u003c\u003c 16) |\n  (bytes[offset + 2] \u003c\u003c 8) | bytes[offset + 3]) >>> 0;\nfunction put16(bytes, offset, value) { bytes[offset] = value >>> 8; bytes[offset + 1] = value; }\nfunction put32(bytes, offset, value) {\n  bytes[offset] = value >>> 24; bytes[offset + 1] = value >>> 16;\n  bytes[offset + 2] = value >>> 8; bytes[offset + 3] = value;\n}\nfunction matches(bytes, offset, text) {\n  if (offset \u003c 0 || offset + text.length > bytes.length) return false;\n  for (let i = 0; i \u003c text.length; i++) if (bytes[offset + i] !== text.charCodeAt(i)) return false;\n  return true;\n}\nfunction equalBytes(a, b) {\n  if (a.length !== b.length) return false;\n  for (let i = 0; i \u003c a.length; i++) if (a[i] !== b[i]) return false;\n  return true;\n}\nfunction fixedBytes(value, length, label = 'Field') {\n  require(value instanceof Uint8Array && value.length \u003c= length, `${label} exceeds ${length} bytes.`);\n  const bytes = new Uint8Array(length); bytes.set(value); return bytes;\n}\nfunction unsigned(value, maximum, label) {\n  require(Number.isInteger(value) && value >= 0 && value \u003c= maximum, `${label} is out of range.`);\n  return value;\n}\nfunction saveMetadata(value) {\n  const rawFilename = fixedBytes(value.rawFilename, 11, 'Filename');\n  require(rawFilename[0] !== 0, 'A save needs a nonempty filename.');\n  return { rawFilename, rawComment: fixedBytes(value.rawComment ?? new Uint8Array(), 10, 'Comment'),\n    language: unsigned(value.language ?? 0, 255, 'Language'), date: unsigned(value.date ?? 0, 0xffffffff, 'Date') };\n}\n\n// The reversible raw-byte editor representation includes bytes after NUL. The\n// display decoder and deliberate character encoding are separate operations.\nfunction byteText(bytes) {\n  let result = '';\n  for (const byte of bytes) result += byte >= 32 && byte \u003c= 126 && byte !== 37\n    ? String.fromCharCode(byte) : '%' + byte.toString(16).toUpperCase().padStart(2, '0');\n  return result;\n}\nfunction textBytes(text, limit) {\n  require(typeof text === 'string', 'Expected byte text.');\n  const result = [];\n  for (let i = 0; i \u003c text.length; i++) {\n    let byte = text.charCodeAt(i);\n    if (byte === 37) {\n      const pair = text.slice(i + 1, i + 3);\n      require(/^[a-f0-9]{2}$/i.test(pair), 'Use %HH for an escaped byte.');\n      byte = parseInt(pair, 16); i += 2;\n    }\n    require(byte \u003c= 255, 'Use encoded bytes or a supported character encoding.');\n    result.push(byte); require(result.length \u003c= limit, `Field exceeds ${limit} bytes.`);\n  }\n  return Uint8Array.from(result);\n}\nfunction saveFilename(raw, extension) {\n  require(['SRO', 'BUP', 'XML', 'bin'].includes(extension), 'Unknown save extension.');\n  let name = '';\n  for (const byte of raw.subarray(0, 11)) {\n    if (!byte) break;\n    name += (byte >= 65 && byte \u003c= 90) || (byte >= 97 && byte \u003c= 122) || (byte >= 48 && byte \u003c= 57) ||\n      [32, 46, 45, 95].includes(byte) ? String.fromCharCode(byte) : '%' + byte.toString(16).toUpperCase().padStart(2, '0');\n  }\n  require(name.length > 0, 'A save needs a filename.'); return name + '.' + extension;\n}\n\n// A 16-entry nibble table keeps the transport checksum small while eliminating\n// the proposal's eight branch/shift steps per byte. Exact CRC32/ISO-HDLC.\nconst CRC_NIBBLES = Uint32Array.from({ length: 16 }, (_, i) => {\n  for (let bit = 0; bit \u003c 4; bit++) i = (i >>> 1) ^ ((i & 1) ? 0xedb88320 : 0);\n  return i >>> 0;\n});\nfunction crc32(bytes) {\n  let value = 0xffffffff;\n  for (const byte of bytes) {\n    value ^= byte;\n    value = (value >>> 4) ^ CRC_NIBBLES[value & 15];\n    value = (value >>> 4) ^ CRC_NIBBLES[value & 15];\n  }\n  return (~value) >>> 0;\n}\nfunction parseRawSave(bytes) {\n  require(bytes instanceof Uint8Array && bytes.length >= 64 && bytes.length \u003c= MAX_SAVE_BYTES + 64,\n          'Save must contain a complete 64-byte header and at most 1 MiB of data.');\n  const bup = matches(bytes, 0, 'Vmem');\n  require(bup || matches(bytes, 0, 'SSAVERAW\\0'), 'Expected an SRO or BUP save.');\n  const size = be32(bytes, bup ? 44 : 28);\n  require(size === bytes.length - 64, 'Declared save size does not match the complete payload.');\n  if (!bup) {\n    const expected = be32(bytes, 12);\n    require(!expected || expected === crc32(bytes.subarray(16)), 'SRO checksum mismatch.');\n  }\n  return { format: bup ? 'BUP' : 'SRO', rawFilename: bytes.slice(16, 27),\n    rawComment: bytes.slice(bup ? 28 : 32, bup ? 38 : 42), language: bytes[bup ? 39 : 43],\n    date: be32(bytes, bup ? 40 : 44), data: bytes.slice(64) };\n}\nfunction encodeRawSave(value, format = 'SRO') {\n  const meta = saveMetadata(value), data = value.data;\n  require(data instanceof Uint8Array && data.length \u003c= MAX_SAVE_BYTES, 'Invalid save payload.');\n  require(format === 'SRO' || format === 'BUP', 'Choose SRO or BUP.');\n  const output = new Uint8Array(data.length + 64), bup = format === 'BUP';\n  output.set(new TextEncoder().encode(bup ? 'Vmem' : 'SSAVERAW'));\n  output.set(meta.rawFilename, 16); output.set(meta.rawComment, bup ? 28 : 32);\n  output[bup ? 39 : 43] = meta.language; put32(output, bup ? 40 : 44, meta.date);\n  put32(output, bup ? 44 : 28, data.length); output.set(data, 64);\n  if (bup) put32(output, 52, meta.date); else put32(output, 12, crc32(output.subarray(16)));\n  return output;\n}\n\nreturn {MAX_SAVE_BYTES, be16, be32, put16, put32, matches, equalBytes, fixedBytes, unsigned, saveMetadata, byteText, textBytes, saveFilename, crc32, parseRawSave, encodeRawSave};\n})();\nconst Text = (() => {\nconst { fixedBytes, unsigned, textBytes, byteText } = Fields;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Lossless field editing for SAROO PR #374. Original raw fields stay authoritative.\n * Shift-JIS decoding uses the browser's Encoding Standard implementation.\n */\n\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst EPOCH = Date.UTC(1980, 0, 1), MINUTE = 60000;\nconst pause = () => new Promise(resolve => setTimeout(resolve, 0));\n\nfunction dateFields(value) {\n  unsigned(value, 0xffffffff, 'Date');\n  const date = new Date(EPOCH + value * MINUTE);\n  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate(),\n    hour: date.getUTCHours(), minute: date.getUTCMinutes() };\n}\nfunction dateMinutes(value) {\n  const limits = { year: 10146, month: 12, day: 31, hour: 23, minute: 59 };\n  for (const [key, limit] of Object.entries(limits)) unsigned(value[key], limit, key);\n  require(value.year >= 1980 && value.month && value.day, 'Date must be on or after 1980-01-01.');\n  const stamp = Date.UTC(value.year, value.month - 1, value.day, value.hour, value.minute);\n  const result = unsigned((stamp - EPOCH) / MINUTE, 0xffffffff, 'Date');\n  const actual = dateFields(result);\n  require(Object.keys(limits).every(key => actual[key] === value[key]), 'Enter a valid Gregorian calendar date.');\n  return result;\n}\nfunction dateText(value) {\n  if (!value) return '';\n  const date = dateFields(value), pad = number => String(number).padStart(2, '0');\n  return `${String(date.year).padStart(4, '0')}-${pad(date.month)}-${pad(date.day)}T${pad(date.hour)}:${pad(date.minute)}`;\n}\nfunction parseDateText(text) {\n  if (text === '') return 0;\n  const match = /^(\\d{4,5})-(\\d\\d)-(\\d\\d)[T ](\\d\\d):(\\d\\d)$/.exec(text);\n  require(match, 'Use YYYY-MM-DD HH:MM, or leave the date unset.');\n  return dateMinutes(Object.fromEntries(['year', 'month', 'day', 'hour', 'minute'].map((key, i) => [key, Number(match[i + 1])])));\n}\n\nfunction visibleBytes(bytes) {\n  const end = bytes.indexOf(0); return end \u003c 0 ? bytes : bytes.subarray(0, end);\n}\nfunction scalarText(text) {\n  require(typeof text === 'string', 'Expected text.');\n  for (const character of text) {\n    const point = character.codePointAt(0);\n    require(point \u003c 0xd800 || point > 0xdfff, 'Text contains an incomplete Unicode character.');\n  }\n}\n\nclass SaveText {\n  #shift = null; #utf8 = new TextDecoder('utf-8', { fatal: true }); #reverse = null;\n  constructor() { try { this.#shift = new TextDecoder('shift-jis', { fatal: true }); } catch { /* Raw bytes still work. */ } }\n  get shiftJISSupported() { return this.#shift !== null; }\n  get reverseBytes() { return this.#reverse?.buffer.byteLength ?? 0; }\n  display(bytes, encoding = 'shift-jis') {\n    if (encoding === 'bytes') return { text: byteText(bytes), valid: true };\n    require(encoding === 'shift-jis' || encoding === 'utf-8', 'Unknown field encoding.');\n    const decoder = encoding === 'shift-jis' ? this.#shift : this.#utf8;\n    if (!decoder) return { text: byteText(bytes), valid: false };\n    try { return { text: decoder.decode(visibleBytes(bytes)), valid: true }; }\n    catch { return { text: byteText(bytes), valid: false }; }\n  }\n  async #prepare(signal) {\n    if (this.#reverse) return;\n    require(this.#shift, 'Shift-JIS is unavailable in this browser; use raw bytes.');\n    // At most 60 lead bytes × 188 trail bytes. Each admitted mapping is one BMP\n    // scalar and two encoded bytes; enforce that bound before packing into u32.\n    const pairs = new Uint32Array(60 * 188), row = new Uint8Array(188 * 3);\n    const decoder = new TextDecoder('shift-jis');\n    for (let i = 0; i \u003c 188; i++) row[i * 3 + 1] = i + (i \u003c 63 ? 0x40 : 0x41);\n    let count = 0, checkpoint = performance.now();\n    for (let lead = 0x81; lead \u003c= 0xfc; lead++) {\n      if (lead === 0xa0) lead = 0xe0;\n      for (let i = 0; i \u003c 188; i++) row[i * 3] = lead;\n      // NUL separates each trial pair, including invalid ones. A valid pair\n      // yields exactly one BMP scalar before its delimiter. No exception object\n      // or decoder call is needed for each of the 11,280 candidate pairs.\n      const decoded = decoder.decode(row); let start = 0;\n      for (let i = 0; i \u003c 188; i++) {\n        const end = decoded.indexOf('\\0', start), point = decoded.charCodeAt(start);\n        require(end >= start, 'Shift-JIS decoder lost a trial delimiter.');\n        if (end - start === 1 && point !== 0xfffd) {\n          require(point \u003c 0xd800 || point > 0xdfff, 'Unexpected non-BMP Shift-JIS mapping.');\n          pairs[count++] = point * 65536 + lead * 256 + row[i * 3 + 1];\n        } else require(!(point >= 0xd800 && point \u003c= 0xdbff), 'Unexpected non-BMP Shift-JIS mapping.');\n        start = end + 1;\n      }\n      signal?.throwIfAborted();\n      if (performance.now() - checkpoint >= 8) { await pause(); signal?.throwIfAborted(); checkpoint = performance.now(); }\n    }\n    const table = pairs.subarray(0, count); table.sort(); signal?.throwIfAborted(); this.#reverse = table;\n  }\n  async encode(text, maximum, { signal } = {}) {\n    scalarText(text); unsigned(maximum, 16, 'Field capacity');\n    const output = new Uint8Array(maximum); let used = 0;\n    for (const character of text) {\n      let point = character.codePointAt(0), code;\n      if (point \u003c= 0x80) code = point;\n      else if (point >= 0xff61 && point \u003c= 0xff9f) code = point - 0xff61 + 0xa1;\n      else {\n        await this.#prepare(signal);\n        let low = 0, high = this.#reverse.length;\n        while (low \u003c high) { const middle = (low + high) >>> 1;\n          if ((this.#reverse[middle] >>> 16) \u003c point) low = middle + 1; else high = middle; }\n        require(low \u003c this.#reverse.length && (this.#reverse[low] >>> 16) === point,\n                `Character ${character} cannot be represented in Shift-JIS.`);\n        code = this.#reverse[low] & 65535;\n      }\n      const count = code > 255 ? 2 : 1;\n      require(used + count \u003c= maximum, `Text exceeds the field's ${maximum}-byte capacity.`);\n      if (count === 2) output[used++] = code >>> 8;\n      output[used++] = code;\n    }\n    signal?.throwIfAborted(); return output.subarray(0, used);\n  }\n  async edit(original, text, encoding, maximum, { signal } = {}) {\n    signal?.throwIfAborted();\n    const display = this.display(original, encoding);\n    // Do not regenerate even an equivalent encoding: raw padding and duplicate\n    // Shift-JIS spellings are meaningful bytes owned by the original save.\n    if (text === display.text) return fixedBytes(original, maximum);\n    let encoded;\n    if (encoding === 'bytes') encoded = textBytes(text, maximum);\n    else {\n      scalarText(text);\n      require(!text.includes('\\0'), 'Use raw-byte mode to deliberately enter NUL bytes.');\n      encoded = encoding === 'utf-8' ? new TextEncoder().encode(text) : await this.encode(text, maximum, { signal });\n    }\n    return fixedBytes(encoded, maximum);\n  }\n}\n\nreturn {dateFields, dateMinutes, dateText, parseDateText, SaveText};\n})();\nconst XML = (() => {\nconst { MAX_SAVE_BYTES, fixedBytes, saveMetadata, unsigned } = Fields;\nconst { dateFields, dateMinutes } = Text;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Streaming SS Backup RAM Parser XML transport for SAROO PR #374.\n * Schema reference: hitomi2500/ss-save-parser, extract.cpp at 06922280.\n * Pass the pinned SAX implementation explicitly; no network or runtime import.\n */\n\n\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst pause = () => new Promise(resolve => setTimeout(resolve, 0));\nconst space = /^[\\x20\\t\\r\\n]*$/;\n// XML 1.0 Fifth Edition productions 4/4a/5, including supplementary names.\nconst nameStart = String.raw`:A-Z_a-z\\u00c0-\\u00d6\\u00d8-\\u00f6\\u00f8-\\u02ff\\u0370-\\u037d\\u037f-\\u1fff\\u200c-\\u200d\\u2070-\\u218f\\u2c00-\\u2fef\\u3001-\\ud7ff\\uf900-\\ufdcf\\ufdf0-\\ufffd\\u{10000}-\\u{effff}`;\nconst xmlName = new RegExp(`^[${nameStart}][${nameStart}0-9.\\\\u00b7\\\\u0300-\\\\u036f\\\\u203f-\\\\u2040-]*$`, 'u');\nconst invalidXML = /[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]/u;\nfunction checkCharacters(text) { require(!invalidXML.test(text), 'XML contains a forbidden character.'); }\nfunction number(text, maximum, label) {\n  require(typeof text === 'string' && /^\\s*\\d+\\s*$/.test(text), `${label} must be a complete unsigned integer.`);\n  return unsigned(Number(text), maximum, label);\n}\nfunction unbase64(text, maximum, label) {\n  require(text.length \u003c= Math.ceil(maximum / 3) * 4, `${label} exceeds its byte capacity.`);\n  let binary; try { binary = atob(text); } catch { throw new Error(`${label} has invalid base64 data.`); }\n  require(binary.length \u003c= maximum, `${label} exceeds its byte capacity.`);\n  return Uint8Array.from(binary, character => character.charCodeAt(0));\n}\nfunction base64(bytes) {\n  // Callers use at most 24 KiB; avoid one argument/string allocation per byte.\n  return btoa(String.fromCharCode(...bytes));\n}\nfunction escapeText(text) { return text.replace(/[&\u003c>\\r]/g, char => ({'&':'&amp;','\u003c':'&lt;','>':'&gt;','\\r':'&#13;'}[char])); }\nfunction fieldText(bytes) {\n  const end = bytes.indexOf(0), text = new TextDecoder('utf-8').decode(end \u003c 0 ? bytes : bytes.subarray(0, end));\n  // The human-readable XML fields follow the original writer's UTF-8 display\n  // convention. Binary fields retain every byte, including non-text controls.\n  return escapeText(text.replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]/gu, '\\ufffd'));\n}\n\nasync function parseXMLSave(file, sax, { signal, onProgress } = {}) {\n  require(file instanceof Blob && file.size > 0, 'Choose a nonempty XML file.');\n  signal?.throwIfAborted();\n  const prefix = new Uint8Array(await file.slice(0, 4).arrayBuffer());\n  const little = prefix[0] === 255 && prefix[1] === 254 || prefix[0] === 60 && prefix[1] === 0;\n  const big = prefix[0] === 254 && prefix[1] === 255 || prefix[0] === 0 && prefix[1] === 60;\n  const encoding = little ? 'utf-16le' : big ? 'utf-16be' : 'utf-8';\n  const decoder = new TextDecoder(encoding, { fatal: true });\n  // Namespace mode emits every attribute, allowing duplicate expanded names to\n  // be rejected here even where the library's non-namespace mode drops them.\n  const parser = sax.parser(true, { xmlns: true, strictEntities: true, position: true });\n  const groups = new Set(), values = new Map(), stack = [];\n  const limits = { counter:64, name:64, comment:64, name_binary:16, comment_binary:16,\n    language_code:64, size:64, data:Math.ceil(MAX_SAVE_BYTES / 3) * 4, date:0, time:0 };\n  let attributes = new Set(), rootSeen = false, declaration = false, hasNotes = false;\n  parser.onerror = error => { throw error; };\n  parser.ondoctype = () => { throw new Error('Save XML does not use a document type or custom entities.'); };\n  parser.onsgmldeclaration = () => { throw new Error('Unsupported XML declaration.'); };\n  parser.onprocessinginstruction = instruction => {\n    require(xmlName.test(instruction.name), 'Invalid XML processing-instruction target.');\n    if (instruction.name.toLowerCase() !== 'xml') return;\n    // TextDecoder consumes an initial BOM; XMLDecl must start at the first '\u003c'.\n    require(instruction.name === 'xml' && !rootSeen && !declaration && parser.startTagPosition === 1,\n            'Invalid XML declaration position.');\n    const match = /^version\\s*=\\s*(['\"])1\\.0\\1(?:\\s+encoding\\s*=\\s*(['\"])([^'\"]+)\\2)?(?:\\s+standalone\\s*=\\s*(['\"])(?:yes|no)\\4)?\\s*$/.exec(instruction.body);\n    require(match, 'Expected an XML 1.0 declaration.');\n    if (match[3]) {\n      const declared = match[3].toLowerCase().replaceAll('_', '-');\n      require(declared === encoding || (declared === 'utf-16' && encoding.startsWith('utf-16')), 'XML encoding declaration disagrees with its bytes.');\n    }\n    declaration = true;\n  };\n  parser.onopentagstart = () => { attributes = new Set(); require(stack.length \u003c 64, 'XML nesting exceeds 64 levels.'); };\n  parser.onattribute = attribute => {\n    checkCharacters(attribute.value);\n    const key = `${attribute.uri}\\0${attribute.local}`;\n    require(!attributes.has(key), 'XML repeats an attribute.'); attributes.add(key);\n    require(attributes.size \u003c= 128, 'XML element has too many attributes.');\n  };\n  parser.onopentag = tag => {\n    const parent = stack.at(-1), frame = { name:tag.local, optional:parent?.optional || tag.local === 'optional' };\n    if (!stack.length) {\n      require(!rootSeen && tag.local === 'Sega_Saturn_Save' && !tag.uri, 'Expected one Sega_Saturn_Save root.'); rootSeen = true;\n    } else if (stack.length === 1) {\n      require(!tag.uri && ['mandatory','optional'].includes(tag.local) && !groups.has(tag.local), 'Expected one mandatory group and at most one optional group.');\n      groups.add(tag.local);\n    } else if (!parent.optional) {\n      require(stack.length === 2 && !tag.uri && Object.hasOwn(limits, tag.local) && !values.has(tag.local), 'Unexpected, nested or duplicate mandatory field.');\n      frame.field = tag.local; frame.text = ''; frame.overflow = false;\n      values.set(tag.local, frame);\n    } else hasNotes = true;\n    if (!frame.optional) for (const attribute of Object.values(tag.attributes)) {\n      if (attribute.uri === 'http://www.w3.org/2000/xmlns/') continue;\n      const allowed = frame.field === 'date' ? ['year','month','day'] : frame.field === 'time' ? ['hour','minute','second'] : [];\n      require(!attribute.uri && allowed.includes(attribute.local), 'Unexpected attribute in save metadata.');\n      frame[attribute.local] = attribute.value;\n    }\n    stack.push(frame);\n  };\n  const text = value => {\n    checkCharacters(value); const frame = stack.at(-1);\n    if (frame?.optional) { if (!space.test(value)) hasNotes = true; return; }\n    if (!frame?.field || ['date','time'].includes(frame.field)) { require(space.test(value), 'Unexpected text outside a save field.'); return; }\n    if (['data','name_binary','comment_binary'].includes(frame.field)) value = value.replace(/[\\x20\\t\\r\\n]/g, '');\n    if (frame.text.length + value.length > limits[frame.field]) {\n      if (frame.field === 'name' || frame.field === 'comment') { frame.overflow = true; return; }\n      throw new Error(`XML ${frame.field} exceeds its field capacity.`);\n    }\n    if (!frame.overflow) frame.text += value;\n  };\n  parser.ontext = text; parser.oncdata = text;\n  // The pinned SAX matcher folds CDATA case, even in strict mode. Inspect its\n  // raw opener before SAX clears it; comments/PI/decoded text never enter here.\n  parser.onopencdata = () => require(parser.sgmlDecl + parser.c === '[CDATA[', 'Invalid CDATA opening delimiter.');\n  parser.onclosetag = () => { stack.pop(); };\n  let bracketTail = '', piTargetEnd = false;\n  function writeSource(value) {\n    if (piTargetEnd && value.length) {\n      // A '?' directly after the target must finish '?>'. A PI body instead\n      // needs intervening XML whitespace; SAX otherwise silently inserts it.\n      require(value[0] === '>', 'Invalid XML processing-instruction target delimiter.');\n      piTargetEnd = false;\n    }\n    let at = 0;\n    // SAX skips whitespace after '\u003c' and '\u003c/'. Feed the delimiter transitions\n    // separately, including across chunks, so only that illegal gap rejects.\n    while (at \u003c value.length && (parser.state === sax.STATE.OPEN_WAKA || parser.state === sax.STATE.CLOSE_TAG && !parser.tagName)) {\n      require(!space.test(value[at]), 'XML tag name must immediately follow its delimiter.');\n      parser.write(value[at++]);\n    }\n    if (at \u003c value.length) parser.write(value.slice(at));\n  }\n  function writeChunk(value, final = false) {\n    const input = bracketTail ? bracketTail + value : value;\n    let start = 0, match;\n    const delimiters = /;|\\]\\]>|\u003c|\\?/g;\n    while ((match = delimiters.exec(input))) {\n      const at = match.index;\n      writeSource(input.slice(start, at));\n      if (match[0] === '\u003c') {\n        require(parser.state !== sax.STATE.ATTRIB_VALUE_QUOTED, 'Literal less-than is forbidden in an XML attribute.');\n      } else if (match[0] === ']]>') {\n        require(parser.state !== sax.STATE.TEXT, 'CDATA closing delimiter is forbidden in ordinary character data.');\n      } else if (match[0] === ';' && (parser.state === sax.STATE.TEXT_ENTITY || parser.state === sax.STATE.ATTRIB_VALUE_ENTITY_Q || parser.state === sax.STATE.ATTRIB_VALUE_ENTITY_U)) {\n        // Validate spelling before SAX's case-folding entity lookup. Hex digits\n        // may use either case; the 'x' marker and predefined names may not.\n        require(/^(?:amp|lt|gt|apos|quot|#(?:[0-9]+|x[0-9a-fA-F]+))$/.test(parser.entity), 'Invalid XML entity spelling.');\n      }\n      const endsTarget = match[0] === '?' && parser.state === sax.STATE.PROC_INST;\n      writeSource(match[0]); if (endsTarget) piTargetEnd = true;\n      start = at + match[0].length;\n    }\n    let end = input.length;\n    // Retain at most two brackets to recognize a delimiter across chunk writes.\n    if (!final) while (end > start && input[end - 1] === ']' && input.length - end \u003c 2) end--;\n    writeSource(input.slice(start, end)); bracketTail = input.slice(end);\n  }\n  let checkpoint = performance.now(), previousCR = false;\n  for (let offset = 0; offset \u003c file.size; offset += 32768) {\n    signal?.throwIfAborted();\n    const end = Math.min(offset + 32768, file.size);\n    let chunk = decoder.decode(await file.slice(offset,end).arrayBuffer(), { stream:end !== file.size });\n    signal?.throwIfAborted(); checkCharacters(chunk);\n    // XML 1.0 literal line-ending normalization, including chunk crossings.\n    if (previousCR && chunk.startsWith('\\n')) chunk = chunk.slice(1);\n    previousCR = chunk.endsWith('\\r'); chunk = chunk.replace(/\\r\\n?/g, '\\n');\n    writeChunk(chunk);\n    require(parser.attribList.length \u003c= 128, 'XML element has too many attributes.');\n    if (performance.now() - checkpoint >= 8) {\n      onProgress?.({ phase:'xml', done:end, total:file.size }); await pause(); signal?.throwIfAborted(); checkpoint = performance.now();\n    }\n  }\n  writeChunk('', true); parser.close(); signal?.throwIfAborted();\n  require(rootSeen && groups.has('mandatory') && values.has('data'), 'XML needs mandatory save data.');\n  const data = unbase64(values.get('data').text, MAX_SAVE_BYTES, 'Save data');\n  if (values.has('size')) require(number(values.get('size').text, MAX_SAVE_BYTES, 'Size') === data.length, 'XML size does not match decoded data.');\n  function field(binary, readable, width) {\n    if (values.has(binary)) return fixedBytes(unbase64(values.get(binary).text, width, binary), width);\n    const fallback = values.get(readable);\n    require(!fallback?.overflow, `XML ${readable} exceeds its byte capacity.`);\n    return fixedBytes(new TextEncoder().encode(fallback?.text ?? ''), width, readable);\n  }\n  const de = values.get('date'), te = values.get('time'); let date = 0;\n  require(de || !te, 'XML time requires a date.');\n  if (de) {\n    if (te?.second !== undefined) require(number(te.second, 59, 'Second') === 0, 'Saturn save dates store whole minutes; seconds must be zero.');\n    date = dateMinutes({year:number(de.year,10146,'Year'),month:number(de.month,12,'Month'),day:number(de.day,31,'Day'),\n      hour:te ? number(te.hour,23,'Hour') : 0,minute:te ? number(te.minute,59,'Minute') : 0});\n  }\n  const metadata = saveMetadata({rawFilename:field('name_binary','name',11),rawComment:field('comment_binary','comment',10),\n    language:values.has('language_code') ? number(values.get('language_code').text,255,'Language') : 0,date});\n  const counter = values.get('counter')?.text.trim();\n  onProgress?.({phase:'xml',done:file.size,total:file.size}); signal?.throwIfAborted();\n  return { ...metadata, data, format:'XML', omittedExtraMetadata:hasNotes || !!counter && counter !== '0' };\n}\n\nasync function encodeXMLSave(save, {signal,onProgress} = {}) {\n  const metadata = saveMetadata(save), incoming = save.data;\n  require(incoming instanceof Uint8Array && incoming.length \u003c= MAX_SAVE_BYTES, 'Invalid save payload.');\n  signal?.throwIfAborted(); const data = incoming.slice(), date = dateFields(metadata.date);\n  const parts = ['\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?>\\n\u003cSega_Saturn_Save>\\n  \u003cmandatory>\\n    \u003ccounter>0\u003c/counter>\\n' +\n    `    \u003cname>${fieldText(metadata.rawFilename)}\u003c/name>\\n    \u003cname_binary>${base64(metadata.rawFilename)}\u003c/name_binary>\\n` +\n    `    \u003ccomment>${fieldText(metadata.rawComment)}\u003c/comment>\\n    \u003ccomment_binary>${base64(metadata.rawComment)}\u003c/comment_binary>\\n` +\n    `    \u003clanguage_code>${metadata.language}\u003c/language_code>\\n    \u003csize>${data.length}\u003c/size>\\n` +\n    `    \u003cdate year=\"${date.year}\" month=\"${date.month}\" day=\"${date.day}\"/>\\n` +\n    `    \u003ctime hour=\"${date.hour}\" minute=\"${date.minute}\" second=\"0\"/>\\n    \u003cdata>`];\n  let checkpoint=performance.now();\n  for (let offset=0;offset\u003cdata.length;offset+=24576) {\n    signal?.throwIfAborted();parts.push(base64(data.subarray(offset,Math.min(offset+24576,data.length))));\n    if (performance.now()-checkpoint>=8) {onProgress?.({phase:'xml-export',done:Math.min(offset+24576,data.length),total:data.length});await pause();signal?.throwIfAborted();checkpoint=performance.now();}\n  }\n  parts.push('\u003c/data>\\n  \u003c/mandatory>\\n  \u003coptional/>\\n\u003c/Sega_Saturn_Save>\\n');\n  signal?.throwIfAborted();return new Blob(parts,{type:'application/xml'});\n}\n\nreturn {parseXMLSave, encodeXMLSave};\n})();\nconst Archive = (() => {\nconst { be16, be32, put16, put32, matches, equalBytes, fixedBytes, saveMetadata,\n  unsigned, MAX_SAVE_BYTES } = Fields;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Authored transactional archive core for SAROO browser-tool PR #374.\n * Native format compatibility: corrected sr_bup, sr_mems and ss_bup readers.\n * No original archive bytes leave this module except through owned copies or\n * immutable export Blobs. All fallible edit work precedes private byte writes.\n */\n\n\nconst SLOT_BYTES = 65536, MAX_SLOTS = 4095, MEMS_BYTES = 8388608;\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst bit = (bytes, n) => (bytes[n >>> 3] >>> (n & 7)) & 1;\nconst mark = (bytes, n, used) => { if (used) bytes[n >>> 3] |= 1 \u003c\u003c (n & 7); else bytes[n >>> 3] &= ~(1 \u003c\u003c (n & 7)); };\nconst pause = () => new Promise(resolve => setTimeout(resolve, 0));\n\n// Stage only touched blocks, including their untouched bytes. Planning owns all\n// allocations. prepare() removes no-op writes before candidate validation; its\n// returned fixed typed-array pairs allow a synchronous, bounds-proven commit.\nclass BlockPlan {\n  #read; #copies = new Map();\n  constructor(read) { this.#read = read; }\n  get stagedBytes() {\n    let bytes = 0; for (const patch of this.#copies.values()) bytes += patch.bytes.length; return bytes;\n  }\n  read = block => this.#copies.get(block)?.bytes ?? this.#read(block);\n  write(block) {\n    let patch = this.#copies.get(block);\n    if (!patch) { const target = this.#read(block); patch = { target, bytes: target.slice() }; this.#copies.set(block, patch); }\n    return patch.bytes;\n  }\n  prepare() {\n    const writes = [];\n    for (const patch of this.#copies.values()) if (!equalBytes(patch.target, patch.bytes)) writes.push(patch);\n    return writes;\n  }\n}\n\nfunction validateSlot(read) {\n  const global = read(0), bitmap = global.subarray(64, 128), seen = new Uint8Array(64);\n  require(matches(global, 0, 'SaroSave') && be32(global, 8) === SLOT_BYTES && be16(global, 12) === 128 && bit(bitmap, 0),\n          'Invalid SAROO slot header; existing slot contents were not reformatted.');\n  const claim = block => {\n    require(block > 0 && block \u003c 512 && bit(bitmap, block) && !bit(seen, block), 'Invalid or shared SAROO allocation.');\n    mark(seen, block, true);\n  };\n  const records = [];\n  for (let block = be16(global, 62); block; block = be16(read(block), 62)) {\n    claim(block); records.push({ block });\n  }\n  for (const record of records) {\n    const header = read(record.block), dataBitmap = header.subarray(64), size = be32(header, 12), needed = Math.ceil(size / 128);\n    require(header[0] && size \u003c= 510 * 128, 'Invalid SAROO save name or size.');\n    const blocks = new Uint16Array(needed); let count = 0;\n    for (let block = 0; block \u003c 512; block++) if (bit(dataBitmap, block)) {\n      claim(block); require(count \u003c needed, 'SAROO allocation exceeds the save size.'); blocks[count++] = block;\n    }\n    require(count === needed, 'SAROO payload is not completely allocated.');\n    Object.assign(record, { size, blocks });\n  }\n  let free = 0;\n  for (let block = 1; block \u003c 512; block++) if (!bit(bitmap, block)) free++;\n  return { records, free, storedFree: be16(global, 14), total: 512, reserved: 1 };\n}\n\nfunction validateMems(read) {\n  const global = read(0), bitmap = global.subarray(16), seen = new Uint8Array(1008), records = [];\n  require(matches(global, 0, 'SaroMems') && be32(global, 8) === MEMS_BYTES && bitmap[0] === 255, 'Invalid MEMS header or reserved blocks.');\n  const claim = block => {\n    require(block >= 8 && block \u003c 8064 && bit(bitmap, block) && !bit(seen, block), 'Invalid or shared MEMS allocation.');\n    mark(seen, block, true);\n  };\n  for (let entry = 0; entry \u003c 448; entry++) {\n    const header = read(1 + (entry >>> 6)), offset = (entry & 63) * 16;\n    if (!header[offset]) continue;\n    const block = be16(header, offset + 14); claim(block); records.push({ entry, block });\n  }\n  for (const record of records) {\n    const header = read(record.block), directory = read(1 + (record.entry >>> 6)), start = (record.entry & 63) * 16;\n    for (let i = 0; i \u003c 11; i++) {\n      require(header[i] === directory[start + i], 'MEMS filename and directory identity disagree.');\n    }\n    const size = be32(header, 12);\n    require(size \u003c= 479 * 1024, 'MEMS save exceeds the 479-block pointer table.');\n    const needed = size \u003c= 960 ? 0 : Math.ceil(size / 1024), blocks = new Uint16Array(needed);\n    for (let i = 0; i \u003c needed; i++) { const block = be16(header, 64 + i * 2); claim(block); blocks[i] = block; }\n    if (needed) require(be16(header, 64 + needed * 2) === 0, 'MEMS table terminator is missing.');\n    Object.assign(record, { size, blocks });\n  }\n  let free = 0;\n  for (let block = 8; block \u003c 8064; block++) if (!bit(bitmap, block)) free++;\n  return { records, free, storedFree: be16(global, 12), total: 8064, reserved: 8 };\n}\n\nfunction validateSaturn(read) {\n  const owned = new Uint8Array(64), table = new Uint16Array(510), records = []; owned[0] = 3;\n  require(matches(read(0), 0, 'BackUpRam Format'), 'Invalid Saturn backup signature.');\n  for (let block = 2; block \u003c 512; block++) if (be32(read(block), 0) === 0x80000000) {\n    mark(owned, block, true); records.push({ block });\n  }\n  for (const record of records) {\n    const first = read(record.block), size = be32(first, 30);\n    require(first[4] && size \u003c= 32768, 'Invalid Saturn backup name or size.');\n    table[0] = record.block;\n    let cursor = 0, offset = 34, count = 1;\n    for (;;) {\n      if (offset === 64) { cursor++; offset = 4; }\n      require(cursor \u003c count, 'Saturn block table has no complete terminator.');\n      const next = be16(read(table[cursor]), offset); offset += 2;\n      if (!next) break;\n      require(next >= 2 && next \u003c 512 && count \u003c 510 && !bit(owned, next), 'Invalid or shared Saturn block table.');\n      mark(owned, next, true); table[count++] = next;\n    }\n    require(size \u003c= 64 - offset + (count - cursor - 1) * 60, 'Saturn payload exceeds its complete block list.');\n    Object.assign(record, { size, blocks: table.slice(0, count), cursor, offset });\n  }\n  let free = 0;\n  for (let block = 2; block \u003c 512; block++) if (!bit(owned, block)) free++;\n  return { records, free, storedFree: null, total: 512, reserved: 2 };\n}\n\nconst CONSTRUCT = Symbol('SaveArchive');\nclass SaveArchive {\n  #source; #extra = []; #logical = null; #type; #cache = null; #revision = 0;\n  #volumes = new Uint16Array();\n  constructor(token) { require(token === CONSTRUCT, 'Use SaveArchive.open() or SaveArchive.create().'); }\n  get type() { return this.#type; }\n  get readOnly() { return this.#type === 'saturn'; }\n  get revision() { return this.#revision; }\n  get dirty() { return this.#revision !== 0; }\n  get bytes() { return this.#source.length + this.#extra.length * SLOT_BYTES; }\n  get volumeCount() { return this.#type === 'saroo' ? this.#volumes.length : 1; }\n\n  static async open(file, { signal, onProgress } = {}) {\n    require(file instanceof Blob && file.size >= 32768, 'Archive is too short.');\n    signal?.throwIfAborted();\n    // Reject impossible extents before allocating the complete input. The odd\n    // physical layout needs 32 bytes to identify its 16 logical signature bytes.\n    const prefix = new Uint8Array(await file.slice(0, 32).arrayBuffer()); signal?.throwIfAborted();\n    if (matches(prefix, 0, 'Saroo Save File\\0')) {\n      require(file.size % SLOT_BYTES === 0 && file.size \u003c= 4096 * SLOT_BYTES,\n              'SAROO archives require complete 64 KiB slots, up to 4,095 games.');\n    } else if (matches(prefix, 0, 'SaroMems')) {\n      require(file.size >= MEMS_BYTES && be32(prefix, 8) === MEMS_BYTES, 'Invalid MEMS archive extent.');\n    } else {\n      const odd = Uint8Array.from({ length: 16 }, (_, i) => prefix[2 * i + 1]);\n      require((file.size === 32768 && matches(prefix, 0, 'BackUpRam Format')) ||\n              (file.size === 65536 && matches(odd, 0, 'BackUpRam Format')), 'Expected a complete Saturn backup signature and extent.');\n    }\n    const result = new SaveArchive(CONSTRUCT); result.#source = new Uint8Array(await file.arrayBuffer()); signal?.throwIfAborted();\n    const source = result.#source;\n    if (matches(source, 0, 'Saroo Save File\\0')) {\n      require(source.length % SLOT_BYTES === 0 && source.length \u003c= 4096 * SLOT_BYTES, 'SAROO archives require complete 64 KiB slots, up to 4,095 games.');\n      result.#type = 'saroo'; result.#index();\n    } else if (matches(source, 0, 'SaroMems')) {\n      require(source.length >= MEMS_BYTES, 'MEMS archive is shorter than 8 MiB.');\n      result.#type = 'mems'; result.#select(0);\n    } else {\n      const plain = matches(source, 0, 'BackUpRam Format');\n      require(source.length === (plain ? 32768 : 65536), 'Expected an exact 32 KiB or odd-byte 64 KiB Saturn backup.');\n      result.#type = 'saturn';\n      if (!plain) { result.#logical = new Uint8Array(32768); for (let i = 0; i \u003c 32768; i++) result.#logical[i] = source[i * 2 + 1]; }\n      result.#select(0);\n    }\n    onProgress?.({ phase: 'open', done: source.length, total: source.length });\n    await pause(); signal?.throwIfAborted(); return result;\n  }\n\n  static create(type = 'saroo') {\n    require(type === 'saroo' || type === 'mems', 'New archives must be SAROO or MEMS.');\n    const archive = new SaveArchive(CONSTRUCT); archive.#type = type;\n    archive.#source = new Uint8Array(type === 'saroo' ? SLOT_BYTES : MEMS_BYTES);\n    archive.#source.set(new TextEncoder().encode(type === 'saroo' ? 'Saroo Save File' : 'SaroMems'));\n    if (type === 'mems') { put32(archive.#source, 8, MEMS_BYTES); put16(archive.#source, 12, 8056); archive.#source[16] = 255; }\n    archive.#revision = 1; return archive;\n  }\n\n  #index() {\n    const slots = this.bytes / SLOT_BYTES, ids = new Uint16Array(Math.max(0, slots - 1)); let count = 0;\n    for (let slot = 1; slot \u003c 4096; slot++) if (this.#source[slot * 16]) {\n      require(slot \u003c slots, 'SAROO directory refers beyond the complete archive.'); ids[count++] = slot;\n    }\n    this.#volumes = ids.subarray(0, count);\n  }\n  volume(index) {\n    unsigned(index, this.volumeCount - 1, 'Volume index');\n    const id = this.#type === 'saroo' ? this.#volumes[index] : 0;\n    return { id, rawName: this.#type === 'saroo' ? this.#source.slice(id * 16, id * 16 + 16) :\n      new TextEncoder().encode(this.#type === 'mems' ? 'SaroMems' : 'Saturn Backup RAM') };\n  }\n  #slot(slot) {\n    const offset = slot * SLOT_BYTES;\n    return offset \u003c this.#source.length ? this.#source.subarray(offset, offset + SLOT_BYTES) : this.#extra[slot - this.#source.length / SLOT_BYTES];\n  }\n  #reader(volume) {\n    let data, width, total;\n    if (this.#type === 'saroo') {\n      require(Number.isInteger(volume) && volume > 0 && volume \u003c this.bytes / SLOT_BYTES && this.#source[volume * 16], 'SAROO slot does not exist.');\n      data = this.#slot(volume); width = 128; total = 512;\n    } else {\n      require(volume === 0, 'This archive has one volume.');\n      data = this.#logical ?? this.#source; width = this.#type === 'mems' ? 1024 : 64; total = this.#type === 'mems' ? 8192 : 512;\n    }\n    return block => {\n      require(Number.isInteger(block) && block >= 0 && block \u003c total, 'Archive block is outside its volume.');\n      return data.subarray(block * width, (block + 1) * width);\n    };\n  }\n  #validate(read) { return this.#type === 'saroo' ? validateSlot(read) : this.#type === 'mems' ? validateMems(read) : validateSaturn(read); }\n  #select(volume) {\n    if (this.#cache?.volume === volume) return this.#cache;\n    const parsed = this.#validate(this.#reader(volume)); this.#cache = { volume, ...parsed }; return this.#cache;\n  }\n  stats(volume) {\n    const { records, free, storedFree, total, reserved } = this.#select(volume);\n    return { saves: records.length, free, storedFree, total, reserved, readOnly: this.readOnly };\n  }\n  #record(volume, index) {\n    const selected = this.#select(volume); unsigned(index, selected.records.length - 1, 'Save index');\n    return selected.records[index];\n  }\n  metadata(volume, index) {\n    const record = this.#record(volume, index), header = this.#reader(volume)(record.block), saturn = this.#type === 'saturn';\n    return { id: index, size: record.size, blocks: this.#type === 'saturn' ? record.blocks.length : record.blocks.length + 1,\n      rawFilename: header.slice(saturn ? 4 : 0, saturn ? 15 : 11), rawComment: header.slice(16, 26),\n      language: header[saturn ? 15 : 27], date: be32(header, saturn ? 26 : 28) };\n  }\n  read(volume, index, offset = 0, length = undefined) {\n    const record = this.#record(volume, index), read = this.#reader(volume);\n    unsigned(offset, record.size, 'Payload offset'); length ??= record.size - offset;\n    unsigned(length, record.size - offset, 'Payload length');\n    const output = new Uint8Array(length); if (!length) return output;\n    if (this.#type === 'mems' && !record.blocks.length) { output.set(read(record.block).subarray(64 + offset, 64 + offset + length)); return output; }\n    let position = 0, done = 0, cursor = this.#type === 'saturn' ? record.cursor : 0;\n    let start = this.#type === 'saturn' ? record.offset : 0;\n    while (done \u003c length) {\n      const bytes = read(record.blocks[cursor]), available = bytes.length - start;\n      if (offset \u003c position + available) {\n        const skip = Math.max(0, offset - position), count = Math.min(available - skip, length - done);\n        output.set(bytes.subarray(start + skip, start + skip + count), done); done += count;\n      }\n      position += available; cursor++; start = this.#type === 'saturn' ? 4 : 0;\n    }\n    return output;\n  }\n  save(volume, index) { return { ...this.metadata(volume, index), data: this.read(volume, index) }; }\n\n  #commit(volume, plan) {\n    const writes = plan.prepare(), stagedBytes = plan.stagedBytes;\n    if (!writes.length) return { changed: false, stagedBytes, writtenBytes: 0, blocks: 0 };\n    const cache = { volume, ...this.#validate(plan.read) };\n    // No callbacks, await, user objects, resizing or allocation-bearing planning\n    // follows this point. Both arrays in every pair are private fixed Uint8Arrays.\n    for (let i = 0; i \u003c writes.length; i++) writes[i].target.set(writes[i].bytes);\n    this.#cache = cache; this.#revision++;\n    return { changed: true, stagedBytes, writtenBytes: writes.length * writes[0].bytes.length, blocks: writes.length };\n  }\n\n  update(volume, index, changes) {\n    require(!this.readOnly, 'Saturn backup archives are read-only.');\n    const old = index === null ? null : this.#record(volume, index), selected = this.#select(volume);\n    const meta = saveMetadata({ ...(old ? this.metadata(volume, index) : {}), ...changes });\n    const payload = changes.data;\n    require(old || payload !== undefined, 'A new save needs a payload, including an empty byte array.');\n    require(payload === undefined || (payload instanceof Uint8Array && payload.length \u003c= MAX_SAVE_BYTES), 'Invalid save payload.');\n    const size = payload === undefined ? old.size : payload.length;\n    const mems = this.#type === 'mems', width = mems ? 1024 : 128, limit = mems ? 8064 : 512, reserved = mems ? 8 : 1;\n    require(size \u003c= (mems ? 479 * 1024 : 510 * 128), 'Replacement exceeds this format’s per-save capacity.');\n    const data = payload?.slice();\n    const plan = new BlockPlan(this.#reader(volume));\n    let block = old?.block, entry = old?.entry, blocks = old?.blocks;\n    if (mems && !old) {\n      entry = -1;\n      for (let i = 0; i \u003c 448; i++) if (!plan.read(1 + (i >>> 6))[(i & 63) * 16]) { entry = i; break; }\n      require(entry >= 0, 'MEMS directory is full (448 saves).');\n    }\n    if (!old || size !== old.size) {\n      const global = plan.write(0), bitmap = global.subarray(mems ? 16 : 64);\n      if (old) for (const item of old.blocks) mark(bitmap, item, false);\n      if (!old) {\n        for (let i = reserved; i \u003c limit; i++) if (!bit(bitmap, i)) { block = i; mark(bitmap, i, true); break; }\n        require(block !== undefined, 'No free header block is available.');\n      }\n      const needed = mems && size \u003c= 960 ? 0 : Math.ceil(size / width);\n      blocks = new Uint16Array(needed); let count = 0, free = 0;\n      for (let i = reserved; i \u003c limit; i++) if (!bit(bitmap, i)) {\n        if (count \u003c needed) { blocks[count++] = i; mark(bitmap, i, true); } else free++;\n      }\n      require(count === needed, 'Replacement does not fit; the existing save is unchanged.');\n      const header = plan.write(block);\n      if (!old) header.fill(0); else header.fill(0, 64);\n      if (mems) {\n        for (let i = 0; i \u003c blocks.length; i++) put16(header, 64 + i * 2, blocks[i]);\n      } else {\n        const dataBitmap = header.subarray(64);\n        for (const item of blocks) mark(dataBitmap, item, true);\n        if (!old) put16(plan.write(selected.records.at(-1)?.block ?? 0), 62, block);\n      }\n      put16(global, mems ? 12 : 14, free);\n    }\n    const header = plan.write(block); header.set(meta.rawFilename, 0); header.set(meta.rawComment, 16);\n    header[27] = meta.language; put32(header, 28, meta.date); put32(header, 12, size);\n    if (mems && (!old || !equalBytes(meta.rawFilename, this.metadata(volume, index).rawFilename))) {\n      const directory = plan.write(1 + (entry >>> 6)), offset = (entry & 63) * 16;\n      directory.set(meta.rawFilename, offset); put16(directory, offset + 14, block);\n    }\n    if (data) {\n      if (mems && !blocks.length) header.set(data, 64);\n      else for (let i = 0; i \u003c blocks.length; i++) plan.write(blocks[i]).set(data.subarray(i * width, (i + 1) * width));\n    }\n    return this.#commit(volume, plan);\n  }\n\n  remove(volume, index) {\n    require(!this.readOnly, 'Saturn backup archives are read-only.');\n    const record = this.#record(volume, index), selected = this.#select(volume), mems = this.#type === 'mems';\n    const plan = new BlockPlan(this.#reader(volume)), global = plan.write(0), bitmap = global.subarray(mems ? 16 : 64);\n    mark(bitmap, record.block, false); for (const block of record.blocks) mark(bitmap, block, false);\n    put16(global, mems ? 12 : 14, selected.free + record.blocks.length + 1);\n    if (mems) {\n      const directory = plan.write(1 + (record.entry >>> 6)), start = (record.entry & 63) * 16; directory.fill(0, start, start + 16);\n    } else put16(plan.write(index ? selected.records[index - 1].block : 0), 62, be16(plan.read(record.block), 62));\n    return this.#commit(volume, plan);\n  }\n\n  createSlot(gameId) {\n    require(this.#type === 'saroo', 'Only SAROO archives have game slots.');\n    const id = fixedBytes(gameId, 16, 'Game ID'); require(id[0], 'A game ID is required.');\n    let empty = 0;\n    for (let slot = 1; slot \u003c 4096; slot++) {\n      const existing = this.#source.subarray(slot * 16, slot * 16 + 16);\n      if (!existing[0]) { if (!empty) empty = slot; }\n      else if (equalBytes(existing, id)) return { id: slot, created: false, stagedBytes: 0 };\n    }\n    require(empty && empty \u003c= this.bytes / SLOT_BYTES, 'SAROO slot directory is full.');\n    const bytes = new Uint8Array(SLOT_BYTES); bytes.set(new TextEncoder().encode('SaroSave'));\n    put32(bytes, 8, SLOT_BYTES); put16(bytes, 12, 128); put16(bytes, 14, 511); bytes.set(id, 32); bytes[64] = 1;\n    const append = empty === this.bytes / SLOT_BYTES, extra = append ? this.#extra.concat([bytes]) : this.#extra;\n    const volumes = new Uint16Array(this.#volumes.length + 1); let index = 0;\n    for (let slot = 1; slot \u003c 4096; slot++) if (slot === empty || this.#source[slot * 16]) volumes[index++] = slot;\n    if (!append) this.#slot(empty).set(bytes);\n    this.#source.set(id, empty * 16); this.#extra = extra; this.#volumes = volumes; this.#cache = null; this.#revision++;\n    return { id: empty, created: true, stagedBytes: SLOT_BYTES + 16 };\n  }\n\n  async export({ signal, onProgress } = {}) {\n    const revision = this.#revision, parts = []; let done = 0;\n    const check = () => { signal?.throwIfAborted(); require(revision === this.#revision, 'Archive changed during export; export the current version again.'); };\n    const source = this.#source, extra = this.#extra; let checkpoint = performance.now();\n    for (const segment of [source, ...extra]) {\n      for (let start = 0; start \u003c segment.length; start += 1048576) {\n        check(); const end = Math.min(start + 1048576, segment.length);\n        parts.push(new Blob([segment.subarray(start, end)])); done += end - start;\n        check();\n        if (performance.now() - checkpoint >= 8) {\n          onProgress?.({ phase: 'export', done, total: this.bytes }); await pause(); check(); checkpoint = performance.now();\n        }\n      }\n    }\n    onProgress?.({ phase: 'export', done, total: this.bytes }); await pause(); check();\n    return new Blob(parts, { type: 'application/octet-stream' });\n  }\n}\n\nreturn {SLOT_BYTES, MAX_SLOTS, MEMS_BYTES, SaveArchive};\n})();\nconst WorkerApp = (() => {\nconst { SaveArchive } = Archive;\nconst { SaveText, dateText, parseDateText } = Text;\nconst { parseXMLSave, encodeXMLSave } = XML;\nconst { parseRawSave, encodeRawSave, saveFilename, textBytes, byteText, unsigned, MAX_SAVE_BYTES } = Fields;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Single-owner save workspace and dialog controller for SAROO PR #374.\n */\n\n\n\n\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst PAGE_SIZE = 24, HEX_PAGE = 256;\nconst abort = () => new DOMException('Operation canceled.', 'AbortError');\nconst pause = () => new Promise(resolve => setTimeout(resolve, 0));\n\nfunction createSaveWorker(post, sax) {\n  let archive = null, epoch = 0, name = '', busy = null, editor = null, volumeSearch = null;\n  const text = new SaveText();\n  const state = () => ({ epoch, revision:archive?.revision ?? 0, loaded:!!archive, type:archive?.type,\n    volumeCount:archive?.volumeCount ?? 0, bytes:archive?.bytes ?? 0, dirty:archive?.dirty ?? false,\n    readOnly:archive?.readOnly ?? false, name });\n  const checkStamp = stamp => {require(stamp && stamp.epoch===epoch && stamp.revision===(archive?.revision??0), 'The workspace changed; refresh before applying this operation.');};\n  const reply = (id,result) => post({id,result,state:state()});\n  const progress = (id,value) => post({id,progress:value});\n  function checkEditor(message) {\n    checkStamp(message.stamp);\n    require(editor && editor.token===message.token, 'This save dialog is no longer active.');return editor;\n  }\n  function writable() {require(archive && !archive.readOnly,'This archive is read-only.');}\n  function closeEditor() {editor=null;}\n  function display(meta,encoding='shift-jis') {\n    const filename=text.display(meta.rawFilename,encoding),comment=text.display(meta.rawComment,encoding);\n    return {filename:filename.text,comment:comment.text,filenameValid:filename.valid,commentValid:comment.valid,\n      language:meta.language,date:dateText(meta.date),rawFilename:byteText(meta.rawFilename),rawComment:byteText(meta.rawComment)};\n  }\n  function editorState(owner) {\n    return {index:owner.index,volume:owner.volume,size:owner.data?.length??owner.size,\n      readOnly:archive.readOnly,fields:display(owner.meta,owner.encoding),encoding:owner.encoding,\n      omittedExtraMetadata:owner.omittedExtraMetadata??false};\n  }\n  async function fields(owner,value,signal) {\n    require(['shift-jis','utf-8','bytes'].includes(value.encoding),'Choose a supported field encoding.');\n    const rawFilename=await text.edit(owner.meta.rawFilename,value.filename,value.encoding,11,{signal});\n    const rawComment=await text.edit(owner.meta.rawComment,value.comment,value.encoding,10,{signal});\n    const language=unsigned(value.language,255,'Language'),date=parseDateText(value.date);\n    require(rawFilename[0],'A save needs a nonempty filename.');\n    signal.throwIfAborted();require(editor===owner,'This save dialog is no longer active.');\n    owner.meta={rawFilename,rawComment,language,date};owner.encoding=value.encoding;\n  }\n  function matchingName(a,b) {\n    for(let i=0;i\u003c11;i++){if(a[i]!==b[i])return false;if(!a[i])return true;}return true;\n  }\n  function checkNewIdentity(owner) {\n    const original=owner.index===null?null:archive.metadata(owner.volume,owner.index).rawFilename;\n    if(original && matchingName(original,owner.meta.rawFilename))return;\n    const count=archive.stats(owner.volume).saves;\n    for(let i=0;i\u003ccount;i++)if(i!==owner.index &&\n      matchingName(archive.metadata(owner.volume,i).rawFilename,owner.meta.rawFilename))\n      throw new Error('That save name already exists. Open the existing save to replace it.');\n  }\n  async function lists(message) {\n    checkStamp(message.stamp);require(archive,'Open an archive first.');\n    const query=String(message.query??'').toLowerCase(),current=archive,startEpoch=epoch;\n    let indices,count,volume=message.volume;\n    if(message.op==='volumes') {\n      count=current.volumeCount;\n      if(query) {\n        if(!volumeSearch || volumeSearch.archive!==current || volumeSearch.count!==count || volumeSearch.query!==query) {\n          const matches=new Uint16Array(count);let used=0,checkpoint=performance.now();\n          for(let i=0;i\u003ccount;i++) {\n            if(text.display(current.volume(i).rawName).text.toLowerCase().includes(query))matches[used++]=i;\n            if(performance.now()-checkpoint>=8){await pause();checkStamp(message.stamp);checkpoint=performance.now();}\n          }\n          require(archive===current && epoch===startEpoch,'The archive changed during search.');\n          volumeSearch={archive:current,count,query,matches:matches.subarray(0,used)};\n        }\n        indices=volumeSearch.matches;count=indices.length;\n      }\n    } else {\n      count=current.stats(volume).saves;\n      if(query) {\n        const matches=[];\n        for(let i=0;i\u003ccount;i++) {\n          const meta=current.metadata(volume,i),labels=display(meta);\n          if((labels.filename+'\\n'+labels.comment).toLowerCase().includes(query))matches.push(i);\n        }\n        indices=matches;count=matches.length;\n      }\n    }\n    const page=Math.max(0,Math.min(Math.floor(Number(message.page)||0),Math.max(0,Math.ceil(count/PAGE_SIZE)-1))),items=[];\n    for(let i=page*PAGE_SIZE;i\u003cMath.min(count,(page+1)*PAGE_SIZE);i++) {\n      const index=indices?indices[i]:i;\n      if(message.op==='volumes') {const item=current.volume(index);items.push({index,id:item.id,name:text.display(item.rawName).text});}\n      else {const meta=current.metadata(volume,index);items.push({index,size:meta.size,blocks:meta.blocks,...display(meta)});}\n    }\n    return {page,total:count,pageSize:PAGE_SIZE,items,stats:message.op==='saves'?current.stats(volume):null};\n  }\n  async function incoming(file,signal,onProgress) {\n    require(file instanceof Blob,'Choose a save file.');\n    const prefix=new Uint8Array(await file.slice(0,8).arrayBuffer());signal.throwIfAborted();\n    const signature=String.fromCharCode(...prefix);\n    if(signature.startsWith('SSAVERAW') || signature.startsWith('Vmem')) {\n      require(file.size\u003c=MAX_SAVE_BYTES+64,'Raw save exceeds the 1 MiB payload limit.');\n      const bytes=new Uint8Array(await file.arrayBuffer());signal.throwIfAborted();return parseRawSave(bytes);\n    }\n    return parseXMLSave(file,sax,{signal,onProgress});\n  }\n  async function dispatch(message,signal) {\n    const options={signal,onProgress:value=>progress(message.id,value)};\n    if(message.op==='init')return {pageSize:PAGE_SIZE,hexPage:HEX_PAGE,shiftJISSupported:text.shiftJISSupported};\n    checkStamp(message.stamp);\n    switch(message.op) {\n      case 'new': {\n        const candidate=SaveArchive.create(message.type);closeEditor();archive=candidate;epoch++;volumeSearch=null;\n        name=message.type==='saroo'?'SS_SAVE.BIN':'SS_MEMS.BIN';return {};\n      }\n      case 'open': {\n        const candidate=await SaveArchive.open(message.file,options);signal.throwIfAborted();\n        closeEditor();archive=candidate;epoch++;volumeSearch=null;name=message.file.name||'archive.bin';return {};\n      }\n      case 'slot':writable();return archive.createSlot(textBytes(message.gameId,16));\n      case 'export':require(archive,'Open an archive first.');return {blob:await archive.export(options),name};\n      case 'editorStart': {\n        require(archive,'Open an archive first.');archive.stats(message.volume);\n        const index=message.index??null;if(index===null)writable();\n        const meta=index===null ? {rawFilename:new TextEncoder().encode('NEWSAVE'),rawComment:new Uint8Array(10),language:1,date:0}\n          : archive.metadata(message.volume,index);\n        editor={token:message.token,volume:message.volume,index,meta,encoding:'shift-jis',size:meta.size??0,data:index===null?new Uint8Array():null};\n        return editorState(editor);\n      }\n      case 'editorFields': {\n        writable();const owner=checkEditor(message);await fields(owner,message.fields,signal);return editorState(owner);\n      }\n      case 'editorEncoding': {\n        const owner=checkEditor(message);require(['shift-jis','utf-8','bytes'].includes(message.encoding),'Unknown encoding.');\n        owner.encoding=message.encoding;return editorState(owner);\n      }\n      case 'editorRange': {\n        const owner=checkEditor(message),size=owner.data?.length??owner.size;\n        const page=unsigned(message.page,Math.max(0,Math.ceil(size/HEX_PAGE)-1),'Hex page'),offset=page*HEX_PAGE,length=Math.min(HEX_PAGE,Math.max(0,size-offset));\n        const bytes=owner.data?owner.data.slice(offset,offset+length):archive.read(owner.volume,owner.index,offset,length);\n        return {page,offset,size,bytes,pageSize:HEX_PAGE};\n      }\n      case 'editorByte': {\n        writable();const owner=checkEditor(message),size=owner.data?.length??owner.size;\n        const offset=unsigned(message.offset,size-1,'Byte offset'),value=unsigned(message.value,255,'Byte value');\n        if(!owner.data)owner.data=archive.read(owner.volume,owner.index);\n        owner.data[offset]=value;return {offset,value};\n      }\n      case 'editorImport': {\n        writable();const owner=checkEditor(message);\n        const save=await incoming(message.file,signal,options.onProgress);signal.throwIfAborted();checkEditor(message);\n        require(save.data.length\u003c=(archive.type==='saroo'?65280:490496),'Imported payload exceeds this archive format’s per-save capacity.');\n        const meta=owner.index===null || message.useMetadata ? save : {...owner.meta,date:save.date};\n        owner.meta={rawFilename:meta.rawFilename.slice(),rawComment:meta.rawComment.slice(),language:meta.language,date:meta.date};\n        owner.data=save.data;owner.omittedExtraMetadata=!!save.omittedExtraMetadata;return editorState(owner);\n      }\n      case 'editorCommit': {\n        writable();const owner=checkEditor(message);if(message.fields)await fields(owner,message.fields,signal);\n        checkEditor(message);checkNewIdentity(owner);\n        const changes={...owner.meta};if(owner.data)changes.data=owner.data;\n        const result=archive.update(owner.volume,owner.index,changes);closeEditor();return result;\n      }\n      case 'editorDelete': {\n        writable();const owner=checkEditor(message);require(owner.index!==null,'This save has not been added yet.');\n        const result=archive.remove(owner.volume,owner.index);closeEditor();return result;\n      }\n      case 'saveExport': {\n        const owner=checkEditor(message);if(message.fields){writable();await fields(owner,message.fields,signal);}\n        const save={...owner.meta,data:owner.data??archive.read(owner.volume,owner.index)};\n        const extension=message.format;let blob;\n        if(extension==='XML')blob=await encodeXMLSave(save,options);\n        else if(extension==='bin')blob=new Blob([save.data],{type:'application/octet-stream'});\n        else blob=new Blob([encodeRawSave(save,extension)],{type:'application/octet-stream'});\n        signal.throwIfAborted();checkEditor(message);return {blob,name:saveFilename(save.rawFilename,extension)};\n      }\n      default:throw new Error('Unknown save operation.');\n    }\n  }\n  return async message=>{\n    if(message.op==='cancel'){if(busy?.id===message.target)busy.controller.abort(abort());return;}\n    if(message.op==='editorClose') {\n      if(editor?.token===message.token){if(busy?.token===message.token)busy.controller.abort(abort());closeEditor();}return;\n    }\n    if(message.op==='volumes'||message.op==='saves') {\n      try{reply(message.id,await lists(message));}catch(error){post({id:message.id,error:error.message,name:error.name,state:state()});}return;\n    }\n    if(busy){post({id:message.id,error:'An operation is already running.',state:state()});return;}\n    const job={id:message.id,token:message.token,controller:new AbortController()};busy=job;\n    try{reply(message.id,await dispatch(message,job.controller.signal));}\n    catch(error){post({id:message.id,error:error.message,name:error.name,state:state()});}\n    finally{if(busy===job)busy=null;}\n  };\n}\n\nfunction bootSaveWorker(sax) {\n  const receive=createSaveWorker(value=>self.postMessage(value),sax);\n  self.onmessage=event=>{void receive(event.data);};\n}\n\nreturn {createSaveWorker, bootSaveWorker};\n})();\nWorkerApp.bootSaveWorker(SAX);"</script>
+<script>const SaveApp = (() => {
+
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Offline save editor adapted from the feature proposed in SAROO PR #374.
+ * The worker owns archive bytes; this page owns selections and disposable views.
+ */
+function bootSaveApp(workerSource) {
+  const $=id=>document.getElementById(id),pending=new Map();
+  let worker,state={epoch:0,revision:0,loaded:false,dirty:false,readOnly:false},ready=false,fatal=false;
+  let sequence=0,active=null,modal=null,modalSequence=0,selected=null,slotReady=false;
+  let volumePage=0,savePage=0,volumePages=1,savePages=1,volumeGeneration=0,saveGeneration=0;
+  let volumeOwner=null,saveOwner=null;
+  let volumeTimer=null,saveTimer=null,archiveURL=null,saveURL=null,archivePicker=null,savePicker=null;
+  const stamp=()=>({epoch:state.epoch,revision:state.revision});
+  const same=value=>value?.epoch===state.epoch&&value.revision===state.revision;
+  const notice=(value,error=false)=>{$('message').textContent=value;$('message').hidden=!value;$('message').classList.toggle('error',error);};
+  const node=(tag,text,className)=>{const item=document.createElement(tag);if(text!==undefined)item.textContent=text;if(className)item.className=className;return item;};
+  function clearDownload(kind) {
+    if(kind==='archive'){if(archiveURL)URL.revokeObjectURL(archiveURL);archiveURL=null;$('archive-download').hidden=true;}
+    else{if(saveURL)URL.revokeObjectURL(saveURL);saveURL=null;$('save-download').hidden=true;}
+  }
+  function controls() {
+    const blocked=!ready||fatal||active!==null;
+    for(const item of document.querySelectorAll('[data-work]'))item.disabled=blocked;
+    for(const item of $('volumes').querySelectorAll('.volume'))item.disabled||=!same(volumeOwner);
+    for(const item of $('saves').querySelectorAll('.save-row'))item.disabled||=!slotReady||!same(saveOwner)||saveOwner.volume!==selected;
+    for(const item of document.querySelectorAll('[data-write]'))item.disabled=blocked||state.readOnly;
+    $('export').disabled=blocked||!state.loaded;
+    $('add-slot').hidden=!state.loaded||state.type!=='saroo';
+    $('add-save').disabled=blocked||!slotReady||state.readOnly;
+    $('volume-previous').disabled=blocked||!volumePage;$('volume-next').disabled=blocked||volumePage+1>=volumePages;
+    $('save-previous').disabled=blocked||!savePage;$('save-next').disabled=blocked||savePage+1>=savePages;
+    $('activity').hidden=active===null||!!modal;$('editor-activity').hidden=active===null;
+    $('cancel').disabled=active===null;$('editor-cancel-operation').disabled=active===null;
+    if(modal){
+      const pages=Math.max(1,Math.ceil(modal.size/256));
+      $('hex-previous').disabled=blocked||!modal.hexPage;$('hex-next').disabled=blocked||modal.hexPage+1>=pages;
+      $('byte-apply').disabled=blocked||state.readOnly||!modal.size;
+    }
+  }
+  function updateState(value) {
+    if(!value||value.epoch<state.epoch||value.epoch===state.epoch&&value.revision<state.revision)return;
+    if(!same(value))clearDownload('archive');state=value;
+    $('archive-name').textContent=state.name||'No archive open';
+    $('archive-state').textContent=state.loaded?`${state.type==='saroo'?'SAROO game saves':state.type==='mems'?'SAROO memory card':'Saturn backup · read-only'} · ${(state.bytes/1048576).toFixed(2)} MiB · ${state.dirty?'Edited · export to keep changes':'No changes'}`:'Open your backup, or start a new archive.';
+    $('workspace').hidden=!state.loaded;$('welcome').hidden=state.loaded;controls();
+  }
+  function rpc(op,data={}) {
+    const id=++sequence,promise=new Promise((resolve,reject)=>pending.set(id,{resolve,reject}));
+    try{worker.postMessage({op,id,stamp:stamp(),...data});}
+    catch(error){pending.get(id).reject(error);pending.delete(id);}return {id,promise};
+  }
+  async function run(op,data={}) {
+    if(active!==null)throw new Error('Wait for the current operation or cancel it.');
+    if(fatal||!ready&&op!=='init')throw new Error('Reopen the editor to continue.');
+    const request=rpc(op,data);active=request.id;
+    for(const id of ['activity-text','editor-activity-text'])$(id).textContent='Working…';
+    for(const id of ['progress','editor-progress'])$(id).removeAttribute('value');controls();
+    try{return await request.promise;}finally{if(active===request.id)active=null;controls();}
+  }
+  async function perform(action) {
+    const owner=modal;
+    try{await action();}catch(error){
+      if(error.name==='AbortError'||owner&&modal!==owner)return;
+      if(modal)$('editor-error').textContent=error.message;else notice(error.message,true);
+    }
+  }
+  const on=(id,event,action)=>$(id).addEventListener(event,e=>{void perform(()=>action(e));});
+  function discardArchive(){return !state.dirty||confirm('Replace this edited archive? Export it first if you need its changes.');}
+  async function refreshVolumes() {
+    const generation=++volumeGeneration,owner=stamp();
+    const result=await rpc('volumes',{page:volumePage,query:$('volume-search').value}).promise;
+    if(generation!==volumeGeneration||!same(owner))return;
+    volumePage=result.page;volumePages=Math.max(1,Math.ceil(result.total/result.pageSize));
+    const fragment=document.createDocumentFragment();
+    for(const item of result.items){
+      const button=node('button',state.type==='saroo'?item.name:state.type==='mems'?'Memory card':'Saturn backup');
+      button.className='volume';button.dataset.work='';button.dataset.volume=String(item.id);
+      button.classList.toggle('selected',item.id===selected);button.setAttribute('aria-pressed',String(item.id===selected));
+      button.addEventListener('click',()=>{if(!same(owner))return;void perform(async()=>{selected=item.id;slotReady=false;controls();savePage=0;$('save-search').value='';await refreshVolumes();await refreshSaves();});});
+      fragment.append(button);
+    }
+    volumeOwner=owner;$('volumes').replaceChildren(fragment);$('volume-empty').hidden=result.total!==0;
+    $('volume-empty').textContent=$('volume-search').value?'No matching games.':'Add a game to start saving.';
+    $('volume-label').textContent=`${volumePage+1} / ${volumePages} · ${result.total.toLocaleString()}`;
+    $('volume-pages').hidden=volumePages<=1;controls();
+  }
+  async function refreshSaves() {
+    const generation=++saveGeneration,owner=stamp(),volume=selected;slotReady=false;controls();
+    $('saves').replaceChildren();$('slot-error').hidden=true;$('save-empty').hidden=false;
+    if(volume===null){$('save-empty').textContent='Choose a game to see its saves.';$('save-pages').hidden=true;$('slot-state').textContent='';return;}
+    try{
+      const result=await rpc('saves',{volume,page:savePage,query:$('save-search').value}).promise;
+      if(generation!==saveGeneration||volume!==selected||!same(owner))return;
+      savePage=result.page;savePages=Math.max(1,Math.ceil(result.total/result.pageSize));slotReady=true;
+      const fragment=document.createDocumentFragment();
+      for(const item of result.items){
+        const button=node('button');button.className='save-row';button.dataset.work='';button.dataset.index=String(item.index);
+        const labels=node('span');labels.append(node('strong',item.filename),node('small',item.comment||'No comment'));
+        const detail=node('span',`${item.size.toLocaleString()} bytes`,'save-detail');detail.append(node('small',item.date?.replace('T',' ')||'Date unset'));
+        button.append(labels,detail);button.setAttribute('aria-label',`Open save ${item.filename}`);
+        button.addEventListener('click',()=>{if(slotReady&&same(owner)&&volume===selected)void perform(()=>openEditor(item.index));});fragment.append(button);
+      }
+      saveOwner={...owner,volume};$('saves').replaceChildren(fragment);$('save-empty').hidden=result.total!==0;
+      $('save-empty').textContent=$('save-search').value?'No matching saves.':'No saves here yet. Add or import one.';
+      $('save-label').textContent=`${savePage+1} / ${savePages} · ${result.total.toLocaleString()} saves`;
+      $('save-pages').hidden=savePages<=1;
+      const stats=result.stats;$('slot-state').textContent=`${stats.saves} saves · ${stats.free.toLocaleString()} / ${stats.total.toLocaleString()} blocks free`;
+      controls();
+    }catch(error){
+      if(generation!==saveGeneration||volume!==selected||!same(owner))return;
+      $('save-empty').hidden=true;$('save-pages').hidden=true;$('slot-state').textContent='';
+      $('slot-error').textContent=`This game slot could not be opened: ${error.message} Its bytes have been preserved. You can select another game or export the archive.`;
+      $('slot-error').hidden=false;controls();
+    }
+  }
+  async function changedWorkspace() {
+    selected=null;volumePage=savePage=0;slotReady=false;volumeGeneration++;saveGeneration++;
+    $('volume-search').value='';$('save-search').value='';archivePicker=savePicker=null;notice('');
+    if(state.volumeCount){const result=await rpc('volumes',{page:0}).promise;selected=result.items[0]?.id??null;}
+    await refreshVolumes();await refreshSaves();
+  }
+  async function openArchive(file) {
+    if(modal||!discardArchive())return;
+    await run('open',{file});await changedWorkspace();
+  }
+  function markDraft() {if(modal){modal.dirty=true;clearDownload('save');$('editor-error').textContent='';}}
+  function metadata() {
+    if(!/^\d+$/.test($('language').value))throw new Error('Language must be a number from 0 to 255.');
+    return {filename:$('filename').value,comment:$('comment').value,encoding:modal.encoding,
+      language:Number($('language').value),date:$('date').value};
+  }
+  function showDraft(result) {
+    modal.size=result.size;modal.encoding=result.encoding;
+    for(const id of ['filename','comment','language','date'])$(id).value=result.fields[id];
+    $('encoding').value=result.encoding;$('raw-fields').textContent=`Name bytes: ${result.fields.rawFilename}\nComment bytes: ${result.fields.rawComment}`;
+    $('encoding-note').textContent=result.fields.filenameValid&&result.fields.commentValid?'Unchanged text keeps its original bytes.':
+      'Some bytes do not decode in this encoding. Their reversible byte notation is shown; leave it unchanged to preserve it, or select Raw bytes to edit it.';
+    $('metadata-note').hidden=!result.omittedExtraMetadata;
+    $('save-size').textContent=`${result.size.toLocaleString()} payload bytes`;
+    modal.hexPage=Math.min(modal.hexPage,Math.max(0,Math.ceil(result.size/256)-1));controls();
+  }
+  async function openEditor(index=null,file=null) {
+    if(modal||!slotReady)return;
+    const token=++modalSequence,volume=selected,result=await run('editorStart',{token,volume,index});
+    modal={token,volume,index,dirty:false,encoding:result.encoding,size:result.size,hexPage:0,rangeGeneration:0};
+    $('editor-title').textContent=state.readOnly?'View save':index===null?'Add save':'Edit save';
+    $('delete').hidden=index===null||state.readOnly;$('apply').hidden=state.readOnly;$('import-controls').hidden=state.readOnly;
+    $('editor-error').textContent='';$('use-metadata').checked=false;$('byte-offset').value='0';$('byte-value').value='00';
+    showDraft(result);$('editor').showModal();await refreshHex();if(file)await importSave(file);
+  }
+  function closeEditor(force=false) {
+    if(!modal||!force&&modal.dirty&&!confirm('Discard the changes in this save dialog?'))return;
+    worker.postMessage({op:'editorClose',token:modal.token});modal=null;savePicker=null;
+    $('editor').close();$('hex').replaceChildren();clearDownload('save');controls();
+  }
+  async function flushFields(owner) {
+    const result=await run('editorFields',{token:owner.token,fields:metadata()});
+    if(modal!==owner)return false;showDraft(result);return true;
+  }
+  async function importSave(file) {
+    const owner=modal;if(!owner||state.readOnly)return;
+    if(!await flushFields(owner))return;
+    const result=await run('editorImport',{token:owner.token,file,useMetadata:$('use-metadata').checked});
+    if(modal!==owner)return;showDraft(result);markDraft();await refreshHex();
+  }
+  async function refreshHex() {
+    const owner=modal;if(!owner)return;const generation=++owner.rangeGeneration;
+    const result=await run('editorRange',{token:owner.token,page:owner.hexPage});
+    if(modal!==owner||generation!==owner.rangeGeneration)return;
+    owner.hexPage=result.page;const fragment=document.createDocumentFragment();
+    for(let i=0;i<result.bytes.length;i+=16){const row=result.bytes.subarray(i,i+16);
+      fragment.append(`${(result.offset+i).toString(16).toUpperCase().padStart(6,'0')}  `);
+      for(let j=0;j<16;j++){
+        if(j<row.length){const value=row[j].toString(16).toUpperCase().padStart(2,'0'),button=node('button',value,'hex-byte');
+          button.dataset.offset=String(result.offset+i+j);button.dataset.work='';button.tabIndex=-1;
+          button.setAttribute('aria-label',`Byte ${(result.offset+i+j).toString(16).toUpperCase()}: ${value}`);fragment.append(button);
+        }else fragment.append('  ');
+        if(j<15)fragment.append(' ');
+      }
+      fragment.append(`  ${Array.from(row,b=>b>=32&&b<=126?String.fromCharCode(b):'.').join('')}\n`);
+    }
+    if(!result.bytes.length)fragment.append('Empty payload');$('hex').replaceChildren(fragment);
+    $('hex-label').textContent=`Page ${result.page+1} / ${Math.max(1,Math.ceil(result.size/256))}`;controls();
+  }
+  const cancel=()=>{if(active!==null){worker.postMessage({op:'cancel',target:active});for(const id of ['activity-text','editor-activity-text'])$(id).textContent='Canceling…';}};
+  on('cancel','click',cancel);on('editor-cancel-operation','click',cancel);
+  on('open','click',()=>{archivePicker=stamp();$('archive-file').click();});
+  on('archive-file','change',async()=>{
+    const file=$('archive-file').files[0],owner=archivePicker;$('archive-file').value='';archivePicker=null;
+    if(file&&same(owner)&&!modal)await openArchive(file);
+  });
+  for(const [id,type] of [['new-saroo','saroo'],['new-mems','mems']])on(id,'click',async()=>{
+    if(!discardArchive())return;await run('new',{type});await changedWorkspace();
+  });
+  on('add-slot','click',async()=>{
+    const gameId=prompt('Game ID (up to 16 bytes, normally the disc serial):');if(gameId===null)return;
+    const result=await run('slot',{gameId});selected=result.id;savePage=0;$('volume-search').value='';
+    await refreshVolumes();await refreshSaves();notice(result.created?'Game added. Export the archive to keep it.':'That game already exists.');
+  });
+  on('export','click',async()=>{
+    const result=await run('export');clearDownload('archive');archiveURL=URL.createObjectURL(result.blob);
+    $('download').href=archiveURL;$('download').download=result.name;$('download').textContent=`Download ${result.name}`;
+    $('archive-download').hidden=false;notice('Archive export ready. Download it to keep this version.');
+  });
+  on('download','click',()=>notice('Download requested. Keep the downloaded archive before closing edited work.'));
+  on('volume-search','input',()=>{clearTimeout(volumeTimer);volumePage=0;volumeTimer=setTimeout(()=>{if(state.loaded)void perform(refreshVolumes);},120);});
+  on('save-search','input',()=>{clearTimeout(saveTimer);savePage=0;saveTimer=setTimeout(()=>{if(state.loaded)void perform(refreshSaves);},120);});
+  on('volume-previous','click',async()=>{volumePage--;await refreshVolumes();});on('volume-next','click',async()=>{volumePage++;await refreshVolumes();});
+  on('save-previous','click',async()=>{savePage--;await refreshSaves();});on('save-next','click',async()=>{savePage++;await refreshSaves();});
+  on('add-save','click',()=>openEditor());
+  for(const id of ['filename','comment','language','date'])on(id,'input',markDraft);
+  on('encoding','change',async()=>{
+    const owner=modal;if(!owner)return;const encoding=$('encoding').value;
+    try{
+      if(!state.readOnly&&!await flushFields(owner))return;
+      const result=await run('editorEncoding',{token:owner.token,encoding});if(modal===owner)showDraft(result);
+    }catch(error){if(modal===owner)$('encoding').value=owner.encoding;throw error;}
+  });
+  on('import-save','click',()=>{savePicker=modal;$('save-file').click();});
+  on('save-file','change',async()=>{const file=$('save-file').files[0],owner=savePicker;$('save-file').value='';savePicker=null;if(file&&owner&&modal===owner)await importSave(file);});
+  on('close-editor','click',()=>closeEditor());on('editor','cancel',event=>{event.preventDefault();closeEditor();});
+  on('apply','click',async()=>{
+    const owner=modal;if(!owner)return;
+    const result=await run('editorCommit',{token:owner.token,fields:metadata()});
+    if(modal===owner)closeEditor(true);await refreshVolumes();await refreshSaves();notice(result.changed?'Save applied. Export the archive to keep it.':'No save bytes changed.');
+  });
+  on('delete','click',async()=>{
+    const owner=modal;if(!owner||!confirm('Delete this save from the archive?'))return;
+    await run('editorDelete',{token:owner.token});if(modal===owner)closeEditor(true);await refreshVolumes();await refreshSaves();notice('Save deleted. Export the archive to keep this version.');
+  });
+  on('export-save','click',async()=>{
+    const owner=modal;if(!owner)return;
+    const result=await run('saveExport',{token:owner.token,format:$('save-format').value,...(state.readOnly?{}:{fields:metadata()})});
+    if(modal!==owner)return;clearDownload('save');saveURL=URL.createObjectURL(result.blob);
+    $('save-download-link').href=saveURL;$('save-download-link').download=result.name;$('save-download-link').textContent=`Download ${result.name}`;$('save-download').hidden=false;
+  });
+  on('hex-previous','click',async()=>{modal.hexPage--;await refreshHex();});on('hex-next','click',async()=>{modal.hexPage++;await refreshHex();});
+  on('hex','click',event=>{
+    const button=event.target.closest('.hex-byte');if(!button||button.disabled||!modal)return;
+    $('byte-offset').value=Number(button.dataset.offset).toString(16).toUpperCase();$('byte-value').value=button.textContent;
+    if(!state.readOnly){$('byte-value').focus();$('byte-value').select();}
+  });
+  function byteOffset(){
+    const value=$('byte-offset').value;if(!/^[0-9a-f]{1,6}$/i.test(value))throw new Error('Enter a hexadecimal byte offset.');
+    const offset=parseInt(value,16);if(!modal.size||offset>=modal.size)throw new Error('Offset lies outside this save.');return offset;
+  }
+  on('hex-go','click',async()=>{modal.hexPage=Math.floor(byteOffset()/256);await refreshHex();});
+  on('byte-apply','click',async()=>{
+    const owner=modal,offset=byteOffset(),value=$('byte-value').value;
+    if(!/^[0-9a-f]{2}$/i.test(value))throw new Error('Enter one byte as two hexadecimal digits.');
+    await run('editorByte',{token:owner.token,offset,value:parseInt(value,16)});if(modal!==owner)return;
+    markDraft();owner.hexPage=Math.floor(offset/256);await refreshHex();
+  });
+  window.addEventListener('dragover',event=>event.preventDefault());
+  window.addEventListener('drop',event=>{event.preventDefault();void perform(async()=>{
+    if(!ready||fatal||active!==null)return;const files=Array.from(event.dataTransfer.files);
+    if(files.length!==1)throw new Error('Drop one archive or save file at a time.');
+    if(modal)await importSave(files[0]);else await openArchive(files[0]);
+  });});
+  window.addEventListener('beforeunload',event=>{if(state.dirty||modal?.dirty){event.preventDefault();event.returnValue='';}});
+  controls();
+  try{
+    const url=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));
+    try{worker=new Worker(url);}finally{URL.revokeObjectURL(url);}
+    worker.onmessage=event=>{
+      const value=event.data;
+      if(value.progress){
+        if(active!==value.id)return;
+        const label=value.progress.phase==='xml'?'Reading XML…':value.progress.phase==='xml-export'?'Preparing XML…':'Preparing archive…';
+        for(const id of ['activity-text','editor-activity-text'])$(id).textContent=label;
+        if(value.progress.total)for(const id of ['progress','editor-progress']){$(id).max=value.progress.total;$(id).value=value.progress.done;}return;
+      }
+      const request=pending.get(value.id);if(!request)return;pending.delete(value.id);updateState(value.state);
+      if(value.error)request.reject(Object.assign(new Error(value.error),{name:value.name??'Error'}));else request.resolve(value.result);
+    };
+    const failed=event=>{
+      event.preventDefault();fatal=true;
+      for(const request of pending.values())request.reject(new Error('The editor worker stopped. Any prepared download remains available.'));
+      pending.clear();notice('The editor worker stopped. Keep any prepared download, then reopen the editor.',true);controls();
+    };
+    worker.onerror=failed;worker.onmessageerror=failed;
+    void perform(async()=>{await run('init');ready=true;updateState(state);controls();});
+  }catch(error){fatal=true;notice(error.message,true);controls();}
+}
+
+return {bootSaveApp};
+})();
+SaveApp.bootSaveApp(JSON.parse(document.getElementById('worker-source').textContent));</script>
+</html>

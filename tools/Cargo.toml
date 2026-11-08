@@ -1,3 +1,4 @@
 [workspace]
-members = ["crates/menu-assets"]
+members = ["crates/menu-assets", "crates/web-assets"]
+default-members = ["crates/menu-assets"]
 resolver = "2"

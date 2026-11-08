@@ -1,0 +1,9 @@
+{
+  "name": "saroo-browser-regressions",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Development-only offline browser workflows; not an editor runtime dependency",
+  "devDependencies": {
+    "playwright": "1.58.0"
+  }
+}

@@ -1,5 +1,20 @@
 # Host asset tools
 
+The [offline save editor](savetool/web/README.md) is a separate host application.
+Its checked-in HTML runs directly without Rust or a server. `web-assets` rebuilds
+the self-contained file from its readable source modules and pinned XML parser:
+
+```sh
+cargo run --locked --manifest-path tools/Cargo.toml -p web-assets -- save tools/savetool/web tools/savetool/web/index.html > tools/savetool/web/index.build.json
+```
+
+The command prints a JSON receipt, bounds each input to 1 MiB and output to
+2 MiB, preserves destinations on rejected input, and rejects input/output aliasing.
+It accepts only the authored module conventions; it is not a general JavaScript
+transpiler. The pinned parser and dependency-license identities are checked at build
+time. The Rust linker is MIT-licensed; the application and XML dependency retain
+their own licenses. Public browser/format checks are documented with the editor.
+
 The existing C tools retain their original licenses and layout. The Rust
 `menu-assets` crate is a host-only asset compiler under its own MIT license.
 Its lockfile pins serde/serde_json and their dependencies. It does not add Rust
