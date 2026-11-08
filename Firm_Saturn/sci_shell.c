@@ -309,6 +309,7 @@ void sci_shell(void)
 
 		CMD(wtt) {
 			// 测试延时计数. 大概9000000是1秒.
+			// Historical approximate loop count; this is not a calibrated timer.
 			int cnt = arg[0];
 			reset_timer();
 			while(cnt){

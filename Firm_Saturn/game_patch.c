@@ -43,6 +43,7 @@ void RUN_CHEAT(void)
 
 
 // 需要插入中断的补丁程序入口
+// Entry point for patches that must run from an interrupt.
 void CHEAT_patch(void)
 {
 	__asm__ ( "stc      sr, r0" );
@@ -59,6 +60,7 @@ void CHEAT_patch(void)
 
 /**********************************************************/
 // KAITEI_DAISENSOU (Japan) 海底大战争日版 第一关后半部分会有音乐丢失情况
+// Original note: music can disappear in the latter half of the first stage.
 
 void KAITEI_DAISENSOU_handle1(void)
 {
@@ -151,6 +153,7 @@ void POCKET_FIGHTER_patch(void)
 	*(u32*)(0x06013F4c) = 0x2400e05c;
 	*(u32*)(0x06013F50) = 0x000b8041;
 	//*(u8*)(0x06037C2A) = 0x11;//修正开头音频被错误的播放？？
+	// Disabled experiment: correct incorrectly played opening audio? Original uncertainty retained.
 	*(u16*)(0x0602DD68) = 0x09;
 }
 
@@ -476,10 +479,12 @@ void MARVEL_SUPER_handle(void)
 
 	if((REG32(0x600B0FC) == 0x23301FF0) && (REG32(0x600B2D8) == 0x23301FF0)){
 		//日版 欧版 美版地址相同
+		// The original note identifies the same addresses for Japanese, European and US releases.
 		REG16(0x600B0AC) = 0x0009;
 		REG16(0x600B1D4) = 0x0009;
 	}else if((REG32(0x6005F5C) == 0x23301FF0)&&(REG32(0x6005D8C) == 0x23301FF0)){
 		//日版DEMO
+		// Japanese demo.
 		REG16(0x6005D3C) = 0x0009;
 		REG16(0x6005E6A) = 0x0009;
 	}				
@@ -489,12 +494,15 @@ void MARVEL_SUPER_patch(void)
 {
 	if(REG32(0x60D13F8) == 0X60D0FF4){
 		//日版和美版
+		// Japanese and US releases.
 		REG32(0x60D13F8)=(u32)MARVEL_SUPER_handle;
 	}else if(REG32(0x60D1424) == 0X60D0FF4){
 		//日版DEMO
+		// Japanese demo.
 		REG32(0x60D1424)=(u32)MARVEL_SUPER_handle;
 	}else if(REG32(0x60D15AC) == 0X60D0FF4){
 		//欧版
+		// European release.
 		REG32(0x60D15AC)=(u32)MARVEL_SUPER_handle;
 	}
 }
@@ -604,6 +612,7 @@ void FINAL_FIGHT_REVENGE_patch(void)
 /**********************************************************/
 // Amagi_Shien_Japan_patch
 // 游戏会检测PAUSE状态从而导致死循环 
+// Original rationale: the game can loop indefinitely while checking PAUSE status.
 
 void Amagi_Shien_patch(void)
 {
@@ -641,6 +650,7 @@ void CYBER_BOTS_patch(void)
 /**********************************************************/
 // FIGHTERS MEGAMIX_JAP_patch
 // 游戏中会写入ASR寄存器
+// Original rationale: the game writes the ASR register.
 
 //jap 1m 2m
 void FIGHTERS_MEGAMIX_JAP_patch(void)
@@ -661,12 +671,14 @@ void FIGHTERS_MEGAMIX_USA_patch(void)
 /**********************************************************/
 // Fighting Vipers (Japan) (Rev C) patch
 // 游戏中会写入ASR寄存器
+// Original rationale: the game writes the ASR register.
 
 // JAP 1m 2m
 void Fighting_Vipers_JAP_patch(void)
 {
 	if(*(u16*)(0x06022A60)==0x400b){
 		//Rev C 日版 
+		// Japanese Rev C.
 		*(u16*)(0x06022A60) = 0x9;
 	}
 }
@@ -676,10 +688,13 @@ void Fighting_Vipers_USA_patch(void)
 {
 	if(*(u16*)(0x060229AC)==0x400b)
 		*(u16*)(0x060229AC) = 0x9;        // 欧版
+		// European release.
 	else if(*(u16*)(0x06022990)==0x400b)
 		*(u16*)(0x06022990) = 0x9;        // 美版
+		// US release.
 	else if(*(u16*)(0x06022980)==0x400b)
 		*(u16*)(0x06022980) = 0x9;        // 韩版
+		// Korean release.
 }
 
 /**********************************************************/
@@ -694,6 +709,7 @@ void Gotha_patch(void)
 
 /**********************************************************/
 // Terra_Cresta_3D (神鹰一号3D)  关闭光驱
+// Disable the optical drive.
 
 void Terra_Cresta_3D_patch(void)
 {
@@ -704,6 +720,7 @@ void Terra_Cresta_3D_patch(void)
 /**********************************************************/
 // 虎胆龙威
 // 游戏程序员手滑，将0x25E7FFFF写成0x25E7FFF了，从VRAM到CS0了。
+// Original rationale: 0x25E7FFF was used for 0x25E7FFFF, selecting CS0 instead of VRAM.
 
 void Die_Hard_Trilogy_patch(void)
 {
@@ -744,6 +761,7 @@ void Dragons_Dream_patch(void)
 /**********************************************************/
 // Hebereke's Popoitto (Japan) (Europe) ???
 // 游戏会检测PAUSE状态从而导致死循环
+// Original rationale: the game can loop indefinitely while checking PAUSE status.
 
 void Hebereke_Popoitto_patch(void)
 {
@@ -759,6 +777,7 @@ void Hebereke_Popoitto_patch(void)
 /**********************************************************/
 //Hissatsu Pachinko Collection (Japan) (Rev A) ???
 // 游戏会检测PAUSE状态从而导致死循环
+// Original rationale: the game can loop indefinitely while checking PAUSE status.
 
 void Hissatsu_Pachinko_Collection_patch(void)
 {
@@ -848,6 +867,7 @@ void VANDAL_HEARTS_CN_patch(void)
 /**********************************************************/
 //WHIZZ (Japan) (Europe) 补丁 
 // 游戏自身问题，没初始化VDP1
+// Original rationale: the game does not initialize VDP1.
 
 void WHIZZ_patch(void)
 {
@@ -858,6 +878,7 @@ void WHIZZ_patch(void)
 /**********************************************************/
 // Kidou Senshi Z Gundam - Zenpen Zeta no Kodou (Japan)
 // 游戏自身问题，没初始化VDP1
+// Original rationale: the game does not initialize VDP1.
 
 void Gundam_Zenpen_Zeta_no_Kodou_patch(void)
 {
@@ -868,6 +889,7 @@ void Gundam_Zenpen_Zeta_no_Kodou_patch(void)
 /**********************************************************/
 //Shichuu Suimei Pitagraph (Japan) (2M)补丁
 // 游戏会检测PAUSE状态从而导致死循环
+// Original rationale: the game can loop indefinitely while checking PAUSE status.
 
 void Shichuu_Suimei_Pitagraph_patch(void)
 {
@@ -940,15 +962,19 @@ void Ultimate_Mortal_Kombat_3_patch(void)
 	int r0 = 0x0601875A;
 
 	if(REG16(r0)==0x480b)//美版 欧版
+	// US and European releases.
 	   REG16(r0)= 0x09;
 
 	if(REG16(r0+0x10)==0x480b)//欧版修正版
+	// Revised European release.
 		REG16(r0+0x10)= 0x09;		
 
 	if(REG16(r0+0x54)==0x480b)//美版 欧版
+	// US and European releases.
 		REG16(r0+0x54)= 0x09;
 
 	if(REG16(r0+0x64)==0x480b)//欧版修正版
+	// Revised European release.
 		REG16(r0+0x64)= 0x09;	
 }
 
@@ -962,6 +988,7 @@ void Batman_Forever_The_Arcade_Game_handle1(void)
 
 	if(REG32(r0)==0xD439490B){
 		//日版 美版 欧版相同
+		// Japanese, US and European releases share this location.
 		REG32(r0)   = 0xD23A6122;
 		REG32(r0+4) = 0x21188BFC;
 		REG32(r0+8) = 0xD437490B;
@@ -977,6 +1004,7 @@ void Batman_Forever_The_Arcade_Game_patch(void)
 {
 	if(REG32(0x060043C4)==0x600AF9C){
 		//日版 美版 欧版 主程序相同
+		// Original note: Japanese, US and European releases share the main program.
 		REG32(0x060043C4) = (u32)Batman_Forever_The_Arcade_Game_handle1;
 	}
 }
@@ -1000,6 +1028,7 @@ void MANX_TT_SUPER_BIKE_patch(void)
 {
 	if(*(u8*)(0x60219B1)==0x01){
 		//日版和欧版相同
+		// Japanese and European releases share these locations.
 		*(u8*)(0x60219B3)= 0x03;
 		*(u8*)(0x60219E7)= 0x03;
 		*(u8*)(0x602037D)= 0x43;
@@ -1008,6 +1037,7 @@ void MANX_TT_SUPER_BIKE_patch(void)
 		*(u8*)(0x6020619)= 0x13;
 	}else if(*(u8*)(0x6021A11)==0x01){
 		//美版
+		// US release.
 		*(u8*)(0x6021A13)= 0x03;
 		*(u8*)(0x6021A47)= 0x03;
 		*(u8*)(0x60203DD)= 0x43;
@@ -1020,6 +1050,7 @@ void MANX_TT_SUPER_BIKE_patch(void)
 
 /**********************************************************/
 // 梦幻之星 2代
+// Phantasy Star II.
 
 void  Phantasy_Star_Collection_handle(void)
 {
@@ -1039,6 +1070,7 @@ void  Phantasy_Star_Collection_patch(void)
 /**********************************************************/
 // Croc: Legend of the Gobbos
 // 未正确初始化VDP1
+// Original rationale: VDP1 is not initialized correctly.
 
 void Croc_LOG_patch(void)
 {
@@ -1095,9 +1127,13 @@ GAME_DB game_dbs[] = {
 	{"T-1248G",            "FINAL_FIGHT_REVENGE",FINAL_FIGHT_REVENGE_patch},
 	{"T-1226G",            "XMEN_VS_SF",         xmvsf_patch},
 	{"T-1215G",            "MARVEL_SUPER",       MARVEL_SUPER_patch}, //日版
+	// Japanese release.
 	{"T-1214H",            "MARVEL_SUPER",       MARVEL_SUPER_patch}, //美版
+	// US release.
 	{"6106664",            "MARVEL_SUPER",       MARVEL_SUPER_patch}, //日版demo
+	// Japanese demo.
 	{"T-7032H",            "MARVEL_SUPER",       MARVEL_SUPER_patch}, //欧版
+	// European release.
 	{"T-1238G   V1.000",   "MSH_VS_SF",          mshvssf_patch},
 
 	{"T-1513G",            "Amagi_Shien",        Amagi_Shien_patch},

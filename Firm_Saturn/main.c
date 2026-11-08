@@ -309,6 +309,7 @@ void cpu_dmemcpy(void *dst, void *src, int size, int ch)
 
 	if(((u32)src&0xfff8703f)==0x25800000){
 		// CDBLOCK的DATA_PORT
+		// CDBLOCK's DATA_PORT
 		chcr &= 0xcfff;
 	}
 
@@ -333,6 +334,7 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch)
 	if(ch>1){ mask <<= 4; maskh   = 0; }
 	mask |= maskh<<16;
 	while(SDSTAT&mask); // 等待传输结束
+	// Wait for transfer to complete
 
 	sdma->src = (u32)src;
 	sdma->dst = (u32)dst;
@@ -347,6 +349,7 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch)
 void scu_dmemcpy(void *dst, void *src, int size, int ch)
 {
 	while(SDSTAT&0x10030); // 等待传输结束
+	// Wait for transfer to complete
 
 	SD0R = (u32)src;
 	SD0W = (u32)dst;
@@ -952,6 +955,7 @@ int main_handle(int ctrl)
 			return 0;
 		}else if(retv==1){
 			// 是Audio CD
+			// Is Audio CD
 			use_sys_bup = 1;
 			use_sys_load = 1;
 			my_cdplayer();
@@ -959,6 +963,7 @@ int main_handle(int ctrl)
 			type = 2;
 		}else if(retv==3){
 			// 是刻录游戏CD
+			// Is burned game CD
 			retv = jhl_auth_hack(100000);
 			if(retv!=2){
 				char buf[64];
@@ -970,6 +975,7 @@ int main_handle(int ctrl)
 			type = 2;
 		}else if(retv!=4){
 			// 是数据CD
+			// Is data CD
 			char buf[64];
 			sprintf(buf, "%s%d", TT("不是游戏光盘!"), retv);
 			menu_status(&main_menu, buf);
@@ -978,6 +984,7 @@ int main_handle(int ctrl)
 		}
 
 		// 停止正在播放的背景音乐。
+		// Stop currently playing background music.
 		SS_ARG = 0xffff;
 		SS_CMD = SSCMD_LOADDISC;
 
