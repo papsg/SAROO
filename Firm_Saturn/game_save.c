@@ -375,6 +375,7 @@ static int find_save(char *file_name, int offset, int *last)
 
 
 // 根据BIOS的BUP代码，只有dev为2时才检测num。
+// The original BIOS BUP convention checks the partition number only for device 2.
 int sro_bup_sel_part(int dev, int num)
 {
 	printk("bup_sel_part(%d): %d\n", dev, num);
@@ -602,6 +603,7 @@ int sro_bup_delete(int dev, char *file_name)
 
 	has_data = 1;
 	// 释放开始块
+	// Release the starting block.
 	if(dev==0){
 		set_bitmap((u8*)BUPMEM->bitmap, block, 0);
 		BUPMEM->free_block += 1;
@@ -614,6 +616,7 @@ int sro_bup_delete(int dev, char *file_name)
 	}
 
 	// 释放数据块
+	// Release the data blocks.
 	if(has_data){
 		u8 *bmp = bp+0x40;
 		block = 0;
@@ -637,6 +640,7 @@ int sro_bup_delete(int dev, char *file_name)
 	}
 
 	// 更新last指针
+	// Update the linked save list or cartridge directory entry.
 	if(dev==1){
 		memset((u8*)MEMS_HEADER+1024+last*16, 0, 16);
 	}else{

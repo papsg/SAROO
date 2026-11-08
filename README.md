@@ -1,4 +1,6 @@
 
+[English documentation](README_EN.md)
+
 ### SAROO is a HDLoader for SEGA Saturn.
 
 SAROO是一个土星光驱模拟器。SAROO插在卡槽上，实现原主板的CDBLOCK的功能，从SD卡装载游戏并运行。
