@@ -138,15 +138,15 @@ private writes, format migration or console firmware changes are included.
 | Finding / historical reference | Public checkpoint | Validation, source references and limits |
 | --- | --- | --- |
 | SAVETOOL-002 MEMS resizing; `3eada90f` | [de8715b](https://github.com/papsg/SAROO/commit/de8715b), on main; [codex/savetool-mems-resize](https://github.com/papsg/SAROO/tree/codex/savetool-mems-resize) | All 19 new actual-CLI scenarios fail at the public baseline; all five previous overwrite-control methods pass there. All eight combined MEMS methods now pass ASan/UBSan and normal O2. Thirteen successful resize transitions and six refusals cover old-block reuse, capacity, complete permitted mutation extents, neighbors, stable metadata, allocation/free counts and fresh payload/date/CRC exports. Two unsigned-reader and seven browser/native checks pass. [Attribution, exact source/format references, public reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md). Historical author paps-g and original PR #372/Damián Parrino credit retained. Full metadata admission and checked persistence remain subsequent scope. |
-| SAVETOOL-003 input extents/integrity; `4bbc849a` | Next | Independently revalidate against current public main; unsigned-field fix 9f41183 is already integrated. |
-| SAVETOOL-004 new MEMS allocation; `5a000472` | Queued | Plan complete allocation before mutation. |
+| SAVETOOL-003 input extents/integrity; `4bbc849a` | [bb64566](https://github.com/papsg/SAROO/commit/bb64566), on main; [codex/savetool-input-validation](https://github.com/papsg/SAROO/tree/codex/savetool-input-validation) | Five new methods pass with actual CLI sanitizers/normal O2 and included-source I/O controls. Covers 22 malformed files, 12 valid format/size combinations, 19 malformed archives, full 256 MiB SAROO admission/extra-unit refusal, 14 direct loader controls and opaque MEMS preservation. Baseline corpus and final API/full-unit controls fail. All 8 prior MEMS, 2 unsigned-reader and 7 web-save methods/24 native-browser exports pass. An overstrict MEMS candidate and collector decoding errors are preserved, corrected before publication. [Exact original format/C11 section-page citations, authorship, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#savetool-003-input-extents-integrity-and-complete-reads). The 9f41183 field fix is deduplicated. Block ownership and checked output persistence remain subsequent scope. |
+| SAVETOOL-004 new MEMS allocation; `5a000472` | Next | Plan complete allocation before mutation. |
 | SAVETOOL-005 MEMS metadata; `9e486906` | Queued | Bound pointers/chains and validate cross-save ownership. |
 | SAVETOOL-005 SAROO slots; `a6d7e31e` | Queued | Bounds, resizing, damaged-slot preservation and safe creation. |
 | SAVETOOL-005 Saturn reader; `75ccd91b` | Queued | Plain/odd-byte metadata, fragmented chains and short/odd exports. |
 | SAVETOOL-006 file replacement/paths; `c8ee25f7` | Queued | Checked persistence and save-derived identity/path handling. |
 
-One of seven is integrated. The public source tree was clean after the first
-integration; main and the verified topic branch were pushed. Fork issues remain
+Two of seven are integrated. The public source tree was clean after each
+integration; main and both verified topic branches were pushed. Fork issues remain
 disabled and no open fork PR requires closure. Original upstream requests are
 unchanged. The MEMS correction changes only host code/tests/docs; private sources,
 branches/stashes, console firmware inputs and the Saturn remain untouched.
