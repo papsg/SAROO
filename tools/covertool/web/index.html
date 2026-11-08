@@ -1,0 +1,994 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; img-src blob: data:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+<title>SAROO Cover Library</title>
+<style>
+:root{color-scheme:dark;--bg:#101820;--panel:#1a2733;--ink:#edf3f5;--muted:#a7bcc7;--edge:#344956;--accent:#8ce2d0;--error:#ffb4a7;font:15px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:1220px;margin:auto;padding:32px 26px 48px}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:28px}h1{font-size:30px;letter-spacing:-.7px;margin:0}h2{margin:0 0 15px;font-size:22px}p{margin:8px 0}.eyebrow{font-size:12px;letter-spacing:2px;color:var(--accent);font-weight:700}.muted,small{color:var(--muted)}.offline{font-size:12px;border:1px solid var(--edge);border-radius:20px;padding:7px 12px;white-space:nowrap}button,.download{font:inherit;font-weight:600;border:1px solid var(--edge);border-radius:7px;background:#263b49;color:var(--ink);padding:9px 14px;cursor:pointer;text-decoration:none;display:inline-block}button:hover,.download:hover{background:#345363}button:disabled{opacity:.42;cursor:default}button.primary,.download{background:var(--accent);border-color:var(--accent);color:#102b29}button.danger{color:var(--error)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.toolbar,.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar{padding:16px;background:var(--panel);border:1px solid var(--edge);border-radius:12px}.spacer{flex:1}.search{flex:1;min-width:190px}.search input{width:100%}input,select{font:inherit;background:#111e28;color:var(--ink);border:1px solid #526976;border-radius:6px;padding:9px;max-width:100%}label{display:grid;gap:6px}.library-heading{display:flex;justify-content:space-between;align-items:center;margin:24px 0 14px;gap:14px}.library-heading p{margin:0;overflow-wrap:anywhere}#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:16px}.card{padding:12px;background:var(--panel);border:1px solid var(--edge);border-radius:10px;min-width:0;text-align:left}.card:hover{border-color:var(--accent)}.art{height:168px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;background:#101a23;border-radius:5px}.art canvas{max-height:156px;max-width:128px;width:auto;height:auto;image-rendering:pixelated}.serial{display:block;overflow-wrap:anywhere;font-size:13px}.card small{display:block;font-size:11px;font-weight:400}.empty{padding:64px 20px;text-align:center;border:1px dashed var(--edge);border-radius:12px}.pagination{justify-content:center;margin-top:22px}.notice{padding:12px 16px;background:var(--panel);border-radius:8px;margin:16px 0;overflow-wrap:anywhere}#message.error,#editor-error{color:var(--error)}#activity progress{flex:1;min-width:100px;accent-color:var(--accent)}[hidden]{display:none!important}dialog{background:var(--panel);color:var(--ink);border:1px solid #587482;border-radius:14px;max-width:min(720px,calc(100vw - 28px));width:720px;padding:24px;max-height:calc(100vh - 32px);overflow:auto}dialog::backdrop{background:#030a10b8}.editor-columns{display:grid;grid-template-columns:180px 1fr;gap:24px}.preview{height:240px;display:flex;align-items:center;justify-content:center;background:#0e1922;border-radius:8px}.preview canvas{max-width:100%;max-height:230px;image-rendering:pixelated}.fields{display:grid;gap:13px}.size-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.dialog-actions{border-top:1px solid var(--edge);margin-top:22px;padding-top:18px}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}#review-items{list-style:none;padding:0}#review-items li{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid var(--edge);padding:10px 0}#review-items span{overflow-wrap:anywhere}footer{margin-top:34px;font-size:12px;color:var(--muted)}footer a{color:var(--accent)}@media(max-width:580px){main{padding:20px 14px}header{align-items:flex-start}.offline{display:none}.editor-columns{grid-template-columns:1fr}.preview{height:196px}.preview canvas{max-height:192px}dialog{padding:18px}.toolbar{gap:8px}.search{flex-basis:100%}h1{font-size:26px}}
+</style>
+<main>
+  <header><div><div class="eyebrow">SAROO / ARTWORK</div><h1>Cover Library</h1><p class="muted">Prepare the artwork that appears beside your games.</p></div><span class="offline">Local files · works offline</span></header>
+  <div class="toolbar" aria-label="Library actions">
+    <button id="new" data-mutate>New</button><button id="open" data-mutate>Open cover.bin</button><button id="add" data-mutate>Add images</button>
+    <label class="search"><span hidden>Search covers</span><input id="search" type="search" maxlength="128" placeholder="Search serial or IP hash" aria-label="Search covers"></label>
+    <button id="export" class="primary" data-mutate>Export library</button>
+  </div>
+  <input type="file" id="library-file" accept=".bin" hidden><input type="file" id="add-files" accept="image/*,.bmp" multiple hidden>
+  <div id="activity" class="notice row" hidden><span id="activity-text">Working…</span><progress id="progress"></progress><button id="cancel">Cancel</button></div>
+  <p id="message" class="notice" role="status" hidden></p>
+  <div id="library-download" class="notice row" hidden><a id="download" class="download">Download cover.bin</a><span class="muted">Copy the downloaded file to your SD card’s SAROO folder.</span></div>
+  <div class="library-heading"><p><strong id="library-name">New library</strong><br><small id="library-state">Starting editor…</small></p><label class="check muted" title="Remove unused file space on export while preserving cover identities and artwork."><input id="compact" type="checkbox" data-mutate>Compact unused space</label><span id="range" class="muted"></span></div>
+  <div id="grid"></div><div id="empty" class="empty" hidden><h2>Your artwork, together.</h2><p class="muted">Open a cover library, or add images to start one.<br>You can also drop files here.</p></div>
+  <nav id="pagination" class="row pagination" aria-label="Cover pages" hidden><button id="previous">Previous</button><span id="page-label"></span><button id="next">Next</button></nav>
+  <section id="review" class="notice" hidden><h2>Images to review</h2><p id="review-summary"></p><ul id="review-items"></ul><div class="row"><button id="review-prev">Previous</button><span id="review-page"></span><button id="review-next">Next</button><span class="spacer"></span><button id="review-dismiss">Dismiss list</button></div></section>
+  <footer>Browser tools proposed by <a href="https://github.com/tpunix/SAROO/pull/374" target="_blank" rel="noreferrer">Damián Parrino / PR #374</a>. Corrected implementation in this fork · GPLv3.<br>No firmware installation is needed. Exporting requests a download; it does not confirm an SD write.</footer>
+  <details id="application-license"><summary>Application license — GNU GPLv3</summary><pre>                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. &lt;https://fsf.org/&gt;
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+
+  For example, if you distribute copies of such a program, whether
+gratis or for a fee, you must pass on to the recipients the same
+freedoms that you received.  You must make sure that they, too, receive
+or can get the source code.  And you must show them these terms so they
+know their rights.
+
+  Developers that use the GNU GPL protect your rights with two steps:
+(1) assert copyright on the software, and (2) offer you this License
+giving you legal permission to copy, distribute and/or modify it.
+
+  For the developers&#x27; and authors&#x27; protection, the GPL clearly explains
+that there is no warranty for this free software.  For both users&#x27; and
+authors&#x27; sake, the GPL requires that modified versions be marked as
+changed, so that their problems will not be attributed erroneously to
+authors of previous versions.
+
+  Some devices are designed to deny users access to install or run
+modified versions of the software inside them, although the manufacturer
+can do so.  This is fundamentally incompatible with the aim of
+protecting users&#x27; freedom to change the software.  The systematic
+pattern of such abuse occurs in the area of products for individuals to
+use, which is precisely where it is most unacceptable.  Therefore, we
+have designed this version of the GPL to prohibit the practice for those
+products.  If such problems arise substantially in other domains, we
+stand ready to extend this provision to those domains in future versions
+of the GPL, as needed to protect the freedom of users.
+
+  Finally, every program is threatened constantly by software patents.
+States should not allow patents to restrict development and use of
+software on general-purpose computers, but in those that do, we wish to
+avoid the special danger that patents applied to a free program could
+make it effectively proprietary.  To prevent this, the GPL assures that
+patents cannot be used to render the program non-free.
+
+  The precise terms and conditions for copying, distribution and
+modification follow.
+
+                       TERMS AND CONDITIONS
+
+  0. Definitions.
+
+  &quot;This License&quot; refers to version 3 of the GNU General Public License.
+
+  &quot;Copyright&quot; also means copyright-like laws that apply to other kinds of
+works, such as semiconductor masks.
+
+  &quot;The Program&quot; refers to any copyrightable work licensed under this
+License.  Each licensee is addressed as &quot;you&quot;.  &quot;Licensees&quot; and
+&quot;recipients&quot; may be individuals or organizations.
+
+  To &quot;modify&quot; a work means to copy from or adapt all or part of the work
+in a fashion requiring copyright permission, other than the making of an
+exact copy.  The resulting work is called a &quot;modified version&quot; of the
+earlier work or a work &quot;based on&quot; the earlier work.
+
+  A &quot;covered work&quot; means either the unmodified Program or a work based
+on the Program.
+
+  To &quot;propagate&quot; a work means to do anything with it that, without
+permission, would make you directly or secondarily liable for
+infringement under applicable copyright law, except executing it on a
+computer or modifying a private copy.  Propagation includes copying,
+distribution (with or without modification), making available to the
+public, and in some countries other activities as well.
+
+  To &quot;convey&quot; a work means any kind of propagation that enables other
+parties to make or receive copies.  Mere interaction with a user through
+a computer network, with no transfer of a copy, is not conveying.
+
+  An interactive user interface displays &quot;Appropriate Legal Notices&quot;
+to the extent that it includes a convenient and prominently visible
+feature that (1) displays an appropriate copyright notice, and (2)
+tells the user that there is no warranty for the work (except to the
+extent that warranties are provided), that licensees may convey the
+work under this License, and how to view a copy of this License.  If
+the interface presents a list of user commands or options, such as a
+menu, a prominent item in the list meets this criterion.
+
+  1. Source Code.
+
+  The &quot;source code&quot; for a work means the preferred form of the work
+for making modifications to it.  &quot;Object code&quot; means any non-source
+form of a work.
+
+  A &quot;Standard Interface&quot; means an interface that either is an official
+standard defined by a recognized standards body, or, in the case of
+interfaces specified for a particular programming language, one that
+is widely used among developers working in that language.
+
+  The &quot;System Libraries&quot; of an executable work include anything, other
+than the work as a whole, that (a) is included in the normal form of
+packaging a Major Component, but which is not part of that Major
+Component, and (b) serves only to enable use of the work with that
+Major Component, or to implement a Standard Interface for which an
+implementation is available to the public in source code form.  A
+&quot;Major Component&quot;, in this context, means a major essential component
+(kernel, window system, and so on) of the specific operating system
+(if any) on which the executable work runs, or a compiler used to
+produce the work, or an object code interpreter used to run it.
+
+  The &quot;Corresponding Source&quot; for a work in object code form means all
+the source code needed to generate, install, and (for an executable
+work) run the object code and to modify the work, including scripts to
+control those activities.  However, it does not include the work&#x27;s
+System Libraries, or general-purpose tools or generally available free
+programs which are used unmodified in performing those activities but
+which are not part of the work.  For example, Corresponding Source
+includes interface definition files associated with source files for
+the work, and the source code for shared libraries and dynamically
+linked subprograms that the work is specifically designed to require,
+such as by intimate data communication or control flow between those
+subprograms and other parts of the work.
+
+  The Corresponding Source need not include anything that users
+can regenerate automatically from other parts of the Corresponding
+Source.
+
+  The Corresponding Source for a work in source code form is that
+same work.
+
+  2. Basic Permissions.
+
+  All rights granted under this License are granted for the term of
+copyright on the Program, and are irrevocable provided the stated
+conditions are met.  This License explicitly affirms your unlimited
+permission to run the unmodified Program.  The output from running a
+covered work is covered by this License only if the output, given its
+content, constitutes a covered work.  This License acknowledges your
+rights of fair use or other equivalent, as provided by copyright law.
+
+  You may make, run and propagate covered works that you do not
+convey, without conditions so long as your license otherwise remains
+in force.  You may convey covered works to others for the sole purpose
+of having them make modifications exclusively for you, or provide you
+with facilities for running those works, provided that you comply with
+the terms of this License in conveying all material for which you do
+not control copyright.  Those thus making or running the covered works
+for you must do so exclusively on your behalf, under your direction
+and control, on terms that prohibit them from making any copies of
+your copyrighted material outside their relationship with you.
+
+  Conveying under any other circumstances is permitted solely under
+the conditions stated below.  Sublicensing is not allowed; section 10
+makes it unnecessary.
+
+  3. Protecting Users&#x27; Legal Rights From Anti-Circumvention Law.
+
+  No covered work shall be deemed part of an effective technological
+measure under any applicable law fulfilling obligations under article
+11 of the WIPO copyright treaty adopted on 20 December 1996, or
+similar laws prohibiting or restricting circumvention of such
+measures.
+
+  When you convey a covered work, you waive any legal power to forbid
+circumvention of technological measures to the extent such circumvention
+is effected by exercising rights under this License with respect to
+the covered work, and you disclaim any intention to limit operation or
+modification of the work as a means of enforcing, against the work&#x27;s
+users, your or third parties&#x27; legal rights to forbid circumvention of
+technological measures.
+
+  4. Conveying Verbatim Copies.
+
+  You may convey verbatim copies of the Program&#x27;s source code as you
+receive it, in any medium, provided that you conspicuously and
+appropriately publish on each copy an appropriate copyright notice;
+keep intact all notices stating that this License and any
+non-permissive terms added in accord with section 7 apply to the code;
+keep intact all notices of the absence of any warranty; and give all
+recipients a copy of this License along with the Program.
+
+  You may charge any price or no price for each copy that you convey,
+and you may offer support or warranty protection for a fee.
+
+  5. Conveying Modified Source Versions.
+
+  You may convey a work based on the Program, or the modifications to
+produce it from the Program, in the form of source code under the
+terms of section 4, provided that you also meet all of these conditions:
+
+    a) The work must carry prominent notices stating that you modified
+    it, and giving a relevant date.
+
+    b) The work must carry prominent notices stating that it is
+    released under this License and any conditions added under section
+    7.  This requirement modifies the requirement in section 4 to
+    &quot;keep intact all notices&quot;.
+
+    c) You must license the entire work, as a whole, under this
+    License to anyone who comes into possession of a copy.  This
+    License will therefore apply, along with any applicable section 7
+    additional terms, to the whole of the work, and all its parts,
+    regardless of how they are packaged.  This License gives no
+    permission to license the work in any other way, but it does not
+    invalidate such permission if you have separately received it.
+
+    d) If the work has interactive user interfaces, each must display
+    Appropriate Legal Notices; however, if the Program has interactive
+    interfaces that do not display Appropriate Legal Notices, your
+    work need not make them do so.
+
+  A compilation of a covered work with other separate and independent
+works, which are not by their nature extensions of the covered work,
+and which are not combined with it such as to form a larger program,
+in or on a volume of a storage or distribution medium, is called an
+&quot;aggregate&quot; if the compilation and its resulting copyright are not
+used to limit the access or legal rights of the compilation&#x27;s users
+beyond what the individual works permit.  Inclusion of a covered work
+in an aggregate does not cause this License to apply to the other
+parts of the aggregate.
+
+  6. Conveying Non-Source Forms.
+
+  You may convey a covered work in object code form under the terms
+of sections 4 and 5, provided that you also convey the
+machine-readable Corresponding Source under the terms of this License,
+in one of these ways:
+
+    a) Convey the object code in, or embodied in, a physical product
+    (including a physical distribution medium), accompanied by the
+    Corresponding Source fixed on a durable physical medium
+    customarily used for software interchange.
+
+    b) Convey the object code in, or embodied in, a physical product
+    (including a physical distribution medium), accompanied by a
+    written offer, valid for at least three years and valid for as
+    long as you offer spare parts or customer support for that product
+    model, to give anyone who possesses the object code either (1) a
+    copy of the Corresponding Source for all the software in the
+    product that is covered by this License, on a durable physical
+    medium customarily used for software interchange, for a price no
+    more than your reasonable cost of physically performing this
+    conveying of source, or (2) access to copy the
+    Corresponding Source from a network server at no charge.
+
+    c) Convey individual copies of the object code with a copy of the
+    written offer to provide the Corresponding Source.  This
+    alternative is allowed only occasionally and noncommercially, and
+    only if you received the object code with such an offer, in accord
+    with subsection 6b.
+
+    d) Convey the object code by offering access from a designated
+    place (gratis or for a charge), and offer equivalent access to the
+    Corresponding Source in the same way through the same place at no
+    further charge.  You need not require recipients to copy the
+    Corresponding Source along with the object code.  If the place to
+    copy the object code is a network server, the Corresponding Source
+    may be on a different server (operated by you or a third party)
+    that supports equivalent copying facilities, provided you maintain
+    clear directions next to the object code saying where to find the
+    Corresponding Source.  Regardless of what server hosts the
+    Corresponding Source, you remain obligated to ensure that it is
+    available for as long as needed to satisfy these requirements.
+
+    e) Convey the object code using peer-to-peer transmission, provided
+    you inform other peers where the object code and Corresponding
+    Source of the work are being offered to the general public at no
+    charge under subsection 6d.
+
+  A separable portion of the object code, whose source code is excluded
+from the Corresponding Source as a System Library, need not be
+included in conveying the object code work.
+
+  A &quot;User Product&quot; is either (1) a &quot;consumer product&quot;, which means any
+tangible personal property which is normally used for personal, family,
+or household purposes, or (2) anything designed or sold for incorporation
+into a dwelling.  In determining whether a product is a consumer product,
+doubtful cases shall be resolved in favor of coverage.  For a particular
+product received by a particular user, &quot;normally used&quot; refers to a
+typical or common use of that class of product, regardless of the status
+of the particular user or of the way in which the particular user
+actually uses, or expects or is expected to use, the product.  A product
+is a consumer product regardless of whether the product has substantial
+commercial, industrial or non-consumer uses, unless such uses represent
+the only significant mode of use of the product.
+
+  &quot;Installation Information&quot; for a User Product means any methods,
+procedures, authorization keys, or other information required to install
+and execute modified versions of a covered work in that User Product from
+a modified version of its Corresponding Source.  The information must
+suffice to ensure that the continued functioning of the modified object
+code is in no case prevented or interfered with solely because
+modification has been made.
+
+  If you convey an object code work under this section in, or with, or
+specifically for use in, a User Product, and the conveying occurs as
+part of a transaction in which the right of possession and use of the
+User Product is transferred to the recipient in perpetuity or for a
+fixed term (regardless of how the transaction is characterized), the
+Corresponding Source conveyed under this section must be accompanied
+by the Installation Information.  But this requirement does not apply
+if neither you nor any third party retains the ability to install
+modified object code on the User Product (for example, the work has
+been installed in ROM).
+
+  The requirement to provide Installation Information does not include a
+requirement to continue to provide support service, warranty, or updates
+for a work that has been modified or installed by the recipient, or for
+the User Product in which it has been modified or installed.  Access to a
+network may be denied when the modification itself materially and
+adversely affects the operation of the network or violates the rules and
+protocols for communication across the network.
+
+  Corresponding Source conveyed, and Installation Information provided,
+in accord with this section must be in a format that is publicly
+documented (and with an implementation available to the public in
+source code form), and must require no special password or key for
+unpacking, reading or copying.
+
+  7. Additional Terms.
+
+  &quot;Additional permissions&quot; are terms that supplement the terms of this
+License by making exceptions from one or more of its conditions.
+Additional permissions that are applicable to the entire Program shall
+be treated as though they were included in this License, to the extent
+that they are valid under applicable law.  If additional permissions
+apply only to part of the Program, that part may be used separately
+under those permissions, but the entire Program remains governed by
+this License without regard to the additional permissions.
+
+  When you convey a copy of a covered work, you may at your option
+remove any additional permissions from that copy, or from any part of
+it.  (Additional permissions may be written to require their own
+removal in certain cases when you modify the work.)  You may place
+additional permissions on material, added by you to a covered work,
+for which you have or can give appropriate copyright permission.
+
+  Notwithstanding any other provision of this License, for material you
+add to a covered work, you may (if authorized by the copyright holders of
+that material) supplement the terms of this License with terms:
+
+    a) Disclaiming warranty or limiting liability differently from the
+    terms of sections 15 and 16 of this License; or
+
+    b) Requiring preservation of specified reasonable legal notices or
+    author attributions in that material or in the Appropriate Legal
+    Notices displayed by works containing it; or
+
+    c) Prohibiting misrepresentation of the origin of that material, or
+    requiring that modified versions of such material be marked in
+    reasonable ways as different from the original version; or
+
+    d) Limiting the use for publicity purposes of names of licensors or
+    authors of the material; or
+
+    e) Declining to grant rights under trademark law for use of some
+    trade names, trademarks, or service marks; or
+
+    f) Requiring indemnification of licensors and authors of that
+    material by anyone who conveys the material (or modified versions of
+    it) with contractual assumptions of liability to the recipient, for
+    any liability that these contractual assumptions directly impose on
+    those licensors and authors.
+
+  All other non-permissive additional terms are considered &quot;further
+restrictions&quot; within the meaning of section 10.  If the Program as you
+received it, or any part of it, contains a notice stating that it is
+governed by this License along with a term that is a further
+restriction, you may remove that term.  If a license document contains
+a further restriction but permits relicensing or conveying under this
+License, you may add to a covered work material governed by the terms
+of that license document, provided that the further restriction does
+not survive such relicensing or conveying.
+
+  If you add terms to a covered work in accord with this section, you
+must place, in the relevant source files, a statement of the
+additional terms that apply to those files, or a notice indicating
+where to find the applicable terms.
+
+  Additional terms, permissive or non-permissive, may be stated in the
+form of a separately written license, or stated as exceptions;
+the above requirements apply either way.
+
+  8. Termination.
+
+  You may not propagate or modify a covered work except as expressly
+provided under this License.  Any attempt otherwise to propagate or
+modify it is void, and will automatically terminate your rights under
+this License (including any patent licenses granted under the third
+paragraph of section 11).
+
+  However, if you cease all violation of this License, then your
+license from a particular copyright holder is reinstated (a)
+provisionally, unless and until the copyright holder explicitly and
+finally terminates your license, and (b) permanently, if the copyright
+holder fails to notify you of the violation by some reasonable means
+prior to 60 days after the cessation.
+
+  Moreover, your license from a particular copyright holder is
+reinstated permanently if the copyright holder notifies you of the
+violation by some reasonable means, this is the first time you have
+received notice of violation of this License (for any work) from that
+copyright holder, and you cure the violation prior to 30 days after
+your receipt of the notice.
+
+  Termination of your rights under this section does not terminate the
+licenses of parties who have received copies or rights from you under
+this License.  If your rights have been terminated and not permanently
+reinstated, you do not qualify to receive new licenses for the same
+material under section 10.
+
+  9. Acceptance Not Required for Having Copies.
+
+  You are not required to accept this License in order to receive or
+run a copy of the Program.  Ancillary propagation of a covered work
+occurring solely as a consequence of using peer-to-peer transmission
+to receive a copy likewise does not require acceptance.  However,
+nothing other than this License grants you permission to propagate or
+modify any covered work.  These actions infringe copyright if you do
+not accept this License.  Therefore, by modifying or propagating a
+covered work, you indicate your acceptance of this License to do so.
+
+  10. Automatic Licensing of Downstream Recipients.
+
+  Each time you convey a covered work, the recipient automatically
+receives a license from the original licensors, to run, modify and
+propagate that work, subject to this License.  You are not responsible
+for enforcing compliance by third parties with this License.
+
+  An &quot;entity transaction&quot; is a transaction transferring control of an
+organization, or substantially all assets of one, or subdividing an
+organization, or merging organizations.  If propagation of a covered
+work results from an entity transaction, each party to that
+transaction who receives a copy of the work also receives whatever
+licenses to the work the party&#x27;s predecessor in interest had or could
+give under the previous paragraph, plus a right to possession of the
+Corresponding Source of the work from the predecessor in interest, if
+the predecessor has it or can get it with reasonable efforts.
+
+  You may not impose any further restrictions on the exercise of the
+rights granted or affirmed under this License.  For example, you may
+not impose a license fee, royalty, or other charge for exercise of
+rights granted under this License, and you may not initiate litigation
+(including a cross-claim or counterclaim in a lawsuit) alleging that
+any patent claim is infringed by making, using, selling, offering for
+sale, or importing the Program or any portion of it.
+
+  11. Patents.
+
+  A &quot;contributor&quot; is a copyright holder who authorizes use under this
+License of the Program or a work on which the Program is based.  The
+work thus licensed is called the contributor&#x27;s &quot;contributor version&quot;.
+
+  A contributor&#x27;s &quot;essential patent claims&quot; are all patent claims
+owned or controlled by the contributor, whether already acquired or
+hereafter acquired, that would be infringed by some manner, permitted
+by this License, of making, using, or selling its contributor version,
+but do not include claims that would be infringed only as a
+consequence of further modification of the contributor version.  For
+purposes of this definition, &quot;control&quot; includes the right to grant
+patent sublicenses in a manner consistent with the requirements of
+this License.
+
+  Each contributor grants you a non-exclusive, worldwide, royalty-free
+patent license under the contributor&#x27;s essential patent claims, to
+make, use, sell, offer for sale, import and otherwise run, modify and
+propagate the contents of its contributor version.
+
+  In the following three paragraphs, a &quot;patent license&quot; is any express
+agreement or commitment, however denominated, not to enforce a patent
+(such as an express permission to practice a patent or covenant not to
+sue for patent infringement).  To &quot;grant&quot; such a patent license to a
+party means to make such an agreement or commitment not to enforce a
+patent against the party.
+
+  If you convey a covered work, knowingly relying on a patent license,
+and the Corresponding Source of the work is not available for anyone
+to copy, free of charge and under the terms of this License, through a
+publicly available network server or other readily accessible means,
+then you must either (1) cause the Corresponding Source to be so
+available, or (2) arrange to deprive yourself of the benefit of the
+patent license for this particular work, or (3) arrange, in a manner
+consistent with the requirements of this License, to extend the patent
+license to downstream recipients.  &quot;Knowingly relying&quot; means you have
+actual knowledge that, but for the patent license, your conveying the
+covered work in a country, or your recipient&#x27;s use of the covered work
+in a country, would infringe one or more identifiable patents in that
+country that you have reason to believe are valid.
+
+  If, pursuant to or in connection with a single transaction or
+arrangement, you convey, or propagate by procuring conveyance of, a
+covered work, and grant a patent license to some of the parties
+receiving the covered work authorizing them to use, propagate, modify
+or convey a specific copy of the covered work, then the patent license
+you grant is automatically extended to all recipients of the covered
+work and works based on it.
+
+  A patent license is &quot;discriminatory&quot; if it does not include within
+the scope of its coverage, prohibits the exercise of, or is
+conditioned on the non-exercise of one or more of the rights that are
+specifically granted under this License.  You may not convey a covered
+work if you are a party to an arrangement with a third party that is
+in the business of distributing software, under which you make payment
+to the third party based on the extent of your activity of conveying
+the work, and under which the third party grants, to any of the
+parties who would receive the covered work from you, a discriminatory
+patent license (a) in connection with copies of the covered work
+conveyed by you (or copies made from those copies), or (b) primarily
+for and in connection with specific products or compilations that
+contain the covered work, unless you entered into that arrangement,
+or that patent license was granted, prior to 28 March 2007.
+
+  Nothing in this License shall be construed as excluding or limiting
+any implied license or other defenses to infringement that may
+otherwise be available to you under applicable patent law.
+
+  12. No Surrender of Others&#x27; Freedom.
+
+  If conditions are imposed on you (whether by court order, agreement or
+otherwise) that contradict the conditions of this License, they do not
+excuse you from the conditions of this License.  If you cannot convey a
+covered work so as to satisfy simultaneously your obligations under this
+License and any other pertinent obligations, then as a consequence you may
+not convey it at all.  For example, if you agree to terms that obligate you
+to collect a royalty for further conveying from those to whom you convey
+the Program, the only way you could satisfy both those terms and this
+License would be to refrain entirely from conveying the Program.
+
+  13. Use with the GNU Affero General Public License.
+
+  Notwithstanding any other provision of this License, you have
+permission to link or combine any covered work with a work licensed
+under version 3 of the GNU Affero General Public License into a single
+combined work, and to convey the resulting work.  The terms of this
+License will continue to apply to the part which is the covered work,
+but the special requirements of the GNU Affero General Public License,
+section 13, concerning interaction through a network will apply to the
+combination as such.
+
+  14. Revised Versions of this License.
+
+  The Free Software Foundation may publish revised and/or new versions of
+the GNU General Public License from time to time.  Such new versions will
+be similar in spirit to the present version, but may differ in detail to
+address new problems or concerns.
+
+  Each version is given a distinguishing version number.  If the
+Program specifies that a certain numbered version of the GNU General
+Public License &quot;or any later version&quot; applies to it, you have the
+option of following the terms and conditions either of that numbered
+version or of any later version published by the Free Software
+Foundation.  If the Program does not specify a version number of the
+GNU General Public License, you may choose any version ever published
+by the Free Software Foundation.
+
+  If the Program specifies that a proxy can decide which future
+versions of the GNU General Public License can be used, that proxy&#x27;s
+public statement of acceptance of a version permanently authorizes you
+to choose that version for the Program.
+
+  Later license versions may give you additional or different
+permissions.  However, no additional obligations are imposed on any
+author or copyright holder as a result of your choosing to follow a
+later version.
+
+  15. Disclaimer of Warranty.
+
+  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM &quot;AS IS&quot; WITHOUT WARRANTY
+OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+
+  16. Limitation of Liability.
+
+  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
+THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
+GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
+USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
+DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
+PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
+EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+  17. Interpretation of Sections 15 and 16.
+
+  If the disclaimer of warranty and limitation of liability provided
+above cannot be given local legal effect according to their terms,
+reviewing courts shall apply local law that most closely approximates
+an absolute waiver of all civil liability in connection with the
+Program, unless a warranty or assumption of liability accompanies a
+copy of the Program in return for a fee.
+
+                     END OF TERMS AND CONDITIONS
+
+            How to Apply These Terms to Your New Programs
+
+  If you develop a new program, and you want it to be of the greatest
+possible use to the public, the best way to achieve this is to make it
+free software which everyone can redistribute and change under these terms.
+
+  To do so, attach the following notices to the program.  It is safest
+to attach them to the start of each source file to most effectively
+state the exclusion of warranty; and each file should have at least
+the &quot;copyright&quot; line and a pointer to where the full notice is found.
+
+    &lt;one line to give the program&#x27;s name and a brief idea of what it does.&gt;
+    Copyright (C) &lt;year&gt;  &lt;name of author&gt;
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.
+
+Also add information on how to contact you by electronic and paper mail.
+
+  If the program does terminal interaction, make it output a short
+notice like this when it starts in an interactive mode:
+
+    &lt;program&gt;  Copyright (C) &lt;year&gt;  &lt;name of author&gt;
+    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w&#x27;.
+    This is free software, and you are welcome to redistribute it
+    under certain conditions; type `show c&#x27; for details.
+
+The hypothetical commands `show w&#x27; and `show c&#x27; should show the appropriate
+parts of the General Public License.  Of course, your program&#x27;s commands
+might be different; for a GUI interface, you would use an &quot;about box&quot;.
+
+  You should also get your employer (if you work as a programmer) or school,
+if any, to sign a &quot;copyright disclaimer&quot; for the program, if necessary.
+For more information on this, and how to apply and follow the GNU GPL, see
+&lt;https://www.gnu.org/licenses/&gt;.
+
+  The GNU General Public License does not permit incorporating your program
+into proprietary programs.  If your program is a subroutine library, you
+may consider it more useful to permit linking proprietary applications with
+the library.  If this is what you want to do, use the GNU Lesser General
+Public License instead of this License.  But first, please read
+&lt;https://www.gnu.org/licenses/why-not-lgpl.html&gt;.
+</pre></details>
+</main>
+<dialog id="editor" aria-labelledby="editor-title">
+  <h2 id="editor-title">Edit cover</h2>
+  <div class="editor-columns"><div><div class="preview"><canvas id="preview" width="1" height="1" hidden></canvas><span id="preview-empty" class="muted">Choose an image</span></div><p id="image-info" class="muted"></p><button id="choose-image" data-mutate>Choose image</button><input id="image-file" type="file" accept="image/*,.bmp" hidden></div>
+  <div class="fields">
+    <label>Game serial<input id="serial" maxlength="36" autocomplete="off" spellcheck="false" placeholder="e.g. MK-81000" data-mutate></label>
+    <label>IP hash<input id="hash" maxlength="8" autocomplete="off" spellcheck="false" placeholder="8 hexadecimal digits" data-mutate></label>
+    <div><button id="read-disc" data-mutate>Identify from disc image</button><input id="disc-file" type="file" accept=".bin,.iso,.img" hidden><p><small>Use the first data track’s BIN/ISO. Only its header is read. Serial and IP hash identify the cover.</small></p></div>
+    <label>Cover size<select id="size" data-mutate><option value="128x192">Portrait · 128 × 192</option><option value="128x128">Square · 128 × 128</option><option value="custom">Custom</option></select></label>
+    <div class="size-fields"><label>Width<input id="width" type="number" min="1" max="128" value="128" data-mutate></label><label>Height<input id="height" type="number" min="1" max="192" value="192" data-mutate></label></div>
+    <label>Image fit<select id="fit" data-mutate><option value="contain">Fit whole image · white borders</option><option value="cover">Fill cover · crop edges</option><option value="stretch">Stretch to size</option></select></label>
+    <small>Valid indexed BMPs keep their original size and palette on import. Other images are converted to 256 colors; transparency becomes white.</small>
+  </div></div>
+  <p id="editor-error" role="status"></p>
+  <div id="image-download" class="row" hidden><a id="image-download-link" class="download">Download image</a></div>
+  <div class="dialog-actions row"><button id="delete" class="danger" data-mutate>Delete</button><button id="bmp" data-mutate>Export BMP</button><button id="png" data-mutate>Export PNG</button><span class="spacer"></span><button id="close-editor">Cancel</button><button id="save-editor" class="primary" data-mutate>Apply cover</button></div>
+</dialog>
+<dialog id="batch" aria-labelledby="batch-title"><h2 id="batch-title">Import images</h2><p id="batch-count"></p><p>Images named <code>cover_SERIAL~1234ABCD.bmp</code> or <code>.png</code> carry their game identity. Other names and duplicates will be listed for individual review.</p><label>New image size<select id="batch-size"><option value="128x192">Portrait · 128 × 192</option><option value="128x128">Square · 128 × 128</option></select></label><label>Image fit<select id="batch-fit"><option value="contain">Fit whole image · white borders</option><option value="cover">Fill cover · crop edges</option><option value="stretch">Stretch to size</option></select></label><p><small>Valid indexed BMPs retain their size and palette. Canceling retains completed imports and lists the remaining images.</small></p><div class="dialog-actions row"><button id="batch-close">Cancel</button><button id="batch-start" class="primary">Import</button></div></dialog>
+<script id="worker-source" type="application/json">"'use strict';\nconst Cover = (() => {\n\n/* SPDX-License-Identifier: GPL-3.0-only\n * Checked browser cover format implementation.\n * Feature proposal: Damián Parrino (bucanero), tpunix/SAROO PR #374.\n * Format authority: maintained native covertool and its independent fixtures.\n * This module owns imported bytes; callers only receive metadata or copies.\n */\nconst MAX_COVERS = 16384, INDEX_BYTES = MAX_COVERS * 32;\nconst PALETTE_BYTES = 1024;\nconst view = bytes => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst pause = () => new Promise(resolve => setTimeout(resolve, 0));\nconst hex8 = value => value.toString(16).toUpperCase().padStart(8, '0');\n\nfunction dimensions(width, height) {\n  require(Number.isInteger(width) && width >= 1 && width \u003c= 128 &&\n          Number.isInteger(height) && height >= 1 && height \u003c= 192,\n          'Cover dimensions must be 1–128 × 1–192.');\n}\n\nfunction serialBytes(text) {\n  require(typeof text === 'string', 'Serial must be text.');\n  const bytes = [];\n  for (let i = 0; i \u003c text.length; i++) {\n    let byte = text.charCodeAt(i);\n    if (byte === 37) {\n      const pair = text.slice(i + 1, i + 3);\n      require(/^[0-9a-f]{2}$/i.test(pair), 'Use %HH for an escaped serial byte.');\n      byte = parseInt(pair, 16); i += 2;\n    }\n    require(byte > 0 && byte \u003c= 255, 'Serial bytes must be nonzero; use %HH for raw bytes.');\n    bytes.push(byte);\n    require(bytes.length \u003c= 12, 'Serial exceeds twelve bytes.');\n  }\n  require(bytes.length > 0, 'Serial is required.');\n  return Uint8Array.from(bytes);\n}\n\nfunction serialText(bytes) {\n  let result = '';\n  for (const byte of bytes.subarray(0, 12)) {\n    if (!byte) break;\n    result += (byte >= 65 && byte \u003c= 90) || (byte >= 48 && byte \u003c= 57) ||\n              byte === 45 || byte === 46 || byte === 95\n      ? String.fromCharCode(byte) : '%' + byte.toString(16).toUpperCase().padStart(2, '0');\n  }\n  return result;\n}\n\nfunction filename(meta, extension = 'bmp') {\n  require(extension === 'bmp' || extension === 'png', 'Unsupported artwork extension.');\n  return `cover_${serialText(serialBytes(meta.serial))}~${hex8(meta.hash)}.${extension}`;\n}\n\nfunction parseFilename(name) {\n  const match = /^cover_(.+)~([0-9a-f]{8})\\.(bmp|png)$/i.exec(name);\n  if (!match) return null;\n  return { serial: serialText(serialBytes(match[1])), hash: parseInt(match[2], 16) };\n}\n\nfunction adler32(bytes) {\n  let a = 1, b = 0;\n  for (let start = 0; start \u003c bytes.length; start += 5552) {\n    const end = Math.min(start + 5552, bytes.length);\n    for (let i = start; i \u003c end; i++) { a += bytes[i]; b += a; }\n    a %= 65521; b %= 65521;\n  }\n  return ((b \u003c\u003c 16) | a) >>> 0;\n}\n\nfunction discIdentity(bytes) {\n  require(bytes instanceof Uint8Array && bytes.length >= 256, 'Disc header is shorter than 256 bytes.');\n  const signature = 'SEGA SEGASATURN ';\n  const matches = offset => [...signature].every((c, i) => bytes[offset + i] === c.charCodeAt(0));\n  const offset = matches(0) ? 0 : 16;\n  require(matches(offset), 'No Saturn disc header at offset 0 or 16.');\n  let serial = '';\n  for (const byte of bytes.subarray(offset + 32, offset + 48)) {\n    if (!byte) break;\n    serial += String.fromCharCode(byte);\n  }\n  const version = serial.lastIndexOf('V');\n  if (version >= 0) serial = serial.slice(0, version);\n  const space = serial.indexOf(' ');\n  if (space >= 0) serial = serial.slice(0, space);\n  const raw = Uint8Array.from(serial, c => c.charCodeAt(0));\n  require(raw.length > 0 && raw.length \u003c= 12, 'Disc serial must contain 1–12 bytes.');\n  return { serial: serialText(raw), hash: adler32(bytes.subarray(offset + 48, offset + 112)) };\n}\n\n// RGBQUAD's fourth byte is preserved, although rendering uses only B/G/R.\nfunction decodeBMP8(bytes) {\n  require(bytes instanceof Uint8Array && bytes.length >= 54, 'Truncated BMP header.');\n  const v = view(bytes), dib = v.getUint32(14, true), offset = v.getUint32(10, true);\n  require(v.getUint16(0, true) === 0x4d42 && [40, 52, 56, 108, 124].includes(dib),\n          'Expected a Windows indexed BMP.');\n  const width = v.getInt32(18, true), signedHeight = v.getInt32(22, true);\n  const height = Math.abs(signedHeight), stride = (width + 3) & ~3;\n  dimensions(width, height);\n  require(v.getUint16(26, true) === 1 && v.getUint16(28, true) === 8 &&\n          v.getUint32(30, true) === 0 && [0, 256].includes(v.getUint32(46, true)),\n          'Expected uncompressed 8-bit BMP with a complete 256-color palette.');\n  const end = offset + stride * height, declared = v.getUint32(2, true);\n  require(offset >= 14 + dib + PALETTE_BYTES && end \u003c= bytes.length &&\n          declared >= end && declared \u003c= bytes.length, 'Invalid BMP palette or pixel extent.');\n  // BI_RGB row geometry establishes the extent. Like the native utility, do\n  // not restrict compatibility based on the unused biSizeImage hint.\n  const data = new Uint8Array(PALETTE_BYTES + width * height);\n  data.set(bytes.subarray(14 + dib, 14 + dib + PALETTE_BYTES));\n  for (let y = 0; y \u003c height; y++) {\n    const row = offset + (signedHeight \u003c 0 ? y : height - y - 1) * stride;\n    data.set(bytes.subarray(row, row + width), PALETTE_BYTES + y * width);\n  }\n  return { width, height, data };\n}\n\nfunction checkImage(image) {\n  dimensions(image.width, image.height);\n  require(image.data instanceof Uint8Array &&\n          image.data.length === PALETTE_BYTES + image.width * image.height,\n          'Image must have a complete palette and exactly width × height indices.');\n}\n\nfunction encodeBMP8(image) {\n  checkImage(image);\n  const { width, height, data } = image, stride = (width + 3) & ~3;\n  const bytes = new Uint8Array(1078 + stride * height), v = view(bytes);\n  v.setUint16(0, 0x4d42, true); v.setUint32(2, bytes.length, true);\n  v.setUint32(10, 1078, true); v.setUint32(14, 40, true);\n  v.setInt32(18, width, true); v.setInt32(22, height, true);\n  v.setUint16(26, 1, true); v.setUint16(28, 8, true);\n  v.setUint32(34, stride * height, true);\n  v.setUint32(38, 2835, true); v.setUint32(42, 2835, true); v.setUint32(46, 256, true);\n  bytes.set(data.subarray(0, PALETTE_BYTES), 54);\n  for (let y = 0; y \u003c height; y++) {\n    const start = PALETTE_BYTES + (height - y - 1) * width;\n    bytes.set(data.subarray(start, start + width), 1078 + y * stride);\n  }\n  return bytes;\n}\n\nfunction compareBytes(a, b) {\n  if (a === b) return 0;\n  if (a.length !== b.length) return a.length - b.length;\n  for (let i = 0; i \u003c a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];\n  return 0;\n}\nfunction identity(header) { return serialText(header) + '~' + hex8(view(header).getUint32(12, true)); }\nfunction recordMeta(record) {\n  const v = view(record.header);\n  return { serial: serialText(record.header), hash: v.getUint32(12, true),\n           width: v.getUint16(20, true), height: v.getUint16(22, true) };\n}\n\nclass CoverLibrary {\n  #records = []; #identities = new Map(); #source = null; #revision = 0;\n  get count() { return this.#records.length; }\n  get revision() { return this.#revision; }\n  get dirty() { return this.#revision !== 0; }\n\n  static async open(file, options = {}) {\n    require(file && typeof file.arrayBuffer === 'function' && file.size >= INDEX_BYTES,\n            'cover.bin must contain the complete 512 KiB index.');\n    const library = new CoverLibrary();\n    const checkpoint = library.#checkpoints(options, 0);\n    const bytes = new Uint8Array(await file.arrayBuffer()), v = view(bytes);\n    require(bytes.length >= INDEX_BYTES, 'Truncated cover index.');\n    const shared = new Map();\n    for (let i = 0; i \u003c MAX_COVERS && bytes[i * 32]; i++) {\n      const base = i * 32, width = v.getUint16(base + 20, true), height = v.getUint16(base + 22, true);\n      dimensions(width, height);\n      const offset = v.getUint32(base + 16, true), size = PALETTE_BYTES + width * height;\n      require(offset >= INDEX_BYTES && offset + size \u003c= bytes.length, `Cover ${i + 1} has an invalid image extent.`);\n      const header = bytes.subarray(base, base + 32), key = identity(header);\n      require(!library.#identities.has(key), `Duplicate cover identity: ${key}`);\n      const extent = offset + ':' + size;\n      let payload = shared.get(extent);\n      if (!payload) { payload = { bytes: bytes.subarray(offset, offset + size), hash: null }; shared.set(extent, payload); }\n      const record = { header, payload };\n      library.#records.push(record); library.#identities.set(key, record);\n      if (i % 256 === 255) await checkpoint('open', i + 1, MAX_COVERS);\n    }\n    await checkpoint('open', library.count, library.count, true);\n    library.#source = bytes;\n    return library;\n  }\n\n  #record(index) {\n    require(Number.isInteger(index) && index >= 0 && index \u003c this.count, 'Cover index is out of range.');\n    return this.#records[index];\n  }\n  meta(index) { return recordMeta(this.#record(index)); }\n  has(metadata) {\n    const serial = serialText(serialBytes(metadata.serial));\n    require(Number.isInteger(metadata.hash) && metadata.hash >= 0 && metadata.hash \u003c= 0xffffffff,\n            'IP hash must be an unsigned 32-bit integer.');\n    return this.#identities.has(serial + '~' + hex8(metadata.hash));\n  }\n  image(index) {\n    const record = this.#record(index), { width, height } = recordMeta(record);\n    return { width, height, data: record.payload.bytes.slice() };\n  }\n\n  // Validate and allocate everything before changing the library or its index.\n  set(index, metadata, image) {\n    const old = index === this.count ? null : this.#record(index);\n    require(old || this.count \u003c MAX_COVERS, 'The cover index is full (16,384 entries).');\n    const serial = serialBytes(metadata.serial);\n    require(Number.isInteger(metadata.hash) && metadata.hash >= 0 && metadata.hash \u003c= 0xffffffff,\n            'IP hash must be an unsigned 32-bit integer.');\n    require(image || old, 'A new cover needs image data.');\n    if (image) checkImage(image);\n    const header = old ? old.header.slice() : new Uint8Array(32), v = view(header);\n    if (serialText(header) !== serialText(serial)) { header.fill(0, 0, 12); header.set(serial); }\n    v.setUint32(12, metadata.hash, true);\n    if (image) { v.setUint16(20, image.width, true); v.setUint16(22, image.height, true); }\n    const key = identity(header), existing = this.#identities.get(key);\n    require(!existing || existing === old, `Duplicate cover identity: ${key}`);\n    const payload = image ? { bytes: image.data.slice(), hash: null } : old.payload;\n    if (old && !compareBytes(header, old.header) && !compareBytes(payload.bytes, old.payload.bytes)) return;\n    const record = { header, payload };\n    // Map insertion can allocate; do it before removing the old identity.\n    this.#identities.set(key, record);\n    try { this.#records[index] = record; }\n    catch (error) {\n      if (existing) this.#identities.set(key, existing); else this.#identities.delete(key);\n      throw error;\n    }\n    if (old && key !== identity(old.header)) this.#identities.delete(identity(old.header));\n    this.#source = null; this.#revision++;\n  }\n  remove(index) {\n    const record = this.#record(index);\n    this.#records.splice(index, 1); this.#identities.delete(identity(record.header));\n    this.#source = null; this.#revision++;\n  }\n\n  #checkpoints(options, revision) {\n    let last = performance.now();\n    const check = () => {\n      if (options.signal?.aborted) throw new DOMException('Operation canceled.', 'AbortError');\n      require(this.#revision === revision, 'Library changed during export; export the current version again.');\n    };\n    return async (phase, done, total, force = false) => {\n      check();\n      if (!force && performance.now() - last \u003c 8) return;\n      options.onProgress?.({ phase, done, total });\n      await pause(); last = performance.now(); check();\n    };\n  }\n\n  async export(options = {}) {\n    const revision = this.#revision, count = this.count, records = this.#records;\n    const checkpoint = this.#checkpoints(options, revision);\n    await checkpoint('export', 0, count);\n    // An untouched round trip preserves padding, inactive records, gaps and trailing bytes.\n    if (!revision && this.#source && !options.repack) return new Blob([this.#source]);\n    let order = new Uint32Array(count), scratch = new Uint32Array(count);\n    const hashes = new Uint32Array(count);\n    for (let i = 0; i \u003c count; i++) {\n      order[i] = i;\n      const payload = records[i].payload;\n      if (payload.hash === null) payload.hash = adler32(payload.bytes);\n      hashes[i] = payload.hash;\n      if (i % 32 === 31) await checkpoint('hash', i + 1, count);\n    }\n    // A bounded merge sort avoids quadratic chains of same-checksum candidates.\n    const compare = (a, b) => hashes[a] - hashes[b] ||\n      compareBytes(records[a].payload.bytes, records[b].payload.bytes);\n    let comparisons = 0;\n    for (let width = 1; width \u003c count; width *= 2) {\n      for (let start = 0; start \u003c count; start += width * 2) {\n        const middle = Math.min(start + width, count), end = Math.min(middle + width, count);\n        let a = start, b = middle;\n        for (let out = start; out \u003c end; out++) {\n          scratch[out] = a \u003c middle && (b >= end || compare(order[a], order[b]) \u003c= 0) ? order[a++] : order[b++];\n          if (++comparisons % 32 === 0) await checkpoint('deduplicate', end, count);\n        }\n      }\n      [order, scratch] = [scratch, order];\n    }\n    // Equal payloads are stable in original record order. Reuse sort scratch for\n    // their first representative, then reuse hashes for the resulting offsets.\n    let representative = 0;\n    for (let i = 0; i \u003c count; i++) {\n      if (!i || compare(order[i - 1], order[i])) representative = order[i];\n      scratch[order[i]] = representative;\n      if (i % 64 === 63) await checkpoint('group', i + 1, count);\n    }\n    const index = new Uint8Array(INDEX_BYTES), v = view(index), parts = [index];\n    let offset = INDEX_BYTES;\n    for (let i = 0; i \u003c count; i++) {\n      if (scratch[i] === i) {\n        hashes[i] = offset; parts.push(records[i].payload.bytes); offset += records[i].payload.bytes.length;\n      } else hashes[i] = hashes[scratch[i]];\n      index.set(records[i].header, i * 32); v.setUint32(i * 32 + 16, hashes[i], true);\n      if (i % 256 === 255) await checkpoint('pack', i + 1, count);\n    }\n    await checkpoint('export', count, count, true);\n    if (parts.length \u003c= 2) return new Blob(parts, { type: 'application/octet-stream' });\n    // Many tiny Blob leaves impose avoidable stream/export overhead. Snapshot\n    // bounded batches instead of allocating a second complete output buffer.\n    const batch = new Uint8Array(Math.min(1024 * 1024, offset - INDEX_BYTES));\n    const blobs = [index]; let used = 0, copied = 0;\n    for (let i = 1; i \u003c parts.length; i++) {\n      const data = parts[i];\n      for (let position = 0; position \u003c data.length;) {\n        const size = Math.min(batch.length - used, data.length - position);\n        batch.set(data.subarray(position, position + size), used);\n        used += size; position += size; copied += size;\n        if (used === batch.length) { blobs.push(new Blob([batch])); used = 0; }\n      }\n      if (i % 32 === 0) await checkpoint('snapshot', copied, offset - INDEX_BYTES);\n    }\n    if (used) blobs.push(new Blob([batch.subarray(0, used)]));\n    await checkpoint('snapshot', copied, copied, true);\n    return new Blob(blobs, { type: 'application/octet-stream' });\n  }\n}\n\nreturn {MAX_COVERS, INDEX_BYTES, PALETTE_BYTES, hex8, serialBytes, serialText, filename, parseFilename, adler32, discIdentity, decodeBMP8, encodeBMP8, CoverLibrary};\n})();\nconst Images = (() => {\nconst { decodeBMP8, PALETTE_BYTES } = Cover;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Authored image preparation for the SAROO browser cover editor.\n * Feature origin: Damián Parrino (bucanero), tpunix/SAROO PR #374.\n * Indexed artwork is preserved; true-color conversion uses weighted median cut.\n */\n\n\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nfunction dimensions(width, height) {\n  require(Number.isInteger(width) && width > 0 && width \u003c= 128 &&\n          Number.isInteger(height) && height > 0 && height \u003c= 192,\n          'Cover dimensions must be 1–128 × 1–192.');\n}\nfunction canceled(signal) { signal?.throwIfAborted(); }\n\n// Read only the header, palette and rows, even when a valid BMP has a large gap.\n// Other formats/large source images are left to the browser's image decoder.\nasync function readIndexedBMP(file) {\n  const header = new Uint8Array(await file.slice(0, 54).arrayBuffer());\n  if (header.length \u003c 2 || header[0] !== 66 || header[1] !== 77) return null;\n  require(header.length === 54, 'Truncated BMP header.');\n  const v = new DataView(header.buffer), dib = v.getUint32(14, true);\n  if (![40, 52, 56, 108, 124].includes(dib) || v.getUint16(28, true) !== 8 ||\n      v.getUint32(30, true) !== 0) return null;\n  const width = v.getInt32(18, true), height = Math.abs(v.getInt32(22, true));\n  if (width > 128 || height > 192) return null;\n  dimensions(width, height);\n  const prefix = 14 + dib + PALETTE_BYTES, offset = v.getUint32(10, true);\n  const length = ((width + 3) & ~3) * height, declared = v.getUint32(2, true);\n  require(offset >= prefix && offset + length \u003c= declared && declared \u003c= file.size,\n          'Invalid BMP palette or pixel extent.');\n  const compact = new Uint8Array(prefix + length);\n  const head = new Uint8Array(await file.slice(0, prefix).arrayBuffer());\n  const rows = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());\n  require(head.length === prefix && rows.length === length, 'Short BMP read.');\n  compact.set(head); compact.set(rows, prefix);\n  const cv = new DataView(compact.buffer);\n  cv.setUint32(2, compact.length, true); cv.setUint32(10, prefix, true);\n  return decodeBMP8(compact);\n}\n\nfunction rgbaPixels(image) {\n  const { width, height, data } = image;\n  dimensions(width, height);\n  require(data instanceof Uint8Array && data.length === PALETTE_BYTES + width * height,\n          'Incomplete indexed image.');\n  const rgba = new Uint8ClampedArray(width * height * 4);\n  for (let i = 0; i \u003c width * height; i++) {\n    const p = data[PALETTE_BYTES + i] * 4, q = i * 4;\n    rgba[q] = data[p + 2]; rgba[q + 1] = data[p + 1]; rgba[q + 2] = data[p]; rgba[q + 3] = 255;\n  }\n  return rgba;\n}\n\n// All scratch counts derive from the enforced 24,576-pixel maximum. Uint16\n// unique-color indices retain every color; no histogram precision is discarded.\nasync function quantizeRGBA(rgba, width, height, { signal } = {}) {\n  dimensions(width, height); canceled(signal);\n  const count = width * height;\n  require((rgba instanceof Uint8Array || rgba instanceof Uint8ClampedArray) && rgba.length === count * 4,\n          'Expected exactly width × height RGBA pixels.');\n  const colors = new Uint32Array(count), populations = new Uint32Array(count);\n  const pixels = new Uint16Array(count), unique = new Map();\n  for (let i = 0; i \u003c count; i++) {\n    const p = i * 4, a = rgba[p + 3], white = 255 * (255 - a);\n    const r = Math.floor((rgba[p] * a + white + 127) / 255);\n    const g = Math.floor((rgba[p + 1] * a + white + 127) / 255);\n    const b = Math.floor((rgba[p + 2] * a + white + 127) / 255);\n    const rgb = (r \u003c\u003c 16) | (g \u003c\u003c 8) | b;\n    let index = unique.get(rgb);\n    if (index === undefined) { index = unique.size; unique.set(rgb, index); colors[index] = rgb; }\n    populations[index]++; pixels[i] = index;\n  }\n  const size = unique.size;\n  unique.clear(); // Only the histogram arrays are needed during box splitting.\n  const order = new Uint16Array(size), paletteIndex = new Uint8Array(size);\n  for (let i = 0; i \u003c size; i++) order[i] = i;\n  const channel = (index, shift) => (colors[index] >>> shift) & 255;\n  function box(start, end) {\n    let loR = 255, loG = 255, loB = 255, hiR = 0, hiG = 0, hiB = 0, population = 0;\n    for (let i = start; i \u003c end; i++) {\n      const id = order[i], rgb = colors[id], r = rgb >>> 16, g = (rgb >>> 8) & 255, b = rgb & 255;\n      loR = Math.min(loR, r); hiR = Math.max(hiR, r);\n      loG = Math.min(loG, g); hiG = Math.max(hiG, g);\n      loB = Math.min(loB, b); hiB = Math.max(hiB, b); population += populations[id];\n    }\n    const dr = hiR - loR, dg = hiG - loG, db = hiB - loB;\n    // Keep the proposal's channel and box tie order, so avoiding its repeated\n    // range scans does not change the chosen palette or image approximation.\n    const range = Math.max(dr, dg, db), shift = dg >= dr && dg >= db ? 8 : db >= dr && db >= dg ? 0 : 16;\n    return { start, end, population, shift, score: end - start > 1 ? range * population : -1 };\n  }\n  // At \u003c=256 colors, preserve each flattened RGB exactly without sorting.\n  const boxes = size \u003c= 256 ? [] : [box(0, size)];\n  let last = performance.now();\n  while (boxes.length && boxes.length \u003c 256) {\n    let best = 0;\n    for (let i = 1; i \u003c boxes.length; i++) if (boxes[i].score > boxes[best].score) best = i;\n    const current = boxes[best];\n    if (current.score \u003c 0) break;\n    const { start, end, shift, population } = current;\n    order.subarray(start, end).sort((a, b) => channel(a, shift) - channel(b, shift));\n    let split = start, weight = 0;\n    do { weight += populations[order[split++]]; } while (split \u003c end - 1 && weight \u003c population / 2);\n    boxes.splice(best, 1, box(start, split), box(split, end));\n    if (performance.now() - last >= 8) {\n      await new Promise(resolve => setTimeout(resolve, 0)); canceled(signal); last = performance.now();\n    }\n  }\n  const data = new Uint8Array(PALETTE_BYTES + count);\n  function palette(index, r, g, b) {\n    data[index * 4] = b; data[index * 4 + 1] = g; data[index * 4 + 2] = r;\n  }\n  if (!boxes.length) {\n    for (let i = 0; i \u003c size; i++) {\n      palette(i, colors[i] >>> 16, (colors[i] >>> 8) & 255, colors[i] & 255); paletteIndex[i] = i;\n    }\n  } else {\n    boxes.forEach(({ start, end, population }, index) => {\n      let r = 0, g = 0, b = 0;\n      for (let i = start; i \u003c end; i++) {\n        const id = order[i], n = populations[id], rgb = colors[id];\n        r += (rgb >>> 16) * n; g += ((rgb >>> 8) & 255) * n; b += (rgb & 255) * n;\n        paletteIndex[id] = index;\n      }\n      palette(index, Math.round(r / population), Math.round(g / population), Math.round(b / population));\n    });\n  }\n  for (let i = 0; i \u003c count; i++) data[PALETTE_BYTES + i] = paletteIndex[pixels[i]];\n  canceled(signal);\n  return { width, height, data };\n}\n\nfunction imageCanvas(image) {\n  const canvas = new OffscreenCanvas(image.width, image.height);\n  canvas.getContext('2d').putImageData(new ImageData(rgbaPixels(image), image.width, image.height), 0, 0);\n  return canvas;\n}\n\nclass ImageSource {\n  #indexed; #bitmap; #closed = false;\n  constructor(indexed, bitmap = null) { this.#indexed = indexed; this.#bitmap = bitmap; }\n  get width() { return this.#indexed?.width ?? this.#bitmap.width; }\n  get height() { return this.#indexed?.height ?? this.#bitmap.height; }\n  get indexed() { return !!this.#indexed; }\n  static async open(file, { signal } = {}) {\n    canceled(signal);\n    const indexed = await readIndexedBMP(file); canceled(signal);\n    if (indexed) return new ImageSource(indexed);\n    const bitmap = await createImageBitmap(file);\n    if (signal?.aborted) { bitmap.close(); canceled(signal); }\n    return new ImageSource(null, bitmap);\n  }\n  close() { this.#bitmap?.close(); this.#bitmap = null; this.#indexed = null; this.#closed = true; }\n  async convert({ width, height, fit = 'contain', signal } = {}) {\n    require(!this.#closed, 'Image source was closed.'); dimensions(width, height); canceled(signal);\n    require(['contain', 'cover', 'stretch'].includes(fit), 'Unknown image fitting mode.');\n    if (this.#indexed && width === this.width && height === this.height)\n      return { width, height, data: this.#indexed.data.slice() };\n    const source = this.#bitmap ?? imageCanvas(this.#indexed);\n    const canvas = new OffscreenCanvas(width, height), ctx = canvas.getContext('2d', { willReadFrequently: true });\n    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);\n    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';\n    let w = width, h = height;\n    if (fit !== 'stretch') {\n      const scale = (fit === 'contain' ? Math.min : Math.max)(width / source.width, height / source.height);\n      w = source.width * scale; h = source.height * scale;\n    }\n    ctx.drawImage(source, (width - w) / 2, (height - h) / 2, w, h);\n    return quantizeRGBA(ctx.getImageData(0, 0, width, height).data, width, height, { signal });\n  }\n}\n\nreturn {readIndexedBMP, rgbaPixels, quantizeRGBA, imageCanvas, ImageSource};\n})();\nconst WorkerApp = (() => {\nconst { CoverLibrary, MAX_COVERS, hex8, filename, parseFilename, discIdentity } = Cover;\nconst { ImageSource, imageCanvas } = Images;\nconst { encodeBMP8 } = Cover;\n/* SPDX-License-Identifier: GPL-3.0-only\n * Single-owner library and image preparation worker for PR #374 adaptation.\n */\n\n\n\n\nconst PAGE_SIZE = 24;\nconst require = (ok, message) => { if (!ok) throw new Error(message); };\nconst abort = () => new DOMException('Operation canceled.', 'AbortError');\n\nfunction createCoverWorker(post) {\n  let library = new CoverLibrary(), epoch = 0, busy = null, editor = null;\n  let searchGeneration = 0, searchCache = null;\n  const state = () => ({ epoch, revision: library.revision, count: library.count, dirty: library.dirty });\n  function checkStamp(stamp) {\n    require(stamp?.epoch === epoch && stamp.revision === library.revision,\n            'The library changed; reopen this edit on the current library.');\n  }\n  function closeEditor() { editor?.source?.close(); editor = null; }\n  function changed() { searchCache = null; searchGeneration++; }\n  function checkEditor(message) {\n    checkStamp(message.stamp);\n    require(editor && editor.token === message.token, 'This image dialog is no longer active.');\n    return editor;\n  }\n  function copyImage(image) { return { width: image.width, height: image.height, data: image.data.slice() }; }\n  function progress(id, value) { post({ id, progress: value }); }\n  function reply(id, value) {\n    const transfer = [];\n    if (value?.image) transfer.push(value.image.data.buffer);\n    for (const item of value?.items ?? []) if (item.image) transfer.push(item.image.data.buffer);\n    post({ id, value, state: state() }, transfer);\n  }\n  async function list(message) {\n    const generation = ++searchGeneration, stamp = state();\n    const query = String(message.query ?? '').trim().toUpperCase();\n    require(query.length \u003c= 128, 'Search is too long.');\n    let matches = searchCache?.query === query ? searchCache.matches : null;\n    if (query && !matches) {\n      const found = new Uint16Array(library.count); let count = 0;\n      for (let i = 0; i \u003c library.count; i++) {\n        const meta = library.meta(i);\n        if (meta.serial.toUpperCase().includes(query) || hex8(meta.hash).includes(query)) found[count++] = i;\n        if (i % 256 === 255) {\n          await new Promise(resolve => setTimeout(resolve, 0));\n          if (generation !== searchGeneration) throw abort(); checkStamp(stamp);\n        }\n      }\n      matches = found.subarray(0, count); searchCache = { query, matches };\n    }\n    checkStamp(stamp);\n    const total = query ? matches.length : library.count;\n    const page = Math.max(0, Math.min(Math.floor(Number(message.page) || 0), Math.max(0, Math.ceil(total / PAGE_SIZE) - 1)));\n    const items = [];\n    for (let i = page * PAGE_SIZE; i \u003c Math.min(total, (page + 1) * PAGE_SIZE); i++) {\n      const index = query ? matches[i] : i;\n      items.push({ index, ...library.meta(index), image: library.image(index) });\n    }\n    return { page, total, items, pageSize: PAGE_SIZE };\n  }\n  async function dispatch(message, signal) {\n    const { op, id } = message;\n    const options = { signal, onProgress: value => progress(id, value) };\n    if (op === 'init') return { pageSize: PAGE_SIZE, capacity: MAX_COVERS,\n      imagesSupported: typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined' };\n    checkStamp(message.stamp);\n    switch (op) {\n      case 'new': closeEditor(); library = new CoverLibrary(); epoch++; changed(); return {};\n      case 'open': {\n        const candidate = await CoverLibrary.open(message.file, options); signal.throwIfAborted();\n        closeEditor(); library = candidate; epoch++; changed(); return {};\n      }\n      case 'remove': library.remove(message.index); closeEditor(); changed(); return {};\n      case 'export': return { blob: await library.export({ ...options, repack: !!message.repack }), name: 'cover.bin' };\n      case 'editorStart': {\n        const index = message.index ?? library.count;\n        const image = index === library.count ? null : library.image(index);\n        require(image || library.count \u003c MAX_COVERS, 'The cover index is full (16,384 entries).');\n        closeEditor();\n        editor = { token: message.token, index, source: image ? new ImageSource(image) : null, image };\n        return { meta: image ? library.meta(index) : null, image: image ? copyImage(image) : null };\n      }\n      case 'editorLoad': {\n        const owner = checkEditor(message);\n        const source = await ImageSource.open(message.file, options);\n        try {\n          const size = source.indexed ? { width: source.width, height: source.height } : message.size;\n          const image = await source.convert({ ...size, fit: message.fit, signal });\n          signal.throwIfAborted(); checkEditor(message);\n          let identity = null, identityError = null;\n          try { identity = parseFilename(message.file.name); } catch (error) { identityError = error.message; }\n          owner.source?.close(); owner.source = source; owner.image = image;\n          return { image: copyImage(image), identity, identityError,\n            source: { width: source.width, height: source.height, indexed: source.indexed } };\n        } catch (error) { source.close(); throw error; }\n      }\n      case 'editorConvert': {\n        const owner = checkEditor(message); require(owner.source, 'Choose an image first.');\n        const image = await owner.source.convert({ ...message.size, fit: message.fit, signal });\n        signal.throwIfAborted(); checkEditor(message); owner.image = image;\n        return { image: copyImage(image) };\n      }\n      case 'editorSave': {\n        const owner = checkEditor(message); require(owner.image, 'Choose an image first.');\n        library.set(owner.index, message.meta, owner.image); closeEditor(); changed(); return {};\n      }\n      case 'editorDelete': {\n        const owner = checkEditor(message);\n        library.remove(owner.index); closeEditor(); changed(); return {};\n      }\n      case 'disc': {\n        checkEditor(message);\n        const bytes = new Uint8Array(await message.file.slice(0, 256).arrayBuffer());\n        signal.throwIfAborted(); checkEditor(message);\n        return { identity: discIdentity(bytes) };\n      }\n      case 'imageExport': {\n        const owner = checkEditor(message); require(owner.image, 'Choose an image first.');\n        require(Number.isInteger(message.meta.hash) && message.meta.hash >= 0 && message.meta.hash \u003c= 0xffffffff,\n                'IP hash must be an unsigned 32-bit integer.');\n        const name = filename(message.meta, message.extension);\n        const blob = message.extension === 'bmp'\n          ? new Blob([encodeBMP8(owner.image)], { type: 'image/bmp' })\n          : await imageCanvas(owner.image).convertToBlob({ type: 'image/png' });\n        signal.throwIfAborted(); checkEditor(message); return { blob, name };\n      }\n      case 'batch': {\n        require(Array.isArray(message.files) && message.files.length > 0 && message.files.length \u003c= MAX_COVERS,\n                'Select between 1 and 16,384 images.');\n        closeEditor(); let added = 0, canceled = false, processed = 0; const skipped = [];\n        for (let i = 0; i \u003c message.files.length; i++) {\n          if (signal.aborted) { canceled = true; break; }\n          let source = null;\n          try {\n            require(library.count \u003c MAX_COVERS, 'The cover index is full.');\n            const meta = parseFilename(message.files[i].name);\n            require(meta, 'Needs a serial and IP hash; open individually to identify it.');\n            require(!library.has(meta), `Duplicate cover identity: ${meta.serial}~${hex8(meta.hash)}`);\n            source = await ImageSource.open(message.files[i], options);\n            const size = source.indexed ? { width: source.width, height: source.height } : message.size;\n            const image = await source.convert({ ...size, fit: message.fit, signal });\n            signal.throwIfAborted(); library.set(library.count, meta, image); added++; changed();\n          } catch (error) {\n            if (signal.aborted) { canceled = true; break; }\n            skipped.push({ index: i, name: message.files[i].name, reason: error.message });\n          } finally { source?.close(); }\n          processed = i + 1; progress(id, { phase: 'import', done: processed, total: message.files.length });\n          await new Promise(resolve => setTimeout(resolve, 0));\n        }\n        return { added, skipped, processed, canceled, total: message.files.length };\n      }\n      default: throw new Error('Unknown editor operation.');\n    }\n  }\n  return async message => {\n    const { id, op } = message;\n    if (op === 'cancel') { if (busy?.id === message.target) busy.controller.abort(abort()); return; }\n    if (op === 'editorClose') {\n      if (editor?.token === message.token) {\n        if (busy?.token === message.token) busy.controller.abort(abort());\n        closeEditor();\n      }\n      return;\n    }\n    if (op === 'list') {\n      try { reply(id, await list(message)); }\n      catch (error) { post({ id, error: error.message, name: error.name, state: state() }); }\n      return;\n    }\n    if (busy) { post({ id, error: 'An operation is already running.', state: state() }); return; }\n    const job = { id, token: message.token, controller: new AbortController() }; busy = job;\n    try { reply(id, await dispatch(message, job.controller.signal)); }\n    catch (error) { post({ id, error: error.message, name: error.name, state: state() }); }\n    finally { if (busy === job) busy = null; }\n  };\n}\n\nif (typeof self !== 'undefined' && typeof self.postMessage === 'function') {\n  const receive = createCoverWorker((value, transfer) => self.postMessage(value, transfer));\n  self.onmessage = event => { void receive(event.data); };\n}\n\nreturn {PAGE_SIZE, createCoverWorker};\n})();"</script>
+<script>const CoverApp = (() => {
+
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Authored offline UI for tpunix/SAROO PR #374. DOM metadata is literal text.
+ */
+function bootCoverApp(workerSource) {
+  const $ = id => document.getElementById(id);
+  let worker, state = { epoch: 0, revision: 0, count: 0, dirty: false };
+  let sequence = 0, active = null, page = 0, totalPages = 1, listGeneration = 0, gridOwner = null;
+  let modal = null, modalSequence = 0, debounce = null, libraryURL = null, imageURL = null;
+  let batchFiles = [], reviewItems = [], reviewPage = 0, ready = false, fatal = false;
+  const pending = new Map();
+  const fileChoices = new Map();
+  function chooseFile(id, owner) { fileChoices.set(id, owner); $(id).click(); }
+  function takeChoice(id) { const owner = fileChoices.get(id); fileChoices.delete(id); return owner; }
+  const workspaceChoice = () => ({ epoch: state.epoch, revision: state.revision });
+  const sameWorkspace = owner => owner && owner.epoch === state.epoch && owner.revision === state.revision;
+  const currentChoice = owner => sameWorkspace(owner) && !modal && !$('batch').open;
+  function message(text, error = false) { $('message').textContent = text; $('message').hidden = !text; $('message').classList.toggle('error', error); }
+  function clearDownload(kind) {
+    if (kind === 'library') { if (libraryURL) URL.revokeObjectURL(libraryURL); libraryURL = null; $('library-download').hidden = true; }
+    else { if (imageURL) URL.revokeObjectURL(imageURL); imageURL = null; $('image-download').hidden = true; }
+  }
+  function updateState(next) {
+    if (!next || next.epoch < state.epoch || (next.epoch === state.epoch && next.revision < state.revision)) return;
+    if (next.epoch !== state.epoch || next.revision !== state.revision) clearDownload('library');
+    state = next;
+    $('library-state').textContent = `${state.count.toLocaleString()} / 16,384 covers · ${state.dirty ? 'Edited — export to keep changes' : 'No changes'}`;
+  }
+  function controls() {
+    for (const button of document.querySelectorAll('[data-mutate]')) button.disabled = !ready || fatal || active !== null;
+    for (const button of $('grid').querySelectorAll('.card')) button.disabled ||= !sameWorkspace(gridOwner);
+    $('activity').hidden = active === null; $('cancel').disabled = active === null;
+    $('previous').disabled = page === 0; $('next').disabled = page + 1 >= totalPages;
+  }
+  function rpc(op, data = {}) {
+    const id = ++sequence;
+    const promise = new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); });
+    try { worker.postMessage({ id, op, stamp: { ...state }, ...data }); }
+    catch (error) { pending.get(id).reject(error); pending.delete(id); }
+    return { id, promise };
+  }
+  async function run(op, data = {}) {
+    if (active !== null) throw new Error('Wait for the current operation or cancel it.');
+    if (fatal) throw new Error('The worker stopped. Reopen the editor to continue.');
+    const request = rpc(op, data); active = request.id;
+    $('activity-text').textContent = 'Working…'; $('progress').removeAttribute('value'); controls();
+    try { return await request.promise; }
+    finally { if (active === request.id) active = null; controls(); }
+  }
+  async function perform(action) {
+    const owner = modal;
+    try { await action(); }
+    catch (error) {
+      if (error.name === 'AbortError') return;
+      if (owner && modal !== owner) return;
+      if (modal) $('editor-error').textContent = error.message; else message(error.message, true);
+    }
+  }
+  const on = (id, event, action) => $(id).addEventListener(event, e => { void perform(() => action(e)); });
+  function draw(canvas, image) {
+    canvas.width = image.width; canvas.height = image.height;
+    const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(image.width, image.height), bytes = image.data;
+    for (let i = 0; i < image.width * image.height; i++) {
+      const p = bytes[1024 + i] * 4, q = i * 4;
+      pixels.data[q] = bytes[p + 2]; pixels.data[q + 1] = bytes[p + 1]; pixels.data[q + 2] = bytes[p]; pixels.data[q + 3] = 255;
+    }
+    ctx.putImageData(pixels, 0, 0);
+  }
+  async function refresh() {
+    const generation = ++listGeneration, owner = workspaceChoice();
+    const result = await rpc('list', { page, query: $('search').value }).promise;
+    if (generation !== listGeneration || !sameWorkspace(owner)) return;
+    page = result.page; totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+    const fragment = document.createDocumentFragment();
+    for (const item of result.items) {
+      const button = document.createElement('button'); button.className = 'card'; button.dataset.mutate = '';
+      const art = document.createElement('span'); art.className = 'art';
+      const canvas = document.createElement('canvas'); draw(canvas, item.image); item.image = null; art.append(canvas);
+      const serial = document.createElement('strong'); serial.className = 'serial'; serial.textContent = item.serial;
+      const detail = document.createElement('small'); detail.textContent = `${item.hash.toString(16).toUpperCase().padStart(8, '0')} · ${item.width} × ${item.height}`;
+      button.append(art, serial, detail); button.setAttribute('aria-label', `Edit ${item.serial}`);
+      button.addEventListener('click', () => { if (currentChoice(owner)) void perform(() => openEditor(item.index)); }); fragment.append(button);
+    }
+    gridOwner = owner; $('grid').replaceChildren(fragment); $('empty').hidden = result.total !== 0;
+    if (!result.total) $('empty').querySelector('h2').textContent = $('search').value ? 'No matching covers' : 'Your artwork, together.';
+    $('range').textContent = result.total ? `${page * result.pageSize + 1}–${Math.min(result.total, (page + 1) * result.pageSize)} of ${result.total.toLocaleString()}` : '';
+    $('page-label').textContent = `Page ${page + 1} of ${totalPages}`; $('pagination').hidden = totalPages <= 1; controls();
+  }
+  function canDiscard() { return !state.dirty || confirm('Replace this edited library? Keep an export first if you need its changes.'); }
+  function setSize(width, height) {
+    $('width').value = width; $('height').value = height;
+    $('size').value = width === 128 && [128, 192].includes(height) ? `128x${height}` : 'custom';
+  }
+  function size() {
+    const width = Number($('width').value), height = Number($('height').value);
+    if (!Number.isInteger(width) || width < 1 || width > 128 || !Number.isInteger(height) || height < 1 || height > 192)
+      throw new Error('Cover dimensions must be 1–128 × 1–192.');
+    return { width, height };
+  }
+  function metadata() {
+    if (!/^[0-9a-f]{8}$/i.test($('hash').value)) throw new Error('Enter an IP hash with exactly eight hexadecimal digits.');
+    return { serial: $('serial').value, hash: parseInt($('hash').value, 16) };
+  }
+  function identity(value) {
+    $('serial').value = value.serial; $('hash').value = value.hash.toString(16).toUpperCase().padStart(8, '0');
+  }
+  function preview(image) {
+    draw($('preview'), image); $('preview').hidden = false; $('preview-empty').hidden = true;
+    setSize(image.width, image.height); $('image-info').textContent = `${image.width} × ${image.height} · 256-color format`;
+    if (modal) modal.hasImage = true;
+  }
+  async function openEditor(index, file = null, reviewItem = null) {
+    const token = ++modalSequence;
+    const result = await run('editorStart', { index, token });
+    modal = { token, dirty: false, hasImage: !!result.image, reviewItem };
+    $('editor-title').textContent = result.meta ? 'Edit cover' : 'Add cover'; $('delete').hidden = !result.meta;
+    $('editor-error').textContent = ''; $('serial').value = ''; $('hash').value = ''; $('image-info').textContent = '';
+    $('preview').hidden = true; $('preview-empty').hidden = false; $('fit').value = 'contain'; setSize(128, 192);
+    if (result.meta) identity(result.meta); if (result.image) preview(result.image);
+    $('editor').showModal(); if (file) await loadImage(file);
+  }
+  function closeEditor(force = false) {
+    if (!modal || (!force && modal.dirty && !confirm('Discard the changes in this cover dialog?'))) return;
+    worker.postMessage({ op: 'editorClose', token: modal.token }); modal = null;
+    fileChoices.delete('image-file'); fileChoices.delete('disc-file');
+    $('editor').close(); clearDownload('image'); $('preview').width = 1; $('preview').height = 1;
+  }
+  async function loadImage(file) {
+    const owner = modal; if (!owner) return;
+    const result = await run('editorLoad', { token: owner.token, file, size: size(), fit: $('fit').value });
+    if (modal !== owner) return;
+    preview(result.image); if (result.identity) identity(result.identity);
+    owner.dirty = true; clearDownload('image');
+    $('editor-error').textContent = result.identityError ?? (result.identity ? '' : 'Enter the serial and IP hash, or identify this cover from a disc image.');
+  }
+  async function convert() {
+    const owner = modal; if (!owner?.hasImage) return;
+    try {
+      const result = await run('editorConvert', { token: owner.token, size: size(), fit: $('fit').value });
+      if (modal !== owner) return; preview(result.image); owner.dirty = true; clearDownload('image');
+    } catch (error) {
+      if (modal === owner) setSize($('preview').width, $('preview').height);
+      throw error;
+    }
+  }
+  async function openLibrary(file) {
+    if (!canDiscard()) return;
+    await run('open', { file }); $('library-name').textContent = file.name; page = 0; $('search').value = '';
+    reviewItems = []; batchFiles = []; renderReview(); message(''); await refresh();
+  }
+  function renderReview() {
+    const pages = Math.max(1, Math.ceil(reviewItems.length / 24)); reviewPage = Math.min(reviewPage, pages - 1);
+    $('review').hidden = !reviewItems.length;
+    const fragment = document.createDocumentFragment();
+    for (const item of reviewItems.slice(reviewPage * 24, reviewPage * 24 + 24)) {
+      const li = document.createElement('li'), text = document.createElement('span'), title = document.createElement('strong'), why = document.createElement('small');
+      title.textContent = item.name; why.textContent = item.reason; text.append(title, document.createElement('br'), why);
+      const button = document.createElement('button'); button.textContent = 'Review'; button.dataset.mutate = '';
+      button.addEventListener('click', () => { void perform(() => openEditor(undefined, item.file, item)); }); li.append(text, button); fragment.append(li);
+    }
+    $('review-items').replaceChildren(fragment); $('review-summary').textContent = `${reviewItems.length.toLocaleString()} images were not imported. Your completed imports are retained.`;
+    $('review-page').textContent = `${reviewPage + 1} / ${pages}`; $('review-prev').disabled = !reviewPage; $('review-next').disabled = reviewPage + 1 >= pages; controls();
+  }
+  async function addFiles(files) {
+    if (!files.length) return;
+    if (files.length > 16384) throw new Error('Select no more than 16,384 images at a time.');
+    if (files.length === 1) return openEditor(undefined, files[0]);
+    batchFiles = files; $('batch-count').textContent = `${files.length.toLocaleString()} selected images`; $('batch').showModal();
+  }
+  on('new', 'click', async () => {
+    if (!canDiscard()) return; await run('new'); $('library-name').textContent = 'New library'; $('search').value = ''; page = 0;
+    reviewItems = []; batchFiles = []; renderReview(); message(''); await refresh();
+  });
+  on('open', 'click', () => chooseFile('library-file', workspaceChoice())); on('add', 'click', () => chooseFile('add-files', workspaceChoice()));
+  on('library-file', 'change', async () => { const file = $('library-file').files[0], owner = takeChoice('library-file'); $('library-file').value = ''; if (file && currentChoice(owner)) await openLibrary(file); });
+  on('add-files', 'change', async () => { const files = Array.from($('add-files').files), owner = takeChoice('add-files'); $('add-files').value = ''; if (currentChoice(owner)) await addFiles(files); });
+  on('search', 'input', () => { clearTimeout(debounce); page = 0; debounce = setTimeout(() => { void perform(refresh); }, 120); });
+  on('previous', 'click', async () => { page--; await refresh(); }); on('next', 'click', async () => { page++; await refresh(); });
+  on('cancel', 'click', () => { worker.postMessage({ op: 'cancel', target: active }); $('activity-text').textContent = 'Canceling…'; $('cancel').disabled = true; });
+  on('export', 'click', async () => {
+    const result = await run('export', { repack: $('compact').checked }); clearDownload('library'); libraryURL = URL.createObjectURL(result.blob);
+    $('download').href = libraryURL; $('download').download = result.name; $('library-download').hidden = false;
+    message(`Export ready · ${(result.blob.size / 1048576).toFixed(2)} MiB. Choose Download cover.bin to keep it.`);
+  });
+  on('compact', 'change', () => clearDownload('library'));
+  on('download', 'click', () => message('Download requested. Keep the downloaded cover.bin before closing or replacing edited work.'));
+  on('choose-image', 'click', () => chooseFile('image-file', modal));
+  on('image-file', 'change', async () => { const file = $('image-file').files[0], owner = takeChoice('image-file'); $('image-file').value = ''; if (file && owner && modal === owner) await loadImage(file); });
+  on('read-disc', 'click', () => chooseFile('disc-file', modal));
+  on('disc-file', 'change', async () => {
+    const file = $('disc-file').files[0], owner = takeChoice('disc-file'); $('disc-file').value = ''; if (!file || !owner || modal !== owner) return;
+    const result = await run('disc', { token: owner.token, file }); if (modal !== owner) return;
+    identity(result.identity); owner.dirty = true; clearDownload('image'); $('editor-error').textContent = '';
+  });
+  for (const id of ['serial', 'hash']) on(id, 'input', () => { if (modal) modal.dirty = true; clearDownload('image'); });
+  on('size', 'change', async () => { if ($('size').value !== 'custom') { const [w, h] = $('size').value.split('x').map(Number); setSize(w, h); await convert(); } });
+  for (const id of ['width', 'height']) on(id, 'change', async () => { $('size').value = 'custom'; await convert(); });
+  on('fit', 'change', convert);
+  on('close-editor', 'click', () => closeEditor());
+  on('editor', 'cancel', e => { e.preventDefault(); closeEditor(); });
+  on('save-editor', 'click', async () => {
+    const owner = modal; if (!owner) return;
+    await run('editorSave', { token: owner.token, meta: metadata() });
+    if (modal !== owner) { await refresh(); return; }
+    if (owner.reviewItem) { reviewItems = reviewItems.filter(item => item !== owner.reviewItem); renderReview(); }
+    closeEditor(true); message('Cover applied. Export the library to keep your changes.'); await refresh();
+  });
+  on('delete', 'click', async () => {
+    if (!modal || !confirm('Delete this cover from the library?')) return;
+    // The dialog's committed index is kept in the worker; deletion is an edit operation.
+    await run('editorDelete', { token: modal.token }); closeEditor(true); await refresh();
+  });
+  for (const extension of ['bmp', 'png']) on(extension, 'click', async () => {
+    const owner = modal; if (!owner) return;
+    const result = await run('imageExport', { token: owner.token, meta: metadata(), extension }); if (modal !== owner) return;
+    clearDownload('image'); imageURL = URL.createObjectURL(result.blob); $('image-download-link').href = imageURL;
+    $('image-download-link').download = result.name; $('image-download-link').textContent = `Download ${extension.toUpperCase()}`; $('image-download').hidden = false;
+  });
+  on('batch-close', 'click', () => { $('batch').close(); batchFiles = []; });
+  on('batch', 'cancel', () => { batchFiles = []; });
+  on('batch-start', 'click', async () => {
+    const files = batchFiles; batchFiles = []; $('batch').close();
+    const [width, height] = $('batch-size').value.split('x').map(Number);
+    const result = await run('batch', { files, size: { width, height }, fit: $('batch-fit').value });
+    reviewItems = result.skipped.map(item => ({ ...item, file: files[item.index] }));
+    for (let i = result.processed; i < files.length; i++) reviewItems.push({ name: files[i].name, reason: 'Not processed — import canceled.', file: files[i] });
+    reviewPage = 0; renderReview(); message(`${result.added} covers imported${result.canceled ? ' before cancellation' : ''}.`); await refresh();
+  });
+  on('review-prev', 'click', () => { reviewPage--; renderReview(); }); on('review-next', 'click', () => { reviewPage++; renderReview(); });
+  on('review-dismiss', 'click', () => { reviewItems = []; renderReview(); });
+  window.addEventListener('dragover', event => { event.preventDefault(); });
+  window.addEventListener('drop', event => { event.preventDefault(); void perform(async () => {
+    if (active !== null || !ready || fatal || $('batch').open) return;
+    const files = Array.from(event.dataTransfer.files); if (!files.length) return;
+    if (modal) { if (files.length !== 1) throw new Error('Drop one image into this cover dialog.'); await loadImage(files[0]); }
+    else if (files.length === 1 && /\.bin$/i.test(files[0].name)) await openLibrary(files[0]); else await addFiles(files);
+  }); });
+  window.addEventListener('beforeunload', event => { if (state.dirty || modal?.dirty) { event.preventDefault(); event.returnValue = ''; } });
+  controls();
+  try {
+    const url = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    try { worker = new Worker(url); } finally { URL.revokeObjectURL(url); }
+    worker.onmessage = event => {
+      const value = event.data;
+      if (value.progress) {
+        if (active !== value.id) return;
+        $('activity-text').textContent = value.progress.phase === 'import' ? 'Importing images…' : 'Preparing library…';
+        if (value.progress.total) { $('progress').max = value.progress.total; $('progress').value = value.progress.done; }
+        return;
+      }
+      const request = pending.get(value.id); if (!request) return; pending.delete(value.id); updateState(value.state);
+      if (value.error) { const error = new Error(value.error); error.name = value.name ?? 'Error'; request.reject(error); }
+      else request.resolve(value.value);
+    };
+    const workerFailed = event => {
+      event.preventDefault(); fatal = true;
+      for (const request of pending.values()) request.reject(new Error('The editor worker stopped. Any prepared download remains available.'));
+      pending.clear(); message('The editor worker stopped. Keep any prepared download, then reopen the editor.', true); controls();
+    };
+    worker.onerror = workerFailed; worker.onmessageerror = workerFailed;
+    void perform(async () => {
+      const result = await run('init');
+      if (!result.imagesSupported) throw new Error('This browser needs Worker, OffscreenCanvas and createImageBitmap support. Open this file in a current supported browser.');
+      ready = true; controls(); await refresh();
+    });
+  } catch (error) { fatal = true; message(`Cannot start the offline editor: ${error.message}`, true); controls(); }
+}
+
+return {bootCoverApp};
+})();
+CoverApp.bootCoverApp(JSON.parse(document.getElementById('worker-source').textContent));</script>
+</html>

@@ -14,8 +14,8 @@ const OUTPUT_LIMIT: usize = 2 * 1024 * 1024;
 const SAX_SHA: &str = "1cdc1270d987cb0f6ee66dd8efb01c50511aa14d17b6163bbbffb21df8cf1c06";
 const SAX_LICENSE_SHA: &str = "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004";
 const HELP: &str = "web-assets: build a self-contained offline browser editor\n\
-Usage: web-assets save APP_DIRECTORY OUTPUT.html\n\
-Reads src/, vendor/sax/ and LICENSE inside APP_DIRECTORY.\n\
+Usage: web-assets save|cover APP_DIRECTORY OUTPUT.html\n\
+Reads src/ and LICENSE; save additionally reads vendor/sax/.\n\
 No package install, network, device access or runtime module loader.\n\
 Stdout is a JSON receipt. Outputs use atomic rename and cannot alias an input.\n\
 Supports only the authored named-import/declaration-export module convention.\n";
@@ -165,6 +165,40 @@ fn save_editor(inputs: &mut Inputs) -> Result<String> {
     Ok(html)
 }
 
+fn cover_editor(inputs: &mut Inputs) -> Result<String> {
+    let mut parts = Vec::new();
+    let mut namespaces = BTreeMap::new();
+    for (name, namespace) in [
+        ("cover-codec.mjs", "Cover"),
+        ("cover-image.mjs", "Images"),
+        ("cover-worker.mjs", "WorkerApp"),
+    ] {
+        parts.push(format!(
+            "const {namespace} = {};",
+            link_module(&inputs.read(&format!("src/{name}"))?, &namespaces)?
+        ));
+        namespaces.insert(name, namespace);
+    }
+    let worker = format!("'use strict';\n{}", parts.join("\n"));
+    let app = format!("const CoverApp = {};\nCoverApp.bootCoverApp(JSON.parse(document.getElementById('worker-source').textContent));",
+        link_module(&inputs.read("src/cover-app.mjs")?, &BTreeMap::new())?);
+    if app.to_ascii_lowercase().contains("</script") {
+        return Err("application contains an inline script closing tag".into());
+    }
+    let mut html = inputs.read("src/cover.html")?;
+    let license = inputs.read("LICENSE")?;
+    replace_once(
+        &mut html,
+        "__SAROO_WORKER__",
+        &serde_json::to_string(&worker)
+            .unwrap()
+            .replace('<', "\\u003c"),
+    )?;
+    replace_once(&mut html, "__SAROO_APP__", &app)?;
+    replace_once(&mut html, "__SAROO_APP_LICENSE__", &html_escape(&license))?;
+    Ok(html)
+}
+
 fn write_output(path: &Path, inputs: &[PathBuf], data: &[u8]) -> Result<()> {
     if data.len() > OUTPUT_LIMIT {
         return Err("HTML exceeds the 2 MiB build limit".into());
@@ -204,7 +238,7 @@ fn run(args: Vec<String>) -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
-    if args.len() != 4 || args[1] != "save" {
+    if args.len() != 4 || !matches!(args[1].as_str(), "save" | "cover") {
         return Err(HELP.into());
     }
     let mut inputs = Inputs {
@@ -212,11 +246,14 @@ fn run(args: Vec<String>) -> Result<()> {
         hashes: BTreeMap::new(),
         paths: Vec::new(),
     };
-    let html = save_editor(&mut inputs)?;
+    let html = match args[1].as_str() {
+        "save" => save_editor(&mut inputs)?,
+        _ => cover_editor(&mut inputs)?,
+    };
     write_output(Path::new(&args[3]), &inputs.paths, html.as_bytes())?;
     println!(
         "{}",
-        serde_json::to_string_pretty(&json!({"format":1,"app":"save","inputs":inputs.hashes,
+        serde_json::to_string_pretty(&json!({"format":1,"app":args[1],"inputs":inputs.hashes,
         "output":{"bytes":html.len(),"sha256":sha256(html.as_bytes())}}))
         .unwrap()
     );

@@ -4,9 +4,22 @@ CFLAGS = -std=c99 -O1 -g -Wall -Wextra -Werror
 SANITIZERS = -fsanitize=address,undefined -fno-omit-frame-pointer
 BUILD_DIR = build
 
-.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-save-endian check-web-save check-web-save-browser check-web-save-capacity clean
+.PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-host-tools check-save-endian check-web-save
+check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-host-tools check-save-endian check-web-save check-web-cover
+
+check-web-cover:
+	$(PYTHON) -B -m unittest discover -s . -p test_web_cover.py -v
+
+check-web-cover-browser:
+	$(PYTHON) -B web_cover_fixtures.py build/web-cover-browser
+	node web_cover_browser.cjs
+	node web_cover_picker.cjs ../tools/covertool/web/index.html build/web-cover-browser build/web-cover-browser/picker-results.json
+	node web_cover_render.cjs ../tools/covertool/web/index.html build/web-cover-render
+
+check-web-cover-capacity:
+	$(PYTHON) -B web_cover_fixtures.py --capacity build/web-cover-capacity
+	node web_cover_capacity.cjs build/web-cover-capacity/full-unique.bin build/web-cover-app-capacity ../tools/covertool/web/index.html
 
 check-save-endian:
 	$(PYTHON) -B -m unittest discover -s . -p test_save_endian.py -v

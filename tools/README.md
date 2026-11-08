@@ -1,11 +1,14 @@
 # Host asset tools
 
-The [offline save editor](savetool/web/README.md) is a separate host application.
-Its checked-in HTML runs directly without Rust or a server. `web-assets` rebuilds
-the self-contained file from its readable source modules and pinned XML parser:
+The [offline save editor](savetool/web/README.md) and
+[cover editor](covertool/web/README.md) are separate host applications.
+Their checked-in HTML runs directly without Rust or a server. `web-assets`
+rebuilds the self-contained files from readable source modules (and the save
+editor's pinned XML parser):
 
 ```sh
 cargo run --locked --manifest-path tools/Cargo.toml -p web-assets -- save tools/savetool/web tools/savetool/web/index.html > tools/savetool/web/index.build.json
+cargo run --locked --manifest-path tools/Cargo.toml -p web-assets -- cover tools/covertool/web tools/covertool/web/index.html > tools/covertool/web/index.build.json
 ```
 
 The command prints a JSON receipt, bounds each input to 1 MiB and output to

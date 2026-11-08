@@ -1,0 +1,16 @@
+{
+  "app": "cover",
+  "format": 1,
+  "inputs": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "src/cover-app.mjs": "c880284810d5186a7995ee473054fdc28d34e8b65ee8718c01aa58390f5629aa",
+    "src/cover-codec.mjs": "7453f095959fae3260457935ab5cee72da8f4ac7b38a6bb83918631eb179d467",
+    "src/cover-image.mjs": "df27056aefe261286f7d7e612efab2ee11f138972441284822fa28c55c1512e8",
+    "src/cover-worker.mjs": "b84f83e0b8cb4f92a7c0993c16cf8568553a8fb51f697db64befb62cef10ecfa",
+    "src/cover.html": "89fd79b5e7e9950521d153c51cc7a467f2955b3f9ae520e6c1afb310992c46a6"
+  },
+  "output": {
+    "bytes": 101464,
+    "sha256": "74fd6cdaecbd246f56bb1f0b44d91d64c596f80f72edcb86f0685d4484779066"
+  }
+}
