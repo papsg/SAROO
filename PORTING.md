@@ -55,11 +55,11 @@ and `codex/english-documentation` preserve superseded history. Current direct
 integrations use the checkpoint branches above; the historical branches are
 not instructions to restore their ancestry.
 
-All twelve requested contributions are verified and integrated directly into
+All twelve contributions in the original upstream series are verified and integrated directly into
 [`main` at 54d0c72](https://github.com/papsg/SAROO/commit/54d0c7244db481b9218447dc902b928b5e6bb760).
 Bounded menu text and native unsigned field reads are explicit prerequisites and
 are not counted in that total. All verified topic checkpoints and this ledger
-are pushed. There is no required candidate left queued or in progress.
+are pushed. No candidate remains queued or in progress in that completed series.
 
 The Arabic checkpoint clears the earlier available-toolchain missing-libc limitation:
 both preceding public `67c51f3` and Arabic `9429f53` fully compile/link all sixteen
@@ -126,3 +126,27 @@ Outstanding limits above describe separate qualification or existing-baseline
 work, not unfinished port candidates. In particular, firmware cover lookup and
 legacy native-cover utility limitations are documented rather than silently
 folded into the browser contribution.
+
+## Native save-tool safety series
+
+This subsequent owner-authorized series starts at public main `54d0c72` and
+ports seven independently investigated maintenance changes, one verified commit
+at a time. Historical private implementations/evidence are read-only references;
+public tests and builds establish each new integration. No PRs, device access,
+private writes, format migration or console firmware changes are included.
+
+| Finding / historical reference | Public checkpoint | Validation, source references and limits |
+| --- | --- | --- |
+| SAVETOOL-002 MEMS resizing; `3eada90f` | [de8715b](https://github.com/papsg/SAROO/commit/de8715b), on main; [codex/savetool-mems-resize](https://github.com/papsg/SAROO/tree/codex/savetool-mems-resize) | All 19 new actual-CLI scenarios fail at the public baseline; all five previous overwrite-control methods pass there. All eight combined MEMS methods now pass ASan/UBSan and normal O2. Thirteen successful resize transitions and six refusals cover old-block reuse, capacity, complete permitted mutation extents, neighbors, stable metadata, allocation/free counts and fresh payload/date/CRC exports. Two unsigned-reader and seven browser/native checks pass. [Attribution, exact source/format references, public reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md). Historical author paps-g and original PR #372/Damián Parrino credit retained. Full metadata admission and checked persistence remain subsequent scope. |
+| SAVETOOL-003 input extents/integrity; `4bbc849a` | Next | Independently revalidate against current public main; unsigned-field fix 9f41183 is already integrated. |
+| SAVETOOL-004 new MEMS allocation; `5a000472` | Queued | Plan complete allocation before mutation. |
+| SAVETOOL-005 MEMS metadata; `9e486906` | Queued | Bound pointers/chains and validate cross-save ownership. |
+| SAVETOOL-005 SAROO slots; `a6d7e31e` | Queued | Bounds, resizing, damaged-slot preservation and safe creation. |
+| SAVETOOL-005 Saturn reader; `75ccd91b` | Queued | Plain/odd-byte metadata, fragmented chains and short/odd exports. |
+| SAVETOOL-006 file replacement/paths; `c8ee25f7` | Queued | Checked persistence and save-derived identity/path handling. |
+
+One of seven is integrated. The public source tree was clean after the first
+integration; main and the verified topic branch were pushed. Fork issues remain
+disabled and no open fork PR requires closure. Original upstream requests are
+unchanged. The MEMS correction changes only host code/tests/docs; private sources,
+branches/stashes, console firmware inputs and the Saturn remain untouched.
