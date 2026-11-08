@@ -1,5 +1,36 @@
 # Host asset tools
 
+## Isolated firmware qualification
+
+`firmware-build` runs the original public menu Makefile on a source copy under
+`tests/build`, using the cached pinned Yaul image documented in
+[ARABIC.md](../doc/ARABIC.md#build-qualification). It never pulls an image or
+accesses a device. The ordinary firmware Makefile remains usable directly.
+
+```sh
+cargo build --offline --locked --manifest-path tools/Cargo.toml -p firmware-build
+tools/target/debug/firmware-build menu --repo "$PWD" --out tests/build/menu-check
+```
+
+The repository is explicit; relative output paths resolve against it. Output
+must be a new directory inside that repository's `tests/build`. Existing results
+are refused. The tool copies bounded public menu inputs without changing their
+bytes, records source SHA-256 identities, disables container networking and
+admits only a local Unix-socket Docker endpoint. Builds have a five-minute
+deadline, with bounded removal of the tool's own container on timeout.
+Compiler stdout/stderr and the complete source/object/ELF/image/map cohort remain
+in the output directory. A JSON receipt records success or build verification
+failure. Setup failures can leave the new directory for inspection.
+
+Qualification checks the big-endian SuperH executable, entry, original 128 KiB
+body and 16 KiB stack, code/BSS/margin and exact appended font. This is target
+compile/link qualification, with no physical Saturn, bus or storage acceptance.
+The MIT-licensed host builder reuses the workspace's pinned dependencies; it
+adds no Rust code to either processor's firmware. Tests are available with
+`cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build`.
+
+## Browser and font assets
+
 The [offline save editor](savetool/web/README.md) and
 [cover editor](covertool/web/README.md) are separate host applications.
 Their checked-in HTML runs directly without Rust or a server. `web-assets`
