@@ -68,3 +68,70 @@ source/cache/branch or installed firmware is changed.
 Save resizing, metadata validation, successful dirty-flush bookkeeping, separately
 evaluated header batching, checked MCU startup/runtime, incomplete-tail admission
 and Saturn error/retry propagation remain following series members.
+
+## SATURN-SAVE-001: resize saves and flush changed allocation
+
+At public `1239a7d`, overwrite stores a new date but uses the old header size and
+allocation for copying. Growth is truncated; shrinking can read beyond the
+caller's smaller buffer. MEMS allocation changes also need the global header
+flushed, so correct RAM behavior alone does not establish correct reloads.
+
+The replacement path plans allocation in private scratch, reuses the selected
+save's old data blocks, checks the selected old layout/capacity and retains its
+header/list position. Only after the plan succeeds does it publish size, data
+allocation and actual free count, then write the complete supplied payload.
+MEMS final flush includes changed global allocation metadata. The 960-byte
+boundary stays inline; new saves above table capacity and a full MEMS directory
+are refused before allocation. Existing same-size overwrite semantics remain.
+
+The public API references are Sega's
+[Saturn System Library User's Guide, ST-162-R1-092994](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf),
+Backup Library §2.1 `BupDir` (printed p. 42, PDF p. 47: byte data size), and
+§2.3 function No. 5 `BUP_Write` (printed p. 45, PDF p. 50: directory/data inputs,
+overwrite-check mode and failure/success results). The original unchanged PDF's
+text and rendered write specification were checked. Those API rules do not
+define SAROO's bitmap/table layout, which comes from the starting
+[`BUPHEADER`, `MEMSHEADER`, `access_data`, `find_save` and writer](https://github.com/papsg/SAROO/blob/1239a7d/Firm_Saturn/game_save.c).
+Maximum payloads remain 510 × 128 bytes for an otherwise empty slot and
+479 × 1,024 bytes for MEMS; neighboring saves can reduce actual capacity.
+
+Our correction was originally authored by `paps-g` in `d8fe6875` on 2026-09-05.
+This public source port independently revalidates it after the separate
+SATURN-SAVE-002 prerequisite; no private preparer is used. Source notices and
+the prior language/controller/host-tool contributions remain intact.
+
+Two actual-C model methods execute 32 cases: 21 successful growth/shrink/zero/
+inline/table/maximum/same-size round trips and eleven refusals covering capacity,
+oversize, selected old chains, overwrite protection and full directory. They
+check payload/read/verify, metadata, output sentinels, neighbors, allocation/free
+counts and complete refused disk images. Discarding model RAM and reloading
+checks the MCU flush contract. The preceding public source fails 28 cases;
+all 32 pass ASan/UBSan and normal O2. Removing only the changed-allocation flush
+flag makes eight cases fail after reload. This control distinguishes updated
+RAM from allocation metadata actually sent through the modeled storage commands.
+
+The model includes the real firmware module and synchronously implements the
+existing MCU slot/MEMS load/flush behavior, including overlapping header/data
+windows. Stored typed fields use host byte order. It is not a physical reset,
+SD/controller, bus, cache, interrupt or concurrency simulation. Checks establish
+the logical API/allocation/reported-command behavior. They do not authenticate
+arbitrary input archives or establish power-loss atomicity. The MCU still needs
+the later series members to check actual I/O results and propagate them.
+
+The complete pinned SH-2 build qualifies all sixteen menu C units. Code/data
+grow 960 bytes to 76,016, and BSS grows 2,028 to 9,208 for the private bitmap and
+block list. The fixed 16,384-byte menu stack and 488,751-byte image/font layout
+remain, with 29,464 body bytes free. The two large arrays live outside the
+calling game's stack, under the service's existing synchronous ownership.
+GCC inlines the planner: the write function's direct frame grows from 52 to
+104 bytes (eight four-byte saves plus 20/72 local bytes). This is partial
+compiled stack accounting, excluding callees/interrupts; the menu stack reserve
+does not prove a calling game's stack headroom. Same-size writes skip planning;
+different-size writes scan at most 512 slot or 8,064 MEMS blocks. No new I/O
+command type or whole-archive copy is added. No physical latency is claimed.
+
+Run `make -C tests check-firmware-save` for coupled dirty/resize checks; the
+source/profile overrides and isolated target-build command above also apply.
+Full metadata/ownership admission, dirty-flush bookkeeping, separately evaluated
+batching and MCU/error/retry changes remain following scope. This correction
+does not establish that a named game's historical save report is resolved.

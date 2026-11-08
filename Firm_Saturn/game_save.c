@@ -457,6 +457,91 @@ int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
 }
 
 
+/* Like the existing caches, this workspace belongs to the synchronous backup
+ * service. Keep allocation planning outside the caller's game stack. */
+static u8 resize_bitmap[1008];
+static u16 resize_blocks[510];
+
+static int resize_save(int header, u32 new_size)
+{
+    int first = bup_dev ? 8 : 1;
+    int total = bup_dev ? 8064 : 512;
+    int bsize = bup_dev ? 1024 : 128;
+    int bitmap_size = bup_dev ? 1008 : 64;
+    u32 limit = bup_dev ? 479u * 1024 : 510u * 128;
+    u8 *bitmap = bup_dev ? (u8 *)MEMS->bitmap : (u8 *)BUPMEM->bitmap;
+    u8 *bp;
+    u32 old_size;
+    int old_count, new_count, count, block, i, available;
+
+    if (new_size > limit)
+        return BUP_NOT_ENOUGH_MEMORY;
+    if (header < first || header >= total ||
+        (bitmap[0] & ((1u << first) - 1)) != (1u << first) - 1)
+        return BUP_BROKEN;
+    bp = get_block_addr(START_BLOCK | header);
+    old_size = *(u32 *)(bp + 12);
+    if (old_size > limit)
+        return BUP_BROKEN;
+    old_count = bup_dev && old_size <= 960 ? 0 : (old_size + bsize - 1) / bsize;
+    new_count = bup_dev && new_size <= 960 ? 0 : (new_size + bsize - 1) / bsize;
+    memcpy(resize_bitmap, bitmap, bitmap_size);
+    if (!(resize_bitmap[header / 8] & (1u << (header % 8))))
+        return BUP_BROKEN;
+
+    count = 0;
+    for (i = 0; i < (bup_dev ? old_count : 512); i++) {
+        if (bup_dev) {
+            block = *(u16 *)(bp + 64 + i * 2);
+        } else {
+            if (!(bp[64 + i / 8] & (1u << (i % 8))))
+                continue;
+            block = i;
+        }
+        if (block < first || block >= total || block == header ||
+            !(resize_bitmap[block / 8] & (1u << (block % 8))))
+            return BUP_BROKEN;
+        /* Clear only the private bitmap; repeated references then fail. */
+        resize_bitmap[block / 8] &= ~(1u << (block % 8));
+        count++;
+    }
+    if (count != old_count ||
+        (bup_dev && old_count && *(u16 *)(bp + 64 + old_count * 2) != 0))
+        return BUP_BROKEN;
+
+    count = available = 0;
+    for (block = first; block < total; block++) {
+        if (!(resize_bitmap[block / 8] & (1u << (block % 8)))) {
+            if (count < new_count) {
+                resize_blocks[count++] = block;
+                resize_bitmap[block / 8] |= 1u << (block % 8);
+            } else {
+                available++;
+            }
+        }
+    }
+    if (count != new_count)
+        return BUP_NOT_ENOUGH_MEMORY;
+
+    /* Plan complete: publish in RAM, then let the caller store the full
+     * payload and flush the new allocation metadata with the save. */
+    memset(bp + 64, 0, bsize - 64);
+    for (i = 0; i < new_count; i++) {
+        if (bup_dev)
+            *(u16 *)(bp + 64 + i * 2) = resize_blocks[i];
+        else
+            set_bitmap(bp + 64, resize_blocks[i], 1);
+    }
+    *(u32 *)(bp + 12) = new_size;
+    memcpy(bitmap, resize_bitmap, bitmap_size);
+    if (bup_dev)
+        MEMS->free_block = available;
+    else
+        BUPMEM->free_block = available;
+    return 0;
+}
+
+
 int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 {
 	int block_need, block, hdr, last, i;
@@ -469,7 +554,7 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 
 	// 计算所需的块数量。
 	int block_size = (dev==0) ? 128 : 1024;
-	if(dev==1 && (dir->data_size < (1024-64))){
+	if(dev==1 && (dir->data_size <= (1024-64))){
 		block_need = 0;
 	}else{
 		block_need = (dir->data_size+block_size-1)/block_size;
@@ -483,20 +568,28 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 		if(mode)
 			return BUP_FOUND;
 
-		bp = get_block_addr(START_BLOCK|block);
-		*(u32*)(bp+0x1c) = dir->date;
-		access_data(block, data, 2);
+        bp = get_block_addr(START_BLOCK|block);
+        int resized = *(u32 *)(bp + 12) != dir->data_size;
+        if (resized) {
+            int result = resize_save(block, dir->data_size);
+            if (result)
+                return result;
+        }
+        *(u32 *)(bp + 28) = dir->date;
+        access_data(block, data, 2);
 
 		if(dev==0){
 			bup_update(BUPSAVE);
 		}else{
-			bup_update((block_need)? MEMS_SAV|MEMS_BUF : MEMS_SAV);
+			bup_update((resized ? MEMS_HDR : 0) | MEMS_SAV | (block_need ? MEMS_BUF : 0));
 		}
 		printk("Over write.\n");
 		return 0;
 	}
 
 	// 3. 未找到。新建存档。
+	if (dir->data_size > (dev ? 479u * 1024 : 510u * 128) || (dev == 1 && last < 0))
+		return BUP_NOT_ENOUGH_MEMORY;
 	int free_block = (dev==0) ? BUPMEM->free_block: *(u16*)(MEMS_HEADER+0x0c);
 	printk("block_need=%d\n", block_need+1);
 	if((block_need+1) > free_block){
