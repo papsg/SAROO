@@ -143,10 +143,48 @@ private writes, format migration or console firmware changes are included.
 | SAVETOOL-005 MEMS metadata; `9e486906` + `0dce8f0c` (SSR-102) | [f922ed8](https://github.com/papsg/SAROO/commit/f922ed8), on main; [codex/savetool-mems-metadata](https://github.com/papsg/SAROO/tree/codex/savetool-mems-metadata) | Five new actual-CLI methods cover 105 malformed-metadata refusals, ten unchanged read-only stale-count controls, ten deletion/recount controls, fixed-width padding and 78 raw-name operations. Prior public source fails 145 subcases; restoring only bounded string comparison fails all 36 malformed-suffix cases while valid names pass. All 18 MEMS and 5 input methods pass ASan/UBSan and normal O2; two unsigned-reader and seven web-save methods/24 native-browser exports pass. [Primary project-format references, original authorship, necessary refinement, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#savetool-005-mems-metadata-and-ownership). The raw identity policy matches the existing public browser contract; Sega does not define private MEMS padding. Checked persistence remains following scope. |
 | SAVETOOL-005 SAROO slots; `a6d7e31e` | [b1f3ac4](https://github.com/papsg/SAROO/commit/b1f3ac4), on main; [codex/savetool-slot-validation](https://github.com/papsg/SAROO/tree/codex/savetool-slot-validation) | Eight actual-CLI methods pass ASan/UBSan and normal O2. Prior source fails 117 subcases with five bounded timeouts in the seven historical methods; the added fragmented-allocation control also fails there. Covers stored indices, 100 malformed selected-slot operations, resize/capacity/refusal, stale counts/orphans, ID padding/holes/duplicates/append, full 256 MiB directory, six new SRO/BUP boundary saves and blocks 100/510/511. All 31 native, two unsigned-reader and seven web-save methods/24 exports pass. [Project-format citations, original authorship, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#savetool-005-saroo-slots-resizing-and-creation). Retains public v0.8 layout; excludes later native-backup migration. Saturn reader and checked persistence remain following scope. |
 | SAVETOOL-005 Saturn reader; `75ccd91b` | [b6df5de](https://github.com/papsg/SAROO/commit/b6df5de), on main; [codex/savetool-saturn-reader](https://github.com/papsg/SAROO/tree/codex/savetool-saturn-reader) | Six public methods pass ASan/UBSan and normal O2, including an actual included-reader exact-size sanitizer harness. Prior source fails 113 subcases in the 185-scenario historical corpus; four extent controls already pass due to SAVETOOL-003. Covers 100 SRO/BUP exports over 25 lengths/both encodings, fragmented/multiple saves, 78 malformed operations and six unchanged-input read-only controls. All 37 native, two unsigned-reader and seven web-save methods/24 exports pass. [Original authorship, exact primary raw-format references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#savetool-005-read-only-saturn-backup-tables-and-payloads). Independent libslinga references and their MIT notice are preserved as evidence; no implementation imported. Larger cartridge formats remain unsupported; host checks do not establish game/hardware qualification. Checked replacement/paths remain final scope. |
-| SAVETOOL-006 file replacement/paths; `c8ee25f7` | Next | Checked persistence and save-derived identity/path handling. |
+| SAVETOOL-006 file replacement/paths; `c8ee25f7` + `3151c6f5` (SSR-042) | [7d1d461](https://github.com/papsg/SAROO/commit/7d1d461), on main; [codex/savetool-atomic-io](https://github.com/papsg/SAROO/tree/codex/savetool-atomic-io) | Ten I/O methods cover checked pre/post-replacement errors, retries, names/aliases/special files, explicit/inferred paths, archive links and real metadata. Prior source has 218 failed assertions, 24 missing escaped-output errors and six FIFO timeouts. Omitting only the protection guard leaves 18 protected stages; 12 ordinary controls pass. Both corrected profiles pass all 30 metadata cases plus four ACL/archive-link controls. All 47 native methods pass sanitizers/normal O2, with two unsigned-reader and seven web-save methods/24 exports. Release binary has no test-fault hook. Excluded incomplete integration/control-setup runs are preserved. [Exact host-manual sections, original authorship, necessary refinement, public commands and remaining limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#savetool-006-checked-file-replacement-and-derived-paths). Checked replacement changes inode identity; post-rename failure leaves complete new data visible. No arbitrary power-loss/concurrent-writer or new hardware qualification is claimed. |
 
-Six of seven are integrated. The public source tree was clean after each
-integration; main and all six verified topic branches were pushed. Fork issues remain
+All seven are integrated. The public source tree was clean after each
+integration; main and all seven verified topic branches were pushed. Fork issues remain
 disabled and no open fork PR requires closure. Original upstream requests are
 unchanged. The integrated changes affect only host code/tests/docs; private sources,
 branches/stashes, console firmware inputs and the Saturn remain untouched.
+
+### Native-series completion audit
+
+- Each independently confirmed contribution is a separate ordinary source commit
+  on main, with its verified topic checkpoint published. No new PR or merge
+  commit was created, and no subsequent upstream change was imported.
+- Ports were evaluated against their immediately preceding public checkpoint.
+  Existing unsigned field reads `9f41183` are the explicit SAVETOOL-003 prerequisite,
+  not another contribution. The MEMS gate follows corrected resize/input/new-save
+  paths. Slot validation and the read-only Saturn reader consume checked extents.
+  The final writer/error propagation binds all three validated backends. Complete
+  MEMS identity (`0dce8f0c`, SSR-102) and protected macOS destination refusal
+  (`3151c6f5`, SSR-042) are independently reproduced necessary refinements.
+- All seven candidate defects are applicable and corrected. Already-correct
+  unsigned reads and the Saturn reader's four extent/signature controls are
+  explicitly deduplicated. Later native-backup migration, console storage,
+  cover publication and unrelated research remain outside this series.
+- Public tests execute the actual native CLI and separately included C shims.
+  All 47 native methods pass ASan/UBSan and normal O2; loader, exact reader and
+  syscall-fault fixtures remain sanitized in both profiles. Two unsigned-reader
+  and seven web-save methods pass, including 24 native/browser exports. Public
+  commands, authorship and exact project-format/host-manual citations are in
+  [SAVETOOL-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md).
+- Qualification is new Apple Silicon macOS host behavior. Thirty native metadata
+  cases pass per profile, including eighteen user-protected refusals and twelve
+  ordinary controls. System protection masks are compiled but not applied.
+  Historical Intel results are not promoted to new port qualification. Other
+  platforms, physical storage, game/hardware timing, arbitrary drive power loss,
+  concurrent metadata/writers and termination remain outside the recorded checks.
+- Firmware build inputs are unchanged from the start of this series. Baseline
+  `ba387b083bb9d2a001ae6a22a24d6e6785e515bd`, the twelve preceding contributions,
+  default main and historical master are preserved. No private framework,
+  .patch files, runtime diagnostics/loaders or USB integration were introduced.
+- All new build/evidence/porting records are confined to the public workspace;
+  private sources, branches/stashes and the Saturn were left unchanged. Initial
+  rejected/incomplete trials are preserved and distinguished from acceptance.
+  Fork issues remain disabled and no open fork PR requires closure; original
+  upstream requests remain unchanged. No native safety candidate remains queued.
