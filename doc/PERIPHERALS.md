@@ -72,6 +72,8 @@ clock. They cover 13,422 complete packets: 233 direct/type/length cases,
 901 mixed/extended/page-alignment cases. They also cover busy yielding,
 malformed/incomplete data, interrupt readiness, field admission, timeout/wrap,
 late interrupts, handler lifecycle and the actual FRT signed/unsigned boundary.
+The busy case advances past admission before checking that 1,000 polls preserve
+SF and COMREG; deleting the SF guard fails this control.
 
 The independent IREG0 fixture varies all 256 readback values and every
 cancellation/handoff page position. It validates issued bytes, not a readable

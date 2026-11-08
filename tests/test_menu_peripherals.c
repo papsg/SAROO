@@ -291,6 +291,10 @@ static void busy(void)
 {
     reset(0);
     SF = 1; COMREG = 0x5a;
+#if !PAD_TEST_LEGACY
+    assert(poll() == -1); /* Observe VBlank, then exercise the SF guard. */
+    clock_now += EXPECTED_PAD_ADMISSION;
+#endif
     for (unsigned i = 0; i < 1000; ++i) assert(poll() == -1);
     assert(COMREG == 0x5a && reads == 0 && SF == 1);
     SF = 0; TVSTAT = 0;
