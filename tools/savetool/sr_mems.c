@@ -29,25 +29,6 @@ static u16 free_block;
 /******************************************************************************/
 
 
-static int get_free_block(int pos)
-{
-	int i, byte, mask;
-
-	for(i=pos; i<8064; i++){
-		byte = i/8;
-		mask = 1<<(i&7);
-		if( (MEMS->bitmap[byte]&mask) == 0 ){
-			MEMS->bitmap[byte] |= mask;
-			free_block -= 1;
-			//printf("get_free_block(%d): %d\n", pos, i);
-			return i;
-		}
-	}
-
-	return 0;
-}
-
-
 static u8 *get_block_addr(int id)
 {
 	return (u8*)(mems_buf + block_size*id);
@@ -207,10 +188,67 @@ static int resize_save(int header, u32 new_size)
 }
 
 
+/* Plan header and data allocation before touching the archive. The bitmap,
+ * rather than the advisory free count, determines actual block availability. */
+static int create_save(int directory, SAVEINFO *save)
+{
+    u8 bitmap[sizeof(MEMS->bitmap)];
+    u16 blocks[(1024-64)/2]; /* Header plus at most 479 data blocks. */
+    u32 size = get_be32(&save->data_size);
+    int data_count, needed, count = 0, available = 0, block, i;
+    u8 *bp;
+
+    if(directory<0 || directory>=448 || save->file_name[0]==0 ||
+       size>(sizeof(blocks)/sizeof(blocks[0])-1)*1024u){
+        printf("New save cannot fit the MEMS directory or block layout.\n");
+        return -1;
+    }
+    data_count = size<=960 ? 0 : (size+1023)/1024;
+    needed = 1+data_count;
+    memcpy(bitmap, MEMS->bitmap, sizeof(bitmap));
+    for(block=8; block<8064; block++){
+        if(!(bitmap[block/8] & (1u<<(block%8)))){
+            if(count<needed){
+                blocks[count++] = block;
+                bitmap[block/8] |= 1u<<(block%8);
+            }else{
+                available++;
+            }
+        }
+    }
+    if(count!=needed){
+        printf("Not enough free MEMS blocks for the complete save.\n");
+        return -1;
+    }
+
+    /* The cleared header supplies the table terminator. Prepare all payload
+     * bytes and allocation bookkeeping before publishing the directory entry. */
+    bp = get_block_addr(blocks[0]);
+    memset(bp, 0, 1024);
+    memcpy(bp, save->file_name, 11);
+    memcpy(bp+0x0c, &save->data_size, 4);
+    memcpy(bp+0x10, save->comment, 10);
+    bp[0x1b] = save->language;
+    memcpy(bp+0x1c, &save->date, 4);
+    for(i=0; i<data_count; i++)
+        put_be16(bp+64+i*2, blocks[i+1]);
+    access_data(blocks[0], save->dbuf, 2);
+    memcpy(MEMS->bitmap, bitmap, sizeof(bitmap));
+    free_block = available;
+    put_be16(&MEMS->free_block, free_block);
+    bp = mems_buf+1024+directory*16;
+    memset(bp, 0, 16);
+    memcpy(bp, save->file_name, 11);
+    put_be16(bp+14, blocks[0]);
+    printf("Import %s.\n", save->file_name);
+    return 0;
+}
+
+
 int sr_mems_import(int slot_id, int save_id, char *save_name)
 {
 	SAVEINFO *save;
-	int block, block_need, i, index, last, hdr;
+	int block, i, index, last;
 	u8 *bp;
 
 	index = 0;
@@ -265,58 +303,10 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
 		return -1;
 	}
 
-	// new save
-	save = load_saveraw(save_name);
-	if(save==NULL)
-		return -1;
-
-	// 计算所需的块数量。起始块+数据块
-	int dsize = get_be32(&save->data_size);
-	if(dsize<=(block_size-64)){
-		block_need = 0;
-	}else{
-		block_need = (dsize+block_size-1)/(block_size);
-		if((block_need+1) > free_block){
-			return -1;
-		}
-	}
-	printf("block_need=%d\n", block_need+1);
-
-	// 分配起始块
-	block = get_free_block(0);
-	hdr = block;
-
-	bp = get_block_addr(hdr);
-	printf("start at %d\n", hdr);
-
-	// 写开始块
-	memset(bp, 0, 1024);
-	memcpy(bp+0x00, save->file_name, 11);
-	*(u32*)(bp+0x0c) = save->data_size;
-	memcpy(bp+0x10, save->comment, 10);
-	bp[0x1b] = save->language;
-	*(u32*)(bp+0x1c) = save->date;
-
-	// 分配块
-	block = 0;
-	for(i=0; i<block_need; i++){
-		block = get_free_block(block);
-		put_be16(bp+0x40+i*2, block);
-		block += 1;
-	}
-	put_be16(bp+0x40+i*2, 0);
-
-	// 写数据
-	access_data(hdr, save->dbuf, 2);
-
-	// 更新目录
-	memcpy((u8*)mems_buf+1024+last*16, save->file_name, 11);
-	put_be16(mems_buf+1024+last*16+0x0e, hdr);
-
-	put_be16(&MEMS->free_block, free_block);
-
-	printf("Import %s.\n", save->file_name);
-	return 0;
+    save = load_saveraw(save_name);
+    if(save==NULL)
+        return -1;
+    return create_save(last, save);
 }
 
 

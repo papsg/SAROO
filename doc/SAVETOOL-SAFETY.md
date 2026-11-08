@@ -183,3 +183,51 @@ The input suite can target a separately compiled baseline with the existing
 Generated fault controls are confined to the test executable. The release CLI
 has no fault-injection switch. No physical-device, power-loss or game acceptance
 is claimed; checked output persistence remains SAVETOOL-006 scope.
+
+## SAVETOOL-004: plan new MEMS allocation before mutation
+
+At public `bb64566`, a full directory leaves the destination index at `-1`.
+An exhausted bitmap returns block zero, and the inline-save path skips the
+free-count guard. A stale high count also bypasses that guard for larger saves.
+The resulting operations can report success after changing the bitmap/header or
+destroying block zero. An oversized data-block table crosses the header boundary.
+A stale low free count incorrectly refuses a save that actually fits.
+
+The new path admits the directory position, nonempty identity, representable
+payload size and complete header/data allocation before writing archive bytes.
+It plans from the real bitmap, starts at block eight, and preserves allocated
+orphans. Payload/header preparation and updated bookkeeping precede publication
+of the complete directory entry. Refusal leaves the entire archive unchanged.
+The old incremental allocator becomes unused and is removed.
+
+The temporary arrays contain a 1,008-byte bitmap and 960-byte block list,
+including the header plus up to 479 data blocks. The 490,496-byte payload maximum
+and existing inline representation are unchanged. The reference is the starting
+[`sr_mems.c`](https://github.com/papsg/SAROO/blob/bb64566/tools/savetool/sr_mems.c),
+specifically `MEMSHEADER`, `get_free_block`, `access_data` and the new-save branch
+of `sr_mems_import`. These are SAROO format/allocation rules. Existing SRO/BUP
+feature authorship and all source notices remain as described above.
+
+This independent maintenance correction was originally authored by `paps-g` as
+`5a000472` on 2026-09-05. The public port revalidates it after the resizing/input
+changes and adds explicit fragmented/last-block and BUP boundary controls.
+
+Five new actual-CLI methods cover thirteen successful creations and eleven
+refusals. Successes include zero/inline/table/maximal payloads, SRO and BUP,
+directory holes/final entry, stale low counts and a complete fragmented
+allocation ending at block 8,063. Tests independently check allocation bits,
+free counts, table termination, preserved old saves and every byte outside the
+new save's permitted extents. Fresh-process exports verify data/date/CRC.
+Refusals include full directory/bitmap, oversize, empty name, stale high count,
+insufficient space and a bitmap with only reserved blocks free.
+
+The prior public source fails ten scenarios and passes the remaining controls.
+All new checks and previous MEMS regressions pass under ASan/UBSan and normal O2.
+Run `make -C tests check-native-save check-save-endian check-web-save` for the
+coupled controls. To run against the previous implementation, use
+`SAROO_SAVETOOL_SOURCE` with a separately extracted `bb64566` source directory.
+No private workspace or hardware is required.
+
+This changes in-memory admission/commit ordering. Full metadata ownership checks
+and checked on-disk replacement remain the subsequent SAVETOOL-005/006 scope.
+No power-loss or physical Saturn qualification is claimed.
