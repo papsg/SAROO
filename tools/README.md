@@ -25,6 +25,9 @@ failure. Setup failures can leave the new directory for inspection.
 Qualification checks the big-endian SuperH executable, entry, original 128 KiB
 body and 16 KiB stack, code/BSS/margin and exact appended font. This is target
 compile/link qualification, with no physical Saturn, bus or storage acceptance.
+GCC's `-fstack-usage` files and receipt rows record direct function frames and
+their static/dynamic qualifiers. They exclude transitive callees and interrupt
+use and do not prove a game's available stack headroom.
 The MIT-licensed host builder reuses the workspace's pinned dependencies; it
 adds no Rust code to either processor's firmware. Tests are available with
 `cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build`.

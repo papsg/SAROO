@@ -31,6 +31,43 @@ fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn parse_stack_usage(text: &str) -> Result<Vec<Value>> {
+    text.lines()
+        .map(|line| {
+            let fields: Vec<_> = line.split('\t').collect();
+            if fields.len() != 3 || fields[0].is_empty() || fields[2].is_empty() {
+                return fail("Invalid compiler stack-usage row");
+            }
+            Ok(
+                json!({"location": fields[0], "bytes": fields[1].parse::<u64>()?,
+            "qualifier": fields[2]}),
+            )
+        })
+        .collect()
+}
+
+fn stack_usage(directory: &Path) -> Result<BTreeMap<String, Vec<Value>>> {
+    let mut reports = BTreeMap::new();
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|value| value.to_str()) != Some("su") {
+            continue;
+        }
+        if !entry.file_type()?.is_file() || entry.metadata()?.len() > 131072 || reports.len() >= 64
+        {
+            return fail("Compiler stack report exceeds build limits");
+        }
+        reports.insert(
+            entry.file_name().to_string_lossy().into_owned(),
+            parse_stack_usage(&fs::read_to_string(entry.path())?)?,
+        );
+    }
+    if !reports.contains_key("game_save.su") {
+        return fail("Missing backup-module compiler stack report");
+    }
+    Ok(reports)
+}
+
 fn word(bytes: &[u8], offset: usize, width: usize) -> Result<u32> {
     let end = offset.checked_add(width).ok_or("ELF offset overflow")?;
     let field = bytes.get(offset..end).ok_or("Truncated ELF field")?;
@@ -266,7 +303,7 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
     let flags = vec!["run".into(), "--rm".into(), "--pull=never".into(), "--network=none".into(),
         "--platform=linux/amd64".into(), "--name".into(), identity.clone(), "--mount".into(), mount,
         "--workdir=/build".into(), "--env=SOURCE_DATE_EPOCH=1765029659".into(), "--entrypoint=make".into(), IMAGE.into(),
-        format!("CC={PREFIX}gcc -mb"), format!("AS={PREFIX}as"), format!("OBJDUMP={PREFIX}objdump"), format!("OBJCOPY={PREFIX}objcopy"),
+        format!("CC={PREFIX}gcc -mb -fstack-usage"), format!("AS={PREFIX}as"), format!("OBJDUMP={PREFIX}objdump"), format!("OBJCOPY={PREFIX}objcopy"),
         "LDFLAGS=-m2 -mb -nostartfiles -nostdlib -T ldscript -Wl,--oformat=elf32-sh,--build-id=none,-Map,ssfirm.map".into(),
         "LIBS=-lyaul -lgcc".into()];
     let mut receipt = json!({"head": head, "source_sha256": sources, "docker_endpoint": endpoint,
@@ -318,11 +355,15 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
     };
     receipt["elapsed_ms"] = json!(started.elapsed().as_millis());
     let verification = if result {
-        resources(
-            &fs::read(staged.join("ssfirm.elf"))?,
-            &fs::read(staged.join("ssfirm.bin"))?,
-            &fs::read(staged.join("font_cjk.bin"))?,
-        )
+        (|| -> Result<Value> {
+            let bounds = resources(
+                &fs::read(staged.join("ssfirm.elf"))?,
+                &fs::read(staged.join("ssfirm.bin"))?,
+                &fs::read(staged.join("font_cjk.bin"))?,
+            )?;
+            receipt["compiler_direct_stack"] = json!(stack_usage(&staged.join("obj"))?);
+            Ok(bounds)
+        })()
     } else {
         fail("Menu make failed or timed out; inspect preserved build logs")
     };
@@ -366,6 +407,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reads_compiler_direct_frames_without_claiming_transitive_use() {
+        let rows = parse_stack_usage(
+            "save.c:7:2:read\t52\tstatic\nsave.c:9:2:write\t64\tdynamic,bounded\n",
+        )
+        .unwrap();
+        assert_eq!(rows[0]["bytes"], 52);
+        assert_eq!(rows[1]["qualifier"], "dynamic,bounded");
+        assert!(parse_stack_usage("save.c\tunknown\tstatic").is_err());
+        assert!(parse_stack_usage("save.c\t8").is_err());
+    }
     #[test]
     fn rejects_wrong_machine_encoding_and_truncated_elf() {
         let mut elf = vec![0; 52];
