@@ -26,6 +26,59 @@ typedef struct {
 static u16 block_size = 1024;
 static u16 free_block;
 
+/* The dispatcher establishes the complete MEMS extent before initialization.
+ * Check all stored ownership before a command may follow a directory pointer. */
+static int claim_block(u8 *seen, unsigned block)
+{
+    unsigned mask = 1u<<(block%8);
+    if(block<8 || block>=8064 || !(MEMS->bitmap[block/8] & mask) || (seen[block/8] & mask))
+        return -1;
+    seen[block/8] |= mask;
+    return 0;
+}
+
+static int validate_mems(void)
+{
+    u8 seen[sizeof(MEMS->bitmap)] = {0};
+    int i, j, available = 0;
+
+    if(get_be32(&MEMS->total_size)!=0x800000 || MEMS->bitmap[0]!=0xff)
+        return -1;
+    /* Reserve every header before admitting any data block. */
+    for(i=0; i<448; i++){
+        u8 *entry = mems_buf+1024+i*16;
+        if(entry[0] && claim_block(seen, get_be16(entry+14))<0)
+            return -1;
+    }
+    for(i=0; i<448; i++){
+        u8 *entry = mems_buf+1024+i*16;
+        u8 *header;
+        u32 size, count;
+        if(!entry[0])
+            continue;
+        header = mems_buf+get_be16(entry+14)*1024;
+        size = get_be32(header+12);
+        /* Match the entire stored field, including equal raw bytes after NUL. */
+        if(memcmp(entry, header, 11)!=0 || size>479u*1024)
+            return -1;
+        if(size<=960)
+            continue;
+        count = (size+1023)/1024;
+        for(j=0; j<(int)count; j++)
+            if(claim_block(seen, get_be16(header+64+j*2))<0)
+                return -1;
+        if(get_be16(header+64+count*2)!=0)
+            return -1;
+    }
+    /* Preserve old allocated orphans; the bitmap is authoritative. Recount
+     * locally so a read-only command does not repair/change the input file. */
+    for(i=8; i<8064; i++)
+        if(!(MEMS->bitmap[i/8] & (1u<<(i%8))))
+            available++;
+    free_block = available;
+    return 0;
+}
+
 /******************************************************************************/
 
 
@@ -274,7 +327,7 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
 		u8 *sbp;
 		char sname[20];
 		if(save_name==NULL){
-			sprintf(sname, "%s.bin", bp);
+			snprintf(sname, sizeof(sname), "%.11s.bin", bp);
 			save_name = sname;
 		}
 		save = load_saveraw(save_name);
@@ -295,7 +348,7 @@ int sr_mems_import(int slot_id, int save_id, char *save_name)
         }
 		*(u32*)(sbp+0x1c) = save->date;
 		access_data(block, save->dbuf, 2);
-		printf("Import %s from %s.\n", bp, save_name);
+		printf("Import %.11s from %s.\n", bp, save_name);
 		return 0;
 	}
 	if(save_id>=0){
@@ -393,7 +446,7 @@ int sr_mems_list(int slot_id)
 		}
 		bsize += 1;
 
-		printf("  Save_%-3d: %s  size=%5x  block=%d\n", index, bp, dsize, bsize);
+		printf("  Save_%-3d: %.11s  size=%5x  block=%d\n", index, bp, dsize, bsize);
 
 		index += 1;
 	}
@@ -406,8 +459,11 @@ int sr_mems_list(int slot_id)
 
 int sr_mems_init(u8 *bbuf)
 {
-	mems_buf = bbuf;
-	free_block = get_be16(&MEMS->free_block);
+    mems_buf = bbuf;
+    if(validate_mems()<0){
+        printf("Invalid MEMS directory or block metadata.\n");
+        return -1;
+    }
 
 	return 0;
 }

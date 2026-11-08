@@ -231,3 +231,55 @@ No private workspace or hardware is required.
 This changes in-memory admission/commit ordering. Full metadata ownership checks
 and checked on-disk replacement remain the subsequent SAVETOOL-005/006 scope.
 No power-loss or physical Saturn qualification is claimed.
+
+## SAVETOOL-005: MEMS metadata and ownership
+
+The preceding public `be30f6b` follows directory/header/table pointers without
+admitting the whole archive. Invalid, shared or unallocated blocks can reach
+payload access, listing and deletion. Deletion also trusts a stale stored free
+count. Unbounded printing and inferred input names can consume bytes outside the
+eleven-byte directory identity.
+
+Initialization now checks the declared 8 MiB region, eight reserved blocks,
+every occupied directory header, payload size, exact terminated chain and
+cross-save allocation ownership before a command can follow those pointers.
+Headers are claimed before data, so a payload cannot borrow a later save header.
+The single 1,008-byte temporary ownership bitmap bounds this check. Allocated
+orphans remain allocated; the bitmap supplies the actual free count locally.
+Read-only commands leave stale stored counts and all archive bytes untouched.
+Names used as strings are bounded to eleven bytes.
+
+The format source is
+[`MEMSHEADER`, `access_data`, `sr_mems_delete` and `sr_mems_init` at be30f6b](https://github.com/papsg/SAROO/blob/be30f6b/tools/savetool/sr_mems.c).
+The already-public
+[`validateMems` browser contract](https://github.com/papsg/SAROO/blob/be30f6b/tools/savetool/web/src/save-codec.mjs)
+independently admits the same block ownership and complete eleven-byte stored
+identity. Matching raw bytes after NUL are preserved; divergent stored suffixes
+reject the archive. Sega's public backup-name API does not specify this private
+MEMS padding, so it is not cited as requiring that identity policy.
+
+This is our maintenance correction originally authored by `paps-g` as
+`9e486906` on 2026-09-05, with the necessary complete-name correction `0dce8f0c`
+of 2026-10-20 (SSR-102). The public port independently revalidates both. It does
+not import the later console validator or private patch framework. Existing
+MEMS/SRO/BUP notices and feature attribution described above remain intact.
+
+Five new actual-CLI methods cover 105 whole-archive metadata refusals,
+ten deletion/recount controls with orphans and neighbors, a fixed-width padding
+control, and 78 name operations: 36 divergent-suffix refusals and 42 equal-field
+list/export/import/delete controls. The preceding public source fails 145
+subcases. Restoring only `strncmp` in the corrected validator causes all 36
+divergent-suffix cases to fail while the equal-field controls still pass.
+Refusals preserve every archive/input byte and create no output file; successful
+operations retain exact payloads, complete raw names and neighboring records.
+Ten read-only stale-count controls also preserve the original complete archive.
+All eighteen MEMS methods and five input methods pass under ASan/UBSan and
+normal O2; the direct loader shim remains sanitized. Two unsigned-reader and
+seven web-save methods pass, including all 24 native/browser exports.
+
+Run `make -C tests check-native-save check-save-endian check-web-save` for the
+coupled suite. `SAROO_SAVETOOL_SOURCE` selects an independently extracted prior
+source directory; `SAROO_SAVETOOL_BINARY` can select a normal O2 build. This is
+host archive admission, not physical Saturn or power-loss qualification. SAROO
+slot validation, Saturn-reader correction and checked output persistence remain
+the following independent series members.
