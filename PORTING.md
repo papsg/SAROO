@@ -323,3 +323,19 @@ No PR, USB integration, runtime diagnostic, private framework or unrelated work
 was introduced. Private tracked state, all refs and stashes match the initial
 snapshot; no private preparer/test or device operation ran. Private files/caches,
 Saturn, installed firmware and other paused work remain untouched.
+
+## Cover and artwork safety
+
+Starts at public `19de4f3`. Revalidate original findings and dependencies;
+menu consumer precedes the MCU producer. Direct verified source commits;
+no PRs, USB, runtime diagnostics, private framework or device operations.
+
+| Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
+| --- | --- | --- |
+| SATURN-MENU-003; `681387bc` | [0812ccd](https://github.com/papsg/SAROO/commit/0812ccd); [codex/cover-display-ownership](https://github.com/papsg/SAROO/tree/codex/cover-display-ownership) | Consumer prerequisite. Four actual-display methods/11 scenarios; baseline10 failures, non-VBlank control passes, sanitizers/O2 pass. Four controls fail10/2/2/2. Public refinement uses selected stride in upward clipping; GIF stride retained. Complete SH-2 link adds16 code/data to78,836; BSS/stack/direct frame unchanged, margin26,620. [Exact Sega DMA sections/pages, paps-g attribution, source contracts, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/COVER-ARTWORK-SAFETY.md#saturn-menu-003-preserve-frame-ownership-through-final-dma). Synthetic asynchronous DMA is not bus/cache/VDP timing, physical-hang or game qualification. |
+| MCU-COVER-001; `681387bc` | Queued | Bounded catalog-associated cache, exact file I/O, shared-buffer ownership and complete publication. |
+| COVERTOOL-001; `2231f4b5` | Queued | Native artwork validation, exact deduplication, checked output publication and existing browser interoperability. |
+
+Series active; remaining rows are not complete. Verified menu checkpoint/main
+are pushed; evidence stays in public. Private repository and Saturn remain
+untouched. No upstream request is changed.
