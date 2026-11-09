@@ -24,11 +24,10 @@ You can use SAROO Cover Tool to generate the correct disc Hash for your Saturn g
 ## Usage
 
 ```
-SAROO Cover Tool v1.0.0 by Bucanero
+Usage: ./covertool -p coverlist.txt | -u cover.bin | -i disc-image
 
-Usage: ./covertool [option] cover_file
-    -u          Unpack a cover.bin file to BMP images for each game
-    -p          Pack BMP images and generate a cover.bin
+    -u          Unpack a cover.bin file to BMP images and coverlist.txt
+    -p          Pack listed BMP images and generate cover.bin
     -i          Generate IP.BIN Hash for a Saturn game disc image
 
 Example:
@@ -42,7 +41,20 @@ Example:
 Cover images should follow these specifications:
 - BMP format (8-bit, uncompressed)
 - 256 colors palette
-- Size: 128x128 or 128x192
+- Width 1–128, height 1–192 (usual covers are 128x128 or 128x192)
+- Windows DIB sizes 40, 52, 56, 108 or 124; padded and top-down rows supported
+
+Operations fail on malformed/incomplete inputs. Packing stages `cover.bin`;
+extraction validates metadata first, publishes complete BMPs and writes the
+manifest last. Existing files are preserved on prepublication failure. Earlier
+completed BMPs can remain after a later extraction failure. New files use mode
+0600; protected destinations, special files, output symlinks and active-input
+aliases are refused.
+
+List identities use the basename `cover_SERIAL~12345678.bmp`, with 1–12 serial
+bytes. Export escapes unsafe/lowercase bytes as `%HH`; packing decodes them.
+The IP serial/checksum identifies artwork, independently of the disc filename.
+See [native safety, citations, validation and limits](../../doc/NATIVE-COVER-SAFETY.md).
 
 ## Build
 
@@ -70,7 +82,8 @@ typedef struct cover_header
 } cover_hdr_t;
 ```
 
-The index supports a maximum of 16384 entries.
+The host index supports a maximum of 16384 entries. Current MCU firmware looks
+up only its first 2048 entries; this host-tool safety change does not expand it.
 
 ### IP.BIN Hash
 
@@ -85,3 +98,7 @@ hash = adler32(ip_bin+0x30, 64);
 ## Credits
 
 SAROO Cover Tool by [Bucanero](https://github.com/bucanero) - Licensed under GNU GPLv3
+
+Safety maintenance: paps-g (`2231f4b5`, protected-destination refinement `3151c6f5`),
+ported as direct public source changes. Original Bucanero GPL-3.0-or-later notice
+remains in `main.c`.

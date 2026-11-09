@@ -29,7 +29,7 @@ class BrowserCoverTests(unittest.TestCase):
                         "-p", "web-assets"], check=True, timeout=180)
         cls.tool = ROOT / "tools/target/debug/web-assets"
 
-    def test_archive_and_baseline_native_controls(self):
+    def test_archive_and_native_controls(self):
         root = self.directory
         manifest, entries = [], []
         for i, (w, h, dib, top, gap) in enumerate([
@@ -59,10 +59,10 @@ class BrowserCoverTests(unittest.TestCase):
             pixels = bytearray(entries[-1][5]); struct.pack_into("<H", pixels, 0, i)
             batched.append((f"B{i}".encode(), i, 128, 192, entries[-1][4], bytes(pixels)))
         (root / "batch.bin").write_bytes(library(batched))
-        # This unchanged v0.8 CLI has narrower safe interchange behavior than
-        # the file format: use ordinary IDs, 40-byte DIBs and aligned rows here.
+        # Existing canonical interchange controls plus unaligned row widths.
+        # Native safety/escaping/collision coverage has its own focused suite.
         native_entries = []
-        for i, (w, h) in enumerate([(128, 128), (128, 192), (4, 4)]):
+        for i, (w, h) in enumerate([(128, 128), (128, 192), (4, 4), (1, 1), (3, 7), (127, 97), (17, 3)]):
             _, palette, _ = bmp(w, h)
             pixels = bytes((j*7+i*37)%256 for j in range(w*h))
             native_entries.append((f"NATIVE{i}".encode(), 0x12345670+i, w, h, palette, pixels))
@@ -88,16 +88,19 @@ class BrowserCoverTests(unittest.TestCase):
         self.assertEqual((root / "cover.bin").read_bytes(), library(native_entries))
         for serial, hashed, w, h, palette, pixels in native_entries:
             actual = (root / f"cover_{serial.decode()}~{hashed:08X}.bmp").read_bytes()
-            expected = bmp(w, h, palette=palette, pixels=pixels)[0]
-            # The old CLI writes zero biSizeImage; both are legal for BI_RGB.
-            expected = bytearray(expected); expected[34:38] = bytes(4)
+            expected = bytearray(bmp(w, h, palette=palette, pixels=pixels)[0])
+            # The independent input fixture fills padding with 0xDA; canonical
+            # native exports deliberately clear non-pixel padding bytes.
+            stride = (w + 3) & ~3
+            for y in range(h):
+                expected[1078+y*stride+w:1078+(y+1)*stride] = bytes(stride-w)
             self.assertEqual(actual, expected)
         (BUILD / "native-interchange.json").write_text(json.dumps({
-            "commands": commands, "covers": 3,
+            "commands": commands, "covers": len(native_entries),
             "browser_sha256": hashlib.sha256((root / "native-browser.bin").read_bytes()).hexdigest(),
             "native_source_sha256": hashlib.sha256((ROOT / "tools/covertool/main.c").read_bytes()).hexdigest(),
-            "unchanged_baseline_source": True, "hardware": False,
-            "limits": "Canonical aligned BMPs and ordinary IDs; no claim of fixed legacy CLI padding/dedup/serial defects",
+            "source": "current public native source", "hardware": False,
+            "limits": "Seven canonical browser/native round trips, including padded rows; native format/escaping/fault checks are separate; no hardware qualification",
         }, indent=2)+"\n")
 
     def test_images_and_worker_ownership(self):
