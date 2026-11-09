@@ -1093,77 +1093,75 @@ int sro_bup_verify(int dev, char *file_name, u8 *data)
 }
 
 
-static char mdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+/* Gregorian dates in the API's 8-bit year range: 1980 through 2235.
+ * Century exceptions within this range are 2100 (120) and 2200 (220). */
+static const u16 date_month_start[13] = {
+    0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365
+};
+
+static unsigned date_year_start(unsigned year)
+{
+    return year * 365 + (year + 3) / 4 - (year > 120) - (year > 220);
+}
+
+static unsigned date_leap(unsigned year)
+{
+    return !(year & 3) && year != 120 && year != 220;
+}
 
 void sro_bup_get_date(u32 date, BUPDATE *bdt)
 {
-	int y, d, h, m;
-	printk("bup_get_date: %08x\n", date);
-
-	d = date/(24*60); date -= d*24*60;
-	h = date/60; date -= h*60;
-
-	y = d/(365*4+1); d -= y*(365*4+1);
-	m = d/365; d -= m*365;
-	if(m==3){
-		if(d==0){
-			m = 2;
-			d = 365;
-		}else{
-			d -= 1;
-		}
-	}
-	y = y*4+m;
-
-	mdays[1] = (m==2)? 29: 28;
-	m = 0;
-	while(d>mdays[m]){
-		d -= mdays[m];
-		m += 1;
-	}
-	m += 1;
-	d += 1;
-
-	bdt->year = y;
-	bdt->month = m;
-	bdt->day = d;
-	bdt->time = h;
-	bdt->min = date;
-
-	printk("  : %2d-%2d-%2d %2d:%2d\n",
-		bdt->year, bdt->month, bdt->day, bdt->time, bdt->min);
+    unsigned days, year, day, leap, low = 0, high = 12, minute;
+    if (!bdt) return;
+    days = date / 1440;
+    if (days >= date_year_start(256)) {
+        /* No status channel in this ABI: zero month/day denote invalid data. */
+        memset(bdt, 0, sizeof(*bdt));
+        return;
+    }
+    printk("bup_get_date: %08x\n", date);
+    /* This four-year estimate is at most one year low in the bounded range. */
+    year = days * 4 / 1461;
+    if (days >= date_year_start(year + 1)) year++;
+    day = days - date_year_start(year);
+    leap = date_leap(year);
+    while (low + 1 < high) {
+        unsigned middle = (low + high) / 2;
+        if (day >= date_month_start[middle] + (leap && middle >= 2))
+            low = middle;
+        else
+            high = middle;
+    }
+    minute = date % 1440;
+    bdt->year = year;
+    bdt->month = low + 1;
+    bdt->day = day - date_month_start[low] - (leap && low >= 2) + 1;
+    bdt->time = minute / 60;
+    bdt->min = minute % 60;
+    bdt->week = (days + 2) % 7; /* 1980-01-01 was Tuesday; Sunday is zero. */
+    printk("  : %2d-%2d-%2d %2d:%2d\n",
+           bdt->year, bdt->month, bdt->day, bdt->time, bdt->min);
 }
-
 
 u32 sro_bup_set_date(BUPDATE *bdt)
 {
-	u32 date;
-	int y, m ,rem;
-
-	printk("bup_set_date: %2d-%2d-%2d %2d:%2d\n",
-		bdt->year, bdt->month, bdt->day, bdt->time, bdt->min);
-
-	y = bdt->year;
-	date = (y/4)*0x5b5;
-	rem = y%4;
-	if(rem){
-		date += rem*0x16d+1;
-	}
-
-	mdays[1] = (rem==0)? 29: 28;
-	m = bdt->month;
-	while(m>1){
-		date += mdays[m-2];
-		m -= 1;
-	}
-	date += bdt->day;
-	date *= 1440;
-
-	date += (bdt->time)*0x3c;
-	date += bdt->min;
-
-	printk("  date=%08x\n", date);
-	return date;
+    unsigned month, leap, days;
+    if (!bdt || bdt->month < 1 || bdt->month > 12 || !bdt->day ||
+        bdt->time >= 24 || bdt->min >= 60)
+        return 0xffffffffu;
+    month = bdt->month - 1;
+    leap = date_leap(bdt->year);
+    if (bdt->day > date_month_start[month + 1] - date_month_start[month] +
+                   (leap && month == 1))
+        return 0xffffffffu;
+    printk("bup_set_date: %2d-%2d-%2d %2d:%2d\n",
+           bdt->year, bdt->month, bdt->day, bdt->time, bdt->min);
+    /* Week is derived from the date; packing neither needs nor modifies it. */
+    days = date_year_start(bdt->year) + date_month_start[month] +
+           (leap && month >= 2) + bdt->day - 1;
+    u32 date = days * 1440 + bdt->time * 60 + bdt->min;
+    printk("  date=%08x\n", date);
+    return date;
 }
 
 
