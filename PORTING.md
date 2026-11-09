@@ -293,11 +293,11 @@ investigation; historical qualification is not reused.
 | Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
 | --- | --- | --- |
 | SAVETOOL-007 clearing; `99127a6a` | [6450e93](https://github.com/papsg/SAROO/commit/6450e93); [codex/save-export-clearing](https://github.com/papsg/SAROO/tree/codex/save-export-clearing) | Uses completed validated-reader/output work. Three methods:100 poisoned exports plus8 BUP round trips match complete independent files. Baseline passes bytes but fails50 reduced-work assertions; ASan/UBSan/O2 pass. Three controls detected. All50 native methods pass with sanitizer and O2 CLIs (direct fault helpers retain sanitizers). Clear work falls32KiB/1MiB→64 bytes; native ARM64 O2 text+20 to15,612, zero-fill1,082,580 and direct exporter frames224/208/224 unchanged. [Format/request/source citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#savetool-007-clear-only-the-exported-header). Firmware unchanged; no timing/hardware claim. |
-| SAVETOOL-007 discarded CRC; `99127a6a` | Queued | Independently evaluate skipping only the BUP checksum that its replacement header discards. |
+| SAVETOOL-007 discarded CRC; `99127a6a` | [b5ae0bd](https://github.com/papsg/SAROO/commit/b5ae0bd); [codex/save-export-crc](https://github.com/papsg/SAROO/tree/codex/save-export-crc) | Separately verified after clearing. Same100 poisoned exports/8 BUP round trips pass ASan/UBSan/O2; baseline bytes pass but25 BUP-work assertions fail. SRO retains one CRC overN+48 bytes; BUP drops one discarded scan tozero. Restored BUP work and missing SRO CRC controls fail25 each. All50 native methods pass both CLI profiles. ARM64 O2 text+20 to15,632; static storage/direct frames unchanged. [Citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#separate-evaluation-skip-only-the-discarded-bup-crc). Firmware unchanged; no timing/hardware claim. |
 | MCU-SD-001; `2ba4e96b` | Queued | Semaphore error admission/allocation/reuse with existing transfer retries and valid controls. |
 | SATURN-SAVE-004; `f5ed0ae1` | Queued | Calendar/date conversion and explicit compatibility policies, preserving delegation and archive bytes. |
 
-Series active; remaining rows are not complete. Verified checkpoint/main are
+Series active; remaining rows are not complete. Both verified checkpoints/main are
 pushed. Fork issues remain disabled and no open PR needs closure; original
 upstream requests remain unchanged. All new evidence stays in public; private
 repository and Saturn remain untouched.
