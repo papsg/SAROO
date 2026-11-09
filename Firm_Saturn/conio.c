@@ -487,7 +487,7 @@ static u32 last_value;
 static u32 curr_pdat = 0;
 static int pdat_state = 0;
 static int pdat_count = 0;
-static int pdat_wait;
+static u32 pdat_wait;
 
 u32 conio_getc(void)
 {
@@ -538,8 +538,9 @@ u32 conio_getc(void)
 		if(pdat != curr_pdat){
 			pdat_state = 0;
 		}else{
-			if(get_timer()>=pdat_wait){
-				pdat_wait  = PAD_REPEAT_RATE;
+			u32 now = get_timer();
+			if(timer_reached(now, pdat_wait)){
+				pdat_wait = now + MS2TICK(PAD_REPEAT_RATE);
 				return last_value;
 			}
 		}
@@ -642,7 +643,7 @@ static void put_select_item(int index)
 
 #define SEL_IDLE_TIME 1000
 static int scroll_oob;
-static int stimer_end;
+static u32 stimer_end;
 
 void menu_timer(MENU_DESC *menu)
 {
@@ -651,12 +652,12 @@ void menu_timer(MENU_DESC *menu)
 		if(sel_oob==0)
 			return;
 
-		int now = get_timer();
+		u32 now = get_timer();
 		stimer_end = now + MS2TICK(SEL_IDLE_TIME);
 		sel_state = 1;
 	}else if(sel_state==1){
-		int now = get_timer();
-		if(now>=stimer_end){
+		u32 now = get_timer();
+		if(timer_reached(now, stimer_end)){
 			sel_state = 2;
 			sel_offset = 0;
 		}
@@ -671,14 +672,14 @@ void menu_timer(MENU_DESC *menu)
 		put_select_item(menu->current);
 		if(scroll_oob==0){
 			sel_state = 4;
-			int now = get_timer();
+			u32 now = get_timer();
 			stimer_end = now + MS2TICK(SEL_IDLE_TIME);
 		}else{
 			sel_state = 2;
 		}
 	}else if(sel_state==4){
-		int now = get_timer();
-		if(now>=stimer_end){
+		u32 now = get_timer();
+		if(timer_reached(now, stimer_end)){
 			sel_state = 5;
 		}
 	}else if(sel_state==5){

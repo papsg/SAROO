@@ -11,6 +11,8 @@ check: check-language check-menu-text check-menu-binary check-language-catalog c
 .PHONY: check-menu-safety
 check-menu-safety:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_palette.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_timer.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_repeat_transport.py -v
 
 .PHONY: check-config
 check-config:

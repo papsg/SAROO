@@ -409,6 +409,8 @@ void reset_timer(void)
 	TCR = 0x02;
 	FRCH = 0;
 	FRCL = 0;
+	/* A prior overflow does not belong to the new timer epoch. */
+	FTCSR &= (u8)~0x02;
 }
 
 u32 get_timer(void)
