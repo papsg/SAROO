@@ -1,420 +1,270 @@
-
-
 #include "main.h"
 #include "ff.h"
-#include <stdlib.h>
 #include "cdc.h"
+/* Bounded decoder adapted from paps-g 3e62998c; original repository notices apply. */
 
-
-/******************************************************************************/
-
+/* GIF data shares the unused CD block pool while the menu owns it. */
+#define GIF_FILE_BYTES (0xa000u + MAX_BLOCKS * 2352u - 0x20000u)
+#define GIF_STRIDE 512u
+#define GIF_HEIGHT 512u
+#define SCR_W 320
+#define SCR_H 240
 
 typedef struct {
-	u16 prefix;
-	u8  last;
-	u8  current;
-	u16 length;
-}DICT;
-
-
-typedef struct GIF_DECODER{
-	// 指向文件头后面的数据块
-	u8 *ibuf;
-	int iptr;
-	// 解码状态
-	int frames;
-	int gtimer;
-
-	// 全局信息
-	int gflag;
-	int width;
-	int height;
-
-	// 调色板
-	void (*set_palete)(struct GIF_DECODER *gd, int pal_num, u8 *pal, int global);
-	// 像素输出
-	void (*out_pixel)(struct GIF_DECODER *gd, int x, int y, int val);
-
-	// 控制块信息
-	int cflag;
-	int delay;
-	int trans_color;
-	// 指向局部图像
-	u8 *lbuf;
-	int lpos;
-	int lflag;
-	int l_x;
-	int l_y;
-	int l_width;
-	int l_height;
-
-	// 块缓存
-	u8 *bbuf;
-	int buf_size;
-	int buf_bits;
-	int buf_pos;
-
-	DICT *dict;
-}GIF_DECODER;
-
+    const u8 *next, *end, *start, *global_pal;
+    u32 bits, gtimer, nbits, left;
+    u16 width, height, x, y, w, h, delay;
+    u16 global_colors, colors;
+    u8 flags, transparent, interlaced, frames;
+} GIF_DECODER;
 
 static GIF_DECODER g_gd;
-int gd_state = -1;
+/* Twelve prefix bits and an eight-bit suffix fit in one aligned entry. */
+static u32 *const gif_dict = (u32 *)0x24011000;
+static u8 *const gif_stack = (u8 *)0x24010000;
+static u8 *const gifbuf = (u8 *)0x61401000;
+static u32 *const gif_pal = (u32 *)0x61400100;
+volatile int gd_state = -1;
+static volatile int in_decoding;
 
-
-/******************************************************************************/
-
-
-static int get_code(GIF_DECODER *gd, int code_len)
+static const u8 *gif_take(GIF_DECODER *gd, unsigned size)
 {
-	int code;
-	u8 *p = gd->bbuf;
-
-	if(code_len > gd->buf_bits){
-		p[1] = p[gd->buf_size+2-1];
-		p[0] = p[gd->buf_size+2-2];
-		gd->buf_pos = 16 - gd->buf_bits;
-
-		gd->buf_size = gd->lbuf[gd->lpos];
-		memcpy(p+2, gd->lbuf+gd->lpos+1, gd->buf_size);
-
-		gd->lpos += gd->buf_size+1;
-		gd->buf_bits += gd->buf_size*8;
-	}
-
-	int byte = gd->buf_pos>>3;
-	int bit  = gd->buf_pos&7;
-	code = (p[byte+2]<<16) | (p[byte+1]<<8) | p[byte+0];
-	code >>= bit;
-	code &= (1<<code_len)-1;
-
-	gd->buf_pos  += code_len;
-	gd->buf_bits -= code_len;
-	return code;
+    if (size > (unsigned)(gd->end - gd->next)) return NULL;
+    const u8 *p = gd->next;
+    gd->next += size;
+    return p;
 }
 
+static unsigned gif_u16(const u8 *p) { return p[0] | (unsigned)p[1] << 8; }
 
-static u8 *gif_decode_clip(GIF_DECODER *gd)
+/* Read directly from bounded sub-blocks; no block copies or speculative bytes. */
+static int get_code(GIF_DECODER *gd, unsigned width)
 {
-	int code_size, clear_code, eoi_code, code_len, code_level;
-	int last_code, code, top, i;
-	int x, y;
-	u8 *p = gd->lbuf;
-
-	gd->l_x = (p[2]<<8) | p[1];
-	gd->l_y = (p[4]<<8) | p[3];
-	gd->l_width  = (p[6]<<8) | p[5];
-	gd->l_height = (p[8]<<8) | p[7];
-	gd->lflag = p[9];
-	//printk("lflag: %02x\n", gd->lflag);
-	//printk("lres: (%d,%d) %dx%d\n", gd->l_x, gd->l_y, gd->l_width, gd->l_height);
-
-	*(u16*)(0x61400004) = gd->l_width;
-	*(u16*)(0x61400006) = gd->l_height;
-	*(u16*)(0x61400008) = gd->l_x;
-	*(u16*)(0x6140000a) = gd->l_y;
-
-	if(gd->lflag&0x80){
-		// local palete
-		int pal_num = 1<<((gd->lflag&7)+1);
-		gd->set_palete(gd, pal_num, p+10, 0);
-		p += pal_num*3;
-	}
-	p += 10;
-
-	code_size = *p++;
-	gd->lpos = p - gd->lbuf;
-	clear_code = 1<<code_size;
-	eoi_code = clear_code+1;
-
-	// 初始化字典
-	for(i=0; i<clear_code; i++){
-		gd->dict[i].prefix = 0;
-		gd->dict[i].last = i;
-		gd->dict[i].current = i;
-		gd->dict[i].length = 1;
-	}
-
-
-	gd->buf_bits = 0;
-	code = clear_code;
-	last_code = clear_code;
-
-	x = 0;
-	y = 0;
-
-	while(1){
-		if(code==clear_code){
-			// clear
-			top = eoi_code;
-			code_len = code_size+1;
-			code_level = clear_code<<1;
-		}
-
-		code = get_code(gd, code_len);
-		//printf("C:%04x T:%04x\n", code, top);
-		if(code==clear_code)
-			continue;
-		if(code==eoi_code)
-			break;
-
-		// 在字典中加一项。注意:第一次加入的是无效项(top=eoi)。
-		gd->dict[top].prefix = last_code;
-		gd->dict[top].length = gd->dict[last_code].length+1;
-		gd->dict[top].last = gd->dict[last_code].last;
-		if(code>=top){
-			gd->dict[top].current = gd->dict[last_code].last;
-		}else{
-			gd->dict[top].current = gd->dict[code].last;
-		}
-
-		top += 1;
-		if(top==code_level && code_len<12){
-			code_len += 1;
-			code_level <<= 1;
-		}
-		last_code = code;
-
-		// output code
-		int len = gd->dict[code].length;
-		for(i=0; i<len; i++){
-			gd->out_pixel(gd, x+len-1-i, y, gd->dict[code].current);
-			code = gd->dict[code].prefix;
-		}
-
-		x += len;
-		while(x > gd->l_width){
-			x -= gd->l_width;
-			y += 1;
-		}
-
-	}
-
-	return p;
+    while (gd->nbits < width) {
+        if (!gd->left) {
+            const u8 *p = gif_take(gd, 1);
+            if (!p || !*p || *p > (unsigned)(gd->end - gd->next)) return -1;
+            gd->left = *p;
+        }
+        gd->bits |= (u32)*gd->next++ << gd->nbits;
+        gd->nbits += 8;
+        --gd->left;
+    }
+    int code = gd->bits & ((1u << width) - 1);
+    gd->bits >>= width;
+    gd->nbits -= width;
+    return code;
 }
 
-
-int gif_decode_info(GIF_DECODER *gd, u8 *fbuf, int fsize)
+static int gif_skip_blocks(GIF_DECODER *gd)
 {
-	u8 *p = fbuf;
-
-	if(strncmp((char*)p, "GIF8", 4)){
-		return -1;
-	}
-	p += 6;
-
-	gd->gflag = p[4];
-	gd->width  = (p[1]<<8) | p[0];
-	gd->height = (p[3]<<8) | p[2];
-	printk("gif_decode_info: %02x\n", gd->gflag);
-	printk("   res: %dx%d\n", gd->width, gd->height);
-
-	if(gd->gflag&0x80){
-		// global palete
-		int pal_num = 1<<((gd->gflag&7)+1);
-		gd->set_palete(gd, pal_num, p+7, 1);
-		p += pal_num*3;
-	}
-	p += 7;
-	gd->ibuf = p;
-	gd->iptr = 0;
-
-	return 0;
+    if (!gif_take(gd, gd->left)) return -1;
+    gd->left = 0;
+    for (;;) {
+        const u8 *p = gif_take(gd, 1);
+        if (!p) return -1;
+        if (!*p) return 0;
+        if (!gif_take(gd, *p)) return -1;
+    }
 }
 
+static void gif_palette(GIF_DECODER *gd, const u8 *p, unsigned count)
+{
+    gd->colors = count;
+    for (unsigned i = 0; i < count; ++i, p += 3)
+        gif_pal[i] = (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];
+}
 
+static int gif_decode_clip(GIF_DECODER *gd)
+{
+    const u8 *p = gif_take(gd, 9);
+    if (!p) return -1;
+    gd->x = gif_u16(p); gd->y = gif_u16(p + 2);
+    gd->w = gif_u16(p + 4); gd->h = gif_u16(p + 6);
+    unsigned total = (unsigned)gd->w * gd->h;
+    if (!total || gd->x + gd->w > gd->width ||
+        gd->y + gd->h > gd->height) return -1;
+    gd->interlaced = p[8] & 0x40;
+    unsigned count = gd->global_colors;
+    const u8 *pal = gd->global_pal;
+    if (p[8] & 0x80) {
+        count = 2u << (p[8] & 7);
+        pal = gif_take(gd, count * 3);
+    }
+    if (!pal || !count) return -1;
+    gif_palette(gd, pal, count);
+    p = gif_take(gd, 1);
+    if (!p || *p < 2 || *p > 8) return -1;
+    unsigned clear = 1u << *p;
+    unsigned initial_width = *p + 1, width = initial_width, top = clear + 2;
+    unsigned pixels = 0;
+    unsigned x = 0, pass = 0, y = 0, previous_first = 0;
+    int previous = -1;
+    gd->left = gd->nbits = 0;
+    gd->bits = 0;
+    for (;;) {
+        unsigned code = get_code(gd, width);
+        if ((code & ~1u) == clear) {
+            if (code & 1u) return pixels == total ? gif_skip_blocks(gd) : -1;
+            top = clear + 2; width = initial_width; previous = -1;
+            continue;
+        }
+        /* width never exceeds 12; a negative reader result also fails here. */
+        if (code > top || (previous < 0 && code >= clear)) return -1;
+        unsigned input = code, length = 0;
+        if (code == top) {
+            gif_stack[length++] = previous_first;
+            code = previous;
+        }
+        while (code >= clear) {
+            /* Constructed prefixes always point to an earlier dictionary entry. */
+            u32 entry = gif_dict[code];
+            gif_stack[length++] = entry;
+            code = entry >> 8;
+        }
+        /* Every stored suffix came from an already validated literal. */
+        if (code >= gd->colors) return -1;
+        gif_stack[length++] = code;
+        if (previous >= 0 && top < 4096) {
+            gif_dict[top++] = (unsigned)previous << 8 | code;
+            if (top == (1u << width) && width < 12) ++width;
+        }
+        previous = input; previous_first = code;
+        if (length > total - pixels) return -1;
+        pixels += length;
+        while (length) {
+            unsigned value = gif_stack[--length];
+            if (!(gd->flags & 1) || value != gd->transparent)
+                gifbuf[(gd->y + y) * GIF_STRIDE + gd->x + x] = value;
+            if (++x == gd->w) {
+                x = 0;
+                if (gd->interlaced) {
+                    y += 8u >> (pass ? pass - 1 : 0);
+                    /* Four passes: starts 0/4/2/1, strides 8/8/4/2. */
+                    while (y >= gd->h && pass < 3) y = 4u >> pass++;
+                } else ++y;
+            }
+        }
+    }
+}
+
+/* The only caller has checked the complete 13-byte header and file extent. */
+static int gif_decode_info(GIF_DECODER *gd, u8 *data, int size)
+{
+    if (memcmp(data, "GIF8", 4) || (data[4] != '7' && data[4] != '9') || data[5] != 'a') return -1;
+    memset(gd, 0, sizeof(*gd));
+    gd->width = gif_u16(data + 6); gd->height = gif_u16(data + 8);
+    if ((unsigned)(gd->width - 1) >= GIF_STRIDE ||
+        (unsigned)(gd->height - 1) >= GIF_HEIGHT)
+        return -1;
+    gd->next = data + 13; gd->end = data + size;
+    if (data[10] & 0x80) {
+        gd->global_colors = 2u << (data[10] & 7);
+        gd->global_pal = gif_take(gd, gd->global_colors * 3);
+        if (!gd->global_pal) return -1;
+    }
+    gd->start = gd->next;
+    return 0;
+}
+
+/* 0: complete frame, 1: trailer, -1: invalid or truncated input. */
 int gif_decode_frame(GIF_DECODER *gd)
 {
-	u8 *p = gd->ibuf + gd->iptr;
-
-	while(1){
-		if(p[0]==0x3b){
-			return 1;
-		}else if(p[0]==0x21){
-			if(p[1]==0xf9){
-				gd->cflag = p[3];
-				gd->delay = (p[5]<<8) | p[4];
-				gd->trans_color = p[6];
-				//printk("\nCTRL: %02x  %d\n", gd->cflag, gd->delay);
-			}
-			p += 2;
-			while(p[0]){ p += p[0]+1; }
-			p += 1;
-		}else if(p[0]==0x2c){
-			gd->lbuf = p;
-			p = gif_decode_clip(gd);
-
-			while(p[0]){ p += p[0]+1; }
-			p += 1;
-			gd->iptr = p - gd->ibuf;
-			break;
-		}else{
-			printk("Wrong data!\n");
-			return 1;
-		}
-	}
-
-	return 0;
+    gd->flags = gd->delay = 0;
+    for (;;) {
+        const u8 *p = gif_take(gd, 1);
+        if (!p) return -1;
+        if (*p == 0x3b) return 1;
+        if (*p == 0x2c) return gif_decode_clip(gd);
+        if (*p != 0x21) return -1;
+        p = gif_take(gd, 1);
+        if (!p) return -1;
+        if (*p == 0xf9) {
+            p = gif_take(gd, 6);
+            if (!p || p[0] != 4 || p[5] != 0) return -1;
+            gd->flags = p[1]; gd->delay = gif_u16(p + 2); gd->transparent = p[4];
+        } else if (gif_skip_blocks(gd)) return -1;
+    }
 }
 
-
-
-
-/******************************************************************************/
-
-static int *gif_pal = (int*)0x61400100;
-static u8 *gifbuf = (u8*)0x61401000;
-
-static void gifb_set_palete(GIF_DECODER *gd, int pal_num, u8 *pal, int global)
+static void gif_blank(void)
 {
-	int i;
-
-	for(i=0; i<pal_num; i++){
-		gif_pal[i] = (pal[0]<<16) | (pal[1]<<8) | pal[2];
-		pal += 3;
-	}
-
-	*(u8*)0x61400002 = 1;
+    *(u32 *)0x61400004 = 0x00800080;
+    *(u32 *)0x61400008 = 0;
+    *(u32 *)0x6140000c = 0x005800b0;
+    memset(gifbuf, 0, 128 * 192);
+    *(volatile u8 *)0x61400000 = 4;
 }
-
-
-static void gifb_put_pixel(GIF_DECODER *gd, int x, int y, int val)
-{
-	if(val==gd->trans_color){
-		return;
-	}
-
-	while(x >= gd->l_width){
-		x -= gd->l_width;
-		y += 1;
-	}
-
-	x += gd->l_x;
-	y += gd->l_y;
-
-	*(u8*)(gifbuf + y*512 + x) = val;
-}
-
-
-#define SCR_W  320
-#define SCR_H  240
-
-static int in_decoding;
 
 void gif_decode_init(void)
 {
-	FIL fp;
-	int retv;
-	u8 *fbuf = (u8*)0x24020000;
-	GIF_DECODER *gd = &g_gd;
-
-	*(u32*)(0x61400000) = 0;
-	memset(gd, 0, sizeof(GIF_DECODER));
-	in_decoding = 0;
-
-	retv = f_open(&fp, "/SAROO/mainmenu_bg.gif", FA_READ);
-	if(retv!=FR_OK){
-		gd_state = -1;
-
-		// 无背景时做一次清屏
-		*(u16*)(0x61400004) = 128;
-		*(u16*)(0x61400006) = 128;
-		*(u16*)(0x61400008) = 0;
-		*(u16*)(0x6140000a) = 0;
-		*(u16*)(0x6140000c) = 176;
-		*(u16*)(0x6140000e) = 88;
-		memset((u8*)0x61401000, 0, 128*192);
-		*(u8*)0x61400000 = 4;
-		return;
-	}
-
-	int fsize = f_size(&fp);
-	u32 rsize = 0;
-	f_read(&fp, fbuf, fsize, &rsize);
-	f_close(&fp);
-
-	gd->bbuf = (u8*)0x24010000;
-	gd->dict = (DICT*)(gd->bbuf+0x1000);
-	gd->out_pixel  = gifb_put_pixel;
-	gd->set_palete = gifb_set_palete;
-
-	gif_decode_info(gd, fbuf, fsize);
-	
-	*(u16*)(0x61400004) = gd->width;
-	*(u16*)(0x61400006) = gd->height;
-	*(u16*)(0x61400008) = 0;
-	*(u16*)(0x6140000a) = 0;
-	// gif图片居中放置
-	*(u16*)(0x6140000c) = (SCR_W - gd->width)/2;
-	*(u16*)(0x6140000e) = (SCR_H - gd->height)/2;
-
-	gd_state = 0;
+    gif_decode_exit();
+    FIL fp;
+    u8 *data = (u8 *)0x24020000;
+    GIF_DECODER *gd = &g_gd;
+    *(u32 *)0x61400000 = 0;
+    if (f_open(&fp, "/SAROO/mainmenu_bg.gif", FA_READ)) { gif_blank(); return; }
+    FSIZE_t size = f_size(&fp);
+    u32 read = 0;
+    int result = -1;
+    if (size >= 13 && size <= GIF_FILE_BYTES)
+        result = f_read(&fp, data, (u32)size, &read);
+    int closed = f_close(&fp);
+    if (result || closed || read != size || gif_decode_info(gd, data, (int)size)) {
+        gif_blank();
+        return;
+    }
+    memset(gifbuf, 0, gd->height * GIF_STRIDE);
+    *(u16 *)0x6140000c = (SCR_W - gd->width) / 2;
+    *(u16 *)0x6140000e = (SCR_H - gd->height) / 2;
+    __atomic_store_n(&gd_state, 0, __ATOMIC_RELEASE);
 }
-
-
-static void change_gd_state(int oldval, int newval)
-{
-	__sync_val_compare_and_swap(&gd_state, oldval, newval);
-}
-
 
 void gif_decode_timer(void)
 {
-	GIF_DECODER *gd = &g_gd;
-
-	if(gd_state==0){
-		// 解码一帧图像
-		in_decoding = 1;
-		//TIM6->CR1 = 0x0005;
-		//int start = TIM6->CNT;
-		int eof = gif_decode_frame(gd);
-		in_decoding = 0;
-		//start = TIM6->CNT-start;
-		//printk("gif_decode_frame: %d us\n", start*10);
-
-		if(gd_state<0)
-			return;
-
-		if(eof){
-			if(gd->frames>1){
-				gd->iptr = 0;
-				gd->frames = 0;
-			}else{
-				change_gd_state(0, -2);
-			}
-		}else{
-			gd->frames += 1;
-			change_gd_state(0, 1);
-			// 通知SS来取
-			*(u8*)0x61400000 = 1;
-		}
-	}else if(gd_state==1){
-		if(*(u8*)0x61400000==0){
-			// SS显示完毕会清标志位
-			if(gd->delay){
-				gd->gtimer = osKernelGetTickCount() + gd->delay;
-				change_gd_state(1, 2);
-			}else{
-				change_gd_state(1, 0);
-			}
-		}
-	}else if(gd_state==2){
-		if(osKernelGetTickCount() >= gd->gtimer){
-			change_gd_state(2, 0);
-		}
-	}
+    if (__atomic_load_n(&gd_state, __ATOMIC_RELAXED) < 0) return;
+    /* Only disk_task calls this timer. Publish ownership before checking stop. */
+    __atomic_store_n(&in_decoding, 1, __ATOMIC_SEQ_CST);
+    GIF_DECODER *gd = &g_gd;
+    int state = __atomic_load_n(&gd_state, __ATOMIC_ACQUIRE), next_state = state;
+    if (state < 0) goto done;
+    if (state == 0) {
+        int result = gif_decode_frame(gd);
+        if (result < 0) {
+            next_state = -1;
+        } else if (result) {
+            if (gd->frames > 1) { gd->next = gd->start; gd->frames = 0; }
+            else next_state = -1;
+        } else {
+            /* Saturation distinguishes a static image without an overflow. */
+            gd->frames = gd->frames ? 2 : 1;
+            next_state = 1;
+        }
+    } else if (state == 1) {
+        if (!(*(volatile u32 *)0x61400000 & 0x00ff00ffu)) {
+            next_state = 0;
+            if (gd->delay) { gd->gtimer = osKernelGetTickCount(); next_state = 2; }
+        }
+    } else if ((u32)(osKernelGetTickCount() - gd->gtimer) >= gd->delay) {
+        next_state = 0;
+    }
+    /* Waiting needs no atomic write. Every transition preserves cancellation. */
+    if (next_state == state) goto done;
+    if (__atomic_compare_exchange_n(&gd_state, &state, next_state, 0,
+                                    __ATOMIC_RELAXED, __ATOMIC_RELAXED) &&
+        next_state == 1) {
+        *(u16 *)0x61400004 = gd->w; *(u16 *)0x61400006 = gd->h;
+        *(u16 *)0x61400008 = gd->x; *(u16 *)0x6140000a = gd->y;
+        __sync_synchronize();
+        *(volatile u8 *)0x61400002 = 1;
+        *(volatile u8 *)0x61400000 = 1;
+    }
+done:
+    __atomic_store_n(&in_decoding, 0, __ATOMIC_RELEASE);
 }
-
 
 void gif_decode_exit(void)
 {
-	__sync_lock_test_and_set(&gd_state, -1);
-
-	while(in_decoding){
-		osDelay(1);
-	}
+    __atomic_store_n(&gd_state, -1, __ATOMIC_SEQ_CST);
+    while (__atomic_load_n(&in_decoding, __ATOMIC_ACQUIRE)) osDelay(1);
 }
-
-
-/******************************************************************************/
-

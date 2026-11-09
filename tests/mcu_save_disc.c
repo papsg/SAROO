@@ -136,6 +136,8 @@ static void swap_step(void)
 #include "swap.inc"
     (void)retv;
 }
+/* Decoder ownership is exercised by the separate actual-GIF fixture. */
+static void gif_decode_exit(void) {}
 static int menu_step(int index)
 {
     int retv=0;SS_ARG=index;

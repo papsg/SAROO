@@ -638,6 +638,8 @@ void ss_cmd_handle(void)
 		break;
 	case SSCMD_LOADDISC:
 		// 装载镜像
+		/* Stop the GIF reader before disc parsing reuses its workspace. */
+		gif_decode_exit();
 		if (SS_ARG == 0xffff) {
             retv = pause_disc();
             if (!retv) retv = unload_disc();
@@ -645,7 +647,6 @@ void ss_cmd_handle(void)
 		SS_ARG = retv;
 		SS_CMD = 0;
 
-		gif_decode_exit();
 		break;
 	case SSCMD_CHECK:
 	{

@@ -125,7 +125,7 @@ class MCUSaveTest(unittest.TestCase):
             end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
             (cls.target / 'swap.inc').write_bytes(main[begin:end])
             begin = main.index(b'case SSCMD_LOADDISC:')
-            end = main.index(b'\n\t\tgif_decode_exit();', begin)
+            end = main.index(b'\n\t\tbreak;', begin)
             (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             (cls.target / 'sd-reset.inc').write_bytes(data[data.index(b'int sdio_reset(void)'):])
