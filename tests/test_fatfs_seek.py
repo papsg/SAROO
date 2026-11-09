@@ -1,0 +1,73 @@
+"""Actual FatFs geometry and wide/fragmented seek tests; never physical devices."""
+# Adapted from paps-g 60d5df01; all compilation and media stay in public tests/build.
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class FatFsSeekTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        build = ROOT / 'tests/build/fatfs-seek'; build.mkdir(parents=True, exist_ok=True)
+        cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
+        fatfs = cls.target / 'FatFS'; fatfs.mkdir()
+        inputs = {}
+        for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
+            source = Path(os.environ.get('SAROO_FATFS_SOURCE', ROOT / 'Firm_MCU/FatFS/ff.c')) if name == 'ff.c' else ROOT / 'Firm_MCU/FatFS' / name
+            data = source.read_bytes()
+            if name == 'ffconf.h':
+                inputs['production-ffconf.h'] = data
+                old = b'#define FF_USE_MKFS\t\t0'; assert data.count(old) == 1
+                data = data.replace(old, b'#define FF_USE_MKFS\t\t1')
+            (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
+        data = (fatfs / 'ff.c').read_bytes(); begin = data.index(b'if (ifptr > 0 &&'); end = data.index(b'{', begin)
+        (cls.target / 'seek.inc').write_bytes(b'if (!ofs) return 0;\n' + data[begin:end] + b'{ return 1; }\nreturn 0;\n')
+        for name in ('fatfs_seek.c', 'test_fatfs_seek.py'):
+            data = (ROOT / 'tests' / name).read_bytes(); (cls.target / name).write_bytes(data); inputs[name] = data
+        for name, data in inputs.items():
+            path = cls.target / 'inputs' / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
+        (cls.target / 'inputs.json').write_text(json.dumps(
+            {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()}, indent=2)+'\n')
+        flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
+            '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+        cls.binary = cls.target / 'fatfs-seek'
+        result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
+            '-I', str(cls.target), '-I', str(fatfs), str(cls.target / 'fatfs_seek.c'),
+            str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)], capture_output=True, timeout=60)
+        (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr); result.check_returncode()
+
+    @classmethod
+    def tearDownClass(cls):
+        (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2)+'\n')
+
+    def invoke(self, mode, value=0):
+        with tempfile.TemporaryDirectory(dir=self.target) as tmp:
+            card = Path(tmp) / 'card.img'
+            with card.open('wb') as file: file.truncate(8*1024**3 if mode == 'seek' else 64*1024**2)
+            if mode == 'seek': self.assertLess(card.stat().st_blocks*512, 1024**2, 'Wide fixture requires sparse host files')
+            result = subprocess.run([str(self.binary), str(card), mode, str(value)], capture_output=True,
+                timeout=90, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1', 'ASAN_OPTIONS': 'detect_leaks=0'})
+            physical = card.stat().st_blocks*512
+        self.results.append(dict(mode=mode, value=value, returncode=result.returncode, physical_bytes=physical,
+            stdout=result.stdout.decode(errors='replace'), stderr=result.stderr.decode(errors='replace')))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_cluster_comparison_matches_division_at_64_bit_boundaries(self): self.invoke('math')
+    def test_actual_seek_read_write_preserves_wide_offsets_and_neighbors(self): self.invoke('seek')
+
+    def test_fragmented_fat32_and_exfat_cross_cluster_reads(self):
+        for value in (0, 1):
+            with self.subTest(value=value): self.invoke('fragmented', value)
+
+    def test_exfat_mount_rejects_unsafe_geometry_shifts(self):
+        for value in (512, 8, 9, 16, 31, 32, 63, 127, 255, 272, 287, 288, 319, 383, 511):
+            with self.subTest(value=value): self.invoke('mount', value)
+
+
+if __name__ == '__main__': unittest.main()

@@ -378,3 +378,53 @@ This does not complete mixed sector widths, generated gaps, normalized header
 reads, shared CD-workspace concurrency, physical media/error recovery or game
 qualification. CUE scratch still aliases CD-block storage. No native/model test
 here establishes bus/cache/endian, DMA/audio/RTOS timing or SD durability.
+
+## MCU-FS-001: reject unsafe exFAT geometry shifts
+
+Two mount-time expressions shift a signed `1` by an untrusted boot-sector
+byte. Values of 31 or greater can cause undefined behavior before the existing
+sector-size/cluster-size checks reject the volume. Bound each exponent before
+evaluating its shift and use `1U`. The bound follows this port's 16-bit
+`FATFS.csize` representation (1–32,768 sectors) and fixed 512-byte sector
+configuration; it is not a statement of all geometry allowed by exFAT.
+Neither file offsets nor filesystem configuration are narrowed.
+
+[C11 N1570, §6.5.7 paragraphs 3–4, printed pages 94–95](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+defines the shift-width and signed-result requirements. The local primary
+copy was inspected. The existing
+[`mount_volume` checks](https://github.com/papsg/SAROO/blob/7fcd2c6/Firm_MCU/FatFS/ff.c#L3458),
+[`WORD`, `FSIZE_t` and `csize` declarations](https://github.com/papsg/SAROO/blob/7fcd2c6/Firm_MCU/FatFS/ff.h#L51)
+and [sector configuration](https://github.com/papsg/SAROO/blob/7fcd2c6/Firm_MCU/FatFS/ffconf.h#L196)
+establish the project limits. Sega does not specify the SD filesystem policy.
+This is the geometry portion of `paps-g`'s original
+`60d5df01d827c9f257ac1e2478337a1fa5c41c65` (2026-09-06), separated from its seek
+optimization. FatFs copyright and permission notices are preserved.
+
+The public fixture compiles actual FatFs, its Unicode support and production
+configuration, enabling the formatter only in its isolated test copy. Four
+methods cover **19 scenarios**: fifteen mount-header inputs, **327,200**
+64-bit comparison controls, an actual **5 GiB + 129-byte** exFAT file with eleven
+marker positions, and fragmented FAT32/exFAT files read after remount in three
+orders with neighboring contents checked. Baseline produces **ten UBSan
+failures**; ASan/UBSan and O2 candidates pass. Removing either guard while
+retaining unsigned shifts produces four independent shift-width failures.
+The unmodified/512-byte valid headers and file workloads remain valid controls.
+
+All **49 coupled MCU methods / 598 scenarios** pass both profiles. The sparse
+8 GiB host image occupies 917,504 physical bytes in the wide-file run. It is an
+ordinary generated file under `tests/build`, never a device. The seek formula
+is still unchanged at this checkpoint; its comparison tests are controls for
+the separately evaluated optimization.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+make -C tests check-mcu-save
+```
+
+The complete GNU App/RTX/166-vector build saves **16 load bytes**, reaching
+**60,424** with **5,112 ITCM free**. BSS/data/span and stack/heap address gap
+stay 60,656/504/61,160/69,912. Mount/seek direct frames remain 40/56 bytes.
+Menu sources are unchanged. There is no added buffer, heap allocation or
+runtime diagnostic. This is not complete malformed-volume validation, original
+MDK equivalence, physical SD recovery, concurrency or game qualification.
