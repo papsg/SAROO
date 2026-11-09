@@ -92,6 +92,7 @@ static int find_cue_iso(char *dir,char *out)
 static int parse_config(char *path,char *id) { (void)path;(void)id;return 0; }
 static int find_disc(char *name) { (void)name;assert(0);return -1; }
 static int select_save(char *id) { (void)id;assert(0);return -1; }
+static int pause_disc(void) { assert(0);return -1; }
 #define load_savefile select_save
 #define f_open cue_open
 #define malloc cue_alloc

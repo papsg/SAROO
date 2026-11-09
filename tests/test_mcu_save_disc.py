@@ -28,6 +28,20 @@ class DiscSaveSessionTests(MCUSaveTest):
         for mode in ('allocation','preview-allocation'):
             with self.subTest(mode=mode): self.invoke(mode)
 
+    def test_optical_boot_stop_unloads_without_save_io_and_is_idempotent(self):
+        self.invoke('stop')
+
+    def test_explicit_actions_wait_for_ack_and_preserve_pending_saves_on_timeout(self):
+        for value in range(8):
+            with self.subTest(value=value):self.invoke('quiesce',value)
+
+    def test_worker_idle_and_request_retirement_protect_new_publication(self):
+        for value in range(6):
+            with self.subTest(value=value):self.invoke('publication',value)
+
+    def test_automatic_change_does_not_wait_on_its_own_worker(self):
+        self.invoke('automatic-no-wait')
+
     def test_sd_reset_propagates_identification_results(self):
         for result in (0,-1,1,2,19):
             with self.subTest(result=result): self.invoke('reset',result)

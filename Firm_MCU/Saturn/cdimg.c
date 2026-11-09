@@ -471,6 +471,7 @@ int load_disc(int index, int start_save)
 		goto _exit;
 	}
 
+    if (start_save && pause_disc()) { retv = -1; goto _exit; }
 	int unloaded = unload_disc();
 	if(unloaded){ retv = unloaded; goto _exit; }
 

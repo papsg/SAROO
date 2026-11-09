@@ -1,4 +1,4 @@
-/* Adapted from paps-g 82125993. Actual save state/ISO/FatFs; scheduling and registers are stubs. */
+/* Adapted from paps-g 82125993/cb3abf06; atomic publication follows c6dc9847. Actual save state/ISO/FatFs; scheduling and registers are stubs. */
 #include "coupled-harness.inc"
 #include "disc-api.h"
 #define STAT_PAUSE 1
@@ -11,7 +11,7 @@ typedef struct {
     u32 fad_end,file_offset; u16 sector_size; u8 ctrl_addr,mode;
 } TRACK_INFO;
 static FIL track_fp[100];
-static struct { int status,track_num,has_subrw; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
+static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
 static int current_index,category_num,category_current,total_disc=2,next_disc;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";
@@ -28,8 +28,53 @@ static int find_cue_iso(char *path,char *out)
 static int parse_cue(char *name,u8 *ip) { (void)name;(void)ip;assert(0);return -1; }
 static int parse_config(char *path,char *id) { (void)path;(void)id;return 0; }
 static int find_disc(char *name) { (void)name;return 0; }
+/* Actual worker/helper bodies; notifications/preemption are deterministic stubs. */
+static int pause_waits,pause_wakes,pause_acks,pause_allow_ack=1,pause_after=3;
+static int buf_fad_start,buf_fad_end,require_quiescence,pause_active;
+static int pause_irq_mask,inject_publication,pending_publication,publication_attempts,published_requests;
+static void publish_new_request(void)
+{ cdb.play_type=1;cdb.pause_request=1;cdb.play_wait=0;published_requests++; }
+static void publication_checkpoint(void)
+{
+    if(!inject_publication)return;
+    inject_publication=0;publication_attempts++;
+    if(pause_irq_mask)pending_publication=1;else publish_new_request();
+}
+static int disable_irq(void) { int old=pause_irq_mask;pause_irq_mask=1;return old; }
+static void restore_irq(int old)
+{
+    assert(pause_irq_mask && (old==0 || old==1));pause_irq_mask=old;
+    if(!pause_irq_mask && pending_publication) { pending_publication=0;publish_new_request(); }
+}
+static void set_pause_ok(void) { assert(!pause_irq_mask);pause_acks++; }
+#include "pause-ack.inc"
+static void pause_worker(void)
+{
+#define SSLOG(...) ((void)0)
+    if(pause_active) {
+#include "pause-active-worker.inc"
+    } else {
+#include "pause-worker.inc"
+    }
+#undef SSLOG
+_restart_wait: return;
+}
+static void disk_task_wakeup(void) { assert(!pause_irq_mask);pause_wakes++; }
+static void wait_pause_ok(void)
+{
+    assert(!pause_irq_mask);pause_waits++;
+    assert(cdb.pause_request && !cdb.play_wait && cdb.track_num==1);
+    assert(cdb.tracks[0].fp==&track_fp[0] && track_fp[0].obj.fs);
+    /* Early returns represent stale notifications; only the worker retires a request. */
+    if(pause_allow_ack && pause_waits>=pause_after)pause_worker();
+}
+#include "pause-disc.inc"
+static FRESULT disc_close(FIL *fp)
+{ assert(!pause_irq_mask && (!require_quiescence || !cdb.play_type));return f_close(fp); }
 #define parse_iso real_parse_iso
+#define f_close disc_close
 #include "disc-core.inc"
+#undef f_close
 #undef parse_iso
 static int parse_iso(char *name) { return parse_error?parse_error:real_parse_iso(name); }
 static void *disc_alloc(size_t size) { return alloc_error?NULL:malloc(size); }
@@ -147,6 +192,56 @@ static void swap_failure(int value)
     present=1;swap_step();assert(cdb.status==STAT_PAUSE);
     assert(!memcmp(snapshot,test_shared,sizeof snapshot));
 }
+static void quiesce(int value)
+{
+    u8 retry[32]={0};
+    if(value==2 || value==3) {
+        fixture(0,32);BUPDIR request=target;request.date++;
+        fault="write-error";fault_target=0;fault_nth=1;armed=1;
+        assert(sro_bup_write(0,&request,retry,0)==BUP_BROKEN && phase(0)==2);
+        armed=0;reset_counts();
+    }
+    PendingSave saved[2];memcpy(saved,pending_save,sizeof saved);
+    u8 snapshot[sizeof test_shared];memcpy(snapshot,test_shared,sizeof snapshot);
+    int idle=value==4 || value==7, load=value==1 || value==3 || value==6 || value==7;
+    pause_active=value==5 || value==6;
+    cdb.play_type=idle?0:1;cdb.play_wait=1;buf_fad_start=150;buf_fad_end=160;
+    require_quiescence=1;pause_allow_ack=value!=2 && value!=3;
+    int result=menu_step(load?1:0xffff);
+    if(value==2 || value==3) {
+        assert(result && pause_waits==500 && pause_wakes==1 && !pause_acks);
+        assert(cdb.track_num==1 && cdb.play_type==1 && cdb.pause_request && track_fp[0].obj.fs);
+        assert(!memcmp(snapshot,test_shared,sizeof snapshot) && ss_index==1 && !api_reads && !api_writes);
+        assert(!memcmp(saved,pending_save,sizeof saved));
+        assert(buf_fad_start==150 && buf_fad_end==160);
+        /* The native worker can still acknowledge later; timeout released no reader. */
+        pause_worker();
+    } else {
+        assert(!result && !cdb.play_type && !cdb.pause_request);
+        assert(pause_waits==(idle?0:3) && pause_wakes==(idle?0:1) && pause_acks==(idle?0:1));
+        assert(!buf_fad_start && !buf_fad_end);
+        if(load)assert(cdb.track_num==1 && ss_index==2 && api_reads);
+        else assert(!cdb.track_num && cdb.status==STAT_NODISC && !api_reads && !api_writes && !memcmp(snapshot,test_shared,sizeof snapshot));
+    }
+}
+static void publication(int value)
+{
+    /* Modeled new command publication at the idle/request boundary. No new
+     * command implementation, device scheduling or retained-PLAY protocol. */
+    pause_active=value%2;cdb.play_type=value/2+1;cdb.pause_request=1;
+    buf_fad_start=150;buf_fad_end=160;inject_publication=1;
+    pause_worker();
+    assert(publication_attempts==1 && published_requests==1 && !pending_publication);
+    assert(cdb.play_type==1 && cdb.pause_request==1 && pause_acks==1);
+    assert(!buf_fad_start && !buf_fad_end && !pause_irq_mask);
+}
+static void automatic_no_wait(void)
+{
+    cdb.play_type=1;cdb.play_wait=1;pause_allow_ack=0;
+    next_disc=1;cdb.status=STAT_OPEN;swap_step();
+    assert(cdb.track_num==1 && cdb.status==STAT_PAUSE && ss_index==1);
+    assert(!pause_waits && !pause_wakes && !api_reads && !api_writes);
+}
 int main(int argc,char **argv)
 {
     assert(argc==4);const char *mode=argv[2];int value=atoi(argv[3]);
@@ -156,6 +251,15 @@ int main(int argc,char **argv)
     else if(!strcmp(mode,"menu")) {
         assert(menu_step(value)==0 && ss_index==(value?2:1));
         assert(api_reads && (value?!memcmp(test_shared,(u8[65536]){0},65536):1));
+    } else if(!strcmp(mode,"quiesce")) quiesce(value);
+    else if(!strcmp(mode,"publication")) publication(value);
+    else if(!strcmp(mode,"automatic-no-wait")) automatic_no_wait();
+    else if(!strcmp(mode,"stop")) {
+        u8 snapshot[sizeof test_shared];memcpy(snapshot,test_shared,sizeof snapshot);
+        assert(!menu_step(0xffff) && cdb.status==STAT_NODISC && !cdb.track_num);
+        assert(!memcmp(snapshot,test_shared,sizeof snapshot) && ss_index==1);
+        assert(!api_reads && !api_writes && !discoveries && !identifies);
+        assert(!menu_step(0xffff) && cdb.status==STAT_NODISC && !cdb.track_num);
     } else if(!strcmp(mode,"swap-failure")) swap_failure(value);
     else if(!strcmp(mode,"reset")) { identify_result=value;assert(sdio_reset()==value && identifies==1); }
     else {

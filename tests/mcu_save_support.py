@@ -95,6 +95,27 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'disc-load.inc').write_bytes(disc[disc.index(b'int load_disc('):])
             signature = b'int load_disc(int index, int start_save)' in disc
             (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
+            if b'int pause_disc(void)' in main:
+                begin = main.index(b'int pause_disc(void)')
+                pause = main[begin:main.index(b'void cdc_delay(', begin)]
+            else:
+                pause = b'static int pause_disc(void) { return 0; }\n'
+            (cls.target / 'pause-disc.inc').write_bytes(pause)
+            ack = b''
+            if b'static void acknowledge_disc_pause(void)' in main:
+                begin = main.index(b'static void acknowledge_disc_pause(void)')
+                ack = main[begin:main.index(b'\n}', begin)+2]
+            begin = main.index(b'_restart_nowait:')
+            end = main.index(b'\n\t\tget_sector(cdb.fad, NULL);', begin)
+            restart = main[main.index(b'\n', begin)+1:end]
+            begin = main.index(b'\t\t\tif(cdb.pause_request)', end)
+            end = main.index(b'\n\t\t\tretv = get_sector', begin)
+            active = main[begin:end]
+            # Test-only preemption checkpoint after actual idle publication.
+            import re
+            for name, code in (('pause-ack.inc', ack), ('pause-worker.inc', restart), ('pause-active-worker.inc', active)):
+                code = re.sub(rb'(cdb\.play_type\s*=\s*0;)', rb'\1 publication_checkpoint();', code)
+                (cls.target / name).write_bytes(code)
             begin = main.index(b'\t\t\tif(next_disc>=0)')
             end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
             (cls.target / 'swap.inc').write_bytes(main[begin:end])

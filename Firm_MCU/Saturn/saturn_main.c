@@ -317,6 +317,19 @@ void set_peri_report(void)
 }
 
 
+/* Publish idle state and retire its request together. A new command may run
+ * after IRQ restoration; the old notification must not clear its request. */
+static void acknowledge_disc_pause(void)
+{
+    int irqs = disable_irq();
+    cdb.status = STAT_PAUSE;
+    cdb.play_type = 0;
+    buf_fad_start = buf_fad_end = 0;
+    cdb.pause_request = 0;
+    restore_irq(irqs);
+    set_pause_ok();
+}
+
 void disk_task(void *arg)
 {
 	int retv;
@@ -378,12 +391,7 @@ _restart_wait:
 _restart_nowait:
 		if(cdb.pause_request){
 			SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
-			cdb.status = STAT_PAUSE;
-			cdb.play_type = 0;
-			buf_fad_start = 0;
-			buf_fad_end = 0;
-			cdb.pause_request = 0;
-			set_pause_ok();
+			acknowledge_disc_pause();
 			goto _restart_wait;
 		}
 		
@@ -444,10 +452,7 @@ _restart_nowait:
 		while(cdb.fad<cdb.play_fad_end){
 			if(cdb.pause_request){
 				SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
-				cdb.status = STAT_PAUSE;
-				cdb.play_type = 0;
-				cdb.pause_request = 0;
-				set_pause_ok();
+				acknowledge_disc_pause();
 				goto _restart_wait;
 			}
 
@@ -569,6 +574,23 @@ void wait_pause_ok(void)
 	osSemaphoreAcquire(sem_wait_pause, 2);
 }
 
+/* Explicit callers wait before replacing readers. Automatic changes run on
+ * the producer itself and must not wait for their own acknowledgment. */
+int pause_disc(void)
+{
+    if (cdb.play_type) {
+        cdb.pause_request = 1;
+        cdb.play_wait = 0;
+        disk_task_wakeup();
+        for (int retries = 500; cdb.pause_request && retries; retries--)
+            wait_pause_ok();
+        if (cdb.pause_request) return -1;
+    }
+    /* An already-idle reader may still own cached sectors. */
+    buf_fad_start = buf_fad_end = 0;
+    return 0;
+}
+
 void cdc_delay(int ticks)
 {
 	osDelay(ticks);
@@ -616,7 +638,10 @@ void ss_cmd_handle(void)
 		break;
 	case SSCMD_LOADDISC:
 		// 装载镜像
-		retv = load_disc(SS_ARG, 1);
+		if (SS_ARG == 0xffff) {
+            retv = pause_disc();
+            if (!retv) retv = unload_disc();
+        } else retv = load_disc(SS_ARG, 1);
 		SS_ARG = retv;
 		SS_CMD = 0;
 

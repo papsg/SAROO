@@ -555,3 +555,107 @@ First-track selection remains unchanged. No later-data-track search, Sega
 signature authentication, fingerprint, save migration, mixed-width CUE geometry,
 generated gap support or media-corruption repair is claimed. Physical SD/
 reader concurrency, endian/cache, RTOS/audio timing and games remain unqualified.
+
+## MCU-DISC-004: acknowledge reader pause before explicit replacement
+
+Optical boot's menu path sends `SSCMD_LOADDISC` with `0xffff` to stop its
+background reader. Passing that value to the indexed loader rejects it without
+stopping/unloading. The command now handles the sentinel explicitly. Stop
+performs no save load/flush, releases its readers after acknowledgment and is
+idempotent. Existing menu/shell indexed loads use the same pause helper before
+unloading/replacing readers; automatic changes run on the producer and bypass
+that wait.
+
+For an active reader, request pause, clear its wait flag, wake the worker and
+recheck the request after each existing semaphore wait. Bound this to **500
+wait calls**, each requesting two RTOS ticks. Stale notifications do not count
+as acknowledgment. A timeout returns failure without closing/replacing the old
+readers, changing its cached sectors or starting another save session; the
+worker may still acknowledge later. Both worker pause branches and successful
+already-idle explicit actions invalidate both FAD cache bounds.
+
+The worker now retires its active type and pause request together under the
+existing IRQ guard, with semaphore notification after restoring the mask. This
+narrow refinement follows the later `paps-g` correction `c6dc9847`: an old worker
+must not publish idle, allow a new reader/request, then clear that new request
+with its old acknowledgment. No filesystem I/O, allocation, payload copy, wait
+or logging occurs inside the guarded publication. Existing pause log strings
+remain outside it. The later retained-PLAY/directory protocol is not imported.
+
+The [menu stop caller](https://github.com/papsg/SAROO/blob/3b49134/Firm_Saturn/main.c#L1196),
+[indexed loader](https://github.com/papsg/SAROO/blob/3b49134/Firm_MCU/Saturn/cdimg.c#L457),
+[legacy shell](https://github.com/papsg/SAROO/blob/3b49134/Firm_MCU/Main/shell.c#L383),
+[worker/cache/semaphore functions](https://github.com/papsg/SAROO/blob/3b49134/Firm_MCU/Saturn/saturn_main.c#L379)
+and [existing IRQ macros](https://github.com/papsg/SAROO/blob/3b49134/Firm_MCU/inc/main.h#L21)
+establish the project ownership contract. The inspected cached CMSIS-RTOS2
+header and RTX implementation define semaphore acquisition as token-or-timeout,
+not reader completion; see
+[`osSemaphoreAcquire`](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html).
+This port does not attribute SAROO's sentinel, retry count or cache policy to
+a Sega requirement. Original handoff/fixtures: `paps-g`, `cb3abf06`; atomic
+publication refinement: `paps-g`, `c6dc9847`, with coupled-mask checks informed
+by `8f49d46a`. Source notices remain intact.
+
+Nine coupled actual-C/FatFs methods cover **47 cases**, including the prior
+save/session scenarios. The preceding source fails **15**: nine stop/handoff
+cases and six deterministic publication interleavings. ASan/UBSan and O2 pass.
+Timeout cases retain an actual failed-write pending save, its buffers, reader
+and cache bounds before permitting a late worker acknowledgment. Both worker
+branches run, with idle replacement, stale returns and a no-self-wait control.
+Eleven isolated regressions are detected, including no wake, ignored timeout,
+premature closure, worker/idle cache retention, unguarded retirement and
+notification while masked.
+
+The six publication cases replay a **modeled command-field publication** at
+an actual worker/helper idle-store checkpoint, deferring it until IRQ restore
+when masked. They do not execute a complete game command, preempt a physical
+MCU or establish RTOS scheduling/timing. Source snapshots bind the unmodified
+functions and test-only hook insertion. All **59 coupled MCU methods / 681
+cases** pass both profiles; the complete public check and full target builds
+also pass.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_save_disc.py -v
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-save
+CARGO_NET_OFFLINE=true make -C tests check
+```
+
+The complete GNU App/RTX/166-vector build adds **112 load bytes**, reaching
+**59,784**, with **5,752 ITCM free**. Static RAM/span/address gap remain
+unchanged. All comparable compiler direct frames are unchanged; new pause/
+acknowledgment frames are **16/0** bytes, excluding callees/IRQs. Disassembly
+reloads the request after each wait and restores PRIMASK before notification.
+The complete menu rebuild is byte-identical to `9c3342e`: 78,544 code/data,
+9,232 BSS, 16,384 reserved stack, 26,912 body margin and 488,751 image bytes.
+
+The retry count is not a wall-clock deadline or instantaneous physical silence;
+queued audio may drain. This does not replace the broader CD-command ownership
+model, qualify every idle/error/startup interleaving, or resolve aliased CUE/CD
+scratch, media generations, automatic reset/reopen or power-loss behavior.
+No original MDK, physical IRQ/audio/DMA/cache/SD or game acceptance is claimed.
+
+## Completed series qualification
+
+All seven scoped finding IDs are integrated, with independent catalog-clear
+and seek optimizations separated from correctness changes. The final complete
+offline public check passes **168 Python methods, fourteen Rust unit tests,
+workspace formatting, strict clippy and authored C checks**. Its MCU coverage is
+59 methods / 681 scenarios under ASan/UBSan; the separate complete O2 MCU run
+also passes. Target receipts bind the original full menu build and GNU MCU
+App/RTX/166-vector qualification. Compiler/SDK inputs are explicit, local and
+read-only; all new outputs stay in the public checkout.
+
+Relative to this series' starting public `6135642`, menu code/data grows
+**48 bytes** and MCU load grows **52 bytes**. Their static RAM reservations
+remain unchanged. These totals include parser bounds, checked I/O, ownership,
+normalized headers and the separately measured simplifications; they do not
+measure latency, combined peak stack, SD durability or game compatibility.
+
+Public test sources and commands are maintained here and in `tests/`. Local
+baseline/candidate snapshots, failed/setup runs, mutation controls, source
+hashes and acceptance records remain under
+`.git/porting/evidence/disc-cue-safety/`; target receipts/maps/disassembly inputs
+remain under `tests/build/disc-cue-safety/`. The public progress ledger on
+`codex/pr-progress` records each focused commit, dependency, attribution,
+citation and limit. No runtime diagnostic, USB feature, private patch framework,
+game integration or installation is part of the series.
