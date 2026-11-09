@@ -275,7 +275,8 @@ int sr_bup_export(int slot_id, int save_id, int exp_type)
 	while(block){
 		bp = get_block_addr(block);
 		if(i == save_id){
-			memset(save_buf, 0, 32768);
+			/* The validated reader overwrites every emitted payload byte. */
+			memset(save_buf, 0, BUP_HEADER_SIZE);
 
 			strcpy((char*)save_buf, "SSAVERAW");
 			memcpy(save_buf+0x10, bp+0, 11);    // Filename

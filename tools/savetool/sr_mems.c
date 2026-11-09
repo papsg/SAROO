@@ -143,7 +143,8 @@ int sr_mems_export(int slot_id, int save_id, int exp_type)
 			block = get_be16(bp+0x0e);
 			bp = get_block_addr(block);
 
-			memset(save_buf, 0, 0x100000);
+			/* The validated reader overwrites every emitted payload byte. */
+			memset(save_buf, 0, BUP_HEADER_SIZE);
 
 			strcpy((char*)save_buf, "SSAVERAW");
 			memcpy(save_buf+0x10, bp+0, 11);    // Filename

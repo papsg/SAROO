@@ -146,7 +146,8 @@ int ss_bup_export(int slot_id, int index, int exp_type)
 		if(get_be32(bp)==0x80000000){
 			// 找到了save起始块
 			if(i == index){
-				memset(save_buf, 0, 32768);
+				/* The validated reader overwrites every emitted payload byte. */
+				memset(save_buf, 0, BUP_HEADER_SIZE);
 				strcpy((char*)save_buf, "SSAVERAW");
 				memcpy(save_buf+0x10, bp+4, 11);    // Filename
 				memcpy(save_buf+0x1c, bp+0x1e, 4);  // Size
