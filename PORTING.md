@@ -410,9 +410,26 @@ checks plus manual review; raw evidence stays local and ignored.
 | Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
 | --- | --- | --- |
 | SATURN-MENU-001; paps-g `9d0cf199` | [7c97088](https://github.com/papsg/SAROO/commit/7c97088); [codex/menu-palette-safety](https://github.com/papsg/SAROO/tree/codex/menu-palette-safety) | Four actual-C methods pass sanitizer/O2; baseline three failures at palette entry 16, logo-only control passes. Tail omission and cover-bank overclear each fail three cases. Complete menu link adds 16 code/data to 78,852; BSS 9,232/stack 16,384/direct initialization frames 4/4 unchanged, margin 26,604. Image/font sizes unchanged; MCU source untouched. [Exact Sega/C/source citations, public attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/MENU-PALETTE-TIMING-SAFETY.md#saturn-menu-001-initialize-the-defined-palette-without-overreading). Source bounds, bytes and register intent are qualified; no VDP raster, logo-duration, physical/game/freeze claim. |
-| SATURN-MENU-004; paps-g `90db7fe2` | Queued | Correct repeat/scroll deadlines and stale-reset overflow handling. Deduplicate existing unsigned carry and timer_reached helper; keep later clock changes separate. |
+| SATURN-MENU-004; paps-g `90db7fe2` | [24c5c73](https://github.com/papsg/SAROO/commit/24c5c73); [codex/menu-timing-safety](https://github.com/papsg/SAROO/tree/codex/menu-timing-safety) | Seven actual-C timer methods / 21 cases and one controller-to-repeat method / ten cases pass sanitizer/O2. Baselines fail13/10; existing carry, no-overflow reset and four scroll controls pass. Eight targeted mutations rejected; register reference order/retry and target byte-access order checked. Deduplicates public carry/helper from86c7caf; current controller code unchanged. Complete menu adds32 code/data to78,884; BSS9,232/stack16,384/direct frames0/4/12/8 unchanged, margin26,572. Image/font sizes unchanged. [Hitachi/C/source citations, public attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/MENU-PALETTE-TIMING-SAFETY.md#saturn-menu-004-preserve-repeat-intervals-and-short-deadlines-across-wrap). Inherited clock polling/epoch/half-range limits remain; no physical timing, game or freeze qualification. |
 
-Series active; timing candidate and final integrated validation remain required.
-The palette checkpoint/topic/main are pushed after publication privacy review.
-Private sources/refs/stashes and Saturn remain untouched; no upstream request
-is edited. Existing public source notices remain intact.
+Both candidates are complete as separate direct source commits, pushed with
+their topic branches to main in oldest-first order. Complete public regression
+validation passes243 Python methods in21 groups,14 Rust checks and native C
+checks; all palette/timer/integration controls also pass O2. The complete menu
+link adds48 code/data bytes across the series with unchanged BSS/stack/image/font
+sizes; timing removes one existing warning (26→25), adding none. All36 menu
+build inputs match source; all56 MCU project inputs match the unchanged prior
+MCU build receipt. Full source/cost/limit records are linked above.
+
+Complete proposed files/messages/metadata and actual committed contents were
+reviewed; secret scans and private-PII checks have zero findings. Only approved
+public contributor handles/noreply identities are published. Ignored evidence
+retains baselines, controls, mutations, target disassembly/build receipts,
+source identities, full-suite results and privacy reviews.
+
+Public main is clean, default main and historical master are preserved, and
+the v0.8 baseline remains an ancestor. Private head/status/refs/four stashes
+match the starting snapshot; Saturn and other work remain untouched. No USB,
+added runtime diagnostics, subagents, PRs or unrelated imports were used.
+Fork issues remain disabled and there are no open fork PRs or corresponding
+requests to close. No upstream request is edited; original notices remain.
