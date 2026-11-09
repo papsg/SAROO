@@ -16,6 +16,18 @@ int sort_mode = 0;
 /******************************************************************************/
 
 
+/* Check path capacity before copying. */
+static int join_path(char *out, unsigned capacity, const char *parent, const char *leaf)
+{
+    unsigned a = strlen(parent), b = strlen(leaf);
+    if (a >= capacity || b >= capacity - a - 1)
+        return -1;
+    if (out != parent) memcpy(out, parent, a);
+    out[a] = '/';
+    memcpy(out + a + 1, leaf, b + 1);
+    return 0;
+}
+
 int get_gameid(char *gameid)
 {
 	FIL *fp = cdb.tracks[0].fp;
@@ -266,132 +278,80 @@ static char *path_str = (char*)(IMGINFO_ADDR);
 static int pbptr;
 
 
-int list_bins(int show)
-{
-	FRESULT retv;
-	DIR dir;
-	FILINFO *info;
-
-	total_disc = 0;
-	pbptr = 0x2800;
-	memset(disc_path, 0x00, 0x23000-4);
-	*(int*)(IMGINFO_ADDR) = 0;
-
-	memset(&dir, 0, sizeof(dir));
-
-	retv = f_opendir(&dir, "/SAROO/BIN");
-	if(retv)
-		return -1;
-
-	info = malloc(sizeof(FILINFO));
-	memset(info, 0, sizeof(*info));
-
-	while(1){
-		retv = f_readdir(&dir, info);
-		if(retv!=FR_OK || info->fname[0]==0)
-			break;
-		if(info->fname[0]=='.')
-			continue;
-
-		if(!(info->fattrib & AM_DIR)){
-			disc_path[total_disc] = pbptr;
-			strcpy(path_str+pbptr, info->fname);
-			pbptr += strlen(info->fname)+1;
-
-			total_disc += 1;
-			*(int*)(IMGINFO_ADDR) = total_disc;
-		}
-	}
-
-	f_closedir(&dir);
-	free(info);
-
-	printk("Total discs: %d\n", total_disc);
-	if(show){
-		int i;
-		for(i=0; i<total_disc; i++){
-			printk(" %2d:  %s\n", i, path_str+disc_path[i]);
-		}
-		printk("\n");
-	}
-
-	return 0;
-}
-
-
 int path_cmp(const void *a, const void *b)
 {
-	char *s1 = path_str + *(u32*)(a);
-	char *s2 = path_str + *(u32*)(b);
-	if(sort_mode == 1){
-		return strcmp(s1, s2);
-	}else{
-		return strcmp(s2, s1);
-	}
+    const char *left = path_str + *(const u32*)a;
+    const char *right = path_str + *(const u32*)b;
+    return sort_mode == 1 ? strcmp(left, right) : strcmp(right, left);
 }
 
+static int list_entries(int directories, int cid, int show)
+{
+    DIR dir;
+    FILINFO *info;
+    char category_path[48] = "/SAROO/ISO";
+    const char *name = directories ? category_path : "/SAROO/BIN";
+    int result;
+
+    /* Publish only complete scans; retain the existing clear for now. */
+    total_disc = 0;
+    pbptr = 0x2800;
+    memset(disc_path, 0, 0x23000 - 4);
+    *(u32*)IMGINFO_ADDR = 0;
+    if (directories) {
+        if (category_num) {
+            if (cid < 0 || cid >= category_num ||
+                strnlen(get_category(cid), 32) == 32 ||
+                join_path(category_path, sizeof(category_path), category_path, get_category(cid)))
+                return -FR_INVALID_NAME;
+        } else cid = 0;
+        category_current = cid;
+    }
+    result = f_opendir(&dir, name);
+    if (result) return -result;
+    info = malloc(sizeof(*info));
+    if (!info) {
+        result = FR_NOT_ENOUGH_CORE;
+    } else {
+        while (!(result = f_readdir(&dir, info)) && info->fname[0]) {
+            if (info->fname[0] == '.' || !!(info->fattrib & AM_DIR) != directories)
+                continue;
+            unsigned bytes = strlen(info->fname) + 1;
+            if (total_disc >= (0x2800 - 4) / 4 || bytes > 0x23000u - pbptr) {
+                result = FR_NOT_ENOUGH_CORE;
+                break;
+            }
+            disc_path[total_disc++] = pbptr;
+            memcpy(path_str + pbptr, info->fname, bytes);
+            pbptr += bytes;
+        }
+        free(info);
+    }
+    int closed = f_closedir(&dir);
+    if (!result) result = closed;
+    if (result) {
+        total_disc = 0;
+        return -result;
+    }
+    if (directories && sort_mode) qsort4(disc_path, total_disc, path_cmp);
+    *(u32*)IMGINFO_ADDR = total_disc;
+    printk("Total discs: %d\n", total_disc);
+    if (show) {
+        for (int i = 0; i < total_disc; i++)
+            printk(" %2d:  %s\n", i, path_str + disc_path[i]);
+        printk("\n");
+    }
+    return 0;
+}
+
+int list_bins(int show)
+{
+    return list_entries(0, 0, show);
+}
 
 int list_disc(int cid, int show)
 {
-	FRESULT retv;
-	DIR dir;
-	FILINFO *info;
-	char cat_dir[48] = "/SAROO/ISO/";
-
-	total_disc = 0;
-	pbptr = 0x2800;
-	memset(disc_path, 0x00, 0x23000-4);
-	*(int*)(IMGINFO_ADDR) = 0;
-
-	memset(&dir, 0, sizeof(dir));
-
-	if(category_num>0){
-		strcat(cat_dir, get_category(cid));
-		category_current = cid;
-	}else{
-		category_current = 0;
-	}
-	retv = f_opendir(&dir, cat_dir);
-	if(retv)
-		return -1;
-
-	info = malloc(sizeof(FILINFO));
-	memset(info, 0, sizeof(*info));
-
-	while(1){
-		retv = f_readdir(&dir, info);
-		if(retv!=FR_OK || info->fname[0]==0)
-			break;
-		if(info->fname[0]=='.')
-			continue;
-
-		if(info->fattrib & AM_DIR){
-			disc_path[total_disc] = pbptr;
-			strcpy(path_str+pbptr, info->fname);
-			pbptr += strlen(info->fname)+1;
-
-			total_disc += 1;
-			*(int*)(IMGINFO_ADDR) = total_disc;
-		}
-	}
-
-	f_closedir(&dir);
-	free(info);
-
-	if(sort_mode){
-		qsort4(disc_path, total_disc, path_cmp);
-	}
-
-	printk("Total discs: %d\n", total_disc);
-	if(show){
-		int i;
-		for(i=0; i<total_disc; i++){
-			printk(" %2d:  %s\n", i, path_str+disc_path[i]);
-		}
-		printk("\n");
-	}
-
-	return 0;
+    return list_entries(1, cid, show);
 }
 
 
@@ -437,48 +397,50 @@ int unload_disc(void)
 
 int find_cue_iso(char *dirname, char *outname)
 {
-	FRESULT retv;
-	DIR dir;
-	FILINFO *info;
-	int type = 0;
-
-	memset(&dir, 0, sizeof(dir));
-	retv = f_opendir(&dir, dirname);
-	if(retv)
-		return -1;
-
-	info = malloc(sizeof(FILINFO));
-	memset(info, 0, sizeof(*info));
-
-	while(1){
-		retv = f_readdir(&dir, info);
-		if(retv!=FR_OK || info->fname[0]==0)
-			break;
-		if(info->fname[0]=='.')
-			continue;
-
-		if(info->fattrib & AM_DIR){
-		}else{
-			char *p = strrchr(info->fname, '.');
-			if(strcasecmp(p, ".cue")==0){
-				// 读到cue, 直接返回.
-				sprintk(outname, "%s/%s", dirname, info->fname);
-				type = 1;
-				break;
-			}else if(strcasecmp(p, ".iso")==0){
-				// 读到iso, 还要继续看有没有cue.
-				sprintk(outname, "%s/%s", dirname, info->fname);
-				type = 2;
-			}
-		}
-	}
-
-	f_closedir(&dir);
-	free(info);
-
-	return type;
+    DIR dir;
+    FILINFO *info;
+    int type = 0, result;
+    outname[0] = 0;
+    result = f_opendir(&dir, dirname);
+    if (result) return -result;
+    info = malloc(sizeof(*info));
+    if (!info) {
+        result = FR_NOT_ENOUGH_CORE;
+    } else {
+        while (!(result = f_readdir(&dir, info)) && info->fname[0]) {
+            if (info->fname[0] == '.' || (info->fattrib & AM_DIR)) continue;
+            const char *extension = strrchr(info->fname, '.');
+            if (!extension) continue;
+            int cue = !strcasecmp(extension, ".cue");
+            if (!cue && strcasecmp(extension, ".iso")) continue;
+            if (join_path(outname, 256, dirname, info->fname)) {
+                result = FR_INVALID_NAME;
+                break;
+            }
+            type = cue ? 1 : 2;
+            if (cue) break;
+        }
+        free(info);
+    }
+    int closed = f_closedir(&dir);
+    if (!result) result = closed;
+    if (result) { outname[0] = 0; return -result; }
+    return type;
 }
 
+
+static int game_dir(int index, char *out)
+{
+    if (index < 0 || index >= total_disc || !disc_path[index]) return -1;
+    const char *base = "/SAROO/ISO";
+    if (category_num) {
+        if (category_current < 0 || category_current >= category_num ||
+            strnlen(get_category(category_current), 32) == 32 ||
+            join_path(out, 256, base, get_category(category_current))) return -1;
+        base = out;
+    }
+    return join_path(out, 256, base, path_str + disc_path[index]);
+}
 
 int load_disc(int index, int start_save)
 {
@@ -486,20 +448,7 @@ int load_disc(int index, int start_save)
 	char *fname;
 	char cat_dir[256];
 
-	if((index&0xffff)==0xffff){
-		return -1;
-	}
-
-	if(index < 0 || index >= total_disc || disc_path[index]==0){
-		printk("Invalid disc index %d\n", index);
-		return -1;
-	}
-
-	if(category_num){
-		sprintk(cat_dir, "/SAROO/ISO/%s/%s", get_category(category_current), path_str+disc_path[index]);
-	}else{
-		sprintk(cat_dir, "/SAROO/ISO/%s", path_str+disc_path[index]);
-	}
+    if (game_dir(index, cat_dir)) return -1;
 
 	fname = malloc(256);
     if (!fname) return FR_NOT_ENOUGH_CORE;
@@ -600,16 +549,7 @@ int get_disc_ip(int index, u8 *ipbuf)
 	char *fname;
 	char cat_dir[256];
 
-	if(index < 0 || index >= total_disc || disc_path[index]==0){
-		printk("Invalid disc index %d\n", index);
-		return -1;
-	}
-
-	if(category_num){
-		sprintk(cat_dir, "/SAROO/ISO/%s/%s", get_category(category_current), path_str+disc_path[index]);
-	}else{
-		sprintk(cat_dir, "/SAROO/ISO/%s", path_str+disc_path[index]);
-	}
+    if (game_dir(index, cat_dir)) return -1;
 
 	fname = malloc(256);
     if (!fname) return FR_NOT_ENOUGH_CORE;

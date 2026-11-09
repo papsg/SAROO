@@ -83,6 +83,9 @@ class MCUSaveTest(unittest.TestCase):
             parts = [disc[disc.index(b'int get_gameid('):disc.index(b'int load_pcm(')],
                      disc[disc.index(b'int parse_iso('):disc.index(b'int parse_cue(')],
                      disc[disc.index(b'int unload_disc('):disc.index(b'int find_cue_iso(')]]
+            if b'static int join_path(' in disc:
+                parts.insert(0, disc[disc.index(b'static int join_path('):disc.index(b'int get_gameid(')])
+                parts.append(disc[disc.index(b'static int game_dir('):disc.index(b'int load_disc(')])
             (cls.target / 'disc-core.inc').write_bytes(b''.join(parts).replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             (cls.target / 'disc-load.inc').write_bytes(disc[disc.index(b'int load_disc('):])
             signature = b'int load_disc(int index, int start_save)' in disc
@@ -95,6 +98,21 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             (cls.target / 'sd-reset.inc').write_bytes(data[data.index(b'int sdio_reset(void)'):])
+        if cls.fixture == 'discovery':
+            harnesses += ['mcu_save_discovery.c', 'test_mcu_save_discovery.py']
+            data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
+            helpers = data[data.index(b'static int join_path('):data.index(b'int get_gameid(')] if b'static int join_path(' in data else b''
+            catalog = data[data.index(b'int category_current'):data.index(b'int unload_disc(')]
+            scanner = data[data.index(b'int find_cue_iso('):data.index(b'int load_disc(')]
+            (cls.target / 'discovery.inc').write_bytes(helpers + catalog + scanner)
+            if b'static int game_dir(' in data:
+                (cls.target / 'path.inc').write_text('return game_dir(index, out);\n')
+            else:
+                begin = data.index(b'\n\tif(', data.index(b'int load_disc('))
+                end = data.index(b'\tfname = malloc(256);', begin)
+                (cls.target / 'path.inc').write_bytes(b'char cat_dir[256];\n' + data[begin:end] + b'memcpy(out,cat_dir,256); return 0;\n')
+            begin = module.index(b'static int max_depth;'); end = module.index(b'char *get_token(', begin)
+            (cls.target / 'sort.inc').write_bytes(module[begin:end].replace(b'0x2400a000', b'TEST_SORT_ADDR'))
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
@@ -131,7 +149,7 @@ class MCUSaveTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=self.target) as tmp:
             card = Path(tmp) / 'card.img'; make_fat32(card, sectors)
             result = subprocess.run([str(self.binary), str(card), *map(str, arguments)],
-                                    capture_output=True, timeout=20,
+                                    capture_output=True, timeout=getattr(self, 'timeout', 20),
                                     env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1',
                                          'ASAN_OPTIONS': 'detect_leaks=0'})
             record = dict(arguments=arguments, returncode=result.returncode,

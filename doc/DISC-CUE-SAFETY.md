@@ -165,3 +165,76 @@ authenticate arbitrary corrupted catalog memory or concurrent generations.
 The paired producer's capacity/publication checks follow. Payload transfer,
 load-address authorization, binary execution, game/controller and physical
 memory/bus timing are outside this native path-selection qualification.
+
+## MCU-DISC-002: checked discovery, paths and catalog publication
+
+The previous directory helpers pass a missing extension to `strcasecmp`, fail
+to check allocation and accept partial scans after directory errors. Unbounded
+copies can overrun path, offset and shared string storage. The new shared
+catalog scanner publishes zero before scanning and the complete count only
+after successful reading, closing and sorting. Failure leaves both counts zero.
+It checks allocation and directory open/read/close results and retains the first
+error. The existing catalog clear is intentionally retained in this correctness
+checkpoint; removing that work is evaluated separately.
+
+Discovery skips dotless/hidden/directory entries, keeps case-insensitive CUE
+preference and the last ISO when no CUE is found, and clears candidate output
+on error. Complete paths must fit the original 256 bytes including NUL; they
+are rejected rather than truncated. Shared loader/preview path construction
+checks the selected index/category, 32-byte category record and joined capacity
+before copying. Sorting modes for game directories and original BIN order are
+preserved. Existing catalog listing log text remains; no logger is added.
+
+The project layout remains exactly 2,559 four-byte offsets after the four-byte
+count and 133,120 terminated-name bytes beginning at `0x2800`, within `0x23000`
+bytes. Both capacities are checked before writing. Exhaustion reports
+`FR_NOT_ENOUGH_CORE`. Shorter/failed scans confer no ownership of old entries.
+The bounded BIN consumer at `9c3342e` is already installed in public source.
+
+The [baseline layout, producer and helpers](https://github.com/papsg/SAROO/blob/9c3342e/Firm_MCU/Saturn/cdimg.c)
+define those application capacities and selection rules; no Sega manual expands
+them. Public FatFs R0.15's
+[`f_opendir`](https://github.com/papsg/SAROO/blob/9c3342e/Firm_MCU/FatFS/ff.c#L4597),
+[`f_closedir`](https://github.com/papsg/SAROO/blob/9c3342e/Firm_MCU/FatFS/ff.c#L4663)
+and [`f_readdir`](https://github.com/papsg/SAROO/blob/9c3342e/Firm_MCU/FatFS/ff.c#L4693)
+are the actual checked result/ownership contracts. `f_readdir` distinguishes
+failure from end-of-directory through its result and filename output.
+
+Original correction/fixtures: `paps-g`, `be30cf116cc733a809b9cbfe2bed38b78772d505`,
+2026-09-05. This public adaptation separates the consumer prerequisite and
+clear-removal optimization, preserves catalog listing text and retains the
+existing clear. Private history contains no later modification of this specific
+patch. Public actual-source fixtures replace only physical addresses and fault
+seams; no private preparation, framework or runtime diagnostic is imported.
+
+Six methods / **43 scenarios** pass ASan/UBSan and O2. Baseline fails **22**:
+the clear-removal-only difference from historical counts is deliberately absent.
+Cases cover preference/filtering, path/category limits, allocation/open/read/
+close failures, three sort modes, shorter scans, full 2,559-entry ordering in
+both directions, one entry beyond capacity and the final string byte. The
+close-error seam actually closes first; it does not prove recovery from a
+latched physical-card error. Eight isolated controls expose 17 failed cases by
+omitting extension/allocation/error/path/capacity/publication checks. All **38
+coupled MCU methods / 512 scenarios** pass both profiles, including the actual
+disc/save-session integration after the shared path helper changes.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_save_discovery.py -v
+make -C tests check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-save
+```
+
+The complete GNU App/RTX link and 166-vector check pass. Load bytes decrease
+**212** to **59,604**, with **5,932 ITCM free**. BSS/data/span and stack/heap gap
+remain 60,656/504/61,160/69,912. The shared scanner's direct frame is 176 bytes,
+versus 120 for old BIN/168 for old directory scans; wrappers tail-call it with
+zero direct frame. New path/game helpers use 32/24. Loader/preview frames remain
+312/280 and the discovery scanner remains 112. Transitive FatFs/sort/IRQ peak
+stack is not measured. Only `cdimg.c` differs among qualified MCU inputs.
+Menu inputs remain unchanged from the preceding complete SH-2 link.
+
+Native rescan counters still measure **143,356 cleared bytes per scan**, plus
+existing filesystem, name-copy and sort work. No clear-removal speedup is claimed
+here. The shared scanner adds no static buffer or heap allocation. It does not
+establish concurrent catalog generations, arbitrary-folder discovery, CUE content
+parsing, card identity/recovery, physical timing or a named game's compatibility.
