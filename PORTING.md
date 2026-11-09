@@ -282,3 +282,22 @@ in [doc/DISC-CUE-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/DISC-CU
 Detailed baseline/failed/setup/mutation/build evidence remains in the public
 checkout's ignored artifact cohorts. Private sources/branches/stashes/caches,
 installed firmware, Saturn and other paused work remain untouched.
+
+## Save and storage follow-up
+
+Starts at public `9ff69d6`. Direct verified source commits, with no PRs, USB,
+added runtime diagnostics, private framework or device operations. Private
+sources/history/evidence are read-only. Original findings guide a fresh
+investigation; historical qualification is not reused.
+
+| Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
+| --- | --- | --- |
+| SAVETOOL-007 clearing; `99127a6a` | [6450e93](https://github.com/papsg/SAROO/commit/6450e93); [codex/save-export-clearing](https://github.com/papsg/SAROO/tree/codex/save-export-clearing) | Uses completed validated-reader/output work. Three methods:100 poisoned exports plus8 BUP round trips match complete independent files. Baseline passes bytes but fails50 reduced-work assertions; ASan/UBSan/O2 pass. Three controls detected. All50 native methods pass with sanitizer and O2 CLIs (direct fault helpers retain sanitizers). Clear work falls32KiB/1MiB→64 bytes; native ARM64 O2 text+20 to15,612, zero-fill1,082,580 and direct exporter frames224/208/224 unchanged. [Format/request/source citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#savetool-007-clear-only-the-exported-header). Firmware unchanged; no timing/hardware claim. |
+| SAVETOOL-007 discarded CRC; `99127a6a` | Queued | Independently evaluate skipping only the BUP checksum that its replacement header discards. |
+| MCU-SD-001; `2ba4e96b` | Queued | Semaphore error admission/allocation/reuse with existing transfer retries and valid controls. |
+| SATURN-SAVE-004; `f5ed0ae1` | Queued | Calendar/date conversion and explicit compatibility policies, preserving delegation and archive bytes. |
+
+Series active; remaining rows are not complete. Verified checkpoint/main are
+pushed. Fork issues remain disabled and no open PR needs closure; original
+upstream requests remain unchanged. All new evidence stays in public; private
+repository and Saturn remain untouched.
