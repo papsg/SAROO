@@ -257,9 +257,28 @@ are revalidated against public checkpoints; historical qualification is not reus
 | MCU-FS-001 geometry; `60d5df01` | [2eb30d0](https://github.com/papsg/SAROO/commit/2eb30d0); [codex/exfat-geometry-guards](https://github.com/papsg/SAROO/tree/codex/exfat-geometry-guards) | Four actual-FatFs methods/19 cases pass ASan/UBSan and O2; baseline has ten UBSan failures. Two omitted-bound controls fail four cases each. All49 coupled MCU methods/598 cases pass both profiles. Wide5GiB+129 and fragmented FAT32/exFAT workloads preserve markers/neighbors and I/O counts. Complete GNU App/RTX/166-vector link saves16 load bytes to60,424; static RAM and direct mount/seek frames unchanged. [Exact C11 section/pages, source contracts, paps-g attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md#mcu-fs-001-reject-unsafe-exfat-geometry-shifts). Not full malformed-volume, original MDK or physical qualification. |
 | MCU-FS-001 seek optimization; `60d5df01` | [ace316a](https://github.com/papsg/SAROO/commit/ace316a); [codex/fatfs-seek-range](https://github.com/papsg/SAROO/tree/codex/fatfs-seek-range) | Depends on separately guarded geometry. All19 actual-FatFs cases pass before/after in both profiles, with327,200 independent 64-bit comparisons and identical wide/fragmented file contents, neighbors and I/O counts. Three formula controls detected; all49 MCU methods/598 cases pass both profiles. GNU App/RTX/166-vector link removes two wide-division calls and saves848 load bytes to59,576, static RAM/direct seek frame unchanged. [Proof, source citations, paps-g attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md#separate-evaluation-equivalent-wide-seek-comparison). No filesystem bug in old division or physical speedup claimed. |
 | MCU-DISC-003; `cb3abf06` | [3b49134](https://github.com/papsg/SAROO/commit/3b49134); [codex/disc-header-reads](https://github.com/papsg/SAROO/tree/codex/disc-header-reads) | Six actual-source/FatFs methods/67 cases; baseline46 failures, sanitizers/O2 pass;12 controls detected. Includes paps-g8a98f5f6 final-sector verification with public64-bit FSIZE_t, excluding later media classification. All55 MCU methods/665 cases pass both profiles after correcting an old positive-preview-allocation expectation; initial failed runs retained/excluded. GNU App/RTX/166-vector link adds96 load bytes to59,672, static RAM unchanged; CUE direct frame160→152. [Exact ECMA sections/pages, FatFs/source citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md#mcu-disc-003-read-the-declared-tracks-complete-user-header). No mixed-width/gap/physical/concurrency/game qualification. |
-| MCU-DISC-004; `cb3abf06` | Queued | Stop sentinel, acknowledged reader handoff, cache/timeout ownership. |
+| MCU-DISC-004; `cb3abf06` | [9ff69d6](https://github.com/papsg/SAROO/commit/9ff69d6); [codex/disc-reader-handoff](https://github.com/papsg/SAROO/tree/codex/disc-reader-handoff) | Nine coupled actual-C/FatFs methods/47 cases; baseline15 failures includes six modeled command-field publication interleavings. Sanitizers/O2 pass;11 controls detected. Narrowly includes paps-g c6dc9847 atomic idle/request retirement, with8f49d46a mask checks, excluding later retained-PLAY/directory protocol. All59 MCU methods/681 cases pass both profiles. Complete public check:168 Python methods,14 Rust tests, fmt/strict clippy and C checks. GNU App/RTX/166-vector link adds112 load bytes to59,784; static RAM/comparable direct frames unchanged, new pause/ack16/0. Complete menu rebuild exact. [Project/CMSIS citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md#mcu-disc-004-acknowledge-reader-pause-before-explicit-replacement). No physical RTOS/IRQ/audio/SD, original MDK, broad concurrency or game qualification. |
 
-The series remains active. Eight verified topics/main are pushed; remaining rows
-are not claimed complete. The fork still has issues disabled and no open PR to
-close; upstream requests remain unchanged. All evidence/builds stay in public.
-Private repository and Saturn remain untouched.
+All seven scoped finding IDs are complete in nine independently verified
+source checkpoints. Final public main is
+[9ff69d6](https://github.com/papsg/SAROO/commit/9ff69d6); all nine topic branches
+and main are pushed. No scoped candidate is queued. The complete public check
+passes168 Python methods,14 Rust tests, formatting, strict clippy and authored
+C checks. Actual MCU coverage is59 methods/681 scenarios under ASan/UBSan and
+O2. Final complete MCU/menu target builds pass with bound source hashes.
+
+Relative to starting main6135642, menu code/data grows48 bytes and MCU load
+grows52 bytes; static RAM remains unchanged. MCU load is59,784 with5,752 ITCM
+free. Menu code/data/BSS/reserved stack are78,544/9,232/16,384, body margin26,912
+and image488,751 bytes. These are GNU/menu link and source/host results;
+original MDK, transitive/IRQ peaks, physical timing/durability and games remain
+unqualified. The documented mixed-width/gap, shared-workspace, media/reset/file
+recovery and broader command-ownership limits remain outside this series.
+
+Fork default remains main, original v0.8 baseline ancestry and preserved master
+are retained. Issues remain disabled and no open fork PR needs closure; no
+upstream request was modified. Public tests/citations/attribution are maintained
+in [doc/DISC-CUE-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md).
+Detailed baseline/failed/setup/mutation/build evidence remains in the public
+checkout's ignored artifact cohorts. Private sources/branches/stashes/caches,
+installed firmware, Saturn and other paused work remain untouched.
