@@ -526,9 +526,42 @@ receive manual, secret and private-PII review before each commit/push.
 | MCU-FILE-001; paps-g `52ba5498` | [a3959f4](https://github.com/papsg/SAROO/commit/a3959f4); [codex/file-command-completion](https://github.com/papsg/SAROO/tree/codex/file-command-completion) | Nine actual-C/FatFs methods/33 scenarios pass sanitizers/O2; baseline fails13,20 controls pass. Six mutants rejected;11 coupled disc/save and six GIF scheduling methods pass. Complete App/RTX/166-vector link saves16 load bytes to57,332, margin8,204; static DTCM60,296 unchanged. IRQ frame24; dispatcher112→8/helper120, active file caller frames136→152 before callees. Public tiny/nonreentrant FatFs retained; private mutex-timeout claim excluded. Original log text/masks unchanged. [Exact public FatFs/source citations, attribution, tests/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/FILE-TRANSFER-SAFETY.md#mcu-file-001-report-positioning-and-completion-errors). Reports failure without rollback, retained-handle recovery, durability or physical/game qualification. |
 | MCU-FILE-002 MCU bounds; paps-g `66c197b3` | [e1e6fdb](https://github.com/papsg/SAROO/commit/e1e6fdb); [codex/file-command-bounds](https://github.com/papsg/SAROO/tree/codex/file-command-bounds) | Requires a3959f4.12 methods/61 actual-C/FatFs scenarios pass sanitizers/O2; preceding baseline fails16 invalid cases and passes45 controls. Six mutants rejected. Full App/RTX/166-vector link adds64 load bytes to57,396, margin8,140; static DTCM60,296 and IRQ/dispatcher/helper direct frames24/8/120 unchanged. Actual addresses and64-bit types checked. Two injected wide-size cases are not real multi-gigabyte media. [Exact FPGA/FatFs/project citations, attribution, costs and limits](https://github.com/papsg/SAROO/blob/main/doc/FILE-TRANSFER-SAFETY.md#mcu-file-002-mcu-request-bounds). Legacy producer/allocation, RAM folding/cache, reset/concurrency and atomicity remain separate. |
 | SATURN-WORD-001; paps-g `4df2e67a` | [ae59ff3](https://github.com/papsg/SAROO/commit/ae59ff3); [codex/menu-word-decoding](https://github.com/papsg/SAROO/tree/codex/menu-word-decoding) | Two actual-helper methods pass sanitizers/O2:8,256 full-width and4,128 baseline-valid checks across byte orders/four alignments. Both old readers fail UBSan, low-byte controls pass; two revert mutations detected. Nine existing binary-selection cases pass. Full menu image/ELF hashes, code/data78,884, BSS9,232, stack16,384, assets and frames unchanged;36 menu/56 MCU inputs match their receipts. [Exact C11/public-source citations, attribution and limits](https://github.com/papsg/SAROO/blob/main/doc/FILE-TRANSFER-SAFETY.md#saturn-word-001-unsigned-word-decoding). Source semantics/portability, with no physical/game/speed claim. |
-| MCU-FILE-002 menu continuation; paps-g `4df2e67a` | Queued | Bounded API, shared hops, response counts and binary destination/header safety; deduplicate earlier catalog checks. Legacy ownership and later cache/reset limits remain explicit. |
+| MCU-FILE-002 menu continuation; paps-g `4df2e67a` | [de549dc](https://github.com/papsg/SAROO/commit/de549dc); [codex/menu-file-capacity](https://github.com/papsg/SAROO/tree/codex/menu-file-capacity) | Requires ae59ff3; current MCU bounds retained, with original-peer compatibility checked.30 actual menu/MCU/FatFs transfers and40 loader cases pass sanitizers/O2; preceding menu fails15/21 with15/19 controls passing. All30 also pass against original MCU; seven discovery/seven cover methods pass. Nine meaningful mutations rejected, one incomplete name-loop variant preserved unqualified. Existing catalog checks/controller suspend→jump→resume retained. Complete menu adds688 code/data to79,572; BSS9,232, stack16,384, assets/image sizes unchanged. BIN caller sum164→220 before utilities/IRQs; MCU unchanged. [Exact Sega §1.2 Figures1.3/1.5 printed4/6, project/FPGA citations, attribution and limits](https://github.com/papsg/SAROO/blob/main/doc/FILE-TRANSFER-SAFETY.md#mcu-file-002-capacity-aware-menu-and-binary-loading). Legacy four-argument slots preserved, tagged bounded reader added; no arbitrary-allocation/coherence/reset/atomicity/hardware qualification. |
 
-Both MCU checkpoints and unsigned word decoding are pushed with their topics
-to main after verification and full publication review. Menu capacity and the
-final integrated/preservation audit remain. Private repo, Saturn and other work
-remain untouched.
+All four scoped checkpoints are complete as individually verified linear source
+commits, pushed with their topics to main in oldest-first order. The integrated
+suite passes291 Python methods in28 groups,14 Rust checks and native C controls.
+All24 focused methods, including the expanded40-case BIN-loader fixture, also
+pass uninstrumented O2. Passing sanitizer/O2 artifacts match current sources;
+the older binary fixture lacks compiler-argv capture, so its explicit release
+run and linked sanitizer dependency are recorded separately. Baselines, valid
+controls,23 detected mutations and the unqualified initial name mutant are
+preserved alongside source/build/qualification/privacy evidence locally.
+
+The complete GNU MCU App/RTX/166-vector image grows48 load bytes across this
+series,57,348→57,396, leaving8,140 ITCM bytes; static DTCM remains60,296. Complete
+menu code/data grows688,78,884→79,572, with BSS9,232, reserved stack16,384,
+font357,679 and padded image488,751 bytes unchanged.56 MCU/36 menu input hashes
+match their receipts. Helper/caller stack and occasional EOF-probe costs remain
+explicit above. Source/model/build checks are not original-MDK, physical stack,
+coherence/timing/audio, game or device qualification.
+
+MCU-FILE-001 now reports its scoped failures; MCU-FILE-002's transferred checks
+are complete while legacy allocation/ownership limitations remain. This does
+not resolve later cache/RAM folding, reset/wait/reentrancy, atomicity or pending-
+file recovery findings. No named game/audio/save-loss issue is closed by analogy.
+The private mutex-timeout reproduction is excluded from standard-public claims.
+
+Full proposed files/messages/metadata and actual commits pass manual, secret
+and private-PII review with zero findings. Attribution uses approved public
+handles/noreply identities; exact primary/source citations and reproducible
+checks are linked above. Original source/FatFs/font notices remain; no private
+paths/accounts/network details, credentials, raw logs or build artifacts are
+published. Ignored evidence retains every applicable control and stated limit.
+
+Main is clean; default main, historical master and baseline ancestry remain.
+Private head/status/all refs/four stashes match the initial snapshot. Private
+repo, Saturn/installed firmware, research branches, other work and paused goals
+remain untouched. No USB, added runtime diagnostics, PRs, subagents or unrelated
+imports were used. Fork issues are disabled, with no open PRs or matching
+requests to close; original upstream requests remain unchanged.
