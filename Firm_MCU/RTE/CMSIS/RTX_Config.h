@@ -200,7 +200,8 @@
 //   <i> May be set to 0 when timers are not used.
 //   <i> Default: 256
 #ifndef OS_TIMER_THREAD_STACK_SIZE
-#define OS_TIMER_THREAD_STACK_SIZE  256
+/* SAROO has no osTimer callback users; SysTick and wait timeouts remain enabled. */
+#define OS_TIMER_THREAD_STACK_SIZE  0
 #endif
  
 //   <o>Timer Thread TrustZone Module Identifier
@@ -216,7 +217,7 @@
 //   <i> May be set to 0 when timers are not used.
 //   <i> Default: 4
 #ifndef OS_TIMER_CB_QUEUE
-#define OS_TIMER_CB_QUEUE           4
+#define OS_TIMER_CB_QUEUE           0
 #endif
  
 // </h>

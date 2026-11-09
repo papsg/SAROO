@@ -1,0 +1,33 @@
+{
+  "upstream_commit": "b5f0603d6a584d1724d952fd8b0737458b90d62b",
+  "upstream": "https://github.com/ARM-software/CMSIS_5",
+  "license": "Apache-2.0",
+  "copyright": "2013-2019 Arm Limited",
+  "scope": "Unchanged host-test extracts; see LICENSE.txt. Hardware/lists/task boundaries are modeled.",
+  "extracts": [
+    {
+      "file": "thread_startup.inc",
+      "upstream_path": "CMSIS/RTOS2/RTX/Source/rtx_thread.c",
+      "source_sha256": "14936b4ece2c7a312f07443c08989896da03af4e4fec0b124c4ed2c6a5242860",
+      "body_sha256": "f57b820a4e25573c3a71fcfb88c7e10b338c23528fbe21d8d5407152a74d433c"
+    },
+    {
+      "file": "thread_delay_tick.inc",
+      "upstream_path": "CMSIS/RTOS2/RTX/Source/rtx_thread.c",
+      "source_sha256": "14936b4ece2c7a312f07443c08989896da03af4e4fec0b124c4ed2c6a5242860",
+      "body_sha256": "b1edc6542f2928a320cdae747aeb4d971bc08604fdda0467bb37ebf86469204b"
+    },
+    {
+      "file": "system_tick.inc",
+      "upstream_path": "CMSIS/RTOS2/RTX/Source/rtx_system.c",
+      "source_sha256": "f2abcf9eb25ab57f680ee01d8c1e7dc0dbbb20f4a69b9ec99c9f3c6923361569",
+      "body_sha256": "9c939f2aa2f84de7f13f28b29d77bb1c3ea7c226f2ba33f2187bb5d6c846be7a"
+    },
+    {
+      "file": "timer_config.inc",
+      "upstream_path": "CMSIS/RTOS2/RTX/Source/rtx_lib.c",
+      "source_sha256": "0f465f53cf8ce7d950801c6b2901f2545f280797903b45322ff250817e8bb232",
+      "body_sha256": "281bf5c43ef5a1d4b62e604bad3cc17bd3ed9fa07860835e2b6dc0f2695f35ac"
+    }
+  ]
+}
