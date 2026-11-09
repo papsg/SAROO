@@ -42,7 +42,9 @@ static char *gameid_split(char *gid)
 	}
 	len1 = strlen(gid);
 	if(len1+len2==16 && ver){
-		strcpy(gid+len1, ver);
+		/* Source follows destination inside gid; forward copying is safe. */
+		for(int i=0; i<=len2; i++)
+			gid[len1+i] = ver[i];
 		ver = NULL;
 	}
 
@@ -55,6 +57,10 @@ int gameid_match(char *gid1, char *gid2)
 	char id1[24], id2[24];
 	char *ver1, *ver2;
 
+	/* Reject overlong fields before copying or normalizing either ID. */
+	if(strnlen(gid1, sizeof(id1))==sizeof(id1) ||
+	   strnlen(gid2, sizeof(id2))==sizeof(id2))
+		return 0;
 	strcpy(id1, gid1);
 	strcpy(id2, gid2);
 
@@ -65,7 +71,7 @@ int gameid_match(char *gid1, char *gid2)
 		return 0;
 	}
 
-	if(ver1 && ver1){
+	if(ver1 && ver2){
 		if(strcmp(ver1, ver2)){
 			return 0;
 		}

@@ -6,7 +6,11 @@ BUILD_DIR = build
 
 .PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-fatfs check-save-endian check-web-save check-web-cover
+check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-config check-fatfs check-save-endian check-web-save check-web-cover
+
+.PHONY: check-config
+check-config:
+	$(PYTHON) -B -m unittest discover -s . -p 'test_config*.py' -v
 
 .PHONY: check-native-cover
 check-native-cover:
