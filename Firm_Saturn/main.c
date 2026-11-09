@@ -24,7 +24,7 @@ int bios_type;
 u32 BE32(void *ptr)
 {
 	u8 *b = (u8*)ptr;
-	return (b[0]<<24) | (b[1]<<16) | (b[2]<<8) | b[3];
+	return ((u32)b[0]<<24) | ((u32)b[1]<<16) | ((u32)b[2]<<8) | b[3];
 }
 
 
@@ -38,7 +38,7 @@ u32 LE16(void *ptr)
 u32 LE32(void *ptr)
 {
 	u8 *b = (u8*)ptr;
-	return (b[3]<<24) | (b[2]<<16) | (b[1]<<8) | b[0];
+	return ((u32)b[3]<<24) | ((u32)b[2]<<16) | ((u32)b[1]<<8) | b[0];
 }
 
 void LE32W(void *ptr, u32 val)

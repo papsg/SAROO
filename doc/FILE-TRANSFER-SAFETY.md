@@ -134,7 +134,28 @@ in the menu checkpoint; this is not blanket arbitrary-pointer safety.
 
 ## SATURN-WORD-001: unsigned word decoding
 
-Queued separately before dependent menu transfer tests.
+Original: **paps-g**, selected `4df2e67a` (2026-09-06), independently ported
+before the menu continuation. Cast shift operands to `u32` in `BE32` and `LE32`.
+The [public baseline readers](https://github.com/papsg/SAROO/blob/e1e6fdb/Firm_Saturn/main.c#L24)
+promote bytes to signed `int`, so a high byte of128 or greater shifted by24
+cannot be represented. The unsigned return type does not repair that intermediate
+operation. C11 [N1570 §6.5.7 paragraphs3–4, printed94–95](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+defines operand promotions and signed/unsigned shift semantics; the cached primary
+clauses were read. Existing byte reads preserve unaligned access behavior.
+
+Two actual-helper methods pass sanitizers/O2:8,256 full-width checks across both
+byte orders/four alignments and4,128 baseline-valid low-byte controls. Independent
+byte/write guards also check `LE16` and `LE32W`. Both old full-width readers fail
+UBSan while the low-byte cohort passes. Reverting either reader independently
+fails its signed-shift check. The nine existing binary-selection cases pass.
+
+The complete pinned SH-2 menu link is byte-identical, including ELF and final
+image hashes. Code/data remains78,884, BSS9,232, reserved stack16,384, font357,679
+and image488,751 bytes; direct frames remain identical. All36 menu inputs match
+the receipt. MCU sources and its prior56-input build remain unchanged. This is a
+source-semantics/portability correction; no physical game failure, speed change
+or hardware acceptance is claimed. `check-file-transfer` now includes these tests;
+`SAROO_MENU_WORD_SOURCE` selects a preserved baseline or mutation.
 
 ## MCU-FILE-002: capacity-aware menu and binary loading
 
