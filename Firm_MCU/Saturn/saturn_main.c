@@ -610,6 +610,37 @@ void cdc_dump(int status)
 /******************************************************************************/
 
 
+/* One file handle and completion path for the two shared-memory commands. */
+/* Keep the file object out of the persistent CD-task frame. */
+static __attribute__((noinline)) int ss_file_transfer(int writing)
+{
+    FIL fp;
+    int offset = *(u32 *)(TMPBUFF_ADDR + 0x00);
+    u32 size = *(u32 *)(TMPBUFF_ADDR + 0x04);
+    u32 baddr = *(u32 *)(TMPBUFF_ADDR + 0x08);
+    char *name = (char *)(TMPBUFF_ADDR + 0x10);
+    u8 *buffer = (u8 *)((baddr & 0x00ffffff) | 0x61000000);
+    int flags = writing ? ((offset == -1 ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS) | FA_WRITE) : FA_READ;
+    int retv = f_open(&fp, name, flags);
+    u32 count = 0;
+    if (retv == FR_OK) {
+        if (writing && offset < 0) offset = 0;
+        retv = f_lseek(&fp, offset);
+        /* FatFs may report a successful short seek when extension runs out of space. */
+        if (!retv && writing && f_tell(&fp) != (FSIZE_t)offset) retv = FR_INT_ERR;
+        if (!retv) {
+            if (!writing && size == 0) size = f_size(&fp);
+            retv = writing ? f_write(&fp, buffer, size, &count) : f_read(&fp, buffer, size, &count);
+        }
+        int closed = f_close(&fp);
+        if (!retv) retv = closed;
+        SSLOG(_INFO, writing ? "\nSSCMD_FILEWR: retv=%d wsize=%08x  %s\n" :
+                              "\nSSCMD_FILERD: retv=%d rsize=%08x  %s\n", retv, count, name);
+    }
+    *(u32 *)(TMPBUFF_ADDR + 0x04) = count;
+    return retv;
+}
+
 void ss_cmd_handle(void)
 {
 	int retv;
@@ -666,52 +697,11 @@ void ss_cmd_handle(void)
 		break;
 	}
 	case SSCMD_FILERD:
-	{
-		FIL fp;
-		int offset = *(u32*)(TMPBUFF_ADDR+0x00);
-		int size   = *(u32*)(TMPBUFF_ADDR+0x04);
-		int baddr  = *(u32*)(TMPBUFF_ADDR+0x08);
-		char *name = (char*)(TMPBUFF_ADDR+0x10);
-		int retv = f_open(&fp, name, FA_READ);
-		if(retv==FR_OK){
-			u32 rsize = 0;
-			f_lseek(&fp, offset);
-			if(size==0)
-				size = f_size(&fp);
-			u8 *rbuf = (u8*)((baddr&0x00ffffff)|0x61000000);
-			retv = f_read(&fp, rbuf, size, &rsize);
-			*(u32*)(TMPBUFF_ADDR+0x04) = rsize;
-			f_close(&fp);
-			SSLOG(_INFO, "\nSSCMD_FILERD: retv=%d rsize=%08x  %s\n", retv, rsize, name);
-		}
-		SS_ARG = -retv;
-		SS_CMD = 0;
-		break;
-	}
 	case SSCMD_FILEWR:
-	{
-		FIL fp;
-		int offset = *(u32*)(TMPBUFF_ADDR);
-		int size = *(u32*)(TMPBUFF_ADDR+0x04);
-		int baddr  = *(u32*)(TMPBUFF_ADDR+0x08);
-		char *name = (char*)(TMPBUFF_ADDR+0x10);
-		int flags = (offset==-1)? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS;
-		int retv = f_open(&fp, name, flags|FA_WRITE);
-		if(retv==FR_OK){
-			u32 wsize = 0;
-			u8 *wbuf = (u8*)((baddr&0x00ffffff)|0x61000000);
-			if(offset<0)
-				offset = 0;
-			f_lseek(&fp, offset);
-			retv = f_write(&fp, wbuf, size, &wsize);
-			*(u32*)(TMPBUFF_ADDR+0x04) = wsize;
-			f_close(&fp);
-			SSLOG(_INFO, "\nSSCMD_FILEWR: retv=%d wsize=%08x  %s\n", retv, wsize, name);
-		}
-		SS_ARG = -retv;
-		SS_CMD = 0;
-		break;
-	}
+        retv = ss_file_transfer(cmd == SSCMD_FILEWR);
+        SS_ARG = -retv;
+        SS_CMD = 0;
+        break;
 	case SSCMD_SSAVE:
 		// 保存当前SAVE
 		retv = flush_savefile();
