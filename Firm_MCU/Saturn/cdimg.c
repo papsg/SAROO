@@ -302,6 +302,7 @@ static int list_entries(int directories, int cid, int show)
     int result;
 
     /* Publish only complete scans; every live offset/name is rewritten. */
+    cover_reset();
     total_disc = 0;
     pbptr = 0x2800;
     *(u32*)IMGINFO_ADDR = 0;

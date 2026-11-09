@@ -60,3 +60,92 @@ image and font allocation sizes are unchanged. Direct `gif_timer` frame remains
 model DMA completion, not SCU byte lanes, bus timing, cache/VDP rasterization,
 physical hangs or game acceptance. The final wait has the same hardware-progress
 assumption as the existing per-row helper; no physical timeout policy is added.
+
+## MCU-COVER-001: bound catalog ownership and publish complete artwork
+
+The original allocator advances one cache pointer for each category without a
+limit. Twelve full 2,559-entry catalogs require 122,832 bytes, exceeding the
+64 KiB cache region and reaching the header table. Only the first 10,240 bytes
+are initialized. Invalid indices/categories are used before checks, and cached
+positions survive reordered or replaced catalogs. The cache now contains 2,559
+16-bit record numbers for **one current catalog**, using 5,118 bytes. Zero means
+unresolved; 1–2,048 identifies a header; `0xffff` is a completed absent lookup.
+The shared catalog producer invalidates it before every replacement attempt,
+including failed, empty and BIN scans. Rescans clear 5,118 bytes and revisiting a
+category performs fresh identity lookup. An unchanged, repeated selection still
+performs no preview or payload I/O. The surrounding 64 KiB reservation remains.
+
+The reader enables lookup only after opening and reading the complete 64 KiB
+header table. A failed close retains file ownership; an explicit `cover_init`
+can retry. It checks catalog/category/record bounds, fixed 12-byte serials,
+nonzero dimensions within the existing 512×240 staging allocation, and complete
+file extents beyond the header table. It reuses the existing checked `save_io`,
+including exact seek position and byte count. Normalized preview errors are
+retryable, rather than becoming cached absence. Failed payload reads publish a
+complete 128×128 blank; partial palette/pixels are never advertised as artwork.
+
+Before reusing shared frame/palette storage, the producer waits for both flags
+to clear. Ten one-tick delays bound the wait; exhaustion leaves pending data
+unchanged and a later call can retry. Completed pixel/palette/metadata stores
+precede a memory barrier and volatile ownership publication. This requires the
+preceding **SATURN-MENU-003** final-DMA completion fix. Initialization no longer
+clears 77,760 shared graphics bytes; blank publication clears 16,384 pixels
+instead of 24,576. No heap allocation or new runtime logger is added.
+
+The format, staging allocation and flag values are SAROO source contracts,
+not Sega-defined artwork requirements. FatFs R0.15's
+[`f_read`, Description](https://elm-chan.org/fsw/ff/doc/read.html) requires checking
+the returned byte count, [`f_lseek`, Description](https://elm-chan.org/fsw/ff/doc/lseek.html)
+documents clipped seeks and checking the resulting position, and
+[`f_close`, Description](https://elm-chan.org/fsw/ff/doc/close.html) invalidates an
+object after successful closure. These unpaginated primary references were read
+from the preserved local R0.15 snapshot. The current
+[`save_io` implementation](https://github.com/papsg/SAROO/blob/0812ccd/Firm_MCU/Saturn/saturn_utils.c#L522)
+implements those checks. The SCU ownership evidence is cited above; the ten-tick
+exit is a bounded local policy, not a manual-prescribed timeout.
+
+Original implementation/fixtures: **paps-g**, commit
+`681387bc9dae2d8f7c73c1943df8bec7a7c968dc` (2026-09-06). This public port applies
+source changes directly, retains the normalized disc-preview prerequisite and
+adds explicit empty/BIN/failed-BIN replacement controls. It omits the original
+new error print to keep runtime diagnostics outside the port. Related original
+requests are [issue #215](https://github.com/tpunix/SAROO/issues/215),
+[Bucanero's PR #321](https://github.com/tpunix/SAROO/pull/321) and
+[PR #332](https://github.com/tpunix/SAROO/pull/332). Their cached descriptions,
+comments and changes establish the tool's history; they do not establish that
+these defects explain a particular user's missing artwork. Their existing tool
+features are already in v0.8 and are not reimported or claimed as these fixes.
+
+Seven public methods / **55 scenarios** compile the actual catalog scanner,
+cache/reader, checked I/O, FatFs and corrected menu display. Independent complete
+palette/pixel oracles and guards cover valid dimensions, hot/forced reloads,
+12 maximum catalogs, same-count changes, failed/empty/BIN scans, malformed
+records/selections, incomplete initialization, exact/short/error/partial I/O,
+failed closure, latched disk errors and delayed/stalled consumers. On public
+`0812ccd`, **47 scenarios fail and eight valid controls pass**. All 55 pass under
+ASan/UBSan and O2. Removing catalog invalidation, ignoring payload errors,
+ignoring ownership, and restoring an unbounded serial comparison fails
+**7/6/3/1** targeted scenarios respectively.
+
+```sh
+make -C tests check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release python3 -m unittest discover -s tests -p test_mcu_save_cover.py -v
+```
+
+All **66** public MCU save/disc/catalog methods pass in the integrated sanitizer
+run (134.992 seconds). The complete original-project GNU MCU build has 166 vector entries and uses
+**59,812 load bytes** (4 fewer), **5,724 ITCM bytes free**, and **61,112 static
+DTCM bytes** (48 fewer), leaving a 69,960-byte address gap to the configured
+stack/heap boundary. Compiler direct frames are `load_cover` 304→320,
+`cover_init` 24→16, new `cover_reset` 8, and unchanged `list_entries` 176 /
+`ss_cmd_handle` 112 bytes. Frames exclude callees/interrupt nesting. The build is
+a linked GNU qualification artifact; it is not an MDK-equivalence or install
+claim. The preceding menu artifact remains unchanged.
+
+Tests model publication/completion, not physical memory ordering, RTOS timing,
+SCU bus lanes/cache behavior, VDP output or games. Normalized preview bytes are a
+fixture; actual disc parsing retains its separate regressions. Stalled requests
+need another caller attempt; latched file errors need explicit reinitialization.
+Concurrent catalog generations, live media replacement and GIF decoder bounds
+are separate. The later 16,384-record MCU capacity expansion is deliberately
+outside this series: firmware lookup remains limited to the first 2,048 records.

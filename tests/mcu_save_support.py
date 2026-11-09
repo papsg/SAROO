@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -112,7 +113,6 @@ class MCUSaveTest(unittest.TestCase):
             end = main.index(b'\n\t\t\tretv = get_sector', begin)
             active = main[begin:end]
             # Test-only preemption checkpoint after actual idle publication.
-            import re
             for name, code in (('pause-ack.inc', ack), ('pause-worker.inc', restart), ('pause-active-worker.inc', active)):
                 code = re.sub(rb'(cdb\.play_type\s*=\s*0;)', rb'\1 publication_checkpoint();', code)
                 (cls.target / name).write_bytes(code)
@@ -124,7 +124,7 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             (cls.target / 'sd-reset.inc').write_bytes(data[data.index(b'int sdio_reset(void)'):])
-        if cls.fixture == 'discovery':
+        if cls.fixture in ('discovery', 'cover'):
             harnesses += ['mcu_save_discovery.c', 'test_mcu_save_discovery.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
             helper = data.index(b'static int join_path(') if b'static int join_path(' in data else -1
@@ -145,6 +145,30 @@ class MCUSaveTest(unittest.TestCase):
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
             begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
             (cls.target / 'binary.inc').write_bytes(data[begin:end])
+        if cls.fixture == 'cover':
+            harnesses += ['mcu_save_cover.c', 'test_mcu_save_cover.py']
+            begin = module.index(b'u32 adler32(')
+            adler = module[begin:module.index(b'/******************************************************************************/', begin)]
+            code = module[module.index(b'static FIL cover_fp;'):]
+            # Keep the old 32-bit physical cache representation on a 64-bit host.
+            # This translation changes only addresses, not cache capacity/fields.
+            code = re.sub(rb'0x614([0-9a-fA-F]{5})',
+                          lambda m: b'(TEST_GFX_BASE + 0x' + m[1] + b')', code)
+            code = code.replace(b'return (int)hdr;',
+                                b'return (int)(0x614f0000 + (hdr - cover_buf));')
+            code = re.sub(rb'\((u16|int)\*\)\(chdr\+(0x[0-9a-f]+)\)',
+                          rb'(\1*)(TEST_GFX_BASE + (u32)chdr - 0x61400000 + \2)', code)
+            if b'void cover_reset(void)' not in code:
+                code += b'\nvoid cover_reset(void) {}\n'
+            helper = module[module.index(b'static int save_io('):module.index(b'int load_savefile(')]
+            (cls.target / 'cover.inc').write_bytes(adler + helper + code)
+            path = Path(os.environ.get('SAROO_COVER_MENU_SOURCE', ROOT / 'Firm_Saturn/main.c'))
+            data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
+            begin = data.index(b'static int last_w, last_h, last_f;')
+            code = data[begin:data.index(b'static void change_cover_layer(', begin)]
+            code = re.sub(rb'0x224([0-9a-fA-F]{5})',
+                          lambda m: b'(TEST_GFX_BASE + 0x' + m[1] + b')', code)
+            (cls.target / 'cover-display.inc').write_bytes(code)
         if cls.fixture in ('cue', 'header'):
             harnesses += ['mcu_save_cue.c', 'test_mcu_save_cue.py']
             if cls.fixture == 'header':
@@ -184,7 +208,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.binary = cls.target / cls.fixture
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        if cls.fixture in ('api', 'disc', 'discovery'):
+        if cls.fixture in ('api', 'disc', 'discovery', 'cover'):
             flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / ('mcu_save_'+cls.fixture+'.c')),

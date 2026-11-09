@@ -671,169 +671,118 @@ done:
 
 
 static FIL cover_fp;
-static int cover_inited = 0;
-static int *ip_cache_table[12];
-static int *ip_cache_ptr;
+/* 0: closed, 1: open but unavailable, 2: complete header table. */
+static int cover_inited;
+static int last_chdr;
+#define COVER_COUNT 2048
+#define COVER_SLOTS ((0x2800 - 4) / 4)
+static u16 * const ip_cache = (u16*)0x614e0000;
+static u8 * const cover_buf = (u8*)0x614f0000;
 
-static int find_cover(char *gid, int fsum)
+/* A cache entry belongs to one published catalog, including its ordering. */
+void cover_reset(void)
 {
-	u8 *cover_buf = (u8*)0x614f0000;
-	int i;
-
-	for(i=0; i<2048; i++){
-		u8 *hdr = cover_buf+i*32;
-		if(hdr[0]==0)
-			break;
-
-		if(strcmp((char*)hdr, gid))
-			continue;
-		if(*(u32*)(hdr+12)!=fsum)
-			continue;
-
-		return (int)hdr;
-	}
-
-	return -1;
+    memset(ip_cache, 0, COVER_SLOTS * sizeof(*ip_cache));
+    last_chdr = 0;
 }
 
+static int find_cover(char *gid, u32 fsum)
+{
+    if (strnlen(gid, 13) > 12) return 0xffff;
+    for (int i = 0; i < COVER_COUNT; i++) {
+        u8 *hdr = cover_buf + i * 32;
+        if (!hdr[0]) break;
+        if (!strncmp((char*)hdr, gid, 12) && *(u32*)(hdr + 12) == fsum)
+            return i + 1;
+    }
+    return 0xffff;
+}
 
-static int last_chdr;
-
-// 初始化COVER数据
 void cover_init(void)
 {
-	int i, retv;
-	u32 nread;
-
-	retv = f_open(&cover_fp, "/SAROO/cover.bin", FA_READ);
-	if(retv!=FR_OK){
-		// 打开cover.bin失败.
-		cover_inited = -1;
-		return;
-	}
-
-	// 读cover.bin的头部到0x6140f000处。
-	f_read(&cover_fp, (u8*)0x614f0000, 0x10000, &nread);
-
-	// ip_cache，存放游戏index到cover的映射.
-	ip_cache_ptr = (int*)(0x614e0000);
-	memset((u8*)0x614e0000, 0, 2560*4);
-	// 每个类别有一个指向ip_cache的指针.
-	for(i=0; i<12; i++){
-		ip_cache_table[i] = NULL;
-	}
-
-	memset((u8*)0x61400100, 0, 324*240);
-	cover_inited = 1;
-	last_chdr = -1;
+    cover_reset();
+    if (cover_inited && f_close(&cover_fp)) {
+        cover_inited = 1;
+        return;
+    }
+    cover_inited = 0;
+    if (f_open(&cover_fp, "/SAROO/cover.bin", FA_READ)) return;
+    cover_inited = 1;
+    if (!save_io(&cover_fp, 0, cover_buf, COVER_COUNT * 32, 0))
+        cover_inited = 2;
 }
-
 
 void load_cover(int index)
 {
-	int i, retv;
-	u32 nread;
-
-	if(index&0x8000){
-		last_chdr = -1;
-	}
-	index &= 0x7fff;
-
-	if(cover_inited<0){
-		// 无cover.bin
-		return;
-	}
-
-	// 取得当前类别的ip_cache指针.
-	int *ip_cache = ip_cache_table[category_current];
-	if(ip_cache==NULL){
-		// 初始化当前类别的指针
-		ip_cache_table[category_current] = ip_cache_ptr;
-		ip_cache = ip_cache_ptr;
-		ip_cache_ptr += total_disc;
-	}
-
-	// 获得cover头部指针
-	int chdr = ip_cache[index];
-	if(chdr==-1){
-		// 该游戏没有cover.
-		printk("  No Cover!\n");
-		goto _no_cover;
-	}else if(chdr==0){
-		// 第一次选择该游戏，建立cache
-		u8 ipbuf[256];
-		char gid[20];
-
-		retv = get_disc_ip(index, ipbuf);
-		if(retv<0){
-			printk("  get_disc_ip failed!\n");
-			ip_cache[index] = -1;
-			goto _no_cover;
-		}
-
-		u8 *ip = ipbuf;
-		if(strncmp((char*)ipbuf, "SEGA SEGASATURN ", 16)){
-			ip = ipbuf+0x10;
-		}
-
-		memcpy(gid, ip+0x20, 16);
-		gid[16] = 0;
-		char *p = strrchr(gid, 'V');
-		if(p)
-			*p = 0;
-		p = strchr(gid, ' ');
-		if(p)
-			*p = 0;
-
-		int fsum = adler32(ip+0x30, 64);
-		chdr = (int)find_cover(gid, fsum);
-		if(chdr<0){
-			printk("  No Cover Found! {%12s} {%08x}\n", gid, fsum);
-			ip_cache[index] = -1;
-			goto _no_cover;
-		}
-
-		ip_cache[index] = chdr;
-	}
-
-	if(chdr==last_chdr)
-		return;
-	last_chdr = chdr;
-
-	int w = *(u16*)(chdr+0x14);
-	int h = *(u16*)(chdr+0x16);
-	int offset = *(int*)(chdr+0x10);
-
-	f_lseek(&cover_fp, offset);
-	f_read(&cover_fp, (u8*)0x61400c00, w*h+0x0400, &nread);
-	memcpy((u8*)0x61400100, (u8*)0x61400c00, 0x0400);
-
-	*(u16*)(0x61400004) = w;
-	*(u16*)(0x61400006) = h;
-	*(u16*)(0x61400008) = 0;
-	*(u16*)(0x6140000a) = 0;
-	*(u16*)(0x6140000c) = 176;
-	*(u16*)(0x6140000e) = (h>128)? 24 : 88;
-	
-	*(u8*)0x61400000 = 3;
-	*(u8*)0x61400002 = 1;
-	return;
-
-_no_cover:
-	last_chdr = -1;
-	*(u16*)(0x61400004) = 128;
-	*(u16*)(0x61400006) = 128;
-	*(u16*)(0x61400008) = 0;
-	*(u16*)(0x6140000a) = 0;
-	*(u16*)(0x6140000c) = 176;
-	*(u16*)(0x6140000e) = 88;
-
-	memset((u8*)0x61401000, 0, 128*192);
-	*(u8*)0x61400000 = 4;
-
-	return;
+    int chdr = 0xffff, w = 128, h = 128, flag = 4;
+    if (index & 0x8000) last_chdr = 0;
+    if ((unsigned)index > 0xffff) goto unavailable;
+    index &= 0x7fff;
+    if (cover_inited != 2 || total_disc < 0 || total_disc > COVER_SLOTS ||
+        index >= total_disc || (unsigned)category_current >= 12 ||
+        (unsigned)category_current >= (unsigned)(category_num ? category_num : 1))
+        goto unavailable;
+    chdr = ip_cache[index];
+    if (!chdr) {
+        u8 ipbuf[256];
+        char gid[17];
+        /* Preview already returns a normalized user-data header. A transient
+         * read failure must remain retryable, not become a cached absence. */
+        if (get_disc_ip(index, ipbuf) < 0) goto unavailable;
+        if (memcmp(ipbuf, "SEGA SEGASATURN ", 16)) goto unavailable;
+        memcpy(gid, ipbuf + 0x20, 16);
+        gid[16] = 0;
+        char *p = strrchr(gid, 'V');
+        if (p) *p = 0;
+        p = strchr(gid, ' ');
+        if (p) *p = 0;
+        chdr = find_cover(gid, adler32(ipbuf + 0x30, 64));
+        ip_cache[index] = chdr;
+    }
+    if (chdr > COVER_COUNT) goto unavailable;
+    if (chdr == last_chdr) return;
+    u8 *hdr = cover_buf + (chdr - 1) * 32;
+    w = *(u16*)(hdr + 0x14);
+    h = *(u16*)(hdr + 0x16);
+    /* Fit the existing 512 by 240 display staging allocation. */
+    if (!w || w > 512 || !h || h > 240 || *(u32*)(hdr + 0x10) < COVER_COUNT * 32)
+        goto unavailable;
+    flag = 3;
+    goto display;
+unavailable:
+    chdr = 0xffff;
+    if (chdr == last_chdr) return;
+    w = h = 128;
+display:
+    /* The Saturn clears both flags after finishing its copies. Wait before
+     * reusing that storage, with a bounded exit if the consumer has stopped. */
+    for (unsigned tries = 10; *(volatile u8*)0x61400000 || *(volatile u8*)0x61400002; tries--) {
+        if (!tries) return;
+        osDelay(1);
+    }
+    if (flag == 3) {
+        u8 *hdr = cover_buf + (chdr - 1) * 32;
+        int result = save_io(&cover_fp, *(u32*)(hdr + 0x10), (u8*)0x61400c00, w * h + 0x400, 0);
+        if (result) {
+            chdr = 0xffff;
+            w = h = 128;
+            flag = 4;
+        } else {
+            memcpy((u8*)0x61400100, (u8*)0x61400c00, 0x400);
+        }
+    }
+    if (flag == 4) memset((u8*)0x61401000, 0, 128 * 128);
+    *(u16*)0x61400004 = w;
+    *(u16*)0x61400006 = h;
+    *(u16*)0x61400008 = 0;
+    *(u16*)0x6140000a = 0;
+    *(u16*)0x6140000c = 176;
+    *(u16*)0x6140000e = h > 128 ? 24 : 88;
+    last_chdr = chdr;
+    __DMB();
+    if (flag == 3) *(volatile u8*)0x61400002 = 1;
+    *(volatile u8*)0x61400000 = flag;
 }
 
 
 /******************************************************************************/
-

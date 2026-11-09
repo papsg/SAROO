@@ -35,6 +35,11 @@ static int sprintk(char *out,const char *format,...)
 #define malloc scan_alloc
 #define free scan_free
 #define memset scan_memset
+#ifdef SAROO_COVER_INTEGRATION
+void cover_reset(void);
+#else
+static void cover_reset(void) {}
+#endif
 #include "discovery.inc"
 #undef f_opendir
 #undef f_readdir
@@ -188,7 +193,10 @@ static void producer_consumer(void)
     reset_scan();assert(!list_bins(0) && !total_disc && !*(u32*)memory.image);
     assert(run_binary(0,1)==-1 && run_binary(1,1)==-1 && !binary_reads);guards();
 }
-int main(int argc,char **argv)
+#ifndef MCU_DISCOVERY_TEST_ENTRY
+#define MCU_DISCOVERY_TEST_ENTRY main
+#endif
+int MCU_DISCOVERY_TEST_ENTRY(int argc,char **argv)
 {
     assert(argc==4);const char *mode=argv[2];int value=atoi(argv[3]);
     disk=fopen(argv[1],"r+b");assert(disk);FATFS fs;assert(f_mount(&fs,"0:",1)==0);
