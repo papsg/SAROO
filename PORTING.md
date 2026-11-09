@@ -444,8 +444,29 @@ commits receive manual/secret/private-PII review; raw evidence stays ignored.
 | Candidate / original | Public checkpoint | Dependencies, verification and limits |
 | --- | --- | --- |
 | MCU-GIF-001; paps-g `3e62998c` | [dbafcd8](https://github.com/papsg/SAROO/commit/dbafcd8); [codex/gif-decoder-safety](https://github.com/papsg/SAROO/tree/codex/gif-decoder-safety) | Ten actual-C methods/130 cases pass sanitizers/O2; baseline126 failures and three preservation controls. Eight targeted mutations rejected; ImageIO matches39 independent first-frame RGB fixtures. Eleven coupled disc/save methods and integrated253 Python methods/14 Rust checks/C controls pass. Complete MCU/RTX/166-vector link: load59,796 (+112), ITCM margin5,740, static DTCM60,752 (-40), fixed scratch/dictionary20,480 (-8KiB), direct init/timer/exit112/24/8 unchanged, decode72→64. Complete menu bytes unchanged. Private integration/error logging omitted. [GIF/C/GCC/project citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/GIF-SAFETY-SCHEDULING.md#mcu-gif-001-bound-decoding-and-release-the-disc-workspace). Source bounds/ownership checks do not qualify hardware, pacing/audio, full GIF89a/compositing, exact issue345 or games. |
-| MCU-GIF-002; paps-g `f285ede8` | Queued | Reuse the existing low-priority startup task while preserving public main's UART shell. Keep one decoder owner and effective priorities/allocations. Exclude private USB reload/acknowledgment changes. |
+| MCU-GIF-002; paps-g `f285ede8` | [d38e06a](https://github.com/papsg/SAROO/commit/d38e06a); [codex/gif-background-scheduling](https://github.com/papsg/SAROO/tree/codex/gif-background-scheduling) | Requires dbafcd8. Six methods/six native invocations plus a caller check pass sanitizers/O2;80 pinned RTX dispatcher cases. Baseline fails three methods; UART editing/history, BOOT/no-GIF/timing and priority controls pass. Five mutations rejected. Preserve the original UART shell via a nonblocking zero-timeout idle probe; one low-priority owner, no new allocation, same effective priorities. BOOT editor tokens and startup/UART source are unchanged; linked shell has GIF/probe/yield, disk has no GIF call. Original remaining-pixel/sentinel simplifications retain decoder bounds. Complete MCU link load59,780 (-16), margin5,756; static DTCM60,752, fixed scratch20,480/direct frames unchanged. Pinned Arm test extraction retains Apache2.0/copyright and verified public provenance. [Requirements, attribution, costs and limits](https://github.com/papsg/SAROO/blob/main/doc/GIF-SAFETY-SCHEDULING.md#mcu-gif-002-service-animation-from-the-existing-low-priority-task). Up to45 extra idle wakeups/second; long UART commands can postpone GIF service. No private USB reload/acknowledgment or diagnostic code imported. |
 
-Decoder checkpoint and topic/main are pushed after verification/privacy review;
-scheduling and the final preservation/publication audit remain required. Local
-source/evidence identities are retained. Private repo and Saturn remain untouched.
+Both scoped IDs are complete as two verified direct source commits, pushed
+with their topic branches to main in oldest-first order. The final integrated
+suite passes259 Python methods,14 Rust checks and native C controls; all16 GIF
+methods also pass uninstrumented O2. Complete MCU/RTX/166-vector and menu build
+receipts match56/36 current project inputs. The menu remains byte-identical.
+Across this series MCU load adds96 bytes, static DTCM saves40 and the reserved
+scratch/dictionary footprint saves8 KiB. All resource and timing limits remain
+explicit; no hardware/pacing/audio/game/original-MDK qualification is claimed.
+
+Full proposed files/messages/metadata and actual committed contents pass manual,
+secret and private-PII review with zero findings. Only approved public handles,
+noreply identities, synthetic inputs and sanitized summaries are published;
+original notices and pinned Arm dependency licensing are retained. Ignored
+local evidence preserves baseline/control/mutation results, source identities,
+ImageIO limits, exact vendor extraction, builds/disassembly, BOOT-token checks,
+full-suite results and privacy reviews.
+
+Main is clean; default main, baseline ancestry and historical master are
+preserved. Private head/status/all refs/four stashes match the starting snapshot.
+Saturn, other work and installed firmware remain untouched. No USB, device/SSH/
+power/capture, new diagnostics, subagents or unrelated imports occurred. The
+fork tracker remains disabled with no open PRs or matching requests to close;
+original upstream requests remain unchanged. Issue345's exact assets and
+physical behavior are still unqualified, so no blanket closure is claimed.
