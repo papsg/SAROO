@@ -339,14 +339,14 @@ static void maximum_directory(void)
     reload_model(); loads_header = loads_window = 0;
     BUPSTAT stat; assert(sro_bup_stat(1, 1, &stat) == 0);
     assert(stat.data_num == 0 && stat.free_block == 8056 - 448);
-    assert(loads_header <= 448 && loads_window == 0);
-    int stat_loads = loads_header;
+    assert(loads_header == 0 && loads_window == 7);
+    int stat_loads = loads_header + loads_window;
     reload_model(); loads_header = loads_window = 0;
     char name[12] = "ALL00000000"; u8 out;
     assert(sro_bup_read(1, name, &out) == 0);
-    assert(loads_header <= 449 && loads_window == 0);
-    printf("validation MCU header loads: stat=%d read=%d; data-window loads=%d\n",
-           stat_loads, loads_header, loads_window);
+    assert(loads_header == 1 && loads_window == 7);
+    printf("validation MCU requests: stat=%d read=%d; header-window loads=%d\n",
+           stat_loads, loads_header + loads_window, loads_window);
     BUPDIR dir = directory("NEW00000001", 1);
     int writes = flushes;
     assert(sro_bup_write(1, &dir, &out, 0) == BUP_NOT_ENOUGH_MEMORY);

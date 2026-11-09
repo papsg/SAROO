@@ -28,7 +28,7 @@ class FirmwareValidationTests(FirmwareSaveTest):
                 with self.subTest(dev=dev, reason=reason): self.invoke('stale', dev, reason)
             with self.subTest(dev=dev, reason='full'): self.invoke('full', dev)
         output = self.invoke('maximum', 1)
-        self.assertIn('stat=448 read=449; data-window loads=0', output)
+        self.assertIn('stat=7 read=8; header-window loads=7', output)
 
     def test_status_capacity_honors_payload_and_directory_limits(self):
         for dev in (0, 1):

@@ -266,3 +266,82 @@ command is issued by this change, and the read-after-write case issues none.
 These are synchronous host logic and target-link checks, with the physical,
 concurrency and durability limits stated above. Use the same public firmware
 test/build commands and source/profile overrides to reproduce them.
+
+## SATURN-SAVE-005: batch full runs of validation headers
+
+The uncached ownership check can reduce command exchanges without reading extra
+header bytes. When the payload window is unused, it orders live MEMS directory
+indices by physical header block in existing resize scratch. Already ordered
+indices need a linear check; a bounded heap sort handles other orders. Only
+complete runs of 64 consecutive headers use the existing 64 KiB loader. Shorter
+runs retain one-KiB header loads. Directory storage/output order is unchanged,
+and every loaded header receives the same layout/ownership validation.
+
+A populated payload cache keeps the single-header path, avoiding a later extra
+64 KiB payload read. An unused window with unexpected dirty bits is refused.
+Batch requests leave Saturn payload indices invalid: a later payload access
+must reload both sides' window state before modifying bytes. A reported failed
+batch load is rejected even if the buffer already contains valid old headers.
+No validation result is cached across API calls; existing per-header/payload
+cache coherence assumptions remain.
+
+This separately ports the header-batching portion of `paps-g`'s `a9ddfcc6`
+(2026-09-05), after the successful-flush dirty-state prerequisite. The original
+[`load_smems` file/window contract](https://github.com/papsg/SAROO/blob/0c76466/Firm_MCU/Saturn/saturn_utils.c)
+supplies the loader and overlap behavior. FatFs
+[`f_open`, Description: duplicate opens involving write access](https://elm-chan.org/fsw/ff/doc/open.html)
+prohibits another open handle for the existing writable `sm_fp` file. Therefore
+batching reuses its loader rather than issuing a generic file-read command.
+These private cache/command rules are not Sega register requirements. Original
+notices remain, with no MCU/protocol change or second file handle.
+
+Thirteen before/after cold-status profiles check identical header-byte traffic.
+Representative measured model counts are:
+
+| Header layout | Saves | Before commands | After commands | Header bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Consecutive | 63 | 63 | 63 | 64,512 |
+| Consecutive | 64 | 64 | 1 | 65,536 |
+| Consecutive | 65 | 65 | 2 | 66,560 |
+| Consecutive | 127 | 127 | 64 | 130,048 |
+| Consecutive | 447 | 447 | 69 | 457,728 |
+| Consecutive | 448 | 448 | 7 | 458,752 |
+| Sparse | 448 | 448 | 448 | 458,752 |
+| Reversed/permuted directory, consecutive blocks | 448 | 448 | 7 | 458,752 |
+
+In the zero-size full-directory fixture, a cold read uses eight commands instead
+of 449, with the same 459,776 header bytes. A full warm-cache status control still uses 448 header commands
+and zero window loads, preserving all 64 KiB of the live payload cache. Sorting
+adds bounded CPU work; sparse/warm worst cases remain material latency limits.
+These are model command/byte counts, not Saturn timing or game responsiveness.
+
+Seven actual-module methods run 57 scenarios: ordered/unordered/high/short/full
+ranges, sparse layouts, live cache and unexpected dirty state, all six mutation
+forms after batching, three reported-load errors, four later-request metadata
+changes, and eight corruption cases within batches. The latter include complete
+stored-name mismatches after a NUL at both ends of a batch. An added full-directory
+control grows a save, preserves its live payload window through validation and
+reads it without another payload-window load. Corruption and load errors leave
+caller status output untouched; valid mutations preserve neighbors after reload.
+
+The preceding source fails 35 cases in the initial 54-scenario matrix; the later
+two identity and one full warm-cache controls supplement that reproduction.
+All 57 scenarios pass ASan/UBSan and O2, together with all twenty coupled firmware
+methods. Omitting only the load-status guard fails three cases; omitting only
+payload-cache protection fails one; skipping batch validation fails twelve
+metadata/corruption cases. Valid preseeded buffers make the load-error controls
+independent of accidental invalid stale bytes.
+
+Complete SH-2 compilation adds 624 code/data bytes to 77,872, with unchanged
+9,216 BSS, 16,384 stack reserve and image/font sizes; body margin is 27,600.
+There is no new persistent allocation or whole-archive buffer. Compiler direct
+frames include eight bytes for the heap helper and 48 for the archive check
+(previously 28); write remains 104. Those figures exclude callees/IRQs and do
+not qualify game stack headroom. Existing target warnings remain unrelated.
+Use the same public tests/build command above; the standalone batching fixture's
+`profile` mode prints command/byte counts without enforcing the new threshold.
+
+The MCU still needs checked I/O and the public APIs need full pending/error/retry
+ownership. A short transfer falsely acknowledged as success is not detected by
+the new status guard. These host/model/target-link checks do not establish
+physical cache/IRQ/bus behavior, SD durability, power-loss atomicity or games.

@@ -414,9 +414,8 @@ static int claim_block(int block)
     return 0;
 }
 
-static int validate_save_blocks(int header, u8 *entry)
+static int validate_save_layout(u8 *bp, u8 *entry)
 {
-    u8 *bp = get_block_addr(START_BLOCK | header);
     u32 size = *(u32 *)(bp + 12);
     int count = 0, expected, i, block;
     if (!bp[0] || size > (bup_dev ? 479u * 1024 : 510u * 128) ||
@@ -440,6 +439,102 @@ static int validate_save_blocks(int header, u8 *entry)
     if (count != expected ||
         (bup_dev && *(u16 *)(bp + 64 + expected * 2) != 0))
         return BUP_BROKEN;
+    return 0;
+}
+
+static u8 *mems_entry(int index)
+{
+    return (u8 *)MEMS_HEADER + 1024 + index * 16;
+}
+
+static int mems_entry_block(int index)
+{
+    return *(u16 *)(mems_entry(index) + 14);
+}
+
+/* Sort directory indices in existing allocation scratch. A heap bounds the
+ * unordered case; already ordered directories need only a linear check. */
+static void sift_headers(int root, int count)
+{
+    u16 value = resize_blocks[root];
+    int block = mems_entry_block(value);
+    while (root * 2 + 1 < count) {
+        int child = root * 2 + 1;
+        if (child + 1 < count &&
+            mems_entry_block(resize_blocks[child]) < mems_entry_block(resize_blocks[child + 1]))
+            child++;
+        if (block >= mems_entry_block(resize_blocks[child]))
+            break;
+        resize_blocks[root] = resize_blocks[child];
+        root = child;
+    }
+    resize_blocks[root] = value;
+}
+
+static void sort_headers(int count)
+{
+    int i;
+    for (i = 1; i < count; i++)
+        if (mems_entry_block(resize_blocks[i - 1]) > mems_entry_block(resize_blocks[i]))
+            break;
+    if (i == count || count < 2)
+        return;
+    for (i = count / 2; i > 0; i--)
+        sift_headers(i - 1, count);
+    for (i = count - 1; i > 0; i--) {
+        u16 value = resize_blocks[0];
+        resize_blocks[0] = resize_blocks[i];
+        resize_blocks[i] = value;
+        sift_headers(0, i);
+    }
+}
+
+static int validate_mems_headers(void)
+{
+    int i = 0;
+    /* Preserve a live payload cache. Evicting it to batch a few headers could
+     * add a later 64 KiB data read, outweighing the saved command exchanges. */
+    if (mblk_start || mblk_end || checked_saves < 64) {
+        for (i = 0; i < checked_saves; i++) {
+            int block = mems_entry_block(resize_blocks[i]);
+            if (validate_save_layout(get_block_addr(START_BLOCK | block),
+                                     mems_entry(resize_blocks[i])))
+                return BUP_BROKEN;
+        }
+        return 0;
+    }
+    sort_headers(checked_saves);
+    while (i < checked_saves) {
+        int first = mems_entry_block(resize_blocks[i]);
+        int count = 1;
+        while (count < 64 && i + count < checked_saves &&
+               mems_entry_block(resize_blocks[i + count]) == first + count)
+            count++;
+        if (count < 64) {
+            for (int j = 0; j < count; j++) {
+                if (validate_save_layout(get_block_addr(START_BLOCK | (first + j)),
+                                         mems_entry(resize_blocks[i + j])))
+                    return BUP_BROKEN;
+            }
+        } else {
+            /* Use the existing 64-block loader only for a full run: no extra
+             * header bytes and no second file handle. Never discard unexpected
+             * dirty data. Keep the Saturn payload window invalid so subsequent
+             * payload access reloads both sides' indices before any writes. */
+            if (mblk_bmp[0] || mblk_bmp[1])
+                return BUP_BROKEN;
+            mblk_start = mblk_end = 0;
+            mems_load(first);
+            if (SS_ARG != 0)
+                return BUP_BROKEN;
+            for (int j = 0; j < count; j++) {
+                u8 *bp = (u8 *)MEMS_BUFFER + j * 1024;
+                if (validate_save_layout(bp, mems_entry(resize_blocks[i + j])))
+                    return BUP_BROKEN;
+            }
+        }
+        i += count;
+    }
     return 0;
 }
 
@@ -479,7 +574,7 @@ static int check_backup(int dev)
         }
         block = BUPMEM->first_save;
         while (block) {
-            if (validate_save_blocks(block, NULL))
+            if (validate_save_layout(get_block_addr(START_BLOCK | block), NULL))
                 return BUP_BROKEN;
             entry = get_block_addr(block);
             block = *(u16 *)(entry + 62);
@@ -490,14 +585,11 @@ static int check_backup(int dev)
             if (entry[0]) {
                 if (claim_block(*(u16 *)(entry + 14)))
                     return BUP_BROKEN;
-                checked_saves++;
+                resize_blocks[checked_saves++] = i;
             }
         }
-        for (i = 0; i < 448; i++) {
-            entry = (u8 *)MEMS_HEADER + 1024 + i * 16;
-            if (entry[0] && validate_save_blocks(*(u16 *)(entry + 14), entry))
-                return BUP_BROKEN;
-        }
+        if (validate_mems_headers())
+            return BUP_BROKEN;
     }
     /* Extra allocated blocks remain reserved. Recount rather than trusting the
      * persisted free count; publish a corrected count only during a mutation. */
