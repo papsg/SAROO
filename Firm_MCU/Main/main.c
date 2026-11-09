@@ -137,7 +137,7 @@ void    *osRtxMemoryAlloc(void *mem, uint32_t size, uint32_t type);
 uint32_t osRtxMemoryFree (void *mem, void *block);
 
 
-void *malloc(uint32_t size)
+void *malloc(size_t size)
 {
 	void *p = osRtxMemoryAlloc(osRtxInfo.mem.common, size, 0);
 	//printk("malloc: %08x  %d\n", p, size);

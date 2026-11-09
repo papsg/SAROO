@@ -5,6 +5,7 @@
 #include <stm32h7xx.h>
 #include <cmsis_os2.h>
 #include <string.h>
+#include <stddef.h>
 
 /******************************************************************************/
 
@@ -27,7 +28,7 @@ typedef long long s64;
 
 u32 get_build_date(void);
 
-void *malloc(uint32_t size);
+void *malloc(size_t size);
 void free(void *p);
 void memcpy32(void *dst, void *src, int len);
 int mem_test(u32 addr, int size);

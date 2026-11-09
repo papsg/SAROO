@@ -345,3 +345,32 @@ The MCU still needs checked I/O and the public APIs need full pending/error/retr
 ownership. A short transfer falsely acknowledged as success is not detected by
 the new status guard. These host/model/target-link checks do not establish
 physical cache/IRQ/bus behavior, SD durability, power-loss atomicity or games.
+
+## GNU MCU build prerequisite: malloc size type
+
+The public MCU source declares/defines `malloc(uint32_t)` while including the C
+library from other units. Under the complete Arm GNU 14.3.Rel1/newlib toolchain,
+`uint32_t` is `unsigned long` and `size_t` is `unsigned int`. Both are 32 bits,
+but their C function types conflict: the unchanged `Saturn/cdimg.c` fails to
+compile when `<stdlib.h>` meets that declaration. A compiler-only Homebrew
+installation first failed earlier for missing newlib; that setup failure is
+not counted as the source defect.
+
+The declaration and definition now use `size_t`, with an explicit `<stddef.h>`
+include. The allocator body, RTOS pool and ownership policy are unchanged.
+[C11 N1570 §7.22.3.4 paragraph 1, printed p. 349](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+specifies the prototype. This is a GNU build portability prerequisite, not a
+claim that the original MDK typedefs were incompatible or a Sega register fix.
+The source contract is the original public
+[`inc/main.h`](https://github.com/papsg/SAROO/blob/a62eb2c/Firm_MCU/inc/main.h)
+and [`Main/main.c`](https://github.com/papsg/SAROO/blob/a62eb2c/Firm_MCU/Main/main.c).
+The same size-type adaptation was present in `paps-g`'s original GNU integration;
+only this necessary declaration correction is ported here.
+
+The full GNU App compile/link check succeeds after correction, including all
+nineteen project C units, the configured RTE provider, RTX and tick/assembly
+providers. The allocator's complete 20-byte `.text.malloc` section is identical
+before/after under the same GCC, with a zero direct frame; debug type records
+are not claimed identical. No buffer, command or diagnostic is added.
+The original MDK project remains available; this check is not an MDK image,
+physical allocator/reentrancy, peak stack or game qualification.
