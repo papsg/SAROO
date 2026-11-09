@@ -3,7 +3,8 @@
 #include "mcu_save_startup.c"
 #undef main
 
-static struct { struct { FIL *fp; int sector_size; } tracks[1]; } cdb;
+typedef struct { FIL *fp; int sector_size; u32 file_offset; u8 mode; } TRACK_INFO;
+static struct { TRACK_INFO tracks[1]; } cdb;
 #define f_read checked_read
 #include "game-id.inc"
 #undef f_read
@@ -274,6 +275,7 @@ static void disc_id_case(int sector_size)
     memcpy(header+offset,key_a,16);
     raw_write(&ss_fp,65536,header,256);
     cdb.tracks[0].fp = &ss_fp; cdb.tracks[0].sector_size = sector_size;
+    cdb.tracks[0].file_offset = 65536; cdb.tracks[0].mode = 1;
     assert(f_lseek(&ss_fp,65536) == 0);
     char id[17]; memset(id,0xcc,17);
     require_lock = 0; armed = 1;

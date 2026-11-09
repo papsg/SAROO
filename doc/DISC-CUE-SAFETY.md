@@ -471,3 +471,87 @@ BSS/data/span, address gap and the 56-byte direct seek frame stay unchanged.
 Menu sources stay unchanged. Public commands are the same as above. No physical
 seek latency or end-to-end throughput improvement is inferred from code size,
 host runtimes, synthetic media or instruction inspection.
+
+## MCU-DISC-003: read the declared track's complete user header
+
+The old ID getter reads from the file's current cursor and assumes every
+non-2048 sector has a 16-byte prefix. CUE preview returns the first FILE's
+prefix before interpreting its TRACK/INDEX. A stored pregap, displaced cursor
+or XA framing can therefore select incorrect header/ID bytes. ISO preview
+also accepts short reads and ignores close failures; its positive allocation/
+open errors conflict with the cover caller's negative-error convention.
+
+A shared reader now seeks to the declared track byte offset plus its framing
+prefix, checks the resulting cursor and requires exactly 256 user bytes. It
+skips a seek when already positioned correctly. The getter copies the 16-byte
+ID at user-header offset `0x20` only after success; all 17 output bytes remain
+unchanged on an error. Failed full-load header reads unload the candidate and
+do not select its save session.
+
+| Retained CUE preset | Prefix before user bytes |
+| --- | ---: |
+| MODE1/2048 | 0 |
+| MODE1/2352 | 16 |
+| MODE2/2048, MODE2/2324 | 0 |
+| MODE2/2336 | 8 |
+| MODE2/2352 | 24 |
+
+The Mode1 layout follows [ECMA-130, second edition, §14.1–14.2,
+printed page 15](https://www.ecma-international.org/wp-content/uploads/ECMA-130_2nd_edition_june_1996.pdf).
+The XA layouts follow [ECMA-168, second edition, Annex C.2.1,
+Figures C.1–C.2, printed pages 113–114](https://www.ecma-international.org/wp-content/uploads/ECMA-168_2nd_edition_december_1994.pdf):
+12 sync + 4 header + 8 subheader bytes precede XA user data. Both local primary
+copies were inspected, including the XA figure pages. These describe sector
+layouts; the retained CUE preset meanings follow SAROO's existing parser.
+Plain non-XA Mode2 is not automatically detected.
+
+Preview waits for the first valid INDEX 01 and uses stack-local track metadata
+and the separate existing `track_fp[99]` reader. It does not publish track/index
+state. A union reuses the already-closed CUE reader's storage for that metadata.
+Both CUE/ISO preview check complete I/O, close their owned handles and return
+negative errors. Callers must discard the preview buffer on error: it is not a
+transactional output buffer. These checks follow inspected FatFs
+[`f_lseek`, Description](https://elm-chan.org/fsw/ff/doc/lseek.html) and
+[`f_read`, Description](https://elm-chan.org/fsw/ff/doc/read.html): a successful
+seek can be clipped and a successful read can reach EOF with a short count.
+The cover caller and first-track ID convention are
+[existing source contracts](https://github.com/papsg/SAROO/blob/ace316a/Firm_MCU/Saturn/saturn_utils.c).
+
+This port credits `paps-g`'s `cb3abf06` implementation and original fixtures.
+It separates the reader-pause change and adapts the tests to public FatFs's
+**64-bit** `FSIZE_t`. Its final-complete-sector control follows `paps-g`'s
+later `8a98f5f6` verification refinement, without importing the later media
+classifier or its FAT32-only configuration. Offset addition is wide in this
+public configuration. Valid CUE offsets additionally come from a complete
+indexed sector within the checked 32-bit reader extent. This is not a general
+corrupted-metadata validator or a filesystem-width change.
+
+Six actual parser/TOC/loader/FatFs methods cover **67 scenarios**; the preceding
+source fails **46**, including the added final-sector control. ASan/UBSan and O2
+pass. Tests compare all 256 preview bytes for each retained preset with/without
+INDEX displacement and exercise short/failed/partial reads, seek failure/
+clipping, corrupt/beyond-EOF offsets, allocation/open/close errors, unchanged
+live state and candidate cleanup. Twelve isolated regressions are detected.
+All **55 coupled MCU methods / 665 cases** pass both profiles. The initial
+complete runs retained one obsolete positive-preview-allocation expectation;
+those failures are preserved and excluded. Corrected complete runs pass.
+Runtime fixtures now supply the actual track-offset fields and helper source;
+discovery-only extraction stops at the path helper rather than including
+unrelated header code. Faults/scheduling/registers remain test-only.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_save_header.py -v
+make -C tests check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-save
+```
+
+The complete GNU App/RTX/166-vector build adds **96 load bytes**, reaching
+**59,672** with **5,864 ITCM free**. Static RAM/address gap remain unchanged.
+Direct CUE frame falls 160→152; shared read/track helper frames are 32/16,
+getter stays 24, loader/preview stay 312/280. These are individual compiler
+frames, not transitive/IRQ peaks. Menu sources remain unchanged.
+
+First-track selection remains unchanged. No later-data-track search, Sega
+signature authentication, fingerprint, save migration, mixed-width CUE geometry,
+generated gap support or media-corruption repair is claimed. Physical SD/
+reader concurrency, endian/cache, RTOS/audio timing and games remain unqualified.

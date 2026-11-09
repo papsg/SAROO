@@ -61,6 +61,8 @@ class MCUSaveTest(unittest.TestCase):
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
             begin = disc.index(b'int get_gameid(')
             selected = disc[begin:disc.index(b'\n}', begin)+2]
+            if b'static int read_ip(' in disc:
+                selected = disc[disc.index(b'static int read_ip('):begin] + selected
             (cls.target / 'game-id.inc').write_bytes(selected.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             call = disc.index(b'load_savefile(gameid);')
             (cls.target / 'disc-finish.inc').write_bytes(
@@ -104,7 +106,8 @@ class MCUSaveTest(unittest.TestCase):
         if cls.fixture == 'discovery':
             harnesses += ['mcu_save_discovery.c', 'test_mcu_save_discovery.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
-            helpers = data[data.index(b'static int join_path('):data.index(b'int get_gameid(')] if b'static int join_path(' in data else b''
+            helper = data.index(b'static int join_path(') if b'static int join_path(' in data else -1
+            helpers = data[helper:data.index(b'\n}', helper)+2] if helper >= 0 else b''
             close = data.index(b'static int close_tracks(int count)\n{') if b'static int close_tracks(int count)\n{' in data else data.index(b'int unload_disc(')
             catalog = data[data.index(b'int category_current'):close]
             scanner = data[data.index(b'int find_cue_iso('):data.index(b'int load_disc(')]
@@ -121,8 +124,10 @@ class MCUSaveTest(unittest.TestCase):
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
             begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
             (cls.target / 'binary.inc').write_bytes(data[begin:end])
-        if cls.fixture == 'cue':
+        if cls.fixture in ('cue', 'header'):
             harnesses += ['mcu_save_cue.c', 'test_mcu_save_cue.py']
+            if cls.fixture == 'header':
+                harnesses += ['mcu_save_header.c', 'test_mcu_save_header.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
             begin = data.index(b'static int join_path(')
             code = data[begin:data.index(b'int category_current')]
@@ -134,6 +139,7 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'cue.inc').write_bytes(code)
             begin = data.index(b'static int game_dir(')
             (cls.target / 'load.inc').write_bytes(data[begin:data.index(b'int get_disc_ip(', begin)])
+            (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])
             begin = main.index(b'u32 bswap32('); end = main.index(b'u32 track_to_fad(', begin)
             (cls.target / 'toc.inc').write_bytes(main[begin:end])
             begin = module.index(b'char *get_token('); end = module.index(b'static int sscfg_p', begin)

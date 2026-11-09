@@ -162,7 +162,7 @@ int main(int argc,char **argv)
         int preview=!strncmp(mode,"preview-",8);u8 ip[256];
         alloc_error=strstr(mode,"allocation")!=NULL;
         int result=preview?get_disc_ip(value,ip):select_disc(value,1);
-        assert(result==(alloc_error?FR_NOT_ENOUGH_CORE:-1));
+        assert(result==(alloc_error?(preview?-FR_NOT_ENOUGH_CORE:FR_NOT_ENOUGH_CORE):-1));
         assert(!discoveries && !api_reads && !api_writes && ss_index==1);
     }
     assert(!lock_depth);printf("disc %s value=%d reads=%u writes=%u identifies=%d\n",mode,value,api_reads,api_writes,identifies);

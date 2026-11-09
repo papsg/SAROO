@@ -28,26 +28,30 @@ static int join_path(char *out, unsigned capacity, const char *parent, const cha
     return 0;
 }
 
+/* All callers receive 256 user-data bytes, independent of sector framing. */
+static int read_ip(FIL *fp, FSIZE_t offset, u8 *out)
+{
+    u32 nread;
+    if (f_tell(fp) != offset &&
+        (f_lseek(fp, offset) || f_tell(fp) != offset)) return -1;
+    if (f_read(fp, out, 256, &nread) || nread != 256) return -1;
+    return 0;
+}
+
+static int read_track_ip(TRACK_INFO *tk, u8 *out)
+{
+    unsigned prefix = tk->sector_size == 2352 ? (tk->mode == 2 ? 24 : 16) :
+                      tk->sector_size == 2336 ? 8 : 0;
+    return read_ip(tk->fp, (FSIZE_t)tk->file_offset + prefix, out);
+}
+
 int get_gameid(char *gameid)
 {
-	FIL *fp = cdb.tracks[0].fp;
-	u8 *fbuf = (u8*)0x24002000;
-	int retv, i;
-	u32 nread;
-
-	retv = f_read(fp, fbuf, 256, &nread);
-	if(retv || nread != 256)
-		return -1;
-
-	if(cdb.tracks[0].sector_size==2048){
-		i = 0x20;
-	}else{
-		i = 0x30;
-	}
-	memcpy(gameid, fbuf+i, 16);
-	gameid[16] = 0;
-
-	return 0;
+    u8 *ip = (u8*)0x24002000;
+    if (read_track_ip(&cdb.tracks[0], ip)) return -1;
+    memcpy(gameid, ip + 0x20, 16);
+    gameid[16] = 0;
+    return 0;
 }
 
 
@@ -156,7 +160,8 @@ static int cue_finish(TRACK_INFO *tk)
 
 int parse_cue(char *fname, u8 *ipbuf)
 {
-    FIL fp;
+    /* The CUE reader closes before this storage holds preview metadata. */
+    union { FIL cue; TRACK_INFO preview; } local;
     u8 *fbuf = (u8*)0x2400b000;
     char *dir_name = (char*)0x2400a000;
     char *full_path = (char*)0x2400a200;
@@ -170,11 +175,11 @@ int parse_cue(char *fname, u8 *ipbuf)
     char *slash = strrchr(dir_name, '/');
     if (slash) *slash = 0;
     else strcpy(dir_name, ".");
-    retv = f_open(&fp, fname, FA_READ);
+    retv = f_open(&local.cue, fname, FA_READ);
     if (retv) return -retv;
-    FSIZE_t bytes = f_size(&fp);
-    retv = bytes && bytes < CUE_BYTES ? f_read(&fp, fbuf, bytes, &nread) : FR_INVALID_OBJECT;
-    int closed = f_close(&fp);
+    FSIZE_t bytes = f_size(&local.cue);
+    retv = bytes && bytes < CUE_BYTES ? f_read(&local.cue, fbuf, bytes, &nread) : FR_INVALID_OBJECT;
+    int closed = f_close(&local.cue);
     if (retv || closed || nread != bytes) return -1;
     fbuf[nread] = 0;
     if (memchr(fbuf, 0, nread)) return -1;
@@ -190,14 +195,6 @@ int parse_cue(char *fname, u8 *ipbuf)
             char *file = cue_token(&line), *type = cue_token(&line);
             if ((full_path[0] && !tk_fp) || !file || !*file || !type || strcmp(type, "BINARY") ||
                 join_path(full_path, 512, dir_name, file)) goto failed;
-            if (ipbuf) {
-                tk_fp = &track_fp[99];
-                retv = f_open(tk_fp, full_path, FA_READ);
-                if (retv) return -retv;
-                retv = f_read(tk_fp, ipbuf, 256, &nread);
-                closed = f_close(tk_fp);
-                return retv || closed || nread != 256 ? -1 : 0;
-            }
             if (tk_fp) {
                 if (cue_finish(tk)) goto failed;
                 fad_offset = tk->fad_end + 1;
@@ -220,11 +217,12 @@ int parse_cue(char *fname, u8 *ipbuf)
                 if (size != 2048 && size != 2352 && !(kind == 2 && (size == 2336 || size == 2324))) goto failed;
             }
             if (!tk_fp) {
-                tk_fp = &track_fp[count];
+                tk_fp = &track_fp[ipbuf ? 99 : count];
                 int opened = f_open(tk_fp, full_path, FA_READ);
                 if (opened) { retv = -opened; goto failed; }
             }
-            tk = &cdb.tracks[count++];
+            tk = ipbuf ? &local.preview : &cdb.tracks[count];
+            count++;
             memset(tk, 0, sizeof(*tk));
             tk->fp = tk_fp;
             tk->sector_size = size;
@@ -249,10 +247,15 @@ int parse_cue(char *fname, u8 *ipbuf)
                 tk->fad_start = fad;
                 if (!tk->fad_0) tk->fad_0 = fad;
                 tk->file_offset = relative * tk->sector_size;
-                tk->index = &index_table[current_index];
+                tk->index = ipbuf ? NULL : &index_table[current_index];
                 tk->max_index = 1;
                 tk->ctrl_addr = tk->mode == 3 ? 0x01 : 0x41;
                 if (cue_finish(tk)) goto failed;
+                if (ipbuf) {
+                    retv = read_track_ip(tk, ipbuf);
+                    closed = f_close(tk_fp);
+                    return retv || closed ? -1 : 0;
+                }
             } else {
                 if (index != tk->max_index + 1 || !tk->max_index ||
                     current_index == 2048 || fad <= cue_last_index(tk) || fad > tk->fad_end) goto failed;
@@ -269,7 +272,7 @@ failed:
     if (!ipbuf) {
         close_tracks(count);
         current_index = 0;
-    }
+    } else if (count && tk_fp) f_close(tk_fp);
     return retv;
 }
 
@@ -483,6 +486,7 @@ int load_disc(int index, int start_save)
 		char gameid[20];
 		retv = get_gameid(gameid);
 		if(retv){
+			unload_disc();
 			goto _exit;
 		}
 		
@@ -561,7 +565,7 @@ int get_disc_ip(int index, u8 *ipbuf)
     if (game_dir(index, cat_dir)) return -1;
 
 	fname = malloc(256);
-    if (!fname) return FR_NOT_ENOUGH_CORE;
+    if (!fname) return -FR_NOT_ENOUGH_CORE;
 	retv = find_cue_iso(cat_dir, fname);
 	if(retv<=0){
 		if(retv==0)
@@ -572,12 +576,11 @@ int get_disc_ip(int index, u8 *ipbuf)
 	}else{
 		FIL *fp = &track_fp[99];
 		retv = f_open(fp, fname, FA_READ);
-		if(retv)
-			goto _exit;
+		if(retv){ retv = -retv; goto _exit; }
 
-		u32 nread;
-		retv = f_read(fp, ipbuf, 256, &nread);
-		f_close(fp);
+		retv = read_ip(fp, 0, ipbuf);
+		int closed = f_close(fp);
+		if (closed) retv = -closed;
 	}
 
 _exit:

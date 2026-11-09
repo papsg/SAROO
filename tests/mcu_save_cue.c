@@ -31,7 +31,8 @@ static struct {
 static int sector_delay;
 static void set_status(u8 status) { assert(cdb.status==status); }
 static FIL *handles[103];
-static unsigned handles_count,opens,reads,closes;
+static unsigned handles_count,opens,reads,closes,seeks,allocations,frees;
+static int inject_seek,clip_seek,fail_alloc;
 static int inject_open,inject_read,inject_close,short_read,partial_error;
 static FSIZE_t virtual_raw_size;
 static FSIZE_t virtual_track_size;
@@ -58,6 +59,15 @@ static FRESULT cue_read(FIL *fp,void *out,UINT size,UINT *count)
     if(short_read==(int)reads)size--;
     return f_read(fp,out,size,count);
 }
+static FRESULT cue_seek(FIL *fp,FSIZE_t offset)
+{
+    seeks++;
+    if(inject_seek==(int)seeks)return FR_DISK_ERR;
+    return f_lseek(fp,clip_seek==(int)seeks && offset?offset-1:offset);
+}
+static void *cue_alloc(size_t size)
+{ allocations++;return fail_alloc?NULL:malloc(size); }
+static void cue_free(void *ptr) { if(ptr)frees++;free(ptr); }
 static int sprintk(char *out,const char *format,...)
 { va_list args;va_start(args,format);int n=vsprintf(out,format,args);va_end(args);return n; }
 #include "token.inc"
@@ -65,7 +75,9 @@ static int sprintk(char *out,const char *format,...)
 #define f_open cue_open
 #define f_close cue_close
 #define f_read cue_read
+#define f_lseek cue_seek
 #include "cue.inc"
+#undef f_lseek
 #undef f_open
 #undef f_close
 #undef f_read
@@ -82,7 +94,18 @@ static int find_disc(char *name) { (void)name;assert(0);return -1; }
 static int select_save(char *id) { (void)id;assert(0);return -1; }
 #define load_savefile select_save
 #define f_open cue_open
+#define malloc cue_alloc
+#define free cue_free
 #include "load.inc"
+#define f_read cue_read
+#define f_close cue_close
+#define f_lseek cue_seek
+#include "preview.inc"
+#undef f_lseek
+#undef f_read
+#undef f_close
+#undef malloc
+#undef free
 #undef f_open
 #undef load_savefile
 static void create(const char *name,const void *data,unsigned size)
@@ -155,7 +178,7 @@ static void preview(int value)
     if(value==4)inject_close=2;
     int r=parse_cue((char*)cue_name,out);assert((r==0)==(value==0));
     assert(!handles_count && !memcmp(snapshot,&cdb,sizeof(cdb)) && current_index==77);guards();
-    if(!value)for(unsigned i=0;i<sizeof(out);i++)assert(out[i]==(u8)i);
+    if(!value)for(unsigned i=0;i<sizeof(out);i++)assert(out[i]==(u8)(i+16));
 }
 static void retry(void)
 {
@@ -286,7 +309,10 @@ static void dispatch(int value)
     } else assert(opens==old_opens && r==-FR_DISK_ERR);
     retry();
 }
-int main(int argc,char **argv)
+#ifndef MCU_CUE_TEST_ENTRY
+#define MCU_CUE_TEST_ENTRY main
+#endif
+int MCU_CUE_TEST_ENTRY(int argc,char **argv)
 {
     assert(argc==4);disk=fopen(argv[1],"r+b");assert(disk);FATFS fs;assert(f_mount(&fs,"0:",1)==0);
     assert(f_mkdir("/D")==0);unsigned size=2352*300;u8 *data=malloc(size);assert(data);
