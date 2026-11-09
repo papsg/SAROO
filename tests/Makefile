@@ -6,7 +6,11 @@ BUILD_DIR = build
 
 .PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-cover
+check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-cover
+
+.PHONY: check-menu-binary
+check-menu-binary:
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_binary_bounds.py -v
 
 check-firmware-save:
 	$(PYTHON) -B -m unittest discover -s . -p 'test_firmware_save*.py' -v

@@ -889,7 +889,10 @@ int run_binary(int index, int run)
 	char bin_name[128];
 	int load_addr = 0x06004000;
 
-	sprintf(bin_name, "/SAROO/BIN/%s", path_str + LE32(&disc_path[index]));
+    if (index < 0 || index >= LE32((u8*)IMGINFO_ADDR)) return -1;
+    const char *name = path_str + LE32(&disc_path[index]);
+    if (strlen(name) > sizeof(bin_name) - sizeof("/SAROO/BIN/")) return -1;
+    sprintf(bin_name, "/SAROO/BIN/%s", name);
 	char *p = strchr(bin_name, '@');
 	if(p){
 		load_addr = strtoul(p+1, NULL, 16, NULL);

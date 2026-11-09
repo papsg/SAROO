@@ -105,3 +105,63 @@ media or make partial in-place writes atomic. Card changes are detection stubs
 on one mounted synthetic filesystem. Discovery/CUE/header/reader-handoff defects
 are subsequent members, not repaired by this test's stubs. No physical storage,
 DMA/audio/RTOS timing, concurrency, game or upstream issue resolution is claimed.
+
+## SATURN-MENU-002: bound BIN selection before loading
+
+The old `run_binary` indexes a catalog entry without checking its published
+count and formats its name into a 128-byte local buffer. An empty catalog can
+retain an old entry; negative/out-of-count selections can read unrelated data.
+Names longer than the existing path buffer can overwrite the stack.
+
+The consumer now rejects negative/out-of-count indices before reading their
+offset. It rejects a name longer than 116 bytes before formatting: the fixed
+`/SAROO/BIN/` prefix occupies 11 bytes, leaving one byte for the terminator.
+The maximum valid name, ordinary filename and existing `@address` parsing are
+preserved. Rejected inputs return the existing `-1` without a file command.
+This consumer prerequisite lands before removal of producer catalog clearing;
+the original MCU producer remains unchanged in this checkpoint.
+
+The [baseline consumer](https://github.com/papsg/SAROO/blob/f23a7d4/Firm_Saturn/main.c)
+and [catalog producer](https://github.com/papsg/SAROO/blob/f23a7d4/Firm_MCU/Saturn/saturn_utils.c)
+define the project-specific count/path contract. WG14
+[N1570 §7.21.6.6 ¶2–3, printed p. 326](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+specifies `sprintf` output and its extra terminator; §7.24.6.3 ¶2–3, printed
+p. 372 specifies `strlen` excluding that terminator. Native tests use libc's
+formatter; the target build links the actual SAROO formatter. No Sega hardware
+rule defines this application filename limit.
+
+Original correction/fixtures: `paps-g`, `be30cf116cc733a809b9cbfe2bed38b78772d505`,
+2026-09-05. The public port separates this required consumer from discovery and
+retains the already-added controller suspension code. Fixture callbacks assert
+if execution reaches suspension; its file reader deliberately returns before
+payload memory access. No controller helper or execution behavior is added.
+
+All nine actual-function scenarios pass ASan/UBSan and O2; baseline fails six.
+They cover empty/stale catalog, negative/equal-to-count/large indices, names of
+116/117/255 bytes, ordinary names and address-suffixed names. The three valid
+controls reach the file reader with their exact path/address. Omitting index
+or length checks produces four/two failures; rejecting the final valid byte
+produces one. Existing three menu-text methods pass, and the new target is part
+of the ordinary public check:
+
+```sh
+make -C tests check-menu-binary check-menu-text
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-menu-binary
+```
+
+`SAROO_MENU_BINARY_SOURCE` selects an independently extracted baseline `main.c`.
+Unique ignored `tests/build/menu-binary` cohorts retain inputs/hashes/results.
+The complete pinned SH-2 build passes entry/font/ELF/body bounds. Code/data adds
+**48 bytes** to **78,544**; BSS/stack remain **9,232/16,384**, body margin becomes
+**26,912**. The direct `run_binary` frame remains **144 bytes**. Image length
+stays **488,751**, SHA-256
+`afa0ff5c6b43d71bd2fd87fd658fac7eea7c862681f54331899134da5127f68e`.
+Only `main.c` changes among menu build inputs. MCU production inputs remain
+unchanged from the preceding full App/RTX link. No new allocation or I/O is
+added; valid names incur one length scan before the existing formatting scan.
+
+The guard consumes the producer's offsets and terminated names; it does not
+authenticate arbitrary corrupted catalog memory or concurrent generations.
+The paired producer's capacity/publication checks follow. Payload transfer,
+load-address authorization, binary execution, game/controller and physical
+memory/bus timing are outside this native path-selection qualification.
