@@ -1009,7 +1009,8 @@ void saturn_config(void)
 
 
 	// 打开存档文件
-	open_savefile();
+	retv = open_savefile();
+	if (retv) { led_event(LEDEV_FILE_ERROR); return; }
 
 
 	// 放置系统信息

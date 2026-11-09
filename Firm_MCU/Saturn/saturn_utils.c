@@ -452,60 +452,72 @@ static int sm_index1;
 
 int open_savefile(void)
 {
-	u32 rv;
-	int retv;
-	u8 *fbuf = (u8*)0x24002000;
+    u32 rv;
+    int retv = 0, mems;
+    u8 *fbuf = (u8*)0x24002000;
+    ss_index = sm_index0 = sm_index1 = 0;
 
-	printk("Open SSAVE ...\n");
-	ss_index = 0;
+    for (mems = 0; mems < 2; mems++) {
+        FIL *fp = mems ? &sm_fp : &ss_fp;
+        const char *name = mems ? SMEMS_FILE : SSAVE_FILE;
+        const char *signature = mems ? "SaroMems" : "Saroo Save File";
+        u8 *buffer = mems ? (u8*)SMEMS_HDR : fbuf;
+        u32 header_size = mems ? 8192 : 65536;
+        u32 signature_size = mems ? 8 : 16;
 
-	retv = f_open(&ss_fp, SSAVE_FILE, FA_READ|FA_WRITE);
-	if(retv==0){
-		f_read(&ss_fp, fbuf, 0x40, &rv);
-		if(strcmp((char*)fbuf, "Saroo Save File")==0){
-			ss_index = 1;
-			goto _open_mems;
-		}
-	}
+        retv = f_open(fp, name, FA_READ | FA_WRITE);
+        if (retv == FR_NO_FILE) {
+            /* Create exclusively: errors and existing damaged files must never
+             * become permission to truncate an archive. */
+            retv = f_open(fp, name, FA_READ | FA_WRITE | FA_CREATE_NEW);
+            if (retv) goto failed;
+            memset(buffer, 0, header_size);
+            memcpy(buffer, signature, signature_size);
+            if (mems) {
+                /* Canonical big-endian metadata; unused newly allocated payload
+                 * bytes are unspecified, not assumed to contain zeros. */
+                buffer[9] = 0x80;
+                buffer[12] = 0x1f; buffer[13] = 0x78;
+                buffer[16] = 0xff;
+            }
+            retv = f_write(fp, buffer, header_size, &rv);
+            if (retv) goto failed;
+            if (rv != header_size) { retv = FR_DISK_ERR; goto failed; }
+            if (mems) {
+                retv = f_lseek(fp, 0x800000);
+                if (retv) goto failed;
+                if (f_tell(fp) != 0x800000) { retv = FR_DENIED; goto failed; }
+            }
+            retv = f_sync(fp);
+            if (retv) goto failed;
+        } else if (retv) goto failed;
 
-	printk("SS_SAVE.BIN not found! Create now.\n");
-	retv = f_open(&ss_fp, SSAVE_FILE, FA_READ|FA_WRITE|FA_CREATE_ALWAYS);
-	if(retv){
-		printk("Create SS_SAVE.BIN failed! %d\n", retv);
-		return retv;
-	}
+        /* An unindexed incomplete slot append is not a malformed whole file.
+         * Runtime selection must check each published payload's full extent.
+         * MEMS trailers are opaque; the firmware uses only the first 8 MiB. */
+        if (mems ? f_size(fp) < 0x800000 :
+            (f_size(fp) < 65536 || f_size(fp) > 0x10000000)) {
+            retv = FR_INT_ERR; goto failed;
+        }
+        retv = f_lseek(fp, 0);
+        if (retv) goto failed;
+        u32 read_size = mems ? 8192 : 64;
+        retv = f_read(fp, buffer, read_size, &rv);
+        if (retv) goto failed;
+        if (rv != read_size || memcmp(buffer, signature, signature_size)) {
+            retv = FR_INT_ERR; goto failed;
+        }
+    }
+    ss_index = 1;
+    return 0;
 
-	memset(fbuf, 0, 0x10000);
-	strcpy((char*)fbuf, "Saroo Save File");
-	f_write(&ss_fp, fbuf, 0x10000, &rv);
-	f_sync(&ss_fp);
-
-	ss_index = 1;
-
-_open_mems:
-
-	retv = f_open(&sm_fp, SMEMS_FILE, FA_READ|FA_WRITE);
-	printk("Open SMEMS ... %d\n", retv);
-	if(retv){
-		printk("SS_MEMS.BIN not found! Create now.\n");
-		retv = f_open(&sm_fp, SMEMS_FILE, FA_READ|FA_WRITE|FA_CREATE_ALWAYS);
-		if(retv<0){
-			printk("Create SS_MEMS.BIN failed! %d\n", retv);
-			return retv;
-		}
-		f_lseek(&sm_fp, 0x800000);
-		f_close(&sm_fp);
-		f_open(&sm_fp, SMEMS_FILE, FA_READ|FA_WRITE);
-	}
-
-	f_read(&sm_fp, (u8*)SMEMS_HDR, 8192, &rv);
-	sm_index0 = 0;
-	sm_index1 = 0;
-
-	printk("Done.\n");
-	return 0;
+failed:
+    /* Preserve the initial error even if cleanup also fails. Incomplete newly
+     * created files stay visible for recovery, never silently truncated. */
+    f_close(&ss_fp);
+    f_close(&sm_fp);
+    return retv;
 }
-
 
 int load_savefile(char *gameid)
 {

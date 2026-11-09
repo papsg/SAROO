@@ -374,3 +374,91 @@ before/after under the same GCC, with a zero direct frame; debug type records
 are not claimed identical. No buffer, command or diagnostic is added.
 The original MDK project remains available; this check is not an MDK image,
 physical allocator/reentrancy, peak stack or game qualification.
+
+## MCU-SAVE-001: preserve existing archives during startup
+
+The original `open_savefile` retries slot open/read/signature failures with
+truncating creation. MEMS startup also retries every open error that way, then
+tests creation errors as negative values although FatFs uses positive results.
+Unchecked short transfers, expansion and synchronization can be reported as
+successful startup. Its caller previously ignored the result.
+
+Creation is now permitted only after `FR_NO_FILE`, using exclusive
+`FA_CREATE_NEW`. Existing archives with invalid outer extents or signatures,
+including zeroed MEMS metadata, are refused without recreating them. Complete header reads and bounded signatures
+are required, including the original slot signature's terminating NUL. New slot
+files receive their 64 KiB directory. New MEMS files receive a canonical 8 KiB
+big-endian header/directory, followed by checked expansion to 8 MiB; unused
+payload bytes are unspecified. Writes/counts, expansion position and sync are
+checked. On failure, both closes are attempted and the first error is retained.
+Incomplete new files remain visible. The caller uses its existing file-error
+LED and returns before normal Saturn service setup.
+
+This independently ports `paps-g`'s startup correction `aa74eb3e` (2026-09-05),
+without its startup diagnostics or encoded archive tag. Two compatibility
+adaptations are explicit. First, the necessary `169cb468` refinement admits
+unindexed incomplete slot tails: the archive must contain the full 64 KiB
+directory and stay within 256 MiB, but the whole file need not be slot-aligned. Runtime
+selection must still validate every published payload's complete extent in the
+following member. Second, MEMS requires at least 8 MiB and preserves opaque
+trailers, consistent with the public
+[`savetool` admission contract](https://github.com/papsg/SAROO/blob/54282ae/tools/savetool/main.c).
+The historical exact-8-MiB guard would introduce a compatibility regression.
+Logical capacities and archive formats are unchanged.
+
+Primary contracts are FatFs [`f_open`, mode flags](https://elm-chan.org/fsw/ff/doc/open.html)
+(exclusive creation versus truncation), [`f_read`, Description](https://elm-chan.org/fsw/ff/doc/read.html)
+and [`f_write`, Description](https://elm-chan.org/fsw/ff/doc/write.html) (check
+actual byte counts), [`f_lseek`, Description](https://elm-chan.org/fsw/ff/doc/lseek.html)
+(expansion may stop short; new extent bytes are undefined), and
+[`f_sync`, return values](https://elm-chan.org/fsw/ff/doc/sync.html).
+Those locally preserved documents and the actual public FatFs implementation
+were checked. SAROO's private file signatures/capacities come from the
+[`54282ae` save storage functions](https://github.com/papsg/SAROO/blob/54282ae/Firm_MCU/Saturn/saturn_utils.c),
+not a Sega file format. The menu's earlier blank-MEMS limitation is now guarded
+at startup: an existing zero-signature archive never reaches normal service.
+
+Five public methods execute 95 scenarios with the actual startup function,
+static state, caller gate and unmodified public FatFs/configuration. Only the
+fixed scratch address is rebound. Synthetic FAT32 media and test-only wrappers
+exercise healthy/missing files, positive open/creation results, failed/short
+reads and writes, rewind/extension failures, clipped expansion, failed sync,
+signature/extent errors, exclusive-create races and cleanup failure. Valid
+controls preserve two partial slot tails and two MEMS trailer sizes. Existing
+files retain whole-content digests and lengths; existing-file failures issue no
+disk writes. Preseeded valid signatures expose ignored short reads. Repeated
+healthy startup checks for no writes. The caller test is a fragment check, not
+a full RTOS/FPGA boot simulation.
+
+The preceding public source fails 83 cases; all 95 pass ASan/UBSan and O2.
+Focused mutants replacing exclusive creation, dropping read counts, ignoring
+sync, bypassing the caller gate, restoring strict extents or ignoring the slot
+signature terminator fail 2/4/2/4/4/1 cases respectively. Public commands are:
+
+```sh
+make -C tests check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-save
+```
+
+`SAROO_MCU_SAVE_DIR` selects a directory containing independently extracted
+`saturn_utils.c`/`saturn_main.c`, for baseline or focused controls. New source,
+harness, filesystem, compile and case records stay under `tests/build/mcu-save`;
+no private preparer, user save or device is used.
+
+The [offline GNU target check](../tools/README.md#original-mcu-app-compilelink-check)
+fully compiles/links original App/RTE/RTX sources and checks all 166 vectors.
+Relative to the allocator-qualified predecessor, load occupancy falls 28 bytes
+from 59,644 to 59,616, leaving 5,920 ITCM bytes. BSS stays 60,656 and initialized
+data 504, with a 69,912-byte main-stack/heap address gap. No static workspace is
+added. The startup function's direct compiler frame grows 24 to 56 bytes,
+excluding callers, FatFs, interrupts and preemption. The address gap is not a
+measurement of physical peak stack use. The original MDK image is not rebuilt
+or declared equivalent by this GNU check.
+
+Healthy existing archives still need two header reads totaling 8,256 bytes and
+no file-data writes; two checked rewinds are added. New MEMS creation adds one
+necessary 8 KiB metadata write, checks persistence and removes its reopen.
+These are source/model counts, not physical latency or durability. This member
+does not supply runtime ownership, end-to-end save retry, automatic file recovery
+or whole-save/power-loss atomicity. Those relevant following members remain
+separate; no historical game-loss report is declared resolved.
