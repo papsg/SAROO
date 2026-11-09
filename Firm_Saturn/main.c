@@ -715,9 +715,9 @@ void gif_timer(void)
 	if(gif_flag){
 		u8 *dst = (u8*)(VDP2_VRAM+0x20000);
 		u8 *src = (u8*)(0x22401000);
-		int src_llen = (gif_flag>=3)? 128 : 512;
 
 		int img_w = LE16((u8*)0x22400004);
+		int src_llen = (gif_flag>=3)? img_w : 512;
 		int img_h = LE16((u8*)0x22400006);
 		int img_x = (short)LE16((u8*)0x22400008);
 		int img_y = (short)LE16((u8*)0x2240000a);
@@ -749,7 +749,7 @@ void gif_timer(void)
 
 		img_y += adj_y;
 		if(img_y<0){
-			src -= img_y*512;
+			src -= img_y*src_llen;
 			img_h += img_y;
 			img_y = 0;
 		}
@@ -783,7 +783,9 @@ void gif_timer(void)
 		}
 		//int end = get_timer();
 		//printk("gt: %d ms\n", TICK2MS(end-start));
-		*(u8*)0x22400000 = 0;
+		/* Return shared storage only after final channel-2 DMA completion. */
+		while (SDSTAT & 0x3000);
+		*(volatile u8*)0x22400000 = 0;
 	}
 
 	int pal_flag = *(u8*)0x22400002;
