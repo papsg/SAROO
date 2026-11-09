@@ -26,7 +26,7 @@ class FatFsSeekTests(unittest.TestCase):
                 old = b'#define FF_USE_MKFS\t\t0'; assert data.count(old) == 1
                 data = data.replace(old, b'#define FF_USE_MKFS\t\t1')
             (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
-        data = (fatfs / 'ff.c').read_bytes(); begin = data.index(b'if (ifptr > 0 &&'); end = data.index(b'{', begin)
+        data = (fatfs / 'ff.c').read_bytes(); begin = data.index(b'if (ifptr ', data.index(b'FRESULT f_lseek (')); end = data.index(b'{', begin)
         (cls.target / 'seek.inc').write_bytes(b'if (!ofs) return 0;\n' + data[begin:end] + b'{ return 1; }\nreturn 0;\n')
         for name in ('fatfs_seek.c', 'test_fatfs_seek.py'):
             data = (ROOT / 'tests' / name).read_bytes(); (cls.target / name).write_bytes(data); inputs[name] = data

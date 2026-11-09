@@ -428,3 +428,46 @@ stay 60,656/504/61,160/69,912. Mount/seek direct frames remain 40/56 bytes.
 Menu sources are unchanged. There is no added buffer, heap allocation or
 runtime diagnostic. This is not complete malformed-volume validation, original
 MDK equivalence, physical SD recovery, concurrency or game qualification.
+
+### Separate evaluation: equivalent wide seek comparison
+
+The original `f_lseek` uses two 64-bit divisions to decide whether traversal
+can start from the current cluster. Mounted cluster-byte sizes are nonzero
+powers of two: the FAT mount path checks the power-of-two sector count and
+the guarded exFAT path derives it by shifting. For positive positions,
+`floor((ofs-1)/bcs) >= floor((ifptr-1)/bcs)` is equivalent to comparing `ofs-1`
+against the current cluster's aligned start. Replace only that condition with:
+
+```c
+(ofs - 1) >= ((ifptr - 1) & ~(FSIZE_t)(bcs - 1))
+```
+
+The outer `ofs > 0` and inner `ifptr > 0` checks remain. Widening the mask
+before complement preserves the upper file-offset bits. The next statement
+already calculates this same cluster start. This changes the expression's
+cost, not the seek policy, file-size limit, allocation or error behavior.
+
+The proof uses the inspected
+[`f_lseek`, mounted geometry and existing alignment expression](https://github.com/papsg/SAROO/blob/2eb30d0/Firm_MCU/FatFS/ff.c#L4516),
+with [64-bit `FSIZE_t`](https://github.com/papsg/SAROO/blob/2eb30d0/Firm_MCU/FatFS/ff.h#L72).
+This ports the other independently evaluated portion of `paps-g`'s
+`60d5df01d827c9f257ac1e2478337a1fa5c41c65`; original FatFs notices remain.
+It does not claim a filesystem defect in the preceding division expression.
+
+All **19 filesystem scenarios** pass both profiles before and after the
+optimization, including the independent 327,200-comparison division oracle,
+actual wide exFAT file, fragmented files and unchanged neighbors. Disk-call
+counts are identical: wide exFAT **65 reads / 80 writes**, fragmented exFAT
+**124 / 77**, FAT32 **1,326 / 2,165** for the complete fixture workloads.
+Three separate controls (narrow mask, missing destination decrement and missing
+positive-origin guard) each fail the independent comparison check. The test
+extractor accepts these changed conditions so a setup error cannot count as
+detection. All **49 coupled MCU methods / 598 scenarios** pass both profiles.
+
+The complete GNU App/RTX/166-vector build saves **848 more load bytes**, reaching
+**59,576** with **5,960 ITCM free**. `f_lseek` shrinks 482→454 instruction bytes;
+its two wide-division calls and the linked wide-division support disappear.
+BSS/data/span, address gap and the 56-byte direct seek frame stay unchanged.
+Menu sources stay unchanged. Public commands are the same as above. No physical
+seek latency or end-to-end throughput improvement is inferred from code size,
+host runtimes, synthetic media or instruction inspection.
