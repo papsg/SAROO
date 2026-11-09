@@ -433,3 +433,19 @@ match the starting snapshot; Saturn and other work remain untouched. No USB,
 added runtime diagnostics, subagents, PRs or unrelated imports were used.
 Fork issues remain disabled and there are no open fork PRs or corresponding
 requests to close. No upstream request is edited; original notices remain.
+
+## GIF safety and scheduling
+
+Starts at public `24c5c73`. Port two September6 corrections, oldest first,
+as separate verified source commits. No PRs, USB, added runtime diagnostics,
+private writes or device operations. Full proposed publication and actual
+commits receive manual/secret/private-PII review; raw evidence stays ignored.
+
+| Candidate / original | Public checkpoint | Dependencies, verification and limits |
+| --- | --- | --- |
+| MCU-GIF-001; paps-g `3e62998c` | [dbafcd8](https://github.com/papsg/SAROO/commit/dbafcd8); [codex/gif-decoder-safety](https://github.com/papsg/SAROO/tree/codex/gif-decoder-safety) | Ten actual-C methods/130 cases pass sanitizers/O2; baseline126 failures and three preservation controls. Eight targeted mutations rejected; ImageIO matches39 independent first-frame RGB fixtures. Eleven coupled disc/save methods and integrated253 Python methods/14 Rust checks/C controls pass. Complete MCU/RTX/166-vector link: load59,796 (+112), ITCM margin5,740, static DTCM60,752 (-40), fixed scratch/dictionary20,480 (-8KiB), direct init/timer/exit112/24/8 unchanged, decode72→64. Complete menu bytes unchanged. Private integration/error logging omitted. [GIF/C/GCC/project citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/GIF-SAFETY-SCHEDULING.md#mcu-gif-001-bound-decoding-and-release-the-disc-workspace). Source bounds/ownership checks do not qualify hardware, pacing/audio, full GIF89a/compositing, exact issue345 or games. |
+| MCU-GIF-002; paps-g `f285ede8` | Queued | Reuse the existing low-priority startup task while preserving public main's UART shell. Keep one decoder owner and effective priorities/allocations. Exclude private USB reload/acknowledgment changes. |
+
+Decoder checkpoint and topic/main are pushed after verification/privacy review;
+scheduling and the final preservation/publication audit remain required. Local
+source/evidence identities are retained. Private repo and Saturn remain untouched.
