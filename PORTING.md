@@ -11,7 +11,7 @@ related requests and relevant primary documentation are credited in commits and 
 USB integration, custom diagnostics and private patch-application machinery
 are excluded. This solo-maintainer workflow was authorized by the owner.
 
-Last updated: 2026-11-08.
+Last updated: 2026-11-09.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
@@ -238,3 +238,26 @@ Saturn API checkpoint does not change MCU production inputs. These compile/link
 figures do not substitute for the original MDK build or hardware/game testing.
 Remaining automatic file recovery, reset/card-generation coordination, partial
 in-place writes and power-loss atomicity are explicit out-of-series limits.
+
+
+## Disc and CUE safety series
+
+Starts at public `6135642`; direct verified source commits on main, with no PRs,
+USB integration, added runtime diagnostics, private framework or device access.
+Private sources/history/evidence are read-only references. All seven candidates
+are revalidated against public checkpoints; historical qualification is not reused.
+
+| Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
+| --- | --- | --- |
+| MCU-DISC-001; `82125993` | [f23a7d4](https://github.com/papsg/SAROO/commit/f23a7d4); [codex/disc-save-session](https://github.com/papsg/SAROO/tree/codex/disc-save-session) | Builds on completed save-safety service. Five actual-C/FatFs methods / 31 scenarios; baseline fails 25, sanitizers/O2 pass. Six controls produce 6/2/4/2/9/2 failures. All 32 coupled MCU methods / 469 cases pass both profiles. Full GNU App/RTX/166-vector link: +84 load bytes to 59,816; 5,720 ITCM free; static RAM and direct frames unchanged. Automatic swap save traffic is zero, versus prior 128KiB same-ID reads or 64KiB read/65,552-byte new-slot writes. Omits the original diagnostic logger; updates the existing shell's signature without adding a feature. [Citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/DISC-CUE-SAFETY.md#mcu-disc-001-keep-the-active-save-session-during-automatic-changes). No hardware/SD replacement/concurrency/game qualification or reset/file-recovery/atomicity claim. |
+| SATURN-MENU-002; `be30cf11` | Next prerequisite | BIN index/name/empty-catalog bounds must precede producer clear removal. |
+| MCU-DISC-002; `be30cf11` | Queued | Checked discovery/catalog publication, exact bounds and separately measured clearing costs. |
+| MCU-CUE-001; `60d5df01` | Queued | Checked parsing/raw extents, ownership and partial-load cleanup. |
+| MCU-FS-001; `60d5df01` | Queued | Independent exFAT exponent correctness and equivalent 64-bit seek optimization. |
+| MCU-DISC-003; `cb3abf06` | Queued | Correct header offset/framing, exact I/O and preview conventions. |
+| MCU-DISC-004; `cb3abf06` | Queued | Stop sentinel, acknowledged reader handoff, cache/timeout ownership. |
+
+The series remains active. First verified topic/main are pushed; remaining rows
+are not claimed complete. The fork still has issues disabled and no open PR to
+close; upstream requests remain unchanged. All evidence/builds stay in public.
+Private repository and Saturn remain untouched.
