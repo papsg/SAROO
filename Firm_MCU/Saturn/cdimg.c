@@ -24,7 +24,7 @@ int get_gameid(char *gameid)
 	u32 nread;
 
 	retv = f_read(fp, fbuf, 256, &nread);
-	if(retv)
+	if(retv || nread != 256)
 		return -1;
 
 	if(cdb.tracks[0].sector_size==2048){
@@ -583,7 +583,7 @@ int load_disc(int index)
 			printk("    force pend_delay = %d\n", pend_delay);
 		}
 
-		load_savefile(gameid);
+		retv = load_savefile(gameid);
 	}
 
 _exit:

@@ -1,64 +1,10 @@
 """Actual startup/caller fragments and public FatFs on synthetic FAT32 media."""
-import hashlib
-import json
-import os
-from pathlib import Path
-import subprocess
-import tempfile
 import unittest
-from mcu_save_support import make_fat32
+from mcu_save_support import MCUSaveTest
 
-ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT / 'tests/build/mcu-save'
-
-class MCUStartupTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        source = Path(os.environ.get('SAROO_MCU_SAVE_DIR', ROOT / 'Firm_MCU/Saturn')).resolve()
-        BUILD.mkdir(parents=True, exist_ok=True)
-        cls.target = Path(tempfile.mkdtemp(prefix='startup-', dir=BUILD))
-        module = (source / 'saturn_utils.c').read_bytes()
-        begin = module.index(b'#define SSAVE_FILE')
-        end = module.index(b'int load_savefile(char *gameid)', begin)
-        (cls.target / 'save-startup.inc').write_bytes(
-            module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
-        main = (source / 'saturn_main.c').read_bytes()
-        call = main.index(b'open_savefile();')
-        begin = main.rfind(b'\n', 0, call) + 1
-        end = main.index(b'\t*(u32*)(SYSINFO_ADDR+0x00)', call)
-        (cls.target / 'save-startup-gate.inc').write_bytes(main[begin:end])
-        fatfs = cls.target / 'FatFS'; fatfs.mkdir()
-        inputs = {'saturn_utils.c': module, 'saturn_main.c': main}
-        for name in ('mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py'):
-            data = (ROOT / 'tests' / name).read_bytes()
-            (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
-        for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
-            data = (ROOT / 'Firm_MCU/FatFS' / name).read_bytes()
-            (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
-        (cls.target / 'inputs.json').write_text(json.dumps(
-            {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()}, indent=2)+'\n')
-        cls.binary = cls.target / 'startup'
-        flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
-            '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
-                '-I', str(cls.target), '-I', str(fatfs), str(cls.target / 'mcu_save_startup.c'),
-                str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)]
-        result = subprocess.run(args, capture_output=True)
-        (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr)
-        result.check_returncode()
-
+class MCUStartupTests(MCUSaveTest):
     def invoke(self, mode, target=0, value=0, gate=0):
-        with tempfile.TemporaryDirectory(dir=self.target) as tmp:
-            card = Path(tmp) / 'card.img'; make_fat32(card)
-            result = subprocess.run([str(self.binary), str(card), mode, str(target), str(value), str(gate)],
-                                    capture_output=True, timeout=15,
-                                    env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1',
-                                         'ASAN_OPTIONS': 'detect_leaks=0'})
-            with (self.target / 'cases.log').open('ab') as log:
-                log.write(f'{mode} target={target} value={value} gate={gate} rc={result.returncode}\n'.encode())
-                log.write(result.stdout + result.stderr)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertNotIn(b'runtime error:', result.stderr)
+        return self.run_case([mode, target, value, gate])
 
     def test_valid_missing_and_compatible_extents(self):
         for mode, target in (('healthy', 0), ('new-both', 0), ('missing', 0), ('missing', 1)):

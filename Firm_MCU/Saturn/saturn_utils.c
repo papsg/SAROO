@@ -508,7 +508,6 @@ int open_savefile(void)
             retv = FR_INT_ERR; goto failed;
         }
     }
-    ss_index = 1;
     return 0;
 
 failed:
@@ -519,138 +518,156 @@ failed:
     return retv;
 }
 
-int load_savefile(char *gameid)
+/* Checked transfers share one implementation; no additional I/O buffer. */
+static int save_io(FIL *fp, u32 offset, void *buffer, u32 size, int write)
 {
-	u32 rv;
-	int retv, i;
-	u8 *fbuf = (u8*)0x24002000;
-
-	if(ss_index==0)
-		return -1;
-
-	f_lseek(&ss_fp, 0);
-	f_read(&ss_fp, fbuf, 0x10000, &rv);
-
-	for(i=1; i<4096; i++){
-		ss_index = i;
-		if(*(u32*)(fbuf+i*16)==0)
-			break;
-		if(strncmp((char*)fbuf+i*16, gameid, 8)==0){
-			// found it
-			printk("Found savefile at %08x\n", i*0x10000);
-			f_lseek(&ss_fp, i*0x10000);
-			f_read(&ss_fp, (u8*)SSAVE_ADDR, 0x10000, &rv);
-			return 0;
-		}
-	}
-	if(i==4096)
-		return -1;
-
-	// not found, create it.
-	printk("Create savefile at %08x\n", i*0x10000);
-	strcpy((char*)fbuf+i*16, gameid);
-	// update index
-	f_lseek(&ss_fp, i*16);
-	f_write(&ss_fp, fbuf+i*16, 16, &rv);
-	// write empty save
-	memset((u8*)SSAVE_ADDR, 0, 0x10000);
-	f_lseek(&ss_fp, i*0x10000);
-	f_write(&ss_fp, (u8*)SSAVE_ADDR, 0x10000, &rv);
-
-	fs_lock();
-	f_sync(&ss_fp);
-	fs_unlock();
-
-	return 0;
+    u32 count;
+    int result;
+    /* Read-side seeks must not extend an archive opened for writing. */
+    if (!write && (offset > f_size(fp) || size > f_size(fp) - offset))
+        return FR_INT_ERR;
+    result = f_lseek(fp, offset);
+    if (result)
+        return result;
+    if (f_tell(fp) != offset)
+        return FR_INT_ERR;
+    result = write ? f_write(fp, buffer, size, &count) :
+                     f_read(fp, buffer, size, &count);
+    return result ? result : count == size ? FR_OK : FR_INT_ERR;
 }
 
+int load_savefile(char *gameid)
+{
+    u8 *directory = (u8*)0x24002000;
+    char key[16];
+    int result, found = 0, empty = 0;
+
+    fs_lock();
+    ss_index = 0;
+    if (!gameid || !gameid[0]) {
+        result = FR_INVALID_PARAMETER;
+        goto done;
+    }
+    /* Both callers provide the fixed 16-byte disc ID. Short C inputs are
+     * zero-padded; do not append a seventeenth byte to a directory entry. */
+    strncpy(key, gameid, sizeof(key));
+    /* An incomplete unindexed tail is allowed; every published extent below
+     * must still contain its complete payload before selection. */
+    if (f_size(&ss_fp) < 0x10000 || f_size(&ss_fp) > 0x10000000) {
+        result = FR_INT_ERR;
+        goto done;
+    }
+    result = save_io(&ss_fp, 0, directory, 0x10000, 0);
+    if (result)
+        goto done;
+    if (memcmp(directory, "Saroo Save File", 16)) {
+        result = FR_INT_ERR;
+        goto done;
+    }
+    for (int i = 1; i < 4096; i++) {
+        u8 *entry = directory + i * 16;
+        if (!entry[0]) {
+            if (!empty) empty = i;
+            continue;
+        }
+        if ((u32)(i + 1) * 0x10000 > f_size(&ss_fp)) {
+            result = FR_INT_ERR;
+            goto done;
+        }
+        if (!strncmp((char*)entry, key, sizeof(key))) {
+            if (found) {
+                result = FR_INT_ERR;
+                goto done;
+            }
+            found = i;
+        }
+    }
+    if (found) {
+        result = save_io(&ss_fp, found * 0x10000, (u8*)SSAVE_ADDR, 0x10000, 0);
+    } else {
+        if (!empty) {
+            result = FR_DENIED;
+            goto done;
+        }
+        found = empty;
+        memset((u8*)SSAVE_ADDR, 0, 0x10000);
+        result = save_io(&ss_fp, found * 0x10000, (u8*)SSAVE_ADDR, 0x10000, 1);
+        if (!result) result = f_sync(&ss_fp);
+        /* A published ID may name only a fully initialized payload. */
+        if (!result) result = save_io(&ss_fp, found * 16, key, sizeof(key), 1);
+        if (!result) result = f_sync(&ss_fp);
+    }
+    if (!result) ss_index = found;
+done:
+    fs_unlock();
+    return result;
+}
 
 int flush_savefile(void)
 {
-	u32 rv;
-
-	if(ss_index==0)
-		return -1;
-
-	fs_lock();
-	printk("Flush savefile at %08x\n", ss_index*0x10000);
-
-	f_lseek(&ss_fp, ss_index*0x10000);
-	f_write(&ss_fp, (u8*)SSAVE_ADDR, 0x10000, &rv);
-	f_sync(&ss_fp);
-
-	printk("Flush done.\n\n");
-	fs_unlock();
-
-	return 0;
+    int result;
+    fs_lock();
+    if (ss_index <= 0 || ss_index >= 4096 ||
+        (u32)(ss_index + 1) * 0x10000 > f_size(&ss_fp)) {
+        result = FR_INVALID_PARAMETER;
+    } else {
+        result = save_io(&ss_fp, ss_index * 0x10000, (u8*)SSAVE_ADDR, 0x10000, 1);
+        if (!result) result = f_sync(&ss_fp);
+    }
+    fs_unlock();
+    return result;
 }
-
-
-/******************************************************************************/
 
 int load_smems(int id)
 {
-	u32 rv;
-	int is_hdr;
-
-	is_hdr = id&0x8000;
-	id &= 0x7fff;
-	printk("Load SMEMS %04x\n", id);
-	if(id==0)
-		return 0;
-
-	f_lseek(&sm_fp, id*1024);
-	if(is_hdr){
-		f_read(&sm_fp, (u8*)SMEMS_HDR+8192, 1024, &rv);
-		sm_index0 = id;
-	}else{
-		f_read(&sm_fp, (u8*)SMEMS_BUF, 64*1024, &rv);
-		sm_index1 = id;
-	}
-
-	return 0;
+    int header = id & 0x8000;
+    int *index = header ? &sm_index0 : &sm_index1;
+    int result;
+    fs_lock();
+    /* A partial transfer invalidates the destination's previous ownership. */
+    *index = 0;
+    if ((id & ~0xffff) || (id & 0x7fff) < 8 || (id & 0x7fff) >= 8064 ||
+        f_size(&sm_fp) < 0x800000) {
+        result = FR_INVALID_PARAMETER;
+    } else {
+        id &= 0x7fff;
+        result = save_io(&sm_fp, id * 1024,
+                         header ? (u8*)SMEMS_HDR + 8192 : (u8*)SMEMS_BUF,
+                         header ? 1024 : 65536, 0);
+        if (!result) *index = id;
+    }
+    fs_unlock();
+    return result;
 }
-
 
 int flush_smems(int flag)
 {
-	u32 rv;
+    int result = FR_INVALID_PARAMETER;
+    fs_lock();
+    if (flag <= 0 || (flag & ~7) || f_size(&sm_fp) < 0x800000 ||
+        ((flag & 2) && (sm_index0 < 8 || sm_index0 >= 8064)) ||
+        ((flag & 4) && (sm_index1 < 8 || sm_index1 >= 8064)))
+        goto done;
 
-	int d = sm_index0-sm_index1;
-	if(d>=0 && d<64){
-		memcpy32((u8*)SMEMS_BUF+d*1024, (u8*)SMEMS_HDR+8192, 1024);
-	}
-	printk("\nflush_smems: flag=%02x s0=%04x s1=%04x d=%d\n", flag, sm_index0, sm_index1, d);
-	fs_lock();
+    int d = sm_index0 - sm_index1;
+    int overlap = sm_index0 >= 8 && sm_index0 < 8064 &&
+                  sm_index1 >= 8 && sm_index1 < 8064 && d >= 0 && d < 64;
+    if (overlap)
+        memcpy32((u8*)SMEMS_BUF + d * 1024, (u8*)SMEMS_HDR + 8192, 1024);
 
-	if(flag&1){
-		printk("Flush SMEMS header.\n");
-		f_lseek(&sm_fp, 0);
-		f_write(&sm_fp, (u8*)SMEMS_HDR, 8192, &rv);
-	}
-	if(flag&2){
-		printk("Flush SMEMS block %04x.\n", sm_index0);
-		if(d<0 || d>=64 || (flag&4)==0){
-			f_lseek(&sm_fp, sm_index0*1024);
-			f_write(&sm_fp, (u8*)SMEMS_HDR+8192, 1024, &rv);
-		}
-	}
-	if(flag&4){
-		printk("Flush SMEMS buffer %04x.\n", sm_index1);
-		f_lseek(&sm_fp, sm_index1*1024);
-		f_write(&sm_fp, (u8*)SMEMS_BUF, 64*1024, &rv);
-	}
-
-	f_sync(&sm_fp);
-
-	printk("Flush done.\n\n");
-	fs_unlock();
-
-	return 0;
+    /* Stop on the first error. Publish allocation/directory metadata last. */
+    result = 0;
+    if (flag & 4)
+        result = save_io(&sm_fp, sm_index1 * 1024, (u8*)SMEMS_BUF, 65536, 1);
+    if (!result && (flag & 2) && (!(flag & 4) || !overlap))
+        result = save_io(&sm_fp, sm_index0 * 1024, (u8*)SMEMS_HDR + 8192, 1024, 1);
+    if (!result && (flag & 1))
+        result = save_io(&sm_fp, 0, (u8*)SMEMS_HDR, 8192, 1);
+    if (!result) result = f_sync(&sm_fp);
+done:
+    fs_unlock();
+    return result;
 }
-
-
-/******************************************************************************/
 
 
 static FIL cover_fp;

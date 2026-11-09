@@ -10,6 +10,10 @@
 
 typedef uint8_t u8;
 typedef uint32_t u32;
+static int lock_depth, require_lock;
+static void fs_lock(void) { assert(!lock_depth); lock_depth = 1; }
+static void fs_unlock(void) { assert(lock_depth == 1); lock_depth = 0; }
+static void memcpy32(void *to, const void *from, int size) { memcpy(to, from, size); }
 static u8 test_scratch[65536], test_shared[0x23000];
 #define TEST_SCRATCH_ADDR ((uintptr_t)test_scratch)
 #define SAVINFO_ADDR ((uintptr_t)test_shared)
@@ -44,11 +48,16 @@ static void startup_gate(void)
 }
 
 static FILE *disk;
+static LBA_t disk_sectors = 131072;
+static int disk_read_fault;
 static unsigned disk_writes, api_reads, api_writes, api_seeks, api_syncs, api_opens;
 static unsigned read_bytes, write_bytes;
 static const char *fault;
 static int fault_target, fault_value, armed, hits;
 static int cleanup_calls;
+static int fault_nth = 1, fault_seen;
+static FSIZE_t write_offsets[32];
+static UINT write_sizes[32];
 static pthread_mutex_t fs_mutex;
 int ff_mutex_create(int vol) { assert(!vol); return pthread_mutex_init(&fs_mutex, NULL) == 0; }
 void ff_mutex_delete(int vol) { assert(!vol); assert(pthread_mutex_destroy(&fs_mutex) == 0); }
@@ -58,13 +67,14 @@ DSTATUS disk_initialize(BYTE drive) { return drive ? STA_NOINIT : 0; }
 DSTATUS disk_status(BYTE drive) { return drive ? STA_NOINIT : 0; }
 DRESULT disk_read(BYTE drive, BYTE *data, LBA_t sector, UINT count)
 {
-    assert(!drive && count && sector + count <= 131072);
+    assert(!drive && count && sector + count <= disk_sectors);
+    if (disk_read_fault) { disk_read_fault = 0; return RES_ERROR; }
     assert(fseek(disk, (long)sector * 512, SEEK_SET) == 0);
     return fread(data, 512, count, disk) == count ? RES_OK : RES_ERROR;
 }
 DRESULT disk_write(BYTE drive, const BYTE *data, LBA_t sector, UINT count)
 {
-    assert(!drive && count && sector + count <= 131072); disk_writes++;
+    assert(!drive && count && sector + count <= disk_sectors); disk_writes++;
     assert(fseek(disk, (long)sector * 512, SEEK_SET) == 0);
     return fwrite(data, 512, count, disk) == count ? RES_OK : RES_ERROR;
 }
@@ -75,18 +85,20 @@ DRESULT disk_ioctl(BYTE drive, BYTE cmd, void *buffer)
 }
 static int selected(FIL *fp, const char *operation)
 {
-    return armed && fp == (fault_target ? &sm_fp : &ss_fp) && !strcmp(fault, operation);
+    if (require_lock) assert(lock_depth == 1);
+    return armed && fp == (fault_target ? &sm_fp : &ss_fp) && !strcmp(fault, operation)
+           && ++fault_seen == fault_nth;
 }
 static FRESULT checked_open(FIL *fp, const TCHAR *name, BYTE mode)
 {
     api_opens++;
-    if (selected(fp, "cleanup-error") && !(mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS))) {
+    if (!(mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS)) && selected(fp, "cleanup-error")) {
         hits++; return FR_DENIED;
     }
-    if (selected(fp, "open-error") && !(mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS))) {
+    if (!(mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS)) && selected(fp, "open-error")) {
         hits++; return fault_value;
     }
-    if (selected(fp, "create-error") && (mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS))) {
+    if ((mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS)) && selected(fp, "create-error")) {
         hits++; return fault_value;
     }
     return f_open(fp, name, mode);
@@ -94,12 +106,18 @@ static FRESULT checked_open(FIL *fp, const TCHAR *name, BYTE mode)
 static FRESULT checked_read(FIL *fp, void *data, UINT size, UINT *count)
 {
     api_reads++; read_bytes += size;
-    if (selected(fp, "read-error")) { hits++; *count = 0; return FR_DISK_ERR; }
+    if (selected(fp, "read-error")) { hits++; *count = 0; return fault_value ? fault_value : FR_DISK_ERR; }
+    if (selected(fp, "read-partial-error")) {
+        hits++; FRESULT result = f_read(fp, data, size / 2, count);
+        return result ? result : FR_DISK_ERR;
+    }
     if (selected(fp, "read-short")) { hits++; return f_read(fp, data, fault_value ? size - 1 : 0, count); }
     return f_read(fp, data, size, count);
 }
 static FRESULT checked_write(FIL *fp, const void *data, UINT size, UINT *count)
 {
+    assert(api_writes < 32);
+    write_offsets[api_writes] = f_tell(fp); write_sizes[api_writes] = size;
     api_writes++; write_bytes += size;
     if (selected(fp, "write-error") || selected(fp, "write-short")) {
         hits++;
@@ -112,6 +130,8 @@ static FRESULT checked_write(FIL *fp, const void *data, UINT size, UINT *count)
 static FRESULT checked_seek(FIL *fp, FSIZE_t offset)
 {
     api_seeks++;
+    if (selected(fp, "seek-any-error")) { hits++; return FR_DISK_ERR; }
+    if (selected(fp, "seek-any-short")) { hits++; return f_lseek(fp, offset ? offset - 1 : 1); }
     if (selected(fp, "seek-error") && offset == 0) { hits++; return FR_DISK_ERR; }
     if (selected(fp, "extend-error") && offset == 0x800000) { hits++; return FR_DISK_ERR; }
     if (selected(fp, "extend-short") && offset == 0x800000) { hits++; return f_lseek(fp, offset - 512); }
@@ -120,7 +140,7 @@ static FRESULT checked_seek(FIL *fp, FSIZE_t offset)
 static FRESULT checked_sync(FIL *fp)
 {
     api_syncs++;
-    if (selected(fp, "sync-error")) { hits++; return FR_DISK_ERR; }
+    if (selected(fp, "sync-error")) { hits++; return fault_value ? fault_value : FR_DISK_ERR; }
     return f_sync(fp);
 }
 static FRESULT checked_close(FIL *fp)
@@ -176,6 +196,7 @@ static void reset_service(void)
     started = error_led = retv = 0;
     api_reads = api_writes = api_seeks = api_syncs = api_opens = read_bytes = write_bytes = 0;
     cleanup_calls = 0;
+    fault_seen = 0;
 }
 int main(int argc, char **argv)
 {
@@ -224,7 +245,7 @@ int main(int argc, char **argv)
         assert(started == success && error_led == !success);
     }
     if (success) {
-        assert(ss_index == 1 && sm_index0 == 0 && sm_index1 == 0);
+        assert(ss_index == 0 && sm_index0 == 0 && sm_index1 == 0);
         u8 expected[8192]; fill_header(expected, 1);
         assert(memcmp((void *)SMEMS_HDR, expected, sizeof(expected)) == 0);
         assert(api_reads == 2 && read_bytes == 8256);

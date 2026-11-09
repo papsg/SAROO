@@ -462,3 +462,96 @@ These are source/model counts, not physical latency or durability. This member
 does not supply runtime ownership, end-to-end save retry, automatic file recovery
 or whole-save/power-loss atomicity. Those relevant following members remain
 separate; no historical game-loss report is declared resolved.
+
+## MCU-SAVE-001: checked runtime transfers and cache ownership
+
+The four runtime save load/flush functions previously discarded I/O errors and
+short counts. Failed loads could leave a buffer associated with its old or
+requested destination, allowing a later flush to write incomplete bytes there.
+Slot lookup stopped at the first hole, compared only eight ID bytes and copied
+a terminating byte past a sixteen-byte entry. The disc caller discarded the
+save-load result. These paths remain reachable after startup validation.
+
+One checked transfer helper now validates read extents before seeking (a seek
+on a writable file can extend it), checks actual seek position and complete
+read/write counts, and returns the first failure. Each complete runtime
+operation holds the existing service filesystem mutex. Startup leaves no slot
+selected. Successful loads alone publish slot/header/window ownership; failed
+loads invalidate their destination. Flushes require valid owners/bounds and a
+reported successful sync. Existing command handlers already return these results
+through `SS_ARG`; end-to-end Saturn handling follows separately.
+
+Slot selection reads the complete directory, scans all 4,095 entries past
+holes, checks every published backing extent and refuses duplicate matching
+IDs. Matching uses the bounded name up to all sixteen bytes, with zero padding
+for short C inputs. Both existing callers supply the sixteen-byte disc field.
+New payloads are initialized and synced before their bounded directory entry
+is written and synced. Distinct complete IDs, including version differences,
+can now receive distinct slots even when their first eight bytes match. Existing
+archive bytes are not migrated or copied from an older shared-prefix slot.
+
+MEMS checks command bits, flags, logical block bounds and buffer owners. The
+64-block window can still include unused physical tail blocks within the first
+8 MiB. Header/window overlap is kept coherent; overlapping header writes are
+not duplicated. Payload/header writes precede allocation/directory metadata,
+and the first failure stops later writes/sync. The disc ID reader requires a
+complete 256-byte header and its loader propagates save-load failure.
+
+This independently ports `paps-g`'s `d05062a1` (2026-09-05), retaining the
+necessary `169cb468` published-extent refinement rather than whole-file slot
+alignment. The startup port's minimum-eight-MiB MEMS/trailer policy and full
+slot signature are retained. No buffer, task, command, diagnostic, USB code or
+format is added. The source contracts are the preceding public
+[`save functions`](https://github.com/papsg/SAROO/blob/0db5d2e/Firm_MCU/Saturn/saturn_utils.c),
+[`disc ID/caller`](https://github.com/papsg/SAROO/blob/0db5d2e/Firm_MCU/Saturn/cdimg.c)
+and [`command result publication`](https://github.com/papsg/SAROO/blob/0db5d2e/Firm_MCU/Saturn/saturn_main.c).
+FatFs [`read`](https://elm-chan.org/fsw/ff/doc/read.html)/
+[`write`](https://elm-chan.org/fsw/ff/doc/write.html) byte counts,
+[`seek`](https://elm-chan.org/fsw/ff/doc/lseek.html) position/expansion and
+[`sync`](https://elm-chan.org/fsw/ff/doc/sync.html) return values supply the I/O
+requirements. These private file/cache rules are not Sega register requirements.
+
+Twelve actual runtime/caller/FatFs methods execute 137 scenarios. They cover
+identity/hole/duplicate cases, full and last slots, publication order, failed/
+short/partial transfers, clipped seeks, real disk-read failures, ownership,
+MEMS boundaries/coherence, unindexed partial tails, incomplete-tail completion,
+full signature and opaque trailer preservation. Ordinary cases compare complete
+archive bytes and neighbors. Three large cases use real 256 MiB archives on
+sparse 512 MiB synthetic FAT32 media, checking directory, selected-slot and
+read/exhaustion behavior. They are not complete 256 MiB payload comparisons.
+
+The preceding source fails 96 cases. All 137 pass ASan/UBSan and O2, together
+with the 95 startup cases (seventeen coupled methods). Source/harness/FatFs
+snapshots, case results and compiler logs are retained under the public build
+directory. Fourteen focused incorrect variants independently expose prefix
+aliasing, first-hole termination, premature ownership, missing counts/syncs,
+stale caches, command bounds, missed coherence, discarded disc errors, strict
+extent regressions, signature truncation, dangling entries, the final-entry
+overrun and publication before payload initialization. Their affected checks
+fail, while other controls still run normally. The existing source/profile
+overrides and `make -C tests check-mcu-save` reproduce these tests.
+
+Three cases fail at the real FatFs disk-read boundary. FatFs latches the error
+and subsequent attempts still fail; the fixture explicitly closes/reopens the
+file before a successful retry. Production does not yet perform that recovery.
+File-API injected failures can permit immediate retries, which must not be
+equated with recovery from a latched physical/controller error. In-place partial
+writes, partially published new IDs, shared-buffer lifetime, reset/card/session
+coordination, concurrency and whole-save/power-loss transactions remain limits.
+
+The complete GNU target check passes all 166 vectors. Load occupancy grows
+116 bytes to 59,732, leaving 5,804 ITCM bytes. BSS/data remain 60,656/504 and
+the main-stack/heap address gap stays 69,912. The sixteen-byte key is local.
+Direct frames are 32 for the new helper, 72 for slot load (previously 32), 24
+for slot flush (16), 32 for MEMS load (24), and 40 for MEMS flush (unchanged).
+These exclude callees/IRQs/preemption and are not peak-stack qualification;
+GNU accounting is not MDK image or hardware/game acceptance.
+
+Normal existing-slot loads retain two reads totaling 128 KiB, but now scan all
+4,095 entries. New slots retain two writes totaling 65,552 bytes and add one
+sync to order payload before publication. MEMS retains one-KiB header/64-KiB
+window transfers and a final sync. Read-extent/position/ownership checks use
+existing state; no extra payload copy or static buffer is added. Command counts
+do not establish physical timing or SD durability. The Saturn-side error and
+pending-data/retry member follows; MCU-SAVE-001's broader recovery questions
+are not declared closed by this port.
