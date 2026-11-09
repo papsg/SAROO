@@ -11,7 +11,7 @@ typedef struct {
     u32 fad_end,file_offset; u16 sector_size; u8 ctrl_addr,mode;
 } TRACK_INFO;
 static FIL track_fp[100];
-static struct { int status,track_num,has_subrw; TRACK_INFO tracks[100]; FIL subcode_fp; } cdb;
+static struct { int status,track_num,has_subrw; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
 static int current_index,category_num,category_current,total_disc=2,next_disc;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";

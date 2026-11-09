@@ -54,218 +54,223 @@ int get_gameid(char *gameid)
 /******************************************************************************/
 
 
-int load_pcm(char *fname)
+static int parse_raw(char *fname, int mode, unsigned size)
 {
-	FIL *fp = &track_fp[0];
-	TRACK_INFO *tk;
-	int retv;
-
-	retv = f_open(fp, fname, FA_READ);
-	if(retv){
-		return -2;
-	}
-
-	tk = &cdb.tracks[0];
-	tk->fp = fp;
-	tk->file_offset = 0;
-	tk->sector_size = 2352;
-	tk->fad_0 = 150;
-	tk->fad_start = 150;
-	tk->fad_end = 150 + (f_size(fp))/2352 - 1;
-	tk->mode = 3;
-	tk->ctrl_addr = 0x01;
-
-	cdb.track_num = 1;
-	init_toc();
-
-	return 0;
+    if (cdb.track_num) return -1;
+    FIL *fp = &track_fp[0];
+    if (f_open(fp, fname, FA_READ)) return -2;
+    /* The sector reader and TRACK_INFO use 32-bit byte offsets. */
+    FSIZE_t bytes = f_size(fp);
+    if (bytes < size || bytes > 0xffffffffu) { f_close(fp); return -1; }
+    TRACK_INFO *tk = &cdb.tracks[0];
+    memset(tk, 0, sizeof(*tk));
+    tk->fp = fp;
+    tk->sector_size = size;
+    tk->fad_0 = tk->fad_start = 150;
+    tk->fad_end = 149 + (u32)bytes / size;
+    tk->mode = mode;
+    tk->ctrl_addr = mode == 3 ? 0x01 : 0x41;
+    cdb.track_num = 1;
+    init_toc();
+    return 0;
 }
 
+int load_pcm(char *fname)
+{
+    return parse_raw(fname, 3, 2352);
+}
 
 int parse_iso(char *fname)
 {
-	FIL *fp = &track_fp[0];
-	TRACK_INFO *tk;
-	int retv;
-
-	retv = f_open(fp, fname, FA_READ);
-	if(retv){
-		return -2;
-	}
-
-	tk = &cdb.tracks[0];
-	tk->fp = fp;
-	tk->file_offset = 0;
-	tk->sector_size = 2048;
-	tk->fad_0 = 150;
-	tk->fad_start = 150;
-	tk->fad_end = 150 + (f_size(fp))/2048 - 1;
-	tk->mode = 1;
-	tk->ctrl_addr = 0x41;
-
-	cdb.track_num = 1;
-	init_toc();
-
-	return 0;
+    return parse_raw(fname, 1, 2048);
 }
 
 
+/* CD TOC entries 0..98 are tracks; slot 99 in track_fp is preview scratch. */
+#define CUE_TRACKS 99
+#define CUE_BYTES (MAX_BLOCKS * 2352 - 0x1000)
+
+static int close_tracks(int count);
+
+static char *cue_token(char **line)
+{
+    char *s = *line, *end;
+    if (!s) return NULL;
+    while (*s == ' ' || *s == '\t') s++;
+    if (!*s) return NULL;
+    if (*s == '"') {
+        end = ++s;
+        while (*end && *end != '"') end++;
+        if (!*end) { *line = NULL; return NULL; }
+        *end++ = 0;
+        if (*end && *end != ' ' && *end != '\t') return NULL;
+    } else {
+        end = s;
+        while (*end && *end != ' ' && *end != '\t') end++;
+        if (*end) *end++ = 0;
+    }
+    *line = end;
+    return s;
+}
+
+/* All callers supply limits below 2^24, so each decimal step fits u32. */
+static int cue_number(char **text, char delimiter, unsigned limit)
+{
+    char *s = *text;
+    unsigned value = 0;
+    if (!s || *s < '0' || *s > '9') return -1;
+    do {
+        value = value * 10 + *s++ - '0';
+        if (value > limit) return -1;
+    } while (*s >= '0' && *s <= '9');
+    if (*s != delimiter) return -1;
+    *text = s + !!delimiter;
+    return value;
+}
+
+static int cue_time(char *text)
+{
+    int fad = 0;
+    for (int i = 0; i < 3; i++) {
+        int value = cue_number(&text, i < 2 ? ':' : 0, i == 0 ? 3728 : i == 1 ? 59 : 74);
+        if (value < 0) return -1;
+        fad = fad * (i == 1 ? 60 : 75) + value;
+    }
+    return fad;
+}
+
+static int cue_last_index(TRACK_INFO *tk)
+{
+    return tk->max_index > 1 ? tk->index[tk->max_index-2] : tk->fad_start;
+}
+
+static int cue_finish(TRACK_INFO *tk)
+{
+    FSIZE_t bytes = f_size(tk->fp);
+    if (!tk->max_index || bytes > 0xffffffffu || tk->file_offset >= bytes) return -1;
+    unsigned frames = ((u32)bytes - tk->file_offset) / tk->sector_size;
+    if (!frames || frames > 0xffffffu - tk->fad_start) return -1;
+    tk->fad_end = tk->fad_start + frames - 1;
+    return cue_last_index(tk) > tk->fad_end ? -1 : 0;
+}
+
 int parse_cue(char *fname, u8 *ipbuf)
 {
-	FIL fp;
-	u8 *fbuf = (u8*)0x2400b000;
-	char *dir_name  = (char*)0x2400a000;
-	char *full_path = (char*)0x2400a200;
-	int i, retv;
+    FIL fp;
+    u8 *fbuf = (u8*)0x2400b000;
+    char *dir_name = (char*)0x2400a000;
+    char *full_path = (char*)0x2400a200;
+    int retv, count = 0, first = 0, fad_offset = 150;
+    FIL *tk_fp = NULL;
+    TRACK_INFO *tk = NULL;
+    u32 nread;
 
-	FIL *tk_fp = NULL;
-	TRACK_INFO *tk;
-	int fad_offset = 150;
-	int tno = -1;
-	int last_tk = -1;
-
-	retv = f_open(&fp, fname, FA_READ);
-	if(retv){
-		return -2;
-	}
-
-	u32 nread;
-	retv = f_read(&fp, fbuf, f_size(&fp), &nread);
-	f_close(&fp);
-	if(retv){
-		return -3;
-	}
-
-	strcpy(dir_name, fname);
-	char *p = strrchr(dir_name, '/');
-	*p = 0;
-
-
-	int cpos = 0;
-	char *lbuf;
-	while((lbuf=get_line(fbuf, &cpos, nread))!=NULL){
-		//printk("nread=%d cpos=%d lbuf: {%s}\n", nread, cpos, lbuf);
-		char *token = get_token(&lbuf);
-		//printk("token: {%s}\n", token);
-		if(strcmp(token, "FILE")==0){
-			char *tfile = get_token(&lbuf);
-			char *ftype = get_token(&lbuf);
-			if(tfile==NULL)
-				return -4;
-			if(strcmp(ftype, "BINARY"))
-				return -5;
-
-			sprintk(full_path, "%s/%s", dir_name, tfile);
-
-			if(ipbuf){
-				// 如果ipbuf存在，则意味着只需读IP信息。在第一个FILE里面。
-				tk_fp = &track_fp[99];
-				retv = f_open(tk_fp, full_path, FA_READ);
-				if(retv){
-					return -6;
-				}
-				retv = f_read(tk_fp, ipbuf, 256, &nread);
-				f_close(tk_fp);
-				return retv;
-			}
-
-			if(tno!=-1){
-				// close last track
-				tk = &cdb.tracks[tno];
-				int fad_size = (f_size(tk_fp)-tk->file_offset)/tk->sector_size;
-				tk->fad_end = tk->fad_start + fad_size - 1;
-				fad_offset = tk->fad_end+1;
-			}
-			last_tk = tno+1;
-			tk = &cdb.tracks[tno+1];
-			tk_fp = &track_fp[tno+1];
-			retv = f_open(tk_fp, full_path, FA_READ);
-			if(retv){
-				return -6;
-			}
-		}else if(strcmp(token, "TRACK")==0){
-			char *tnum = get_token(&lbuf);
-			int tid = strtoul(tnum, NULL, 10);
-			tno += 1;
-			if(tid!=tno+1){
-				return -7;
-			}
-
-			char *mstr = get_token(&lbuf);
-			int mode, size;
-			if(strncmp(mstr, "MODE1", 5)==0){
-				mode = 1;
-				size = strtoul(mstr+6, NULL, 10);
-			}else if(strncmp(mstr, "MODE2", 5)==0){
-				mode = 2;
-				size = strtoul(mstr+6, NULL, 10);
-			}else if(strncmp(mstr, "AUDIO", 5)==0){
-				mode = 3;
-				size = 2352;
-			}else{
-				return -8;
-			}
-
-			tk = &cdb.tracks[tno];
-			tk->fp = tk_fp;
-			tk->sector_size = size;
-			tk->mode = mode;
-		}else if(strcmp(token, "INDEX")==0){
-			char *inum = get_token(&lbuf);
-			char *tstr = get_token(&lbuf);
-			if(inum==NULL || tstr==NULL){
-				return -9;
-			}
-			int idx = strtoul(inum, NULL, 10);
-			int m = strtoul(tstr+0, &tstr, 10);
-			int s = strtoul(tstr+1, &tstr, 10);
-			int f = strtoul(tstr+1, &tstr, 10);
-			int fad = MSF_TO_FAD(m, s, f);
-
-			if(last_tk < tno){
-				// close last track
-				tk = &cdb.tracks[last_tk];
-				tk->fad_end = fad_offset+fad-1;
-				last_tk = tno;
-			}
-
-			tk = &cdb.tracks[tno];
-			if(idx==0){
-				tk->fad_0 = fad_offset + fad;
-			}else if(idx==1){
-				tk->fad_start = fad_offset + fad;
-				if(tk->fad_0==0)
-					tk->fad_0 = tk->fad_start;
-				tk->file_offset = fad*tk->sector_size;
-				tk->ctrl_addr = (tk->mode==3)? 0x01 : 0x41;
-				tk->index = &index_table[current_index];
-				tk->max_index = 1;
-			}else{
-				index_table[current_index] = fad_offset + fad;
-				current_index += 1;
-				tk->max_index += 1;
-			}
-		}else if(strcmp(token, "PREGAP")==0){
-		}else if(strcmp(token, "POSTGAP")==0){
-		}else if(strcmp(token, "CATALOG")==0){
-		}else if(strcmp(token, "REM")==0){
-		}else if(strcmp(token, "FLAGS")==0){
-		}else{
-			//return -10;
-		}
-	}
-
-	// close last track
-	tk = &cdb.tracks[tno];
-	int fad_size = (f_size(tk_fp)-tk->file_offset)/tk->sector_size;
-	tk->fad_end = tk->fad_start + fad_size - 1;
-	fad_offset = tk->fad_end+1;
-
-	cdb.track_num = tno+1;
-
-	init_toc();
-
-	return 0;
+    if ((!ipbuf && cdb.track_num) || strlen(fname) >= 512) return -1;
+    strcpy(dir_name, fname);
+    char *slash = strrchr(dir_name, '/');
+    if (slash) *slash = 0;
+    else strcpy(dir_name, ".");
+    retv = f_open(&fp, fname, FA_READ);
+    if (retv) return -retv;
+    FSIZE_t bytes = f_size(&fp);
+    retv = bytes && bytes < CUE_BYTES ? f_read(&fp, fbuf, bytes, &nread) : FR_INVALID_OBJECT;
+    int closed = f_close(&fp);
+    if (retv || closed || nread != bytes) return -1;
+    fbuf[nread] = 0;
+    if (memchr(fbuf, 0, nread)) return -1;
+    int cpos = nread >= 3 && !memcmp(fbuf, "\xef\xbb\xbf", 3) ? 3 : 0;
+    char *line;
+    if (!ipbuf) current_index = 0;
+    retv = -1;
+    full_path[0] = 0;
+    while ((line = get_line(fbuf, &cpos, nread)) != NULL) {
+        char *token = cue_token(&line);
+        if (!token) continue;
+        if (!strcmp(token, "FILE")) {
+            char *file = cue_token(&line), *type = cue_token(&line);
+            if ((full_path[0] && !tk_fp) || !file || !*file || !type || strcmp(type, "BINARY") ||
+                join_path(full_path, 512, dir_name, file)) goto failed;
+            if (ipbuf) {
+                tk_fp = &track_fp[99];
+                retv = f_open(tk_fp, full_path, FA_READ);
+                if (retv) return -retv;
+                retv = f_read(tk_fp, ipbuf, 256, &nread);
+                closed = f_close(tk_fp);
+                return retv || closed || nread != 256 ? -1 : 0;
+            }
+            if (tk_fp) {
+                if (cue_finish(tk)) goto failed;
+                fad_offset = tk->fad_end + 1;
+            }
+            first = count;
+            tk_fp = NULL;
+        } else if (!strcmp(token, "TRACK")) {
+            char *number = cue_token(&line), *mode = cue_token(&line);
+            if (!full_path[0] || !mode || count == CUE_TRACKS ||
+                cue_number(&number, 0, CUE_TRACKS) != count + 1 ||
+                (count > first && !tk->max_index)) goto failed;
+            int kind, size;
+            if (!strcmp(mode, "AUDIO")) { kind = 3; size = 2352; }
+            else {
+                if (!strncmp(mode, "MODE1/", 6)) kind = 1;
+                else if (!strncmp(mode, "MODE2/", 6)) kind = 2;
+                else goto failed;
+                mode += 6;
+                size = cue_number(&mode, 0, 2352);
+                if (size != 2048 && size != 2352 && !(kind == 2 && (size == 2336 || size == 2324))) goto failed;
+            }
+            if (!tk_fp) {
+                tk_fp = &track_fp[count];
+                int opened = f_open(tk_fp, full_path, FA_READ);
+                if (opened) { retv = -opened; goto failed; }
+            }
+            tk = &cdb.tracks[count++];
+            memset(tk, 0, sizeof(*tk));
+            tk->fp = tk_fp;
+            tk->sector_size = size;
+            tk->mode = kind;
+        } else if (!strcmp(token, "INDEX")) {
+            char *number = cue_token(&line), *time = cue_token(&line);
+            int index = cue_number(&number, 0, 99);
+            int relative = cue_time(time);
+            if (!tk || count == first || index < 0 || relative < 0) goto failed;
+            if (relative >= 0x1000000u - fad_offset) goto failed;
+            unsigned fad = fad_offset + relative;
+            if (!tk->max_index && !tk->fad_0 && count > first + 1) {
+                TRACK_INFO *previous = tk - 1;
+                if (fad <= cue_last_index(previous)) goto failed;
+                previous->fad_end = fad - 1;
+            }
+            if (index == 0) {
+                if (tk->fad_0 || tk->max_index) goto failed;
+                tk->fad_0 = fad;
+            } else if (index == 1) {
+                if (tk->max_index || fad < tk->fad_0 || relative > 0xffffffffu / tk->sector_size) goto failed;
+                tk->fad_start = fad;
+                if (!tk->fad_0) tk->fad_0 = fad;
+                tk->file_offset = relative * tk->sector_size;
+                tk->index = &index_table[current_index];
+                tk->max_index = 1;
+                tk->ctrl_addr = tk->mode == 3 ? 0x01 : 0x41;
+                if (cue_finish(tk)) goto failed;
+            } else {
+                if (index != tk->max_index + 1 || !tk->max_index ||
+                    current_index == 2048 || fad <= cue_last_index(tk) || fad > tk->fad_end) goto failed;
+                index_table[current_index++] = fad;
+                tk->max_index = index;
+            }
+        }
+    }
+    if (!tk_fp || count == first || !tk || cue_finish(tk)) goto failed;
+    cdb.track_num = count;
+    init_toc();
+    return 0;
+failed:
+    if (!ipbuf) {
+        close_tracks(count);
+        current_index = 0;
+    }
+    return retv;
 }
 
 
@@ -368,29 +373,34 @@ int find_disc(char *name)
 }
 
 
+static int close_tracks(int count)
+{
+    FIL *last = NULL;
+    int result = 0;
+    for (int i = 0; i < count; i++) {
+        TRACK_INFO *tk = &cdb.tracks[i];
+        if (tk->fp && tk->fp != last) {
+            int closed = f_close(tk->fp);
+            if (!result) result = closed;
+            last = tk->fp;
+        }
+        memset(tk, 0, sizeof(*tk));
+    }
+    return -result;
+}
+
 int unload_disc(void)
 {
-	int i;
-
-	cdb.status = STAT_NODISC;
-	set_status(cdb.status);
-
-	if(cdb.track_num==0)
-		return 0;
-
-	for(i=0; i<cdb.track_num; i++){
-		TRACK_INFO *tk = &cdb.tracks[i];
-		if(tk->fp){
-			f_close(tk->fp);
-		}
-		memset(tk, 0, sizeof(TRACK_INFO));
-	}
-
-	if(cdb.has_subrw){
-		f_close(&cdb.subcode_fp);
-	}
-
-	return 0;
+    cdb.status = STAT_NODISC;
+    set_status(cdb.status);
+    int result = -close_tracks(cdb.track_num);
+    if (cdb.has_subrw) {
+        int closed = f_close(&cdb.subcode_fp);
+        if (!result) result = closed;
+    }
+    cdb.track_num = cdb.has_subrw = current_index = 0;
+    cdb.play_track = NULL;
+    return -result;
 }
 
 
@@ -458,8 +468,8 @@ int load_disc(int index, int start_save)
 		goto _exit;
 	}
 
-	unload_disc();
-	current_index = 0;
+	int unloaded = unload_disc();
+	if(unloaded){ retv = unloaded; goto _exit; }
 
 	printk("Load disc: {%s}\n", fname);
 	if(retv==1){

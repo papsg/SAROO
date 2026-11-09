@@ -278,3 +278,103 @@ This is the separately verified optimization from `paps-g`'s original
 `SAROO_MENU_BINARY_SOURCE` can independently select the joined consumer source
 for the deliberate missing-bound control. No diagnostic, runtime negotiation,
 new catalog format, device operation or hardware/game acceptance is added.
+
+## MCU-CUE-001: bounded CUE/raw loading and reader cleanup
+
+The old parser trusts whole-file sizes, missing tokens and unbounded track/index
+counts. It opens FILE readers before associating them with a track, leaks them
+on partial failures and accepts incomplete previews. Raw ISO/PCM setup accepts
+sub-sector extents, narrows wide sizes into 32-bit reader metadata and can
+overwrite an already-live handle. Unload neither retires all ownership nor
+reliably reports close errors.
+
+The parser now checks exact CUE reads/close results, requires a nonempty file
+of at most **466,303 bytes** plus NUL and rejects embedded NUL. It validates
+required FILE/TRACK/INDEX fields, decimal/time bounds, supported sector modes,
+track/index ordering and file extents. Its local tokenizer handles quoted names,
+spaces/tabs, CRLF and a UTF-8 BOM without changing the configuration tokenizer.
+Unknown metadata remains ignored; this is not a complete CUE-language validator.
+Both existing 512-byte path workspaces are checked before copying. Relative
+CUE filenames, CUEs at root and quoted leaf names with spaces remain usable.
+
+Files open only after a valid TRACK declaration. Adjacent tracks belonging to
+one FILE share its reader, and partial loads close the readers they own before
+leaving zero published tracks/subindices. The complete count is published only
+after successful parsing/TOC construction. Unload closes each adjacent shared
+reader once, handles standalone subcode even without tracks, retires track/
+index/playback ownership and reports the first close error. A failed unload
+stops a replacement load without overwriting its discovery-format selector.
+
+Raw loaders share checked setup and refuse an existing live disc. They reject
+less than one sector or more than `UINT32_MAX` bytes before narrowing into the
+existing reader fields. Trailing partial-sector floor behavior is unchanged.
+FatFs retains its configured 64-bit size/seek support; it is not narrowed.
+Preview checks complete I/O and leaves live metadata untouched. Normalized
+header offset/framing and reader pause acknowledgment are later series members.
+
+### Contracts and attribution
+
+The baseline [200-block allocation and 100 track records](https://github.com/papsg/SAROO/blob/33b7b01/Firm_MCU/Saturn/saturn_main.c)
+and [32-bit reader offsets, TOC construction and parser](https://github.com/papsg/SAROO/blob/33b7b01/Firm_MCU/Saturn/cdimg.c)
+establish the storage contracts. CUE text starts at `0x2400b000` and must end
+before block metadata at `0x2400a000 + 200*2352 = 0x2407cd80`. The TOC has track
+slots 0–98, followed by three metadata words; `track_fp[99]` is preview scratch.
+Thus the parser preserves **99 tracks** and **2,048 extra subindices**. The
+unused `MAX_TRACKS 32` declaration is not the allocation bound and is not used
+to introduce a 32-track regression.
+
+Sega's [CD Communication Interface User's Manual (CD Part), §7.2.3 and
+§7.2.4(1)(a)](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p07_11.htm#no4_0)
+describes TOC/subcode data; the latter table identifies track numbers 1–99.
+This is unpaginated HTML, inspected from the preserved source snapshot. It does
+not specify CUE text grammar, SAROO's scratch capacity or filesystem policy.
+Those follow the project sources. Public FatFs
+[`FIL`/`FSIZE_t`/`f_size`](https://github.com/papsg/SAROO/blob/33b7b01/Firm_MCU/FatFS/ff.h)
+and the already cited exact-read/error/close contracts define the I/O boundary.
+
+Original correction and fixtures: `paps-g`,
+`60d5df01d827c9f257ac1e2478337a1fa5c41c65`, 2026-09-06. This public port separates
+the filesystem shift/seek work, preserves the checked discovery and catalog
+policy, and deduplicates the shell signature already fixed in `f23a7d4`.
+Original notices and source comment bytes outside the changed functions remain.
+No later mixed-width/gap reader implementation or title integration is imported.
+
+### Qualification and costs
+
+Ten public methods / **85 scenarios** pass ASan/UBSan and O2; baseline fails
+**78**. These are scenarios, including explicit cleanup contracts, not 78
+distinct upstream bugs. Actual parser/raw loader/TOC/unloader/dispatch/FatFs
+functions cover valid and malformed input, all retained modes, 99 tracks,
+2,048/2,049 indices, exact text/path boundaries, quoted names, short/failed/
+partially failed I/O, preserved preview state, repeated unload, subcode and
+partial-handle cleanup. Eleven isolated regressions are detected, including
+wrong format dispatch, ignored unload error and a one-byte path-limit error.
+
+All **49 coupled MCU methods / 598 cases** pass both profiles. The first full
+run exposed a fixture extraction that included the new cleanup helper inside
+the discovery-only snippet. That setup failure is preserved and excluded;
+the corrected complete runs pass. Register/scheduling/configuration/discovery
+seams and synthetic FAT32 files remain test-only. Wide extent boundary tests
+inject `FIL` size metadata; they do not claim real >4GiB image reads. Close-error
+seams close the real fixture handle first and do not qualify latched-card recovery.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_save_cue.py -v
+make -C tests check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-save
+```
+
+Complete GNU App/RTX/166-vector qualification adds **848 load bytes**, reaching
+**60,440**, with **5,096 ITCM free**. BSS/data/span and stack/heap address gap
+remain 60,656/504/61,160/69,912. Direct CUE frame grows **136→160**; shared raw
+setup uses 32 versus old PCM 24/ISO 16, with zero-frame wrappers. Cleanup uses
+40, unload stays 16 and the loader stays 312. These individual figures do not
+measure transitive/IRQ peaks. Only `cdimg.c` changes among qualified MCU inputs;
+menu inputs remain unchanged. No static buffer or heap allocation is added.
+The existing CUE workspace now incurs a bounded NUL scan and per-track clearing.
+The wide filesystem division helper is still linked; its optimization is separate.
+
+This does not complete mixed sector widths, generated gaps, normalized header
+reads, shared CD-workspace concurrency, physical media/error recovery or game
+qualification. CUE scratch still aliases CD-block storage. No native/model test
+here establishes bus/cache/endian, DMA/audio/RTOS timing or SD durability.
