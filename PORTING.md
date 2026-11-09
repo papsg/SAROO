@@ -295,9 +295,31 @@ investigation; historical qualification is not reused.
 | SAVETOOL-007 clearing; `99127a6a` | [6450e93](https://github.com/papsg/SAROO/commit/6450e93); [codex/save-export-clearing](https://github.com/papsg/SAROO/tree/codex/save-export-clearing) | Uses completed validated-reader/output work. Three methods:100 poisoned exports plus8 BUP round trips match complete independent files. Baseline passes bytes but fails50 reduced-work assertions; ASan/UBSan/O2 pass. Three controls detected. All50 native methods pass with sanitizer and O2 CLIs (direct fault helpers retain sanitizers). Clear work falls32KiB/1MiB→64 bytes; native ARM64 O2 text+20 to15,612, zero-fill1,082,580 and direct exporter frames224/208/224 unchanged. [Format/request/source citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#savetool-007-clear-only-the-exported-header). Firmware unchanged; no timing/hardware claim. |
 | SAVETOOL-007 discarded CRC; `99127a6a` | [b5ae0bd](https://github.com/papsg/SAROO/commit/b5ae0bd); [codex/save-export-crc](https://github.com/papsg/SAROO/tree/codex/save-export-crc) | Separately verified after clearing. Same100 poisoned exports/8 BUP round trips pass ASan/UBSan/O2; baseline bytes pass but25 BUP-work assertions fail. SRO retains one CRC overN+48 bytes; BUP drops one discarded scan tozero. Restored BUP work and missing SRO CRC controls fail25 each. All50 native methods pass both CLI profiles. ARM64 O2 text+20 to15,632; static storage/direct frames unchanged. [Citations, paps-g attribution, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#separate-evaluation-skip-only-the-discarded-bup-crc). Firmware unchanged; no timing/hardware claim. |
 | MCU-SD-001; `2ba4e96b` | [f2b44e7](https://github.com/papsg/SAROO/commit/f2b44e7); [codex/disk-semaphore-safety](https://github.com/papsg/SAROO/tree/codex/disk-semaphore-safety) | Four actual-diskio methods/18 API scenarios; baseline9 failures, ASan/UBSan/O2 pass; seven controls detected. Includes explicit uninitialized-I/O refusal and all six interface error values (not all asserted reachable from RTX). 1000 initialization calls request1000 objects before/one after. Full GNU App/RTX/166-vector link adds32 load bytes to59,816, static RAM and direct frames0/8/32/32 unchanged. Unmodified CMSIS V2.1.3 header/license vendored for tests only. [CMSIS/FatFs/source citations, paps-g attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#mcu-sd-001-require-ownership-before-sd-transfers). Not card presence, concurrent remount, physical RTOS/DMA/SD, original MDK or game qualification. |
-| SATURN-SAVE-004; `f5ed0ae1` | Queued | Calendar/date conversion and explicit compatibility policies, preserving delegation and archive bytes. |
+| SATURN-SAVE-004; `f5ed0ae1` | [19de4f3](https://github.com/papsg/SAROO/commit/19de4f3); [codex/backup-date-correctness](https://github.com/papsg/SAROO/tree/codex/backup-date-correctness) | Nine actual-module methods/311,712 independent datetime records plus256 weekday inputs, seven old-valid field controls and separate system delegation. Baseline fails7 methods while valid controls pass; ASan/UBSan/O2 pass; eight controls detected. Gregorian1980–2235 and invalid/null/range semantics are explicit policy, not exact BIOS behavior; no date migration. All31 firmware save and59 MCU methods pass both profiles; complete public check184 Python methods/14 Rust tests, fmt/strict clippy/C checks. Full menu link adds276 code/data to78,820; BSS9,232/stack16,384 unchanged, margin26,636, direct decode/encode24→40/20→36. MCU inputs unchanged. [Exact Sega sections/pages, pinned quirk references, paps-g attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-STORAGE-FOLLOWUP.md#saturn-save-004-bounded-calendar-conversion). No BIOS/game, physical timing/SD or original MDK qualification. |
 
-Series active; remaining rows are not complete. All three verified checkpoints/main are
-pushed. Fork issues remain disabled and no open PR needs closure; original
-upstream requests remain unchanged. All new evidence stays in public; private
-repository and Saturn remain untouched.
+All three scoped finding IDs are complete in four verified source commits.
+Final main is [19de4f3](https://github.com/papsg/SAROO/commit/19de4f3); all four
+focused branches/main are pushed. No scoped candidate remains queued.
+
+The complete offline public check passes184 Python methods,14 Rust unit tests,
+formatting, strict clippy and authored C checks. Native save50 methods pass with
+sanitizer and O2 CLIs; firmware save31 and coupled MCU59 methods pass both
+profiles, as do the separate18 actual-disk-I/O cases. Current source hashes
+match complete menu and GNU App/RTX/166-vector receipts. Detailed failed/setup
+runs, inputs, negative controls and acceptance records are preserved in public
+ignored cohorts; public tests/commands and the linked document are reproducible.
+
+From starting9ff69d6, native text grows40 bytes to15,632 with1,082,580 zero-fill
+bytes/direct frames unchanged. MCU load grows32 bytes to59,816, leaving5,720
+ITCM free with unchanged static RAM. Menu code/data grows276 bytes to78,820;
+BSS/stack stay9,232/16,384 and body margin is26,636. These are measured work,
+source and link results, not hardware timing, RTOS heap, peak stack, SD durability,
+BIOS/game or original MDK qualification. Calendar/invalid-input compatibility
+policies and serialized initialization/media/recovery limits remain explicit.
+
+Default main, baseline ancestry and preserved master remain intact. Fork issues
+remain disabled and no open PR needs closure; no upstream request was modified.
+No PR, USB integration, runtime diagnostic, private framework or unrelated work
+was introduced. Private tracked state, all refs and stashes match the initial
+snapshot; no private preparer/test or device operation ran. Private files/caches,
+Saturn, installed firmware and other paused work remain untouched.
