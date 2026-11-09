@@ -9,6 +9,8 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(unix)]
+mod mcu;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const IMAGE: &str =
@@ -189,11 +191,7 @@ fn resources(elf: &[u8], image: &[u8], font: &[u8]) -> Result<Value> {
     )
 }
 
-fn build(repo: &Path, out: &Path) -> Result<()> {
-    let repo = repo.canonicalize()?;
-    if !repo.join("Firm_Saturn/Makefile").is_file() {
-        return fail("Repository has no original Firm_Saturn Makefile");
-    }
+fn new_build_output(repo: &Path, out: &Path) -> Result<PathBuf> {
     let out = if out.is_absolute() {
         out.to_owned()
     } else {
@@ -207,21 +205,36 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
         return fail("Output path must not contain parent traversal or commas");
     }
     let build_root = repo.join("tests/build");
-    fs::create_dir_all(&build_root)?;
-    if !build_root.canonicalize()?.starts_with(&repo) || !out.starts_with(&build_root) {
+    if !out.starts_with(&build_root) {
         return fail("Output must be inside this repository's tests/build directory");
     }
-    fs::create_dir_all(out.parent().ok_or("Output has no parent")?)?;
-    if !out
-        .parent()
-        .unwrap()
-        .canonicalize()?
-        .starts_with(build_root.canonicalize()?)
-    {
-        return fail("Output parent escapes tests/build");
+    // Inspect before creating beneath each parent: create_dir_all could create
+    // an outside directory through an existing symlink before rejecting it.
+    let parent = out.parent().ok_or("Output has no parent")?;
+    let mut current = repo.to_owned();
+    for part in parent.strip_prefix(repo)?.components() {
+        if !matches!(part, Component::Normal(_)) {
+            return fail("Invalid build parent component");
+        }
+        current.push(part.as_os_str());
+        match current.symlink_metadata() {
+            Ok(metadata) if metadata.file_type().is_dir() => (),
+            Ok(_) => return fail("Build parent is not a regular directory"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir(&current)?,
+            Err(error) => return Err(error.into()),
+        }
     }
     // Refuse reuse: a prior source cohort, failure or build remains reviewable.
     fs::create_dir(&out)?;
+    Ok(out)
+}
+
+fn build(repo: &Path, out: &Path) -> Result<()> {
+    let repo = repo.canonicalize()?;
+    if !repo.join("Firm_Saturn/Makefile").is_file() {
+        return fail("Repository has no original Firm_Saturn Makefile");
+    }
+    let out = new_build_output(&repo, out)?;
     let staged = out.join("source");
     fs::create_dir(&staged)?;
     let paths = Command::new("git")
@@ -389,10 +402,32 @@ fn run() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
+        println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2\nOffline GNU compile/link accounting for the original MDK App; never installs firmware.");
         return Ok(());
     }
+    if args.len() == 13
+        && args[0] == "mcu"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--toolchain"
+        && args[7] == "--cmsis"
+        && args[9] == "--stm32"
+        && args[11] == "--rtx"
+    {
+        #[cfg(unix)]
+        return mcu::build(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+            Path::new(&args[8]),
+            Path::new(&args[10]),
+            Path::new(&args[12]),
+        );
+        #[cfg(not(unix))]
+        return fail("The MCU compile/link check requires a Unix host");
+    }
     if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
-        return fail("Expected: menu --repo REPOSITORY --out UNUSED-DIRECTORY");
+        return fail("Expected menu or mcu arguments; use --help for both command forms");
     }
     build(Path::new(&args[2]), Path::new(&args[4]))
 }
@@ -407,6 +442,37 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn preserves_existing_output_and_rejects_symlink_parents_before_creation() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let parent = project.join("tests/build");
+        fs::create_dir_all(&parent).unwrap();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let fixture = parent.join(format!("output-guard-{}-{unique}", std::process::id()));
+        fs::create_dir(&fixture).unwrap();
+        let valid = new_build_output(&fixture, Path::new("tests/build/valid")).unwrap();
+        fs::write(valid.join("sentinel"), b"preserve").unwrap();
+        assert!(new_build_output(&fixture, Path::new("tests/build/valid")).is_err());
+        assert_eq!(fs::read(valid.join("sentinel")).unwrap(), b"preserve");
+        let outside = fixture.join("outside-build");
+        fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, fixture.join("tests/build/escape")).unwrap();
+        assert!(
+            new_build_output(&fixture, Path::new("tests/build/escape/uncreated/output")).is_err()
+        );
+        assert!(!outside.join("uncreated").exists());
+        assert!(
+            new_build_output(&fixture, Path::new("tests/build/../outside-build/output")).is_err()
+        );
+        fs::remove_dir_all(&fixture).unwrap();
+    }
     #[test]
     fn reads_compiler_direct_frames_without_claiming_transitive_use() {
         let rows = parse_stack_usage(

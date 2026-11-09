@@ -28,9 +28,59 @@ compile/link qualification, with no physical Saturn, bus or storage acceptance.
 GCC's `-fstack-usage` files and receipt rows record direct function frames and
 their static/dynamic qualifiers. They exclude transitive callees and interrupt
 use and do not prove a game's available stack headroom.
-The MIT-licensed host builder reuses the workspace's pinned dependencies; it
+The host builder reuses the workspace's pinned dependencies; it
 adds no Rust code to either processor's firmware. Tests are available with
 `cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build`.
+
+### Original MCU App compile/link check
+
+The `mcu` command stages public MCU inputs unchanged and offline CMSIS/STM32/RTX
+dependencies supplied explicitly by the caller. It compiles the original MDK
+App's nineteen C units, configured `RTX_Config.c`, the RTX sources/tick provider
+and assembly into `qualification.elf`. It checks the 64 KiB ITCM/128 KiB DTCM
+limits from the original [App memory settings](../Firm_MCU/ssmaster.uvprojx) and all
+166 entries from the [ST startup table](../Firm_MCU/Startup/startup_stm32h750xx.s), including strong RTX
+and storage IRQ overrides. The original MDK project remains the standard build.
+
+```sh
+tools/target/debug/firmware-build mcu --repo "$PWD" \
+  --out tests/build/mcu-link-check \
+  --toolchain /path/to/arm-gnu-toolchain-14.3.rel1 \
+  --cmsis /path/to/CMSIS \
+  --stm32 /path/to/STM32/Include \
+  --rtx /path/to/CMSIS/RTOS2
+```
+
+Use a complete Arm GNU bare-metal toolchain including newlib (the compiler-only
+Homebrew package is insufficient). New output paths are required inside this
+checkout's `tests/build`; prior outputs and failures are preserved. Staging
+bounds files/cohorts/nesting and rejects symlinks/escapes. Commands use explicit
+arguments, a separate process group and sixty-second per-command/five-minute
+compile/link deadlines. No download, network, device, private preparation,
+installation or boot-file update is performed.
+
+The receipt records copied source/SDK and generated-glue hashes, compiler and
+builder identities, command results, vectors, load/BSS/data bounds and compiler
+direct frames. The GNU verification CRT supplies data/BSS initialization and
+adapts the original ST vector/HardFault sequence; a preinclude supplies the
+prior-mask return used by the [existing source](../Firm_MCU/Main/main.c), where
+GCC's `__disable_irq` intrinsic returns void. It contains
+no additional runtime diagnostic or USB integration. The GNU glue is a build
+prerequisite, not evidence of byte equivalence to MDK or qualification for
+installation. Direct frames/address gaps do not prove RTOS/IRQ peak stack use.
+
+The existing public sources also need the standards-compatible `malloc(size_t)`
+declaration/definition when compiled against GNU newlib. C11 N1570 §7.22.3.4
+paragraph 1 (printed p. 349) specifies that signature; the target's `uint32_t`
+and `size_t` have the same width but different C types under this toolchain.
+See [the recorded prerequisite](../doc/FIRMWARE-SAVE-SAFETY.md#gnu-mcu-build-prerequisite-malloc-size-type).
+Original ST and Arm notices remain in their source/dependency files. The host
+Rust code is MIT; the embedded ST startup adaptation also retains its BSD
+3-Clause notice and [license](crates/firmware-build/LICENSE-ST-startup).
+
+This is GNU target compile/link accounting. It does not qualify the MDK image,
+cache/bus/clock behavior, physical endian transfers, concurrent access, SD
+durability, games or installed firmware.
 
 ## Browser and font assets
 
