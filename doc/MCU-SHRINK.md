@@ -83,8 +83,65 @@ and Saturn remain untouched.
 
 ## Shared CD setup
 
-Queued after the timer-service checkpoint. Preserve current transfer/directory
-behavior and existing log text/call order; measure code-versus-stack costs.
+Original implementation: **paps-g**, `96f9329a` (2026-09-06), selected part of
+MCU-SIZE-001. Starting at `2eb80d0`, share read/read-delete setup and the three
+identical directory-start paths. Keep the four named handlers and their APIs.
+The busy return still precedes partition access, sentinels normalize in the
+same order, read/delete modes remain distinct, and rejected spans return the
+same status. Preserve complete state, response masks, existing diagnostic text,
+masking and callee order. The public adaptation uses the existing `SSLOG` macro
+and portable `noinline`; the private GCC-only `noclone` annotation is unnecessary.
+There is no command-name packing or new diagnostic/logging behavior.
+
+Sega's [CD buffer-I/O specification, §8.2.7](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm),
+function7.2 `CDC_GetSctData` and7.4 `CDC_GetdelSctData`, defines partition/position/
+count selection and end sentinels; read-delete additionally deletes its selected
+range. [CD filesystem §8.2.8](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_18.htm),
+function8.1 `CDC_ChgDir` and8.2 `CDC_ReadDir`, defines selector-backed directory
+work, root/current directory handling and retained file information. The local
+HTML/text snapshots and source manifest were read. Their sections supply command
+meaning; precise emulated status/masks/order here are preservation contracts
+from current public code. No complete Sega-compliance or DataEnd/FIFO/deletion-
+completion repair is claimed by this refactor.
+
+A preserved public-source fixture identifies its commit, complete source hash
+and exact four baseline function bodies. Three actual-C methods compare41,474
+transfer and55,296 directory cases, then check seven independent contracts.
+They cover valid partition/selector objects0–23; empty/single/full200-block
+buffers; start/count boundaries and sentinels; both modes; busy transfers;
+root discovery/current directory, page/index and size boundaries; logging on/off;
+complete state and return values; and formatted logs plus ordered callee events.
+Busy requests with partition255 return before table access. Nonbusy invalid
+objects are outside this preservation domain; existing input validation,
+stream ownership and completion behavior remain separate work.
+
+Independent contracts check last-sector/end selection, rejected/busy transfer
+state, mode/result masks, publication before transfer start, and filter setup
+before directory wakeup. The event record includes filter contents at the
+callee boundary, so reordering a wakeup cannot hide behind identical final
+state. Baseline self-comparison and independent controls pass; the candidate
+passes all96,777 checks under sanitizers and O2. Five mutations each fail two
+methods: wrong delete mode, last-sector off-by-one, missing host-end result bit,
+early transfer publication and directory wakeup before filter publication.
+These are deterministic source/callee/register models, not concurrent hardware
+execution or a full CD-block emulator.
+
+The complete App/RTX/166-vector link saves **288 load bytes**:
+57,896→57,608, leaving7,928 ITCM bytes. Static DTCM remains60,296, with no new
+allocation, lock, task, buffer or storage operation. Linked helpers occupy268
+and108 code bytes; there is one shared transfer helper. Existing command/IRQ
+frames remain16/24 bytes. Read/read-delete frames change32/40→0/0 via tail calls
+to the48-byte shared helper. Change/read-directory frames change24/24→24/16,
+with a16-byte helper while active. The selected setup paths therefore add8–16
+stack bytes before other callees/interrupts; required4 KiB task stacks remain.
+Extra calls/type selection buy code space. No faster service or physical stack,
+command/audio latency, original MDK or game qualification is claimed.
+
+```sh
+make -C tests check-mcu-shrink
+SAROO_SHRINK_PROFILE=release make -C tests check-mcu-shrink
+# Differential/mutation override: SAROO_CDC_SETUP_SOURCE=/path/to/saturn_cdc.c
+```
 
 ## Exact ASCII image suffixes
 

@@ -21,6 +21,7 @@ check-gif:
 .PHONY: check-mcu-shrink
 check-mcu-shrink:
 	$(PYTHON) -B -m unittest discover -s . -p test_rtx_profile.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_setup.py -v
 
 .PHONY: check-config
 check-config:

@@ -1371,42 +1371,37 @@ int set_sector_length(void)
 }
 
 // 0x61 [SR]
+/* Both data commands have the same range/transfer contract. */
+static __attribute__((noinline)) int get_sector_data_common(int type)
+{
+    if (cdb.trans_type) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    int pt = cdb.cr3 >> 8, spos = cdb.cr2, snum = cdb.cr4;
+    PARTITION *pp = &cdb.part[pt];
+    if (type == TRANS_DATA_DEL)
+        SSLOG(_BUFIO, "get_del_sector_data: part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
+    if (spos == 0xffff) spos = pp->numblocks - 1;
+    if (snum == 0xffff) snum = pp->numblocks - spos;
+    SSLOG(_BUFIO, type == TRANS_DATA ? "get_sector_data: part=%d(%d) spos=%d snum=%d\n" :
+                                      "                   : part=%d(%d) spos=%d snum=%d\n",
+          pt, pp->numblocks, spos, snum);
+    if (spos < 0 || snum <= 0 || spos + snum > pp->numblocks) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    cdb.trans_type = type;
+    cdb.trans_part_index = pt;
+    cdb.trans_block_start = spos;
+    cdb.trans_block_end = spos + snum;
+    trans_start();
+    set_status(STAT_TRNS | cdb.status);
+    return HIRQ_DRDY | HIRQ_EHST;
+}
 int get_sector_data(void)
 {
-	int pt, spos, snum;
-	PARTITION *pp;
-
-	if(cdb.trans_type){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	pt   = cdb.cr3>>8;
-	spos = cdb.cr2;
-	snum = cdb.cr4;
-
-	pp = &cdb.part[pt];
-
-	if(spos==0xffff){
-		spos = pp->numblocks-1;
-	}
-	if(snum==0xffff){
-		snum = pp->numblocks-spos;
-	}
-	SSLOG(_BUFIO, "get_sector_data: part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
-	if(spos<0 || snum<=0 || (spos+snum) > pp->numblocks){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	cdb.trans_type = TRANS_DATA;
-	cdb.trans_part_index = pt;
-	cdb.trans_block_start = spos;
-	cdb.trans_block_end = spos+snum;
-	trans_start();
-
-	set_status(STAT_TRNS | cdb.status);
-	return HIRQ_DRDY|HIRQ_EHST;
+    return get_sector_data_common(TRANS_DATA);
 }
 
 
@@ -1446,41 +1441,7 @@ int del_sector_data(void)
 // 0x63 [SR]
 int get_del_sector_data(void)
 {
-	int pt, spos, snum;
-	PARTITION *pp;
-
-	if(cdb.trans_type){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	pt   = cdb.cr3>>8;
-	spos = cdb.cr2;
-	snum = cdb.cr4;
-	pp = &cdb.part[pt];
-
-	SSLOG(_BUFIO, "get_del_sector_data: part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
-	if(spos==0xffff){
-		spos = pp->numblocks-1;
-	}
-	if(snum==0xffff){
-		snum = pp->numblocks-spos;
-	}
-	SSLOG(_BUFIO, "                   : part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
-	if(spos<0 || snum<=0 || (spos+snum) > pp->numblocks){
-		// 格兰蒂亚: 传入了snum=0. 似乎应该直接返回.
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	cdb.trans_type = TRANS_DATA_DEL;
-	cdb.trans_part_index = pt;
-	cdb.trans_block_start = spos;
-	cdb.trans_block_end = spos+snum;
-	trans_start();
-
-	set_status(STAT_TRNS | cdb.status);
-	return HIRQ_DRDY|HIRQ_EHST;
+    return get_sector_data_common(TRANS_DATA_DEL);
 }
 
 
@@ -1729,6 +1690,22 @@ int handle_diread(void)
 
 
 // 0x70 [SR]
+/* Share the unchanged directory-read setup across all three paths. */
+static __attribute__((noinline)) void start_directory_read(int selnum)
+{
+    cdb.rdir_state = 2;
+			cdb.cddev_filter = selnum;
+			cdb.pause_request = 0;
+			cdb.play_type = PLAYTYPE_DIR;
+			cdb.play_fad_start = cdb.cdir_lba+150;
+			cdb.track = fad_to_track(cdb.play_fad_start);
+			cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
+			cdb.old_fad = cdb.fad;
+			cdb.fad = cdb.play_fad_start;
+			_set_filter(selnum, 0x40, cdb.play_fad_start, cdb.cdir_size);
+			disk_task_wakeup();
+}
+
 int change_dir(void)
 {
 	int selnum, fid;
@@ -1761,17 +1738,7 @@ int change_dir(void)
 			cdb.cdir_lba = cdb.root_lba;
 			cdb.cdir_size = cdb.root_size;
 
-			cdb.rdir_state = 2;
-			cdb.cddev_filter = selnum;
-			cdb.pause_request = 0;
-			cdb.play_type = PLAYTYPE_DIR;
-			cdb.play_fad_start = cdb.cdir_lba+150;
-			cdb.track = fad_to_track(cdb.play_fad_start);
-			cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-			_set_filter(selnum, 0x40, cdb.play_fad_start, cdb.cdir_size);
-			disk_task_wakeup();
+			start_directory_read(selnum);
 		}
 	}else{
 		// 切换到fid所指的目录
@@ -1791,17 +1758,7 @@ int change_dir(void)
 			cdb.cdir_size = fi->size/2048;
 
 			cdb.cdir_pfid = 0;
-			cdb.rdir_state = 2;
-			cdb.cddev_filter = selnum;
-			cdb.pause_request = 0;
-			cdb.play_type = PLAYTYPE_DIR;
-			cdb.play_fad_start = cdb.cdir_lba+150;
-			cdb.track = fad_to_track(cdb.play_fad_start);
-			cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-			_set_filter(selnum, 0x40, cdb.play_fad_start, cdb.cdir_size);
-			disk_task_wakeup();
+			start_directory_read(selnum);
 		}else{
 			set_status(STAT_REJECT);
 			return 0;
@@ -1823,17 +1780,7 @@ int read_dir(void)
 
 	if(cdb.cdir_lba){
 		cdb.cdir_pfid = fid;
-		cdb.rdir_state = 2;
-		cdb.cddev_filter = selnum;
-		cdb.pause_request = 0;
-		cdb.play_type = PLAYTYPE_DIR;
-		cdb.play_fad_start = cdb.cdir_lba+150;
-		cdb.track = fad_to_track(cdb.play_fad_start);
-		cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
-		cdb.old_fad = cdb.fad;
-		cdb.fad = cdb.play_fad_start;
-		_set_filter(selnum, 0x40, cdb.play_fad_start, cdb.cdir_size);
-		disk_task_wakeup();
+		start_directory_read(selnum);
 	}else{
 		set_status(STAT_REJECT);
 		return 0;

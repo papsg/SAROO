@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/papsg/SAROO",
+  "commit": "2eb80d0a55994805445534de89ec6683e769a907",
+  "path": "Firm_MCU/Saturn/saturn_cdc.c",
+  "source_sha256": "9fc8a0f0b897a926d8aefee280d5bfb045e83a4a8058dd27b26a822fc10db150",
+  "body_sha256": "58a515f455f95d2ef518045e5ccdda3503b89910c36b055853e932c527f56b66",
+  "functions": [
+    "get_sector_data",
+    "get_del_sector_data",
+    "change_dir",
+    "read_dir"
+  ],
+  "scope": "Supported-domain differential control; not a complete CD-block emulator."
+}
