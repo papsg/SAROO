@@ -289,7 +289,7 @@ int sr_bup_export(int slot_id, int save_id, int exp_type)
 
 			char fname[SAVE_FILENAME_SIZE];
 			int fsize = get_be32(save_buf+0x1c);
-			put_be32(save_buf+0x0c, crc32b(save_buf+0x10, fsize+0x30));
+			if (exp_type != 1) put_be32(save_buf+0x0c, crc32b(save_buf+0x10, fsize+0x30));
 			if(save_filename(fname, save_buf+0x10, exp_type ? BUP_EXTENSION : ".SRO")<0)
 				return -1;
 

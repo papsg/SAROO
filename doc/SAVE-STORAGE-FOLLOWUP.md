@@ -67,3 +67,30 @@ remain unchanged. These individual frames exclude callees and stack peaks. There
 buffer or allocation. This checkpoint still computes the original CRC for
 both formats; skipping the discarded BUP CRC is a separate evaluation.
 No timing, physical-device, power-loss or game improvement is inferred.
+
+### Separate evaluation: skip only the discarded BUP CRC
+
+All three exporters build an SRO header and calculate its CRC before the BUP
+branch replaces the entire 64-byte header. BUP has no field retaining that
+CRC. Skip it only for `exp_type == 1`, keeping the existing SRO calculation
+over metadata and payload. Format selection, output bytes, imports, archive
+ownership and checked publication remain unchanged. This ports the other
+independently evaluated part of `paps-g`'s `99127a6a`; the format/source/request
+citations and original notices above apply.
+
+The same 100 poisoned exports and eight import/re-export scenarios pass
+ASan/UBSan and O2. The preceding checkpoint passes complete-byte controls but
+fails **25 BUP work assertions**, while every SRO work control passes. Across
+the workloads, BUP CRC calls/bytes fall **one / N+48 → zero / zero**, and SRO
+remains **one / N+48**. At the 490,496-byte MEMS payload limit this avoids
+scanning 490,544 bytes. Restoring the redundant CRC is detected by all 25 BUP
+work controls; omitting the retained SRO CRC fails 25 independent complete-file
+comparisons. This is measured work removal, not a claim of previously corrupt
+BUP exports.
+
+The complete 50-method native suite passes with sanitizer and O2 CLIs; existing
+direct fault helpers retain their sanitizer builds. Uninstrumented ARM64 O2
+text adds **20 more bytes**, reaching **15,632**. Zero-fill storage remains
+1,082,580 bytes and all comparable direct frames remain unchanged. Firmware
+inputs are unchanged. Public reproduction commands are the same as above;
+no physical or end-to-end timing improvement is claimed.

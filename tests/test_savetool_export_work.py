@@ -106,7 +106,7 @@ class ExportWorkTests(unittest.TestCase):
             self.results.append(dict(kind=kind, size=size, format=fmt, check_work=check_work,
                 metrics=metrics, sha256=hashlib.sha256(out).hexdigest(), input_unchanged=True))
             if check_work:
-                self.assertEqual(metrics, [1, 64, 1, size + 48])
+                self.assertEqual(metrics, [1, 64, int(fmt == 'SRO'), size + 48 if fmt == 'SRO' else 0])
 
     def test_poisoned_exports_match_every_expected_byte(self):
         for kind, sizes in WORKLOADS:
