@@ -46,7 +46,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.results = []
         module = (source / 'saturn_utils.c').read_bytes()
         begin = module.index(b'#define SSAVE_FILE')
-        marker = b'static FIL cover_fp;' if cls.fixture == 'runtime' else b'int load_savefile(char *gameid)'
+        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents') else b'int load_savefile(char *gameid)'
         end = module.index(marker, begin)
         (cls.target / 'save-startup.inc').write_bytes(
             module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
@@ -57,7 +57,7 @@ class MCUSaveTest(unittest.TestCase):
         (cls.target / 'save-startup-gate.inc').write_bytes(main[begin:end])
         inputs = {'Saturn/saturn_utils.c': module, 'Saturn/saturn_main.c': main}
         harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py']
-        if cls.fixture == 'runtime':
+        if cls.fixture in ('runtime', 'extents'):
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
             selected = disc[disc.index(b'int get_gameid('):disc.index(b'int load_pcm(')]
             (cls.target / 'game-id.inc').write_bytes(selected.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
@@ -65,12 +65,19 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'disc-finish.inc').write_bytes(
                 disc[disc.rfind(b'\n', 0, call)+1:disc.index(b'int get_disc_ip(', call)])
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']
+        if cls.fixture == 'extents':
+            harnesses += ['mcu_save_extents.c', 'test_mcu_save_extents.py']
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
         fatfs = cls.target / 'FatFS'; fatfs.mkdir()
         for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
             data = (ROOT / 'Firm_MCU/FatFS' / name).read_bytes()
+            if name == 'ffconf.h' and cls.fixture == 'extents':
+                inputs['FatFS-production/ffconf.h'] = data
+                before = b'#define FF_USE_MKFS\t\t0'
+                assert data.count(before) == 1
+                data = data.replace(before, b'#define FF_USE_MKFS\t\t1')
             (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
         for name,data in inputs.items():
             target = cls.target / 'inputs' / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data)

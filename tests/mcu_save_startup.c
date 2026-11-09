@@ -80,7 +80,11 @@ DRESULT disk_write(BYTE drive, const BYTE *data, LBA_t sector, UINT count)
 }
 DRESULT disk_ioctl(BYTE drive, BYTE cmd, void *buffer)
 {
-    (void)buffer; assert(!drive && cmd == CTRL_SYNC);
+    assert(!drive);
+    if (cmd == GET_SECTOR_COUNT) { *(LBA_t *)buffer = disk_sectors; return RES_OK; }
+    if (cmd == GET_SECTOR_SIZE) { *(WORD *)buffer = 512; return RES_OK; }
+    if (cmd == GET_BLOCK_SIZE) { *(DWORD *)buffer = 1; return RES_OK; }
+    assert(cmd == CTRL_SYNC);
     return fflush(disk) ? RES_ERROR : RES_OK;
 }
 static int selected(FIL *fp, const char *operation)

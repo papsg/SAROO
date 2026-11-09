@@ -329,7 +329,10 @@ static void large_slot_case(const char *mode)
     /* An out-of-range selected slot must not expand the archive on flush. */
     ss_index = 4096; clear_io(); assert(flush_savefile() != 0 && !api_writes && !api_seeks);
 }
-int main(int argc, char **argv)
+#ifndef MCU_RUNTIME_TEST_ENTRY
+#define MCU_RUNTIME_TEST_ENTRY main
+#endif
+int MCU_RUNTIME_TEST_ENTRY(int argc, char **argv)
 {
     assert(argc == 6);
     const char *mode = argv[2]; int value = atoi(argv[3]);

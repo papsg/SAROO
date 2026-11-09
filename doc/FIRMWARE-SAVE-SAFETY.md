@@ -555,3 +555,46 @@ existing state; no extra payload copy or static buffer is added. Command counts
 do not establish physical timing or SD durability. The Saturn-side error and
 pending-data/retry member follows; MCU-SAVE-001's broader recovery questions
 are not declared closed by this port.
+
+## MCU-SAVE-002: qualify incomplete tails on full FAT32/exFAT volumes
+
+The necessary `169cb468` refinement is already included in the startup/runtime
+ports: require complete extents for published entries, without requiring the
+entire slot file to be aligned. This verification member adds no production
+code. It independently adapts `paps-g`'s original extent investigation to the
+public filesystem, without importing the private write-abort correction.
+
+On synthetic 64 MiB FAT32/exFAT volumes, a filler file reserves all but one
+cluster. Creating a new slot then performs a real short payload write, leaving
+512/4,096 bytes of an unindexed append. The checked backend reports failure.
+Explicit close/reopen retains that prefix. Eight scenarios verify runtime
+reads of old saves, unmount/remount/startup with zero admission writes, later
+completion of the free slot after releasing space, and rejection of a published
+entry that points into the incomplete tail. Whole-archive comparisons retain
+every old slot, directory entry, tail byte and the neighboring MEMS image.
+
+The trigger matters. The historical hard-write-error fixture used a later
+filesystem correction that is outside this port. The public
+[`f_write` implementation](https://github.com/papsg/SAROO/blob/3c2ab6f/Firm_MCU/FatFS/ff.c)
+has a distinct normal short-write path for volume exhaustion. The test uses
+that applicable path, not an assumption that the historical error-abort state
+is identical. FatFs's [`f_write`, Description](https://elm-chan.org/fsw/ff/doc/write.html)
+requires checking the byte count when space runs out; its
+[`f_lseek`, Description](https://elm-chan.org/fsw/ff/doc/lseek.html) documents
+preallocation/clipped position. The already cited file signatures, fixed
+directory capacity and published payload bounds define the archive requirement.
+
+All eight cases pass ASan/UBSan and O2. Restoring the two historical alignment
+guards fails all eight; skipping published-entry bounds fails two; truncating
+on startup fails six. Twenty-one coupled MCU methods (240 scenarios) pass both
+profiles. Formatting is enabled only in this fixture's staged `ffconf.h`; the
+production configuration and its preserved copy differ from that test header
+only in `FF_USE_MKFS`. Disk geometry helpers and fixture entry selection are
+test-only. Source/configuration snapshots and results are preserved publicly
+under the existing ignored build directory, and `check-mcu-save` runs them.
+
+No firmware input changes in this checkpoint, so the preceding ARM/SH-2 builds
+and resource counts remain applicable. The fixture explicitly reopens the
+failed slot file; production automatic handle recovery is still pending. This
+is filesystem/extent qualification, not physical full-card behavior, hard-error
+recovery, game acceptance, power-loss atomicity or an archive-repair mechanism.
