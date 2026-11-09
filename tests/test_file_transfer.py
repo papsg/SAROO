@@ -32,6 +32,8 @@ class FileTransferTests(unittest.TestCase):
         assert replacements==(1 if helper else 2)
         (cls.target/'file-transfer.inc').write_bytes(code)
         header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+        addresses=dict(re.findall(rb'#define\s+(TMPBUFF_ADDR|FIRM_ADDR)\s+(0x[0-9a-fA-F]+)',header))
+        assert addresses=={b'TMPBUFF_ADDR':b'0x610c7000',b'FIRM_ADDR':b'0x61000000'}
         (cls.target/'log.inc').write_bytes(b'\n'.join(line for line in header.splitlines() if line.startswith((b'#define _INFO ',b'#define SSLOG(',b'#define SSCMD_FILERD ',b'#define SSCMD_FILEWR ')))+b'\n')
         inputs={'Saturn/saturn_main.c':raw,'Saturn/cdc.h':header}
         fatfs=cls.target/'FatFS';fatfs.mkdir()
@@ -60,6 +62,22 @@ class FileTransferTests(unittest.TestCase):
             row=dict(mode=mode,fault=fault,logging=logging,returncode=result.returncode,stdout=result.stdout.decode(errors='replace'),stderr=result.stderr.decode(errors='replace'));self.results.append(row)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn(b'pass',result.stdout)
+
+    def test_bounds_reject_before_open_and_preserve_targets(self):
+        for mode in ('read-cross-window','write-cross-window','read-wrap-size','write-wrap-size',
+                     'read-request','write-request','read-request-last','write-zero-request',
+                     'read-cross-request','write-cross-request','read-name-no-nul','write-name-no-nul'):
+            with self.subTest(mode=mode):self.invoke('bounds-'+mode)
+
+    def test_exact_request_window_and_name_boundaries_remain_valid(self):
+        for mode in ('read-before-request','write-before-request','read-bounce','write-bounce',
+                     'read-end-exact','write-end-exact','read-name-limit','write-name-limit'):
+            with self.subTest(mode=mode):self.invoke('bounds-'+mode)
+
+    def test_whole_file_extents_remain_wide_until_checked(self):
+        for mode in ('whole-cross-window','whole-cross-request','whole-wide-wrap','whole-wide-zero',
+                     'whole-end-exact','whole-tail','whole-eof','whole-beyond'):
+            with self.subTest(mode=mode):self.invoke('bounds-'+mode)
 
     def test_reads_preserve_whole_file_eof_and_partial_count_semantics(self):
         for mode in ('read','read-whole','read-eof','read-beyond','read-empty'):

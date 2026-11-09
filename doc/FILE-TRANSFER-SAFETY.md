@@ -86,7 +86,51 @@ and privacy receipts remain local and ignored.
 
 ## MCU-FILE-002: MCU request bounds
 
-Queued: bounded names, request/window overlap and full-width whole-file extents.
+Original: **paps-g**, `66c197b3` (2026-09-06), adapted after public `a3959f4`.
+Validate the filename within240 bytes including NUL, reject buffer starts inside
+the live256-byte request, and reject extents crossing it or the16 MiB mapped
+window. Set the completed count to zero before validation. Rejected creates and
+overwrite requests therefore perform no open/truncate/transfer. Bounds use
+subtraction after address normalization, avoiding wrapping end-address sums.
+
+The address contract comes from [FPGA05 `SSMaster.v`, SDRAM mapping](https://github.com/papsg/SAROO/blob/2664d51/FPGA/SSMaster.v#L669):
+the MCU path exposes the low24 address bits. [MCU request constants](https://github.com/papsg/SAROO/blob/2664d51/Firm_MCU/Saturn/cdc.h#L12)
+and [menu producers](https://github.com/papsg/SAROO/blob/2664d51/Firm_Saturn/main.c#L581)
+define the request at offset `0x0c7000`, name at `+0x10` and bounce payload at
+`+0x100`. This is a transfer-envelope contract, not a claim that every mapped
+address is caller-owned. The FPGA's expansion-RAM folding, CPU cache aliases and
+cross-CPU ownership require separate work and are not repaired by this port.
+
+For size-zero reads, compute `f_size-f_tell` at full64-bit `FSIZE_t` width and
+compare the remaining extent before narrowing or reading. The [configured
+FatFs types](https://github.com/papsg/SAROO/blob/2664d51/Firm_MCU/FatFS/ff.h)
+and `FF_FS_EXFAT=1` establish that width; the actual `f_lseek` clips ordinary
+read-only seeks to EOF. Exact end/request/name boundaries and valid tail/EOF
+reads remain supported. The original address aliases, command fields, partial
+I/O semantics and direction-specific log formats remain. Legacy producer-side
+name copies and caller allocation limits follow in the separate menu checkpoint.
+
+The fixture grows by28 bounds scenarios:12 invalid fixed/name cases rejected
+before open, four invalid whole-file extents rejected after seek with one close,
+and12 valid boundary/tail controls. Together with prior completion cases, all61
+scenarios in12 methods pass ASan/UBSan and O2. The preceding completion-corrected
+baseline fails all16 invalid cases and passes45 controls. Generated FAT32 files
+verify data/guard/request preservation and rejected-write targets. Two cases
+inject only full-width size metadata (`2^32` and `2^32+17`) after real open; these
+are not actual multi-gigabyte exFAT media qualification. A compile-time width
+check and actual address-header assertions bind those modeling assumptions.
+Six mutations detect missing name/request/fixed-size/whole-size checks,
+window-only capacity and narrowing before comparison.
+
+The complete App/RTX/166-vector link grows64 load bytes,57,332→57,396, leaving
+8,140 ITCM bytes. Static DTCM remains60,296 and IRQ/dispatcher/helper direct
+frames remain24/8/120. No allocation, task, buffer or normal filesystem operation
+is added. Valid requests add a bounded filename scan and integer checks; whole-
+file reads add a wide extent calculation. Invalid requests avoid file/data work.
+The same public reproduction command above runs completion and bounds controls;
+no physical latency, stack-peak, malformed-filesystem or game claim follows.
+MCU-FILE-002 still has the legacy allocation/producer/coherence limits described
+in the menu checkpoint; this is not blanket arbitrary-pointer safety.
 
 ## SATURN-WORD-001: unsigned word decoding
 

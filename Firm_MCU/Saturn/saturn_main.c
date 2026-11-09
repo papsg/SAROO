@@ -620,6 +620,14 @@ static __attribute__((noinline)) int ss_file_transfer(int writing)
     u32 baddr = *(u32 *)(TMPBUFF_ADDR + 0x08);
     char *name = (char *)(TMPBUFF_ADDR + 0x10);
     u8 *buffer = (u8 *)((baddr & 0x00ffffff) | 0x61000000);
+    /* FPGA 05 exposes 24 SDRAM address bits. Never cross the window or
+       the live request/name area; the legacy bounce payload starts at +0x100. */
+    u32 position = baddr & 0x00ffffff;
+    const u32 request = TMPBUFF_ADDR - FIRM_ADDR;
+    u32 capacity = (position < request ? request : 0x01000000) - position;
+    *(u32 *)(TMPBUFF_ADDR + 0x04) = 0;
+    if ((position >= request && position < request + 0x100) || size > capacity ||
+        !memchr(name, 0, 0xf0)) return FR_INVALID_PARAMETER;
     int flags = writing ? ((offset == -1 ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS) | FA_WRITE) : FA_READ;
     int retv = f_open(&fp, name, flags);
     u32 count = 0;
@@ -629,8 +637,14 @@ static __attribute__((noinline)) int ss_file_transfer(int writing)
         /* FatFs may report a successful short seek when extension runs out of space. */
         if (!retv && writing && f_tell(&fp) != (FSIZE_t)offset) retv = FR_INT_ERR;
         if (!retv) {
-            if (!writing && size == 0) size = f_size(&fp);
-            retv = writing ? f_write(&fp, buffer, size, &count) : f_read(&fp, buffer, size, &count);
+            if (!writing && size == 0) {
+                /* Check the remaining extent at full exFAT width before narrowing. */
+                FSIZE_t remaining = f_size(&fp) - f_tell(&fp);
+                if (remaining > capacity) retv = FR_INVALID_PARAMETER;
+                else size = (u32)remaining;
+            }
+            if (!retv)
+                retv = writing ? f_write(&fp, buffer, size, &count) : f_read(&fp, buffer, size, &count);
         }
         int closed = f_close(&fp);
         if (!retv) retv = closed;
