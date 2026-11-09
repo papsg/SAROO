@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_thread.c",
+  "source_path": "CMSIS/RTOS2/RTX/Source/rtx_thread.c",
+  "source_file_sha256": "14936b4ece2c7a312f07443c08989896da03af4e4fec0b124c4ed2c6a5242860",
+  "extracted_function": "osRtxThreadDispatch",
+  "function_sha256": "d0013333dd2d91dda673c7e2bcc5d662572e95d4dccb9d1d9b1c1e8e8636c4dc",
+  "lines": [
+    430,
+    459
+  ],
+  "license": "Apache-2.0",
+  "copyright": "2013-2019 Arm Limited",
+  "scope": "Unchanged function and original header for a host regression fixture only; scheduler dependencies are modeled.",
+  "upstream_commit": "b5f0603d6a584d1724d952fd8b0737458b90d62b",
+  "source_matches_sdk_provenance": true
+}

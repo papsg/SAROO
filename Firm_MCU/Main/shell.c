@@ -17,7 +17,15 @@ int gets(char *buf, int len)
 	n = 0;
 	esc = 0;
 	while(1){
+#ifdef BOOT
 		while((ch=_getc())<0);
+#else
+		/* main_task is the existing low-priority shell owner. */
+		while((ch=_getc_tmout(0))<0){
+			gif_decode_timer();
+			osDelay(2);
+		}
+#endif
 		if(ch==0x0d || ch==0x0a){
 			break;
 		}

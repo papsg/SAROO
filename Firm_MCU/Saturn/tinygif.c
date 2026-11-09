@@ -97,7 +97,8 @@ static int gif_decode_clip(GIF_DECODER *gd)
     if (!p || *p < 2 || *p > 8) return -1;
     unsigned clear = 1u << *p;
     unsigned initial_width = *p + 1, width = initial_width, top = clear + 2;
-    unsigned pixels = 0;
+    /* One sentinel removes a transparency-flag test from every output pixel. */
+    int transparent = gd->flags & 1 ? gd->transparent : -1;
     unsigned x = 0, pass = 0, y = 0, previous_first = 0;
     int previous = -1;
     gd->left = gd->nbits = 0;
@@ -105,7 +106,7 @@ static int gif_decode_clip(GIF_DECODER *gd)
     for (;;) {
         unsigned code = get_code(gd, width);
         if ((code & ~1u) == clear) {
-            if (code & 1u) return pixels == total ? gif_skip_blocks(gd) : -1;
+            if (code & 1u) return total == 0 ? gif_skip_blocks(gd) : -1;
             top = clear + 2; width = initial_width; previous = -1;
             continue;
         }
@@ -130,11 +131,11 @@ static int gif_decode_clip(GIF_DECODER *gd)
             if (top == (1u << width) && width < 12) ++width;
         }
         previous = input; previous_first = code;
-        if (length > total - pixels) return -1;
-        pixels += length;
+        if (length > total) return -1;
+        total -= length;
         while (length) {
             unsigned value = gif_stack[--length];
-            if (!(gd->flags & 1) || value != gd->transparent)
+            if (value != (unsigned)transparent)
                 gifbuf[(gd->y + y) * GIF_STRIDE + gd->x + x] = value;
             if (++x == gd->w) {
                 x = 0;
@@ -223,7 +224,7 @@ void gif_decode_init(void)
 void gif_decode_timer(void)
 {
     if (__atomic_load_n(&gd_state, __ATOMIC_RELAXED) < 0) return;
-    /* Only disk_task calls this timer. Publish ownership before checking stop. */
+    /* Only main_task calls this timer while its shell waits for input. */
     __atomic_store_n(&in_decoding, 1, __ATOMIC_SEQ_CST);
     GIF_DECODER *gd = &g_gd;
     int state = __atomic_load_n(&gd_state, __ATOMIC_ACQUIRE), next_state = state;

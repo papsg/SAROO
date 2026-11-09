@@ -384,7 +384,6 @@ _restart_wait:
 			HIRQ = HIRQ_SCDQ;
 			set_peri_report();
 
-			gif_decode_timer();
 			goto _restart_wait;
 		}
 

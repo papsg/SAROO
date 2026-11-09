@@ -131,9 +131,95 @@ complete menu link retains identical code/data/BSS/stack/image/font values and
 bytes; all36 source inputs match its unchanged receipt. Compiler load/stack
 accounting remains GNU qualification, not original MDK or device execution.
 
-## MCU-GIF-002: scheduling checkpoint
+## MCU-GIF-002: service animation from the existing low-priority task
 
-Queued after decoder safety. Public main's startup task runs the existing UART
-shell, unlike the private build's idle loop. Preserve that shell and all boot
-behavior while servicing GIF work from the same lower-priority task. The
-private USB reload/acknowledgment changes remain excluded.
+The baseline at `dbafcd8` invokes the GIF timer only when the disk worker is
+idle. Its menu PCM loop repeatedly services music and waits on TIM6's semaphore,
+so it can miss the idle path indefinitely. The source explains why removing
+menu music can restore GIF progress, as reported in the preserved comments on
+[issue345](https://github.com/tpunix/SAROO/issues/345). This is a menu scheduling
+defect; exact report assets and physical behavior remain unqualified.
+
+Public `main_task` runs `simple_shell` after startup. Replacing that call with
+the private build's background loop would discard the original UART shell.
+Instead, retain the full shell and line editor. While App input is unavailable,
+use the existing `_getc_tmout(0)` readiness probe, service GIF work, and sleep
+for two ticks. Zero timeout performs one status probe and never busy-spins.
+Ready input is consumed normally; echo, editing, history and command dispatch
+remain unchanged. The BOOT branch retains its original blocking UART reader.
+Startup and UART driver sources are unchanged. There is exactly one timer
+caller, in the existing low-priority task; the disk worker no longer decodes.
+
+No new task, stack, heap object or RTOS synchronization object is allocated.
+Effective priorities remain startup8, disk24, command worker31 and LED40.
+The preexisting unused High attribute at disk creation is deliberately not
+corrected here: passing NULL retains the actual Normal priority. At the
+configured100 Hz, two idle ticks request50 wakeups/second, compared with the
+old UART poll's five. This is up to45 extra idle wakeups/second before execution
+cost, including when GIF service has stopped. No physical CPU/pacing saving is
+claimed. Long-running interactive shell commands can postpone GIF service until
+their command/input loop resumes; they are not a separate worker in this design.
+
+The original **paps-g** change is
+`f285ede892f2e76189b570626f169ab42ba20d29` (2026-09-06). This port adapts its
+scheduling to public main's shell, omits all private USB reload gates and
+acknowledgment changes, and imports its bounded decoder simplifications:
+precompute the transparency sentinel once per frame and track remaining pixels
+rather than total plus emitted counts. Valid palette indices are0–255, so the
+unsigned -1 sentinel cannot hide a pixel when transparency is disabled. Check
+string length before subtracting; accept the terminator only at zero remainder.
+Pixel bounds, cancellation and output remain covered by the decoder tests.
+
+The pinned [Arm RTX source](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_thread.c),
+`osRtxThreadDispatch` (lines430–459), switches to a ready higher-priority thread.
+Its default thread creation priority is Normal. The original configured
+`RTX_Config.h` supplies100 Hz, disabled round robin and4,096-byte default stacks.
+These source requirements support preemption, not a physical audio deadline.
+`tests/vendor/rtx` contains the exact dispatcher extraction, original Arm
+copyright header, Apache2.0 license and pinned full-file/function hashes.
+It matches the SDK provenance used by the complete public MCU build. This is
+an unchanged host-test dependency, not a replacement RTOS or new firmware code.
+
+Six public scheduling methods compile actual startup/task creation, UART reads,
+line editing and that dispatcher. App progress is checked after initialization,
+including modeled music waits with dispatcher preemption. Separate controls
+retain BOOT timing/no GIF calls, App/BOOT backspace and history, and all four
+original task priorities. Eighty dispatcher cases cover explicit/ready-list
+paths at priorities1–40. Twelve modeled idle waits require exactly18 UART
+register references and twelve GIF services; a static caller check guards the
+single-owner placement. The baseline fails three methods; BOOT, editing and
+priority controls pass. Corrected sanitizer/O2 runs pass all six methods,
+six native invocations and the separate caller check. Hardware registers,
+semaphore waits, task operations and GIF execution are modeled boundaries;
+complete decoder code is exercised by the ten safety methods, not this stub.
+
+Five additional mutations are rejected: omitted background service (three
+failures), slow idle cadence (two), a positive timeout that busy-polls (two),
+raised background priority (one), and lost backspace editing (two). The source
+outside the shell polling block, startup and UART driver is byte-preserved.
+Linked App code independently contains the GIF/probe/yield calls in the line
+editor and no GIF call in the disk worker. Ordinary UART command code is not
+claimed generally hardened by these focused controls.
+
+The complete MCU link saves16 load bytes versus decoder safety:
+59,796→59,780, with5,756 ITCM bytes free. Static DTCM60,752 and fixed
+scratch/dictionary20,480 remain unchanged. Direct main/shell/editor/disk frames
+remain8/248/32/80; initializer/timer/exit remain112/24/8 and decode remains64.
+These are individual frames, not complete task/IRQ peaks. The whole series
+adds96 load bytes versus `24c5c73`, saves40 static DTCM bytes and8 KiB fixed
+scratch, and adds no allocations. No installed firmware is changed.
+
+
+The final complete public check passes259 Python methods,14 Rust checks and
+native C controls. All16 GIF safety/scheduling methods pass both sanitizers and
+O2. Both final build receipts match current inputs; menu source and complete
+menu bytes remain unchanged. The BOOT line-editor preprocessed C tokens match
+the accepted baseline exactly. Original MDK/BOOT-image execution, real-time
+pacing, hardware UART/audio/video behavior and exact issue345 assets remain
+unqualified. No physical cartridge or installed firmware is touched.
+
+Each public source/ledger checkpoint is reviewed in full and scanned for
+secrets/private PII, including commit text and approved noreply identities.
+Only synthetic/public inputs, public contributor handles, primary citations
+and sanitized summaries are published. Raw paths/configuration/logs and
+source/evidence receipts remain local and ignored.
