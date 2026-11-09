@@ -94,3 +94,60 @@ text adds **20 more bytes**, reaching **15,632**. Zero-fill storage remains
 1,082,580 bytes and all comparable direct frames remain unchanged. Firmware
 inputs are unchanged. Public reproduction commands are the same as above;
 no physical or end-to-end timing improvement is claimed.
+
+## MCU-SD-001: require ownership before SD transfers
+
+The old disk glue rejects only `osErrorTimeout` from semaphore acquisition.
+Other failures enter the SD driver and release a token the caller never
+acquired. It also reports successful initialization after semaphore allocation
+failure and allocates/replaces its only handle on every initialization call.
+An allocation failure makes the invalid-handle path reachable without owning
+the semaphore; inspected RTX code returns `osErrorParameter` for a null handle.
+
+Require `osOK` before driver access/release, expose `STA_NOINIT` while the
+semaphore is unavailable, and create it only when needed. Allocation can be
+retried; successful repeated initialization reuses the same object. The four
+transfer-attempt maximum and exactly one release after successful acquisition
+remain. No driver, SD retry timing, filesystem configuration or USB feature
+is changed.
+
+Original correction and fixture: `paps-g`,
+`2ba4e96b2f779770bd4f9100d268f8f8e6db4196` (2026-09-06). This port adds an
+uninitialized-I/O control and self-contained native test dependencies. The
+baseline [disk glue](https://github.com/papsg/SAROO/blob/b5ae0bd/Firm_MCU/FatFS/diskio.c),
+FatFs [`STA_NOINIT`/disk API](https://github.com/papsg/SAROO/blob/b5ae0bd/Firm_MCU/FatFS/diskio.h),
+and inspected [Arm CMSIS-RTOS2 Semaphore Management API](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html)
+establish the contracts. `osSemaphoreNew` returns an ID or NULL on error;
+acquisition success is `osOK`. This is SD/RTOS glue policy, not a Sega CD rule.
+Original ChaN notices remain. The unmodified V2.1.3 CMSIS declaration header
+and Apache-2.0 license are vendored **for native tests only**, with provenance
+and hash in `tests/diskio-stubs/cmsis/README.md`; firmware SDK paths remain
+unchanged.
+
+Four public methods / **18 scenarios** compile actual public `diskio.c` with
+checked semaphore/SD stubs. Baseline fails **nine**; ASan/UBSan and O2 candidates
+pass. Coverage includes status/allocation failure and retry, 1,000 initializations,
+uninitialized I/O, all six defined CMSIS error values, unchanged buffers on
+refusal, valid reads/writes and zero/one/three/four failed transfer attempts.
+The error injection covers the interface defensively; it does not assert every
+enum status is reachable from this RTX acquire implementation. Seven isolated
+admission/status/reuse/retry/release regressions are detected. The repeated-init
+fixture requests **1,000 objects before, one after**; this is a call count,
+not a measured RTOS heap saving or speedup.
+
+```sh
+make -C tests check-mcu-diskio
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-mcu-diskio
+```
+
+The complete GNU App/RTX/166-vector qualification adds **32 load bytes**,
+reaching **59,816**, with **5,720 ITCM free**. BSS/data/span/address gap remain
+60,656/504/61,160/69,912. Disk status/init/read/write direct frames remain
+0/8/32/32 bytes; these exclude transitive/IRQ peaks. Menu production inputs
+remain unchanged. Full receipts and source hashes stay in the public build
+cohort; no original MDK equivalence or installable-image claim is made.
+
+This checks semaphore availability, not electrical card presence or media
+identity. Mount/initialization still require serialization; concurrent remount,
+automatic recovery, DMA timing, physical SD durability and game behavior remain
+unqualified. It does not establish the cause of historical lost-save reports.

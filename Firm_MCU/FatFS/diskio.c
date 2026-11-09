@@ -28,7 +28,7 @@ static osSemaphoreId_t sem_diskio;
 
 DSTATUS disk_status (BYTE pdrv)
 {
-	return RES_OK;
+	return sem_diskio ? 0 : STA_NOINIT;
 }
 
 
@@ -39,8 +39,9 @@ DSTATUS disk_status (BYTE pdrv)
 
 DSTATUS disk_initialize (BYTE pdrv)
 {
-	sem_diskio = osSemaphoreNew(1, 1, NULL);
-	return RES_OK;
+	if (!sem_diskio)
+		sem_diskio = osSemaphoreNew(1, 1, NULL);
+	return sem_diskio ? 0 : STA_NOINIT;
 }
 
 
@@ -54,7 +55,7 @@ DRESULT disk_read (BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 	int result, retry;
 
 	result = osSemaphoreAcquire(sem_diskio, 100);
-	if(result==osErrorTimeout)
+	if(result!=osOK)
 		return RES_ERROR;
 
 	//printk("disk_read: pdrv=%d sector=%08x count=%d buf=%08x\n", pdrv, sector, count, buff);
@@ -93,7 +94,7 @@ DRESULT disk_write (BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 	int result, retry;
 
 	result = osSemaphoreAcquire(sem_diskio, 100);
-	if(result==osErrorTimeout)
+	if(result!=osOK)
 		return RES_ERROR;
 
 	retry = 4;
