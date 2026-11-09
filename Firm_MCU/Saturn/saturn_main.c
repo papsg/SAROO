@@ -978,7 +978,7 @@ void saturn_config(void)
 	u32 rv;
 
 	memset((u8*)SYSINFO_ADDR, 0, 0x1000);
-	parse_config("/SAROO/saroocfg.txt", NULL);
+	if (parse_config("/SAROO/saroocfg.txt", NULL)) return;
 
 	if(auto_update){
 		int fp, fl;

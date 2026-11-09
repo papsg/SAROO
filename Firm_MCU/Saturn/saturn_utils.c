@@ -191,255 +191,224 @@ char *get_line(u8 *buf, int *pos, int size)
 
 /******************************************************************************/
 
-static int sscfg_p = 0;
+/* This scratch window ends at the CD sector pool. The caller has stopped
+ * its reader (or is that reader during a disc change) before using it. */
+#define CONFIG_BYTES 0x8000
+#define CONFIG_WORDS ((0x0e80 - 0x0100) / 4)
+#define CFG_GLOBAL 0x80
+#define CFG_HEX 1
+#define CFG_DEC 2
+#define CFG_MULTI 16
+#define CFG_CATEGORY 32
 
-void ss_config_init(void)
-{
-	sscfg_p = 0;
-	*(u32*)(SYSINFO_ADDR+0x0100) = 0;
-}
-
-void ss_config_put(u32 val)
-{
-	*(u32*)(SYSINFO_ADDR+0x0100+sscfg_p) = val;
-	sscfg_p += 4;
-	*(u32*)(SYSINFO_ADDR+0x0100+sscfg_p) = 0;
-}
-
-/******************************************************************************/
-
-
-int config_exmem(char *lbuf)
-{
-	if(lbuf[1]!='M')
-		return -1;
-
-	if(lbuf[0]=='1'){
-		ss_config_put(0x30000001);
-	}else if(lbuf[0]=='4'){
-		ss_config_put(0x30000004);
-	}else{
-		return -1;
-	}
-
-	printk("    exmem_%s\n", lbuf);
-	return 0;
-}
-
-
-int config_wrmem(char *lbuf)
-{
-	char *p;
-
-	int addr = strtoul(lbuf, &p, 16);
-
-	p = strchr(lbuf, '=');
-	if(p==NULL)
-		return -1;
-	p += 1;
-	while(*p==' ') p += 1;
-
-	int width = strlen(p);
-	int val = strtoul(p, NULL, 16);
-	addr = ((width/2)<<28) | (addr&0x0fffffff);
-	ss_config_put(addr);
-	ss_config_put(val);
-	printk("    M_%08x=%x\n", addr, val);
-
-	return 0;
-}
-
-static char catbuf[32];
-int category_num = 0;
-
-int config_category(char *lbuf)
-{
-	char *category = (char*)(SYSINFO_ADDR+0x0e80); // 610a3e80
-
-	if(category_num<12){
-		memcpy(category+category_num*32, catbuf, 31);
-		category_num += 1;
-		*(u8*)(SYSINFO_ADDR+0x0c) = category_num;
-	}
-	return 0;
-}
+int category_num;
 
 char *get_category(int id)
 {
-	return (char*)(SYSINFO_ADDR + 0x0e80 + id*32); // 610a3e80
+    return (char*)(SYSINFO_ADDR + 0x0e80 + id * 32);
 }
 
-
-/******************************************************************************/
-
-
-#define ARG_NON  0
-#define ARG_HEX  1
-#define ARG_DEC  2
-#define ARG_STR  3
-
-#define GA       0x0100
-
-
-typedef struct {
-	char *name;
-	int type;
-	void *action;
-	void *action_ex;
-}CFGARG;
-
-
-CFGARG arg_list [] = {
-	{"lang_id",      GA|ARG_DEC, &lang_id,},
-	{"debug",        GA|ARG_HEX, &debug_flags,},
-	{"log_mask",     GA|ARG_HEX, &log_mask,},
-	{"auto_update",  GA|ARG_DEC, &auto_update,},
-	{"category",     GA|ARG_STR, &catbuf, config_category},
-	{"sector_delay",    ARG_DEC, &sector_delay,},
-	{"play_delay",      ARG_DEC, &play_delay,},
-	{"pend_delay",      ARG_DEC, &pend_delay,},
-	{"exmem_",          ARG_NON, config_exmem,},
-	{"M_",              ARG_NON, config_wrmem,},
-	{"multi_disc",      ARG_STR, &mdisc_str,},
-	{"sort_mode",    GA|ARG_DEC, &sort_mode,},
-
-	{NULL},
+static const struct {
+    const char *name;
+    void *value;
+    unsigned char type;
+} config_args[] = {
+    {"lang_id", &lang_id, CFG_GLOBAL | CFG_DEC},
+    {"debug", &debug_flags, CFG_GLOBAL | CFG_HEX},
+    {"log_mask", &log_mask, CFG_GLOBAL | CFG_HEX},
+    {"auto_update", &auto_update, CFG_GLOBAL | CFG_DEC},
+    {"category", NULL, CFG_GLOBAL | CFG_CATEGORY},
+    {"sector_delay", &sector_delay, CFG_DEC},
+    {"play_delay", &play_delay, CFG_DEC},
+    {"pend_delay", &pend_delay, CFG_DEC},
+    {"exmem_", NULL, 0},
+    {"M_", NULL, 0},
+    {"multi_disc", &mdisc_str, CFG_MULTI},
+    {"sort_mode", &sort_mode, CFG_GLOBAL | CFG_DEC},
 };
 
+static char *config_space(char *p)
+{
+    while (*p == ' ' || *p == '\t') p++;
+    return p;
+}
+
+static int config_end(char *p)
+{
+    p = config_space(p);
+    return !*p || *p == '#' || *p == ';';
+}
+
+/* Return the number of digits, excluding an optional hexadecimal prefix.
+ * Check against 32 bits explicitly, including when tested on a 64-bit host. */
+static int config_number(char **text, u32 *value, unsigned base)
+{
+    char *p = config_space(*text);
+    if (*p == '+') p++;
+    if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+    unsigned count = 0, result = 0;
+    for (;;) {
+        unsigned digit = (unsigned char)*p - '0';
+        if (digit > 9) digit = ((unsigned char)*p | 32) - 'a' + 10;
+        if (digit >= base) break;
+        if (result > (0xffffffffu - digit) / base) return 0;
+        result = result * base + digit;
+        count++;
+        p++;
+    }
+    *value = result;
+    *text = p;
+    return count;
+}
+
+/* Read one immutable snapshot twice: first validate every selected operation,
+ * then publish. Newlines are already NULs; temporary section delimiters are
+ * restored. The second pass cannot encounter new I/O or new file contents. */
+static int config_walk(char *buffer, unsigned size, char *gameid, int apply)
+{
+    unsigned pos = 0, words = 0, cats = 0;
+    int section = 0, seen = 0;
+    u32 *out = (u32*)(SYSINFO_ADDR + 0x0100);
+    while (pos < size) {
+        char *line = config_space(buffer + pos), *p;
+        unsigned next = pos + strlen(buffer + pos) + 1;
+        if (*line == '[') {
+            if (section == 2 || (section && !gameid)) break;
+            p = strchr(line, ']');
+            if (!p || !config_end(p + 1)) goto invalid;
+            *p = 0;
+            int match = !seen ? !strcmp(line + 1, "global") :
+                        gameid && gameid_match(line + 1, gameid);
+            *p = ']';
+            if (!seen && !match) goto invalid;
+            section = match ? (seen ? 2 : 1) : 0;
+            seen = 1;
+        } else if (section) {
+            for (unsigned i = 0; i < sizeof(config_args) / sizeof(config_args[0]); i++) {
+                unsigned type = config_args[i].type;
+                unsigned len = strlen(config_args[i].name);
+                if ((type & CFG_GLOBAL) && (gameid || section != 1)) continue;
+                type &= ~CFG_GLOBAL;
+                if (strncmp(line, config_args[i].name, len)) continue;
+                p = line + len;
+                if (type && *p && *p != '=' && *p != ' ' && *p != '\t') continue;
+                p = config_space(p);
+                u32 value = 0, key = 0;
+                unsigned count = 0;
+                if (!type) {
+                    if (*line == 'M') {
+                        if (!config_number(&p, &key, 16)) goto invalid;
+                        p = config_space(p);
+                        if (*p++ != '=') goto invalid;
+                        int digits = config_number(&p, &value, 16);
+                        if (digits != 2 && digits != 4 && digits != 8) goto invalid;
+                        unsigned width = digits / 2;
+                        if (key & (width - 1)) goto invalid;
+                        key = (width << 28) | (key & 0x0fffffff);
+                        count = 2;
+                    } else {
+                        if ((*p != '1' && *p != '4') || p[1] != 'M') goto invalid;
+                        key = 0x30000000 | (*p - '0');
+                        p += 2;
+                        count = 1;
+                    }
+                    if (!config_end(p) || count >= CONFIG_WORDS - words) goto invalid;
+                    if (apply) {
+                        out[words] = key;
+                        if (count == 2) out[words + 1] = value;
+                        out[words + count] = 0;
+                    }
+                    words += count;
+                } else {
+                    if (*p++ != '=') goto invalid;
+                    p = config_space(p);
+                    if (type >= CFG_MULTI) {
+                        if (*p++ != '"') goto invalid;
+                        char *end = strchr(p, '"');
+                        if (!end || end - p >= type || !config_end(end + 1)) goto invalid;
+                        char *dest = config_args[i].value;
+                        if (type == CFG_CATEGORY) {
+                            if (cats == 12) goto invalid;
+                            dest = get_category(cats++);
+                        }
+                        if (apply) {
+                            memcpy(dest, p, end - p);
+                            dest[end - p] = 0;
+                        }
+                    } else {
+                        if (!config_number(&p, &value, type == CFG_DEC ? 10 : 16) ||
+                            (type == CFG_DEC && value > 0x7fffffffu) || !config_end(p)) goto invalid;
+                        if (apply) *(int*)config_args[i].value = value;
+                    }
+                }
+                break;
+            }
+        }
+        pos = next;
+    }
+    if (apply && !gameid) {
+        category_num = cats;
+        *(u8*)(SYSINFO_ADDR + 0x0c) = cats;
+    }
+    return 0;
+invalid:
+    return -1;
+}
+
+/* Keep the closed FIL's stack frame off the validation/publication path. */
+static __attribute__((noinline)) int config_load(char *fname, u8 *buffer)
+{
+    FIL fp;
+    u32 count = 0;
+    int result = f_open(&fp, fname, FA_READ);
+    if (result) return result == FR_NO_FILE ? 0 : -result;
+    FSIZE_t bytes = f_size(&fp);
+    result = bytes < CONFIG_BYTES ? f_read(&fp, buffer, bytes, &count) : FR_INVALID_OBJECT;
+    int closed = f_close(&fp);
+    if (!result) result = closed;
+    if (!result && count != bytes) result = FR_DISK_ERR;
+    if (result) return -result;
+    buffer[count] = 0;
+    if (memchr(buffer, 0, count)) return -FR_INVALID_PARAMETER;
+    if (count >= 3 && !memcmp(buffer, "\xef\xbb\xbf", 3)) memset(buffer, ' ', 3);
+    for (unsigned i = 0; i < count; i++)
+        if (buffer[i] == '\r' || buffer[i] == '\n') buffer[i] = 0;
+    return count;
+}
 
 int parse_config(char *fname, char *gameid)
 {
-	FIL fp;
-	u8 *fbuf = (u8*)0x24002000;
-	char *p = NULL;
-	int retv;
-
-	ss_config_init();
-
-	retv = f_open(&fp, fname, FA_READ);
-	if(retv){
-		return -2;
-	}
-
-	u32 nread;
-	retv = f_read(&fp, fbuf, f_size(&fp), &nread);
-	f_close(&fp);
-	if(retv){
-		return -3;
-	}
-	fbuf[nread] = 0;
-
-	printk("\nLoad config [%s] for [%s]\n", fname, (gameid==NULL)?"Global":gameid);
-
-	int cpos = 0;
-	int g_sec = 0;
-	int in_sec = 0;
-	char *lbuf;
-	while((lbuf=get_line(fbuf, &cpos, nread))!=NULL){
-_next_section:
-		//查找section: [xxxxxx]
-		if(in_sec==0){
-			if(lbuf[0]=='['){
-				p = strrchr(lbuf, ']');
-				if(p==NULL){
-					return -4;
-				}
-				*p = 0;
-				if(g_sec==0){
-					// 第一个section一定是global
-					if(strcmp(lbuf+1, "global")){
-						return -5;
-					}
-					g_sec = 1;
-					in_sec = 1;
-					printk("Global config:\n");
-				}else if(gameid && gameid_match(lbuf+1, gameid)){
-					// 找到了与game_id匹配的section
-					in_sec = 1;
-					printk("Game config:\n");
-				}
-			}
-			continue;
-		}else{
-			if(lbuf[0]=='['){
-				if(g_sec==1){
-					g_sec = 2;
-					in_sec = 0;
-					if(gameid==NULL)
-						break;
-					goto _next_section;
-				}else{
-					break;
-				}
-			}
-			CFGARG *arg = arg_list;
-			while(arg->name){
-				int nlen = strlen(arg->name);
-				int type = arg->type;
-				int global = (type&GA);
-				type &= 0xff;
-				if(global && (gameid || g_sec!=1) ){
-					arg += 1;
-					continue;
-				}
-				if(strncmp(lbuf, arg->name, nlen)==0){
-					if(type==ARG_NON){
-						int (*action)(char*) = arg->action;
-						retv = action(lbuf+nlen);
-					}else if(type==ARG_STR){
-						p = strchr(lbuf+nlen, '"');
-						if(p){
-							char *st = p+1;
-							p = strchr(st, '"');
-							if(p){
-								*p = 0;
-								printk("    %s = \"%s\"\n", arg->name, st);
-								strcpy((char*)(arg->action), st);
-								retv = 0;
-							}else{
-								retv = -1;
-							}
-						}else{
-							retv = -1;
-						}
-					}else{
-						int base = (type==ARG_DEC)? 10 : 16;
-						p = strchr(lbuf+nlen, '=');
-						if(p){
-							int value = strtoul(p+1, NULL, base);
-							if(base==10){
-								printk("    %s = %d\n", arg->name, value);
-							}else{
-								printk("    %s = %08x\n", arg->name, value);
-							}
-							*(int*)(arg->action) = value;
-							retv = 0;
-						}else{
-							retv = -1;
-						}
-					}
-					if(retv){
-						printk("Invalid config line: {%s}\n", lbuf);
-						led_event(LEDEV_SCFG_ERROR);
-					}else{
-						if(arg->action_ex){
-							void (*action_ex)(void) = arg->action_ex;
-							action_ex();
-						}
-					}
-				}
-				arg += 1;
-			}
-
-		}
-	}
-	printk("\n");
-
-	return 0;
+    u8 *buffer = (u8*)0x24002000;
+    /* Runtime save transfers also own this scratch window under mutex_fs.
+     * Startup precedes creation of that mutex and all Saturn worker threads. */
+    if (gameid) fs_lock();
+    int count = config_load(fname, buffer), result = count;
+    if (count < 0) goto failed;
+    if (!count) goto defaults;
+    if (config_walk((char*)buffer, count, gameid, 0)) {
+        result = -FR_INVALID_PARAMETER;
+        goto failed;
+    }
+defaults:
+    /* No settings from a previously loaded game may leak into a new one.
+     * Global-only scalar defaults retain their initialized values. */
+    sector_delay = play_delay = pend_delay = 0;
+    mdisc_str[0] = 0;
+    *(u32*)(SYSINFO_ADDR + 0x0100) = 0;
+    if (!gameid) {
+        category_num = 0;
+        *(u8*)(SYSINFO_ADDR + 0x0c) = 0;
+    }
+    if (count) config_walk((char*)buffer, count, gameid, 1);
+    if (gameid) fs_unlock();
+    return 0;
+failed:
+    if (gameid) fs_unlock();
+    led_event(LEDEV_SCFG_ERROR);
+    return result;
 }
 
 /******************************************************************************/
-
 #define SSAVE_FILE "/SAROO/SS_SAVE.BIN"
 #define SSAVE_ADDR (SAVINFO_ADDR+0x00000)
 

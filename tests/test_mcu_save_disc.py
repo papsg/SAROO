@@ -18,8 +18,15 @@ class DiscSaveSessionTests(MCUSaveTest):
             with self.subTest(index=index): self.invoke('menu',index)
 
     def test_failed_swap_waits_for_reinsertion_and_preserves_request(self):
-        for fault in range(1,5):
+        for fault in range(1,6):
             with self.subTest(fault=fault): self.invoke('swap-failure',fault)
+
+    def test_real_configuration_failure_closes_readers_before_save_admission(self):
+        for value in range(6):
+            with self.subTest(value=value): self.invoke('configuration', value)
+
+    def test_real_configuration_loads_reset_previous_game_defaults(self):
+        self.invoke('configuration-defaults')
 
     def test_load_and_preview_validate_index_and_allocation(self):
         for mode in ('index','preview-index'):

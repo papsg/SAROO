@@ -12,7 +12,7 @@ typedef struct {
 } TRACK_INFO;
 static FIL track_fp[100];
 static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
-static int current_index,category_num,category_current,total_disc=2,next_disc;
+static int current_index,category_current,total_disc=2,next_disc;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";
 static char mdisc_str[16];
@@ -21,12 +21,40 @@ static int sector_delay,play_delay,pend_delay;
 static int present=1,identify_result,identifies,discoveries,parse_error,find_error,alloc_error;
 static void set_status(u8 state) { assert(cdb.status==state); }
 static void init_toc(void) { cdb.status=STAT_PAUSE; }
-static char *get_category(int id) { assert(!id);return "Category"; }
 #define sprintk sprintf
 static int find_cue_iso(char *path,char *out)
 { discoveries++;snprintf(out,256,"%s/disc.iso",path);return find_error?find_error:2; }
 static int parse_cue(char *name,u8 *ip) { (void)name;(void)ip;assert(0);return -1; }
-static int parse_config(char *path,char *id) { (void)path;(void)id;return 0; }
+/* Actual configuration parsing and FatFs share the archive workspace mutex. */
+static int lang_id,debug_flags,log_mask,auto_update,sort_mode;
+_Alignas(8) static struct { u8 before[32],data[4096],after[32]; } config_info;
+#define SYSINFO_ADDR ((uintptr_t)config_info.data)
+#define LEDEV_SCFG_ERROR 4
+static int config_fault,config_errors;
+static unsigned config_reads,config_closed,config_locked_reads;
+static FRESULT config_open(FIL *fp,const TCHAR *name,BYTE mode)
+{ return config_fault==4?FR_DISK_ERR:f_open(fp,name,mode); }
+static FRESULT config_read(FIL *fp,void *out,UINT size,UINT *count)
+{
+    config_reads++;config_locked_reads+=lock_depth==1;
+    return f_read(fp,out,config_fault==1 && size?size-1:size,count);
+}
+static FRESULT config_close(FIL *fp)
+{
+    config_closed++;FRESULT result=f_close(fp);
+    /* Real release, then an injected reported failure: not media recovery. */
+    return result?result:config_fault==2?FR_DISK_ERR:FR_OK;
+}
+static void config_led(int event) { assert(event==LEDEV_SCFG_ERROR);config_errors++; }
+#define f_open config_open
+#define f_read config_read
+#define f_close config_close
+#define led_event config_led
+#include "config-disc.inc"
+#undef led_event
+#undef f_close
+#undef f_read
+#undef f_open
 static int find_disc(char *name) { (void)name;return 0; }
 /* Actual worker/helper bodies; notifications/preemption are deterministic stubs. */
 static int pause_waits,pause_wakes,pause_acks,pause_allow_ack=1,pause_after=3;
@@ -122,6 +150,17 @@ static void make_iso(const char *dir,const char *id,unsigned size)
     FIL fp;UINT count;assert(f_open(&fp,name,FA_CREATE_NEW|FA_WRITE)==0);
     assert(f_write(&fp,header,size,&count)==0 && count==size);assert(f_close(&fp)==0);
 }
+static void write_config(const void *text,unsigned size)
+{
+    FIL fp;UINT count;
+    assert(!f_open(&fp,"/SAROO/saroocfg.txt",FA_CREATE_ALWAYS|FA_WRITE));
+    assert(!f_write(&fp,text,size,&count) && count==size && !f_close(&fp));
+}
+static void valid_config(void)
+{
+    const char *text="[global]\nsector_delay=7\nplay_delay=8\npend_delay=9\n";
+    write_config(text,strlen(text));
+}
 static void initialize_disc(void)
 {
     assert(f_mkdir("/SAROO")==0);make_archive(0,65536,0);make_archive(1,0x800000,0);
@@ -168,6 +207,7 @@ static void swap_failure(int value)
     if(value==1) identify_result=19;
     if(value==2) find_error=-4;
     if(value==3) parse_error=-3;
+    if(value==5)write_config("[wrong]\n",8);
     if(value==4) {
         FIL fp;assert(f_open(&fp,"/SAROO/ISO/DISC2/disc.iso",FA_WRITE)==0);
         assert(f_lseek(&fp,128)==0 && f_truncate(&fp)==0 && f_close(&fp)==0);
@@ -181,6 +221,7 @@ static void swap_failure(int value)
     for(int i=0;i<100;i++) swap_step();
     assert(discoveries+identifies==calls);
     identify_result=find_error=parse_error=0;
+    if(value==5)valid_config();
     if(value==4) {
         assert(f_unlink("/SAROO/ISO/DISC2/disc.iso")==0);
         /* Directory already exists; write a complete replacement fixture. */
@@ -242,12 +283,63 @@ static void automatic_no_wait(void)
     assert(cdb.track_num==1 && cdb.status==STAT_PAUSE && ss_index==1);
     assert(!pause_waits && !pause_wakes && !api_reads && !api_writes);
 }
+static void configuration_failure(int value)
+{
+    fixture(0,32);
+    sector_delay=45;play_delay=46;pend_delay=47;strcpy(mdisc_str,"old-disc");
+    memset(&config_info,0xa5,sizeof(config_info));
+    u8 snapshot[sizeof test_shared],settings[sizeof config_info];
+    memcpy(snapshot,test_shared,sizeof snapshot);memcpy(settings,&config_info,sizeof settings);
+    PendingSave pending[2];memcpy(pending,pending_save,sizeof pending);
+    int slot=ss_index,header=sm_index0,window=sm_index1;
+    u8 *retry=NULL;BUPDIR request=target;
+    if(value==5) {
+        request.date++;retry=data_bytes(32,81);
+        fault="write-error";fault_target=0;fault_nth=1;armed=1;
+        assert(sro_bup_write(0,&request,retry,0)==BUP_BROKEN && phase(0)==2);armed=0;
+        memcpy(snapshot,test_shared,sizeof snapshot);memcpy(pending,pending_save,sizeof pending);
+    }
+    const char *text=value==0 || value==5?"[global]\nplay_delay=bad\n":"[global]\nplay_delay=7\n";
+    write_config(text,strlen(text));
+    if(value==3) {
+        char *large=malloc(32768);assert(large);memset(large,'#',32768);
+        write_config(large,32768);free(large);
+    }
+    config_fault=value==1?1:value==2?2:value==4?4:0;
+    config_reads=config_closed=config_locked_reads=0;reset_counts();
+    int expected=value==0 || value==5?FR_INVALID_PARAMETER:value==3?FR_INVALID_OBJECT:FR_DISK_ERR;
+    assert(menu_step(1)==(u16)-expected);
+    assert(!cdb.track_num && !cdb.has_subrw && !track_fp[0].obj.fs);
+    assert(ss_index==slot && sm_index0==header && sm_index1==window);
+    assert(!api_reads && !api_writes && !memcmp(snapshot,test_shared,sizeof snapshot));
+    assert(!memcmp(pending,pending_save,sizeof pending));
+    assert(sector_delay==45 && play_delay==46 && pend_delay==47 && !strcmp(mdisc_str,"old-disc"));
+    assert(!memcmp(settings,&config_info,sizeof settings));
+    assert(config_closed==(value!=4) && config_reads==(value!=3 && value!=4));
+    assert(config_locked_reads==config_reads && config_errors);
+    config_fault=0;valid_config();
+    if(retry) {
+        assert(!sro_bup_write(0,&request,retry,0));check_record(0,&request,retry);
+        check_record(0,&neighbor,keep);free(retry);
+    }
+    assert(!menu_step(1) && ss_index==2);
+    assert(sector_delay==7 && play_delay==8 && pend_delay==9 && !mdisc_str[0]);
+}
+static void configuration_defaults(void)
+{
+    valid_config();assert(!menu_step(0));
+    assert(sector_delay==7 && play_delay==8 && pend_delay==9);
+    write_config("[global]\n",9);assert(!menu_step(1));
+    assert(!sector_delay && !play_delay && !pend_delay && !mdisc_str[0]);
+}
 int main(int argc,char **argv)
 {
     assert(argc==4);const char *mode=argv[2];int value=atoi(argv[3]);
     disk=fopen(argv[1],"r+b");assert(disk);FATFS fs;assert(f_mount(&fs,"0:",1)==0);
     fault="none";fault_nth=1;initialize_disc();
-    if(!strcmp(mode,"session")) live_session(value);
+    if(!strcmp(mode,"configuration"))configuration_failure(value);
+    else if(!strcmp(mode,"configuration-defaults"))configuration_defaults();
+    else if(!strcmp(mode,"session")) live_session(value);
     else if(!strcmp(mode,"menu")) {
         assert(menu_step(value)==0 && ss_index==(value?2:1));
         assert(api_reads && (value?!memcmp(test_shared,(u8[65536]){0},65536):1));

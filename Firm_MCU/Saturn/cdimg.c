@@ -515,10 +515,10 @@ int load_disc(int index, int start_save)
 			retv = 0;
 		}
 
-		mdisc_str[0] = 0;
 		next_disc = -1;
 
-		parse_config("/SAROO/saroocfg.txt", gameid);
+		retv = parse_config("/SAROO/saroocfg.txt", gameid);
+		if (retv) { unload_disc(); goto _exit; }
 		
 		if(mdisc_str[0]){
 			int mlen = strlen(mdisc_str);

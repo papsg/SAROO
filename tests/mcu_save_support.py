@@ -81,6 +81,11 @@ class MCUSaveTest(unittest.TestCase):
                 (cls.target / name).write_bytes(data); inputs['tests/firmware-save-stubs/' + name] = data
         if cls.fixture == 'disc':
             harnesses += ['mcu_save_disc.c', 'test_mcu_save_disc.py']
+            start = module.index(b'static char *gameid_split(')
+            config = module[start:module.index(b'/******************************************************************************/', start)]
+            start = module.index(b'char *get_line(')
+            config += module[start:module.index(b'#define SSAVE_FILE', start)]
+            (cls.target / 'config-disc.inc').write_bytes(config.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             coupled = (ROOT / 'tests/mcu_save_api.c').read_bytes()
             (cls.target / 'coupled-harness.inc').write_bytes(coupled[:coupled.index(b'int main(')])
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
@@ -187,7 +192,7 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])
             begin = main.index(b'u32 bswap32('); end = main.index(b'u32 track_to_fad(', begin)
             (cls.target / 'toc.inc').write_bytes(main[begin:end])
-            begin = module.index(b'char *get_token('); end = module.index(b'static int sscfg_p', begin)
+            begin = module.index(b'char *get_token('); end = module.index(b'\n}', module.index(b'char *get_line(', begin)) + 3
             (cls.target / 'token.inc').write_bytes(module[begin:end])
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
