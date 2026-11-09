@@ -380,8 +380,8 @@ void simple_shell(void)
 			list_disc(arg[0], 1);
 		}
 		CMD(load){
-			int load_disc(int index);
-			load_disc(arg[0]);
+			int load_disc(int index, int start_save);
+			load_disc(arg[0], 1);
 		}
 		CMD(cdc){
 			void cdc_dump(int status);

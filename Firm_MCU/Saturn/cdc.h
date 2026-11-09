@@ -381,7 +381,7 @@ void init_toc(void);
 char *get_category(int id);
 int list_bins(int show);
 int list_disc(int cid, int show);
-int load_disc(int index);
+int load_disc(int index, int start_save);
 int load_pcm(char *fname);
 int unload_disc(void);
 int get_disc_ip(int index, u8 *ipbuf);

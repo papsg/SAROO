@@ -480,7 +480,7 @@ int find_cue_iso(char *dirname, char *outname)
 }
 
 
-int load_disc(int index)
+int load_disc(int index, int start_save)
 {
 	int retv;
 	char *fname;
@@ -490,7 +490,7 @@ int load_disc(int index)
 		return -1;
 	}
 
-	if(disc_path[index]==0){
+	if(index < 0 || index >= total_disc || disc_path[index]==0){
 		printk("Invalid disc index %d\n", index);
 		return -1;
 	}
@@ -502,6 +502,7 @@ int load_disc(int index)
 	}
 
 	fname = malloc(256);
+    if (!fname) return FR_NOT_ENOUGH_CORE;
 	retv = find_cue_iso(cat_dir, fname);
 	if(retv<=0){
 		if(retv==0)
@@ -583,7 +584,8 @@ int load_disc(int index)
 			printk("    force pend_delay = %d\n", pend_delay);
 		}
 
-		retv = load_savefile(gameid);
+        /* Automatic changes retain the running game's save session. */
+        if (start_save) retv = load_savefile(gameid);
 	}
 
 _exit:
@@ -598,7 +600,7 @@ int get_disc_ip(int index, u8 *ipbuf)
 	char *fname;
 	char cat_dir[256];
 
-	if(disc_path[index]==0){
+	if(index < 0 || index >= total_disc || disc_path[index]==0){
 		printk("Invalid disc index %d\n", index);
 		return -1;
 	}
@@ -610,6 +612,7 @@ int get_disc_ip(int index, u8 *ipbuf)
 	}
 
 	fname = malloc(256);
+    if (!fname) return FR_NOT_ENOUGH_CORE;
 	retv = find_cue_iso(cat_dir, fname);
 	if(retv<=0){
 		if(retv==0)

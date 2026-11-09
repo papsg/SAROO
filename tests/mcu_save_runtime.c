@@ -12,6 +12,7 @@ static struct { struct { FIL *fp; int sector_size; } tracks[1]; } cdb;
 static int disc_finish(char *gameid)
 {
     int retv = 0;
+    int start_save = 1;
     char *fname = malloc(256); assert(fname);
     if (1) {
 #include "disc-finish.inc"

@@ -351,8 +351,15 @@ _restart_wait:
 				int sdio_reset(void);
 				if(cdb.status==STAT_OPEN){
 					if(sd_card_insert()){
-						sdio_reset();
-						load_disc(next_disc);
+                        int requested = next_disc;
+                        retv = sdio_reset();
+                        if (!retv) retv = load_disc(requested, 0);
+                        if (retv) {
+                            /* Wait for another removal/insertion, retaining
+                             * the requested disc without a tight retry loop. */
+                            unload_disc();
+                            next_disc = requested;
+                        }
 						HIRQ = HIRQ_DCHG;
 					}
 				}else{
@@ -609,7 +616,7 @@ void ss_cmd_handle(void)
 		break;
 	case SSCMD_LOADDISC:
 		// 装载镜像
-		retv = load_disc(SS_ARG);
+		retv = load_disc(SS_ARG, 1);
 		SS_ARG = retv;
 		SS_CMD = 0;
 

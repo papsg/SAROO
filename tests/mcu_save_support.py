@@ -46,7 +46,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.results = []
         module = (source / 'saturn_utils.c').read_bytes()
         begin = module.index(b'#define SSAVE_FILE')
-        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'api') else b'int load_savefile(char *gameid)'
+        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'api', 'disc') else b'int load_savefile(char *gameid)'
         end = module.index(marker, begin)
         (cls.target / 'save-startup.inc').write_bytes(
             module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
@@ -67,7 +67,7 @@ class MCUSaveTest(unittest.TestCase):
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']
         if cls.fixture == 'extents':
             harnesses += ['mcu_save_extents.c', 'test_mcu_save_extents.py']
-        if cls.fixture == 'api':
+        if cls.fixture in ('api', 'disc'):
             harnesses += ['mcu_save_api.c', 'test_mcu_save_api.py']
             path = Path(os.environ.get('SAROO_GAME_SAVE_SOURCE', ROOT / 'Firm_Saturn/game_save.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/game_save.c'] = data
@@ -75,6 +75,26 @@ class MCUSaveTest(unittest.TestCase):
             for name in ('main.h', 'smpc.h'):
                 data = (ROOT / 'tests/firmware-save-stubs' / name).read_bytes()
                 (cls.target / name).write_bytes(data); inputs['tests/firmware-save-stubs/' + name] = data
+        if cls.fixture == 'disc':
+            harnesses += ['mcu_save_disc.c', 'test_mcu_save_disc.py']
+            coupled = (ROOT / 'tests/mcu_save_api.c').read_bytes()
+            (cls.target / 'coupled-harness.inc').write_bytes(coupled[:coupled.index(b'int main(')])
+            disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
+            parts = [disc[disc.index(b'int get_gameid('):disc.index(b'int load_pcm(')],
+                     disc[disc.index(b'int parse_iso('):disc.index(b'int parse_cue(')],
+                     disc[disc.index(b'int unload_disc('):disc.index(b'int find_cue_iso(')]]
+            (cls.target / 'disc-core.inc').write_bytes(b''.join(parts).replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
+            (cls.target / 'disc-load.inc').write_bytes(disc[disc.index(b'int load_disc('):])
+            signature = b'int load_disc(int index, int start_save)' in disc
+            (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
+            begin = main.index(b'\t\t\tif(next_disc>=0)')
+            end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
+            (cls.target / 'swap.inc').write_bytes(main[begin:end])
+            begin = main.index(b'case SSCMD_LOADDISC:')
+            end = main.index(b'\n\t\tgif_decode_exit();', begin)
+            (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
+            data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
+            (cls.target / 'sd-reset.inc').write_bytes(data[data.index(b'int sdio_reset(void)'):])
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
@@ -94,7 +114,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.binary = cls.target / cls.fixture
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        if cls.fixture == 'api':
+        if cls.fixture in ('api', 'disc'):
             flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / ('mcu_save_'+cls.fixture+'.c')),

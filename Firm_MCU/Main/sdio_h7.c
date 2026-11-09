@@ -563,7 +563,7 @@ int sdio_reset(void)
 	int retv = sdcard_identify();
 	printk("sdcard_identify: %d\n", retv);
 
-	return 0;
+	return retv;
 }
 
 
