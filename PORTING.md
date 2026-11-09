@@ -512,3 +512,22 @@ repo, Saturn, installed firmware, research branches and other paused work remain
 untouched. No USB, new runtime diagnostics, PRs, subagents or unrelated imports
 were used. The fork's tracker is disabled with no open PRs or matching requests
 to close; original upstream requests remain unchanged.
+
+## File-transfer safety
+
+Starts at public `2664d51`. Port four selected checkpoints from September6,
+oldest first, with each contribution independently revalidated. No PRs, USB,
+new diagnostics, private writes or device operations. Existing logs and public
+APIs remain; raw evidence stays ignored. Full publications/messages/metadata
+receive manual, secret and private-PII review before each commit/push.
+
+| Contribution / original | Public checkpoint | Dependencies, validation and limits |
+| --- | --- | --- |
+| MCU-FILE-001; paps-g `52ba5498` | [a3959f4](https://github.com/papsg/SAROO/commit/a3959f4); [codex/file-command-completion](https://github.com/papsg/SAROO/tree/codex/file-command-completion) | Nine actual-C/FatFs methods/33 scenarios pass sanitizers/O2; baseline fails13,20 controls pass. Six mutants rejected;11 coupled disc/save and six GIF scheduling methods pass. Complete App/RTX/166-vector link saves16 load bytes to57,332, margin8,204; static DTCM60,296 unchanged. IRQ frame24; dispatcher112→8/helper120, active file caller frames136→152 before callees. Public tiny/nonreentrant FatFs retained; private mutex-timeout claim excluded. Original log text/masks unchanged. [Exact public FatFs/source citations, attribution, tests/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/FILE-TRANSFER-SAFETY.md#mcu-file-001-report-positioning-and-completion-errors). Reports failure without rollback, retained-handle recovery, durability or physical/game qualification. |
+| MCU-FILE-002 MCU bounds; paps-g `66c197b3` | Queued | Request/name/window and64-bit extent checks, independently tested against a3959f4. |
+| SATURN-WORD-001; paps-g `4df2e67a` | Queued | Unsigned word decoding before dependent menu fixtures. |
+| MCU-FILE-002 menu continuation; paps-g `4df2e67a` | Queued | Bounded API, shared hops, response counts and binary destination/header safety; deduplicate earlier catalog checks. Legacy ownership and later cache/reset limits remain explicit. |
+
+The first verified checkpoint and topic are pushed directly to main after full
+publication review. Three checkpoints and final integrated/preservation audit
+remain. Private repo, Saturn and other work remain untouched.
