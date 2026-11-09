@@ -211,11 +211,30 @@ experimental journal/native-format migration or device operation is included.
 | MCU-SAVE-001 startup; `aa74eb3e` | [0db5d2e](https://github.com/papsg/SAROO/commit/0db5d2e); [codex/firmware-save-startup](https://github.com/papsg/SAROO/tree/codex/firmware-save-startup) | Five actual startup/caller/FatFs methods / 95 scenarios; baseline fails 83, ASan/UBSan/O2 pass. Six focused controls fail 2/4/2/4/4/1 cases. Existing files retain full-content digests/lengths; existing-file failures issue no disk writes. Includes necessary 169cb468 partial-tail outer admission, preserves MEMS trailers and the complete slot signature, and excludes startup diagnostics. Full GNU App/RTX/166-vector check: load 59,644 to 59,616, unchanged BSS/data 60,656/504, startup direct frame 24 to 56. [FatFs/source citations, attribution, adaptations, public commands and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-SAVE-SAFETY.md#mcu-save-001-preserve-existing-archives-during-startup). Runtime published-entry/I/O ownership and Saturn retries follow; GNU/model results are not MDK, peak-stack, physical SD/game qualification. |
 | MCU-SAVE-001 runtime; `d05062a1` | [3c2ab6f](https://github.com/papsg/SAROO/commit/3c2ab6f); [codex/firmware-save-runtime](https://github.com/papsg/SAROO/tree/codex/firmware-save-runtime) | Twelve actual runtime/caller/FatFs methods / 137 scenarios; baseline fails 96. All seventeen coupled methods (plus 95 startup cases) pass ASan/UBSan/O2. Fourteen isolated controls expose ownership/count/sync/identity/hole/bounds/coherence/extent/publication defects. Includes necessary published-extent refinement, full signature and MEMS trailer compatibility. Full GNU App/RTX/166-vector check: +116 load bytes to 59,732, 5,804 ITCM free, unchanged BSS/data. Existing-slot reads retain 128KiB/two requests; new-slot writes retain 65,552 bytes/two requests with an additional ordering sync. [Citations, attribution, public reproduction, resources and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-SAVE-SAFETY.md#mcu-save-001-checked-runtime-transfers-and-cache-ownership). Real read errors remain latched until explicit fixture reopen; production recovery/reset/session and Saturn error/retry handling remain separate. No MDK/physical/game qualification. |
 | MCU-SAVE-002 required extent refinement; `169cb468` | Guards included in [0db5d2e](https://github.com/papsg/SAROO/commit/0db5d2e)/[3c2ab6f](https://github.com/papsg/SAROO/commit/3c2ab6f); verification [bb49548](https://github.com/papsg/SAROO/commit/bb49548), [codex/firmware-save-extents](https://github.com/papsg/SAROO/tree/codex/firmware-save-extents) | Real volume exhaustion leaves a 512/4096-byte short-write prefix on synthetic FAT32/exFAT. Eight cases and twenty-one coupled MCU methods / 240 scenarios pass ASan/UBSan/O2; strict-alignment, missing published-bound and truncation controls fail 8/2/6. Old payload/directory/tail/MEMS bytes are compared; admission/read causes no disk write. Test-only formatter switch; firmware inputs/resources unchanged. [Attribution, applicable trigger, FatFs/source citations and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-SAVE-SAFETY.md#mcu-save-002-qualify-incomplete-tails-on-full-fat32exfat-volumes). Explicit reopen is not production automatic or hard-error/physical recovery. |
-| MCU-SAVE-001 Saturn API; `1f90bc28` | Queued | Propagate failure and preserve pending data/retry ownership. |
+| MCU-SAVE-001 Saturn API; `1f90bc28` | [6135642](https://github.com/papsg/SAROO/commit/6135642); [codex/firmware-save-api](https://github.com/papsg/SAROO/tree/codex/firmware-save-api) | Six coupled actual-C/FatFs methods / 198 scenarios; baseline fails 167, corrected ASan/UBSan/O2 pass. Two caller gates / ten results pass, with eight baseline failures. Ten isolated controls are detected. All 22 menu and 27 MCU methods (438 MCU scenarios) pass both profiles. Full public check passes: 131 Python methods, fourteen Rust unit tests, formatting/strict clippy and authored C checks. Complete SH-2 build: +624 code/data to 78,496, +16 BSS to 9,232, 26,960 body margin; image stays 488,751 bytes. Large directory staging can add a 64KiB subsequent read; individual stack frames are recorded without peak-stack claims. MCU production inputs remain unchanged. [Exact Sega/FatFs/protocol citations, original paps-g authorship, public commands, adaptations and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-SAVE-SAFETY.md#mcu-save-001-propagate-saturn-api-errors-and-retain-pending-retries). Session-local pending data is not a journal, reset/media coordination, automatic file recovery or physical/game acceptance. |
 
-Dirty-mask, resizing, archive-validation, dirty-bookkeeping, header-batching and MCU startup/runtime corrections plus build prerequisites are integrated;
-the remaining firmware work is active. All verified branches/main are pushed.
+All scoped dirty-mask, resizing, archive-validation, dirty-bookkeeping,
+separately evaluated header-batching, checked MCU startup/runtime, required
+incomplete-tail refinement and Saturn API/error/retry members are integrated.
+All verified topic branches/main are pushed; no scoped candidate remains queued.
 Fork issues remain disabled and no open fork PR needs closure. No upstream
 request was modified. Private sources/branches/stashes/caches, installed firmware
 and Saturn remain untouched. New checks establish host/source and target-link
 behavior only, with no bus/cache/IRQ, SD durability or game qualification.
+
+Final firmware-series checkpoint: public main `6135642`. The complete offline
+public check passes with the existing Python runtime's Pillow dependency; the
+initial system-Python dependency failure is excluded from qualification. Initial
+API trace-capacity and caller-fragment setup failures are also preserved locally
+and excluded from behavioral baseline counts. Test sources and commands are
+public; detailed receipts, before/candidate inputs, failed controls and builds
+remain in the public checkout's ignored artifact directories.
+
+The final menu's cumulative change from the initial qualified public menu is
+3,440 code/data and 2,052 BSS bytes. Its 16KiB stack reservation is unchanged.
+The last complete GNU MCU App/RTX/166-vector qualification remains 59,732 load
+bytes, 5,804 ITCM bytes free and unchanged 60,656 BSS/504 initialized data; the
+Saturn API checkpoint does not change MCU production inputs. These compile/link
+figures do not substitute for the original MDK build or hardware/game testing.
+Remaining automatic file recovery, reset/card-generation coordination, partial
+in-place writes and power-loss atomicity are explicit out-of-series limits.
