@@ -367,8 +367,34 @@ reference/build evidence local and ignored; publish sanitized summaries.
 | Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
 | --- | --- | --- |
 | MCU-CONFIG-001; paps-g `3e072573` | [c7a4f3d](https://github.com/papsg/SAROO/commit/c7a4f3d); [codex/config-id-safety](https://github.com/papsg/SAROO/tree/codex/config-id-safety) | Five actual-C methods, 33 processes / 5,362 pairs / 10,724 calls. Baseline 14 failures; sanitizers/O2 pass. Three omission controls fail 4/3/5 scenarios. Complete GNU MCU/RTX/166-vector link passes, load 59,844 (+32), static DTCM 61,112/direct frames unchanged. [Exact C/POSIX citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/CONFIGURATION-SAFETY.md#mcu-config-001-bounded-id-matching-with-preserved-version-rules). Public source/metadata/message pass manual review, secret scan and private-PII checks. No boot/game/physical/MDK qualification. |
-| MCU-CONFIG-002; paps-g `0dc69582` | Queued | Bound complete snapshots and outputs, validate before applying, preserve/reset state appropriately and propagate errors through actual callers. Exclude historical USB traces and SD checkpoints. |
+| MCU-CONFIG-002; paps-g `0dc69582` | [19bbd76](https://github.com/papsg/SAROO/commit/19bbd76); [codex/config-loader-safety](https://github.com/papsg/SAROO/tree/codex/config-loader-safety) | Requires c7a4f3d. Twelve actual-parser/startup methods / 177 invocations and eleven actual-parser/disc/save/FatFs methods / 55 scenarios pass sanitizers/O2. Selected baselines fail 90 assertions / eight coupled scenarios; seven controls fail 2/3/4/1/6/1/3. Shipped example passes global plus all 30 game selections. Actual callers stop/release readers before save admission; pending retry data and accepted-default reset are checked. Complete GNU MCU/RTX/166-vector link uses 59,684 load / 60,792 static DTCM bytes; full menu bytes unchanged. Public adaptations remove premature multi-disc clear and handle a closing bracket inside trailing comments. [C/FatFs/project citations, attribution, commands, policies, costs and limits](https://github.com/papsg/SAROO/blob/main/doc/CONFIGURATION-SAFETY.md#mcu-config-002-validate-owned-snapshots-before-applying-settings). Historical USB/error-position/SD tracing omitted. Complete proposed files and metadata/messages pass manual and automated secret/private-PII review. No hardware/game/MDK qualification. |
 
-Series remains active; the loader candidate and final integrated verification
-are still required. The matcher topic/main checkpoint is pushed. Private
-reference sources and evidence remain unchanged. No upstream request is edited.
+Both scoped IDs are complete in two verified source checkpoints. Final public
+main is **19bbd76**; both topics and main are pushed. The integrated suite passes
+**231 Python methods**, authored C checks, **14 Rust tests**, fmt and clippy.
+Actual MCU fixtures cover **68 methods / 744 scenarios**. Relevant parser and
+coupled disc/save checks also pass O2. Full MCU/menu receipts match all 56/36
+current source inputs respectively.
+
+From starting f7d7299, MCU load falls 128 bytes to 59,684 and static DTCM falls
+320 bytes to 60,792; menu code/data/BSS/stack/image are unchanged. Parsing adds
+validation work: the measured ordinary and full-command resident host workloads
+are slower, while the full-comment snapshot improves. No physical performance,
+boot/game, original MDK, media recovery or general concurrency claim is made.
+Bounds/compatibility policies, ownership assumptions and close-error-model limits
+remain explicit in the linked document. Later shrink and unrelated work remain
+outside this series.
+
+Every proposed publication is manually reviewed and scanned for secrets/private
+PII, including complete files, messages and public noreply identities. Raw
+reference/build logs remain local and ignored; public inputs are synthetic or
+already shipped by the public repository. No private contacts, personal paths,
+private network details or raw private configuration is introduced.
+
+The fork issue tracker is disabled and no open fork PR needs closing; original
+upstream requests are unchanged. Default main, baseline ancestry and preserved
+master remain intact. Private HEAD/status/all refs/four stashes exactly match
+the starting snapshot; no private preparer/build/test/cache writes, Saturn,
+USB/device/power/capture, subagent, new PR or other-goal work occurred.
+Detailed source, failures, models, mutations, build/cost receipts and privacy
+reviews are preserved under public ignored evidence/test cohorts.
