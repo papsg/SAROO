@@ -293,10 +293,9 @@ static int list_entries(int directories, int cid, int show)
     const char *name = directories ? category_path : "/SAROO/BIN";
     int result;
 
-    /* Publish only complete scans; retain the existing clear for now. */
+    /* Publish only complete scans; every live offset/name is rewritten. */
     total_disc = 0;
     pbptr = 0x2800;
-    memset(disc_path, 0, 0x23000 - 4);
     *(u32*)IMGINFO_ADDR = 0;
     if (directories) {
         if (category_num) {

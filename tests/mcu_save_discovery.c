@@ -46,6 +46,24 @@ static int build_path(int index,char *out)
 {
 #include "path.inc"
 }
+/* Connect actual MCU publication to the actual menu consumer. The host's
+ * little-endian catalog is explicit; this is not a physical bus test. */
+static int binary_reads;
+static int le32(const void *address)
+{ const u8 *p=address;return (int)((u32)p[0]|(u32)p[1]<<8|(u32)p[2]<<16|(u32)p[3]<<24); }
+#define LE32(address) le32(address)
+static unsigned long binary_number(const char *s,char **end,int base,void *unused)
+{ assert(!unused);return strtoul(s,end,base); }
+static int read_file(const char *name,int offset,int size,void *out)
+{
+    binary_reads++;assert(!strcmp(name,"/SAROO/BIN/One.bin") && !offset && !size);
+    assert((uintptr_t)out==0x06004000);return -7;
+}
+static void pad_suspend(void) { assert(0); }
+static void pad_resume(void) { assert(0); }
+#define strtoul binary_number
+#include "binary.inc"
+#undef strtoul
 static void reset_scan(void) { injected=reads=opens=closes=allocs=frees=image_clears=0; }
 static void create(const char *parent,const char *name,int dir)
 {
@@ -152,7 +170,23 @@ static void reuse(void)
     assert(f_unlink("/SAROO/ISO/Two")==0);
     reset_scan();assert(list_disc(0,0)==0 && total_disc==1 && !strcmp(path_str+disc_path[0],"One"));
     fprintf(stderr,"catalog first_clear=%u second_clear=%u cursor=%d\n",first,image_clears,pbptr);
-    assert(first == 0x23000-4 && image_clears == 0x23000-4);guards();
+    assert(!first && !image_clears);guards();
+}
+static void producer_consumer(void)
+{
+    create("/SAROO/BIN","One.bin",0);create("/SAROO/BIN","Two.bin",0);
+    reset_scan();assert(!list_bins(0) && total_disc==2 && !binary_reads);
+    int old_second=disc_path[1];assert(!strcmp(path_str+old_second,"Two.bin"));
+    assert(f_unlink("/SAROO/BIN/Two.bin")==0);
+    reset_scan();assert(!list_bins(0) && total_disc==1);
+    if (!image_clears) assert(disc_path[1]==old_second && !strcmp(path_str+old_second,"Two.bin"));
+    assert(run_binary(1,1)==-1 && !binary_reads);
+    assert(run_binary(0,1)==-7 && binary_reads==1);binary_reads=0;
+    reset_scan();injected=3;assert(list_bins(0)<0 && !total_disc && !*(u32*)memory.image);
+    assert(run_binary(0,1)==-1 && !binary_reads);
+    assert(f_unlink("/SAROO/BIN/One.bin")==0);
+    reset_scan();assert(!list_bins(0) && !total_disc && !*(u32*)memory.image);
+    assert(run_binary(0,1)==-1 && run_binary(1,1)==-1 && !binary_reads);guards();
 }
 int main(int argc,char **argv)
 {
@@ -165,6 +199,7 @@ int main(int argc,char **argv)
     else if(!strcmp(mode,"list") || !strcmp(mode,"bins"))list_case(!strcmp(mode,"bins"),value);
     else if(strstr(mode,"capacity"))capacity(value,!strcmp(mode,"name-capacity"),!strcmp(mode,"sorted-capacity")?1:!strcmp(mode,"reverse-capacity")?2:0);
     else if(!strcmp(mode,"path"))path_case(value);
+    else if(!strcmp(mode,"producer-consumer"))producer_consumer();
     else if(!strcmp(mode,"category")) {
         category_num=1;strcpy(category,"Category");assert(list_disc(value,0)<0 && !opens && !total_disc && !*(u32*)memory.image);
     } else {assert(!strcmp(mode,"reuse"));reuse();}

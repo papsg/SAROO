@@ -38,4 +38,7 @@ class DiscDiscoveryTests(MCUSaveTest):
     def test_shorter_rescan_preserves_live_entries_and_measures_current_clearing(self):
         self.invoke('reuse')
 
+    def test_actual_bin_consumer_rejects_stale_failed_and_empty_catalogs(self):
+        self.invoke('producer-consumer')
+
 if __name__ == '__main__': unittest.main()

@@ -113,6 +113,10 @@ class MCUSaveTest(unittest.TestCase):
                 (cls.target / 'path.inc').write_bytes(b'char cat_dir[256];\n' + data[begin:end] + b'memcpy(out,cat_dir,256); return 0;\n')
             begin = module.index(b'static int max_depth;'); end = module.index(b'char *get_token(', begin)
             (cls.target / 'sort.inc').write_bytes(module[begin:end].replace(b'0x2400a000', b'TEST_SORT_ADDR'))
+            path = Path(os.environ.get('SAROO_MENU_BINARY_SOURCE', ROOT / 'Firm_Saturn/main.c'))
+            data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
+            begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
+            (cls.target / 'binary.inc').write_bytes(data[begin:end])
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
@@ -132,7 +136,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.binary = cls.target / cls.fixture
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        if cls.fixture in ('api', 'disc'):
+        if cls.fixture in ('api', 'disc', 'discovery'):
             flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / ('mcu_save_'+cls.fixture+'.c')),

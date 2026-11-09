@@ -238,3 +238,43 @@ existing filesystem, name-copy and sort work. No clear-removal speedup is claime
 here. The shared scanner adds no static buffer or heap allocation. It does not
 establish concurrent catalog generations, arbitrary-folder discovery, CUE content
 parsing, card identity/recovery, physical timing or a named game's compatibility.
+
+### Separate evaluation: omit unused catalog clearing
+
+After `ebb232f`, every live offset/name is rewritten before publication. The
+source consumer audit checks `find_disc`'s count-bounded loop, `game_dir`'s
+loader/preview bounds, the menu's count-bounded list construction and the newly
+bounded `run_binary`. This is sequential producer/consumer ownership, not a
+concurrent generation protocol. The otherwise unused catalog tail is therefore
+unspecified rather than required to contain zeros. MCU and menu built from this
+series belong together; the older unbounded BIN consumer does not meet this
+contract.
+
+The public test now connects actual MCU list production to the actual menu BIN
+consumer in one synthetic catalog. It checks a valid retained selection, a
+shorter scan whose old second entry remains, an I/O-failed scan and an empty
+scan. Every invalid selection must stop before file I/O. The retained-clear
+version passes all **44 functional scenarios**, providing the control before
+the single clear call is removed. The optimized version passes those same 44
+scenarios with the operation counter updated to require zero clearing. Source
+hashes and both results are preserved separately.
+
+Both profiles pass. Restoring the clear is detected by its byte counter; removing
+the consumer bound or publishing partial counts is independently detected by
+the joined producer/consumer case. All **39 coupled MCU methods / 513 cases**
+pass ASan/UBSan and O2. The test's explicit little-endian count decoder and
+serialized callbacks do not simulate physical bus/cache/endian or concurrency.
+
+Measured catalog clearing falls **143,356 bytes→0 per scan**, without changing
+directory I/O, live entry capacity/order or name-copy work. This is eliminated
+memory work, not a Saturn latency measurement. Complete GNU App/RTX/166-vector
+qualification saves another **12 load bytes**, reaching **59,592** with **5,944
+ITCM free**. BSS/data/span, the stack/heap gap and individual frames remain
+unchanged; no allocation is added. The only changed MCU input is `cdimg.c`.
+Menu inputs remain byte-identical to the complete SH-2 build at `9c3342e`.
+
+This is the separately verified optimization from `paps-g`'s original
+`be30cf11`, with the preceding source contracts, citations and limitations.
+`SAROO_MENU_BINARY_SOURCE` can independently select the joined consumer source
+for the deliberate missing-bound control. No diagnostic, runtime negotiation,
+new catalog format, device operation or hardware/game acceptance is added.
