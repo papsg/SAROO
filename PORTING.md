@@ -354,3 +354,21 @@ was used. All new evidence is preserved under the public repository's ignored
 `.git/porting/evidence/cover-artwork-safety/`, and tests retain their own copied
 inputs/logs under `tests/build/`. Baseline/master/default branch are preserved.
 Later MCU capacity/configuration/palette/GIF work remains outside this series.
+
+## Configuration safety
+
+Starts at public `f7d7299`. Independently revalidate the two candidates, oldest
+first, as verified direct source commits. No PRs, USB, added runtime diagnostics,
+private writes or Saturn operations. Review complete proposed public files and
+commit metadata/messages for secrets/private PII before publication; use public
+handles, noreply identity, synthetic fixtures and portable paths. Keep raw
+reference/build evidence local and ignored; publish sanitized summaries.
+
+| Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
+| --- | --- | --- |
+| MCU-CONFIG-001; paps-g `3e072573` | [c7a4f3d](https://github.com/papsg/SAROO/commit/c7a4f3d); [codex/config-id-safety](https://github.com/papsg/SAROO/tree/codex/config-id-safety) | Five actual-C methods, 33 processes / 5,362 pairs / 10,724 calls. Baseline 14 failures; sanitizers/O2 pass. Three omission controls fail 4/3/5 scenarios. Complete GNU MCU/RTX/166-vector link passes, load 59,844 (+32), static DTCM 61,112/direct frames unchanged. [Exact C/POSIX citations, attribution, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/CONFIGURATION-SAFETY.md#mcu-config-001-bounded-id-matching-with-preserved-version-rules). Public source/metadata/message pass manual review, secret scan and private-PII checks. No boot/game/physical/MDK qualification. |
+| MCU-CONFIG-002; paps-g `0dc69582` | Queued | Bound complete snapshots and outputs, validate before applying, preserve/reset state appropriately and propagate errors through actual callers. Exclude historical USB traces and SD checkpoints. |
+
+Series remains active; the loader candidate and final integrated verification
+are still required. The matcher topic/main checkpoint is pushed. Private
+reference sources and evidence remain unchanged. No upstream request is edited.
