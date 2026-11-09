@@ -485,9 +485,30 @@ message/metadata secret/private-PII review; raw evidence remains ignored.
 | Shared CD setup; paps-g `96f9329a` | [fed7c6f](https://github.com/papsg/SAROO/commit/fed7c6f); [codex/cd-setup-sharing](https://github.com/papsg/SAROO/tree/codex/cd-setup-sharing) | Requires2eb80d0. Three actual-C methods:41,474 transfer+55,296 directory differential cases and seven independent contracts pass sanitizer/O2; preserved current-source baseline controls pass. Five mutations fail two methods each, including filter publication before wakeup. Full App/RTX/166-vector link saves288 load bytes to57,608, margin7,928; static DTCM60,296 unchanged. Shared helper frames48/16 and wrappers/callers make selected paths add8–16 stack bytes; reserved stacks unchanged. Existing logs/masks/order preserved through SSLOG; no diagnostics added. [Exact Sega sections/functions, paps-g/original attribution, supported domains and limits](https://github.com/papsg/SAROO/blob/main/doc/MCU-SHRINK.md#shared-cd-setup). No new CD validation/ownership/completion fix or physical timing/stack/game qualification. |
 | ASCII .cue/.iso matching; paps-g `96f9329a` | [2664d51](https://github.com/papsg/SAROO/commit/2664d51); [codex/ascii-image-suffix](https://github.com/papsg/SAROO/tree/codex/ascii-image-suffix) | Requires fed7c6f.41,130 independent spelling/boundary checks pass sanitizers/O2; four mutations rejected. Seven real-FatFs baseline/candidate discovery methods and seven candidate cover methods pass. Complete App/RTX/166-vector link saves260 load bytes to57,348, margin8,188; static DTCM60,296 unchanged. General comparison and257-byte ctype table removed.293 common application direct frames unchanged; new helper frame8. [Public scanner/C11 citations, attribution, costs, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/MCU-SHRINK.md#exact-ascii-image-suffixes). Full UTF-8 filenames, final-dot/CUE preference, errors and bounded paths retained; no physical speed/stack/game qualification. |
 
-All three topics and main are pushed after focused verification/privacy review.
-The measured series saves2,432 load bytes and456 static DTCM bytes. Complete
-menu image/ELF and allocations are identical, and56 MCU/36 menu build inputs
-match their receipts. Final integrated regression/publication audit is running.
-Private head/status/refs/stashes match the initial snapshot; Saturn remains
-untouched. No USB, new runtime diagnostics or unrelated changes are included.
+All three checkpoints are complete as separately verified direct source commits,
+pushed with their topics to main in oldest-first order. The integrated suite
+passes268 Python methods in25 groups,14 Rust checks and native C controls.
+All nine new shrink methods also pass uninstrumented O2; current-source hashes
+match their passing sanitizer/O2 fixture cohorts. Baseline/valid controls and
+12 targeted mutations are retained with build/source/privacy evidence locally.
+
+MCU load falls59,780→57,348 (**2,432 bytes saved**), leaving8,188 ITCM bytes;
+static DTCM falls60,752→60,296 (**456 bytes saved**). Required task stacks,
+allocator pool, disc workspace and filesystem capabilities are preserved.
+Selected helper stack/call costs remain explicit above. Complete menu image/ELF
+and allocations are identical;56 MCU/36 menu build inputs match their receipts.
+No physical speed/stack/timing/audio, game or original-MDK qualification is
+inferred from source, models or links.
+
+Complete files/messages/metadata and actual committed content pass manual,
+secret and private-PII review with zero findings. Public contributor handles
+and noreply identities preserve attribution; original source/dependency/font
+notices remain. No private logs, paths, account/network details or credentials
+are published. Primary/source citations and reproducible checks are linked above.
+
+Main is clean; default main, historical master and baseline ancestry remain.
+Private head/status/all refs/four stashes match the initial snapshot. Private
+repo, Saturn, installed firmware, research branches and other paused work remain
+untouched. No USB, new runtime diagnostics, PRs, subagents or unrelated imports
+were used. The fork's tracker is disabled with no open PRs or matching requests
+to close; original upstream requests remain unchanged.
