@@ -84,7 +84,7 @@ void logo_trans(void)
 
 void vdp_init(void)
 {
-	int i;
+	unsigned int i;
 	volatile unsigned int *vdp2_cram = (volatile unsigned int*)VDP2_CRAM;
 
 	logo_trans();
@@ -127,9 +127,11 @@ void vdp_init(void)
 	/* Clear VRAM */
 	memset((void*)VDP2_VRAM, 0, 0x80000);
 
-	/* Set CRAM */
-	for (i = 0; i < 256; i++)
+	/* Initialize the NBG0 bank; NBG1 owns the following 256 colors. */
+	for (i = 0; i < sizeof(vga_pal) / sizeof(vga_pal[0]); i++)
 		vdp2_cram[i] = vga_pal[i];
+	for (; i < 256; i++)
+		vdp2_cram[i] = 0;
 
 	// Enable NBG0
 	BGON = 0x0001;
