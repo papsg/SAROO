@@ -470,3 +470,21 @@ power/capture, new diagnostics, subagents or unrelated imports occurred. The
 fork tracker remains disabled with no open PRs or matching requests to close;
 original upstream requests remain unchanged. Issue345's exact assets and
 physical behavior are still unqualified, so no blanket closure is claimed.
+
+## MCU shrink series
+
+Starts at public `d38e06a`. Independently port three selected MCU-SIZE-001
+checkpoints, oldest first; measure current code instead of reusing private
+savings. No PRs, USB, diagnostic-name packing/log changes, constant packing,
+private writes or device operations. Each publication receives complete-file,
+message/metadata secret/private-PII review; raw evidence remains ignored.
+
+| Selected contribution / original | Public checkpoint | Validation, measured cost and limits |
+| --- | --- | --- |
+| Unused timer callback service; paps-g `1b49c143` | [2eb80d0](https://github.com/papsg/SAROO/commit/2eb80d0); [codex/unused-timer-service](https://github.com/papsg/SAROO/tree/codex/unused-timer-service) | Five actual-source methods pass sanitizer/O2; baseline policy check fails with required timing and enabled-worker controls passing. Three mutations rejected;16 GIF and disk-I/O regressions pass. Complete App/RTX/166-vector link saves1,884 load bytes to57,896, margin7,640; static DTCM saves456 to60,296, with dedicated objects256+68+52+80 removed.291 shared application direct frames and tick/delay function sizes120/224 unchanged. Standard shared RTE configuration selects supported zeros; SDK/provider selection unchanged, private exclusion unnecessary. Future timer users must restore profile; no API-link rejection or hardware/MDK/stack/pacing/game claim. [Exact Arm/project citations, attribution, tests and limits](https://github.com/papsg/SAROO/blob/main/doc/MCU-SHRINK.md#unused-software-timer-callback-service). |
+| Shared CD setup; paps-g `96f9329a` | Queued | Preserve supported transfers/directories, state/results, interrupts, sentinels, call order and existing logs; measure code versus callee-stack/runtime costs. |
+| ASCII .cue/.iso matching; paps-g `96f9329a` | Queued | Preserve exact accepted spellings, termination, UTF-8 names, bounded discovery and CUE preference; measure actual library/table removal. |
+
+Timer topic/main are pushed after verification/privacy review. Shared CD setup,
+suffixes and final integrated/preservation/publication audit remain required.
+Private repo, research refs/stashes, other work and Saturn remain untouched.
