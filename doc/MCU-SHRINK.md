@@ -145,5 +145,64 @@ SAROO_SHRINK_PROFILE=release make -C tests check-mcu-shrink
 
 ## Exact ASCII image suffixes
 
-Queued after shared CD setup. Preserve recognized spellings, bounded UTF-8
-filenames, CUE preference and discovery failure behavior; remeasure savings.
+Original implementation and independent spelling fixture: **paps-g**,
+`96f9329a` (2026-09-06), selected part of MCU-SIZE-001. Starting at `fed7c6f`,
+replace the only two application `strcasecmp` calls with one exact ASCII
+helper for the lowercase patterns `.cue` and `.iso`. The public adaptation
+isolates its actual-source spelling test and retains the existing real-FatFs
+discovery/cover controls. Original source notices remain.
+
+The [current public scanner](https://github.com/papsg/SAROO/blob/fed7c6f/Firm_MCU/Saturn/cdimg.c)
+defines the supported suffixes, final-dot selection, CUE preference and bounded
+256-byte joined path. These are application rules, not Sega requirements.
+Fold only ASCII `A`–`Z`, compare unsigned bytes and require the pattern and input
+to end together. A short input's terminator mismatches the remaining nonzero
+pattern before another input byte is read. C11 [N1570 §6.5.6 paragraph8,
+printed page93](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+defines array-pointer bounds and forbids dereferencing a one-past pointer.
+The test's exact-sized allocations enforce that boundary. Full filenames remain
+UTF-8; no filesystem, Unicode/CP437 table, locale or storage setting changes.
+The application does not select another C locale.
+
+One actual-C method performs **41,130 checks** against an independent enumeration
+of all eight case spellings of each pattern. It tries all byte values at all
+five positions, exact-sized truncated allocations, Unicode substitutions and
+extra characters. ASan/UBSan and O2 runs pass. Four mutations fail: removing case
+folding, accepting a prefix, folding unrelated byte values, and reading after
+a short terminator. The seven existing actual-FatFs discovery methods pass on
+both preserved baseline and candidate; seven coupled cover methods also pass.
+These exercise CUE/ISO preference, final-dot selection, dotless names, UTF-8,
+path limits, allocation/directory failures and publication. Baseline discovery
+already passes: this is size specialization, not a newly claimed correctness
+repair. The helper's token rejection does not reject a whole filename such as
+`movie.cue.iso`; the unchanged scanner selects its final `.iso` extension.
+
+The complete App/RTX/166-vector link saves **260 load bytes**:
+57,608→57,348, leaving8,188 ITCM bytes. The linked baseline has a56-byte
+`strcasecmp` and257-byte `_ctype_` table; the candidate has neither. The new
+helper occupies44 code bytes, and scanner/layout changes determine the net
+saving. Static DTCM stays60,296. All293 common application direct frames are
+unchanged; the helper adds an8-byte frame while active. The scanner, loader
+and disk-task direct frames remain112/312/80 bytes; the old library comparison's
+nested frame is not included in those figures. No complete call-chain peak or
+speed improvement is claimed. The two fixed patterns bound each helper call
+to at most five input-byte reads, with range checks instead of case-table reads.
+There is no new allocation, task, buffer, directory pass or I/O.
+
+```sh
+make -C tests check-mcu-shrink
+SAROO_SHRINK_PROFILE=release make -C tests check-mcu-shrink
+python3 -B -m unittest discover -s tests -p test_mcu_save_discovery.py -v
+python3 -B -m unittest discover -s tests -p test_mcu_save_cover.py -v
+# Spelling/mutation override: SAROO_IMAGE_SUFFIX_SOURCE=/path/to/cdimg.c
+```
+
+Across all three measured source checkpoints, MCU load falls59,780→57,348
+(**2,432 bytes saved**) and static DTCM60,752→60,296 (**456 bytes saved**).
+This does not shrink required task stacks, the allocator pool, disc workspace,
+filesystem capabilities or menu assets. The complete menu rebuild retains
+identical code/data78,884, BSS9,232, reserved stack16,384, font357,679 and
+image488,751 bytes, including identical final image/ELF hashes. Current56 MCU
+and36 menu input hashes match their complete build receipts. The selected
+helpers' stack/call costs above remain explicit. Original MDK builds, physical
+stack/timing/audio behavior and game compatibility are not qualified.

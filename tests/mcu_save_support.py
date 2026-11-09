@@ -134,6 +134,8 @@ class MCUSaveTest(unittest.TestCase):
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
             helper = data.index(b'static int join_path(') if b'static int join_path(' in data else -1
             helpers = data[helper:data.index(b'\n}', helper)+2] if helper >= 0 else b''
+            suffix = data.find(b'static int image_suffix(')
+            if suffix >= 0: helpers += data[suffix:data.index(b'\n}', suffix)+2]
             close = data.index(b'static int close_tracks(int count)\n{') if b'static int close_tracks(int count)\n{' in data else data.index(b'int unload_disc(')
             catalog = data[data.index(b'int category_current'):close]
             scanner = data[data.index(b'int find_cue_iso('):data.index(b'int load_disc(')]

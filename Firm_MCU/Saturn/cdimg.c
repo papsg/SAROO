@@ -408,6 +408,17 @@ int unload_disc(void)
 }
 
 
+/* The recognized suffixes are ASCII; filenames themselves remain UTF-8. */
+static int image_suffix(const char *name, const char *suffix)
+{
+    while (*suffix) {
+        unsigned char c = *name++;
+        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        if (c != (unsigned char)*suffix++) return 0;
+    }
+    return *name == 0;
+}
+
 int find_cue_iso(char *dirname, char *outname)
 {
     DIR dir;
@@ -424,8 +435,8 @@ int find_cue_iso(char *dirname, char *outname)
             if (info->fname[0] == '.' || (info->fattrib & AM_DIR)) continue;
             const char *extension = strrchr(info->fname, '.');
             if (!extension) continue;
-            int cue = !strcasecmp(extension, ".cue");
-            if (!cue && strcasecmp(extension, ".iso")) continue;
+            int cue = image_suffix(extension, ".cue");
+            if (!cue && !image_suffix(extension, ".iso")) continue;
             if (join_path(outname, 256, dirname, info->fname)) {
                 result = FR_INVALID_NAME;
                 break;
