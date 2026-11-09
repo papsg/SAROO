@@ -20,7 +20,7 @@ static void build_pair(int dev)
 static int header_id(int dev, BUPDIR *dir)
 {
     bup_dev = dev;
-    int id = find_save(dir->file_name, 0, NULL);
+    int id = find_save_kind(dir->file_name, 0, NULL, 1);
     assert(id > 0);
     return id;
 }

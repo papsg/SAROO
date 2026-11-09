@@ -65,6 +65,9 @@ static void reload_model(void)
     mblk_start = mblk_end = msav_blk = disk_header = disk_window = 0;
     mblk_bmp[0] = mblk_bmp[1] = 0;
     command = test_arg = 0;
+#ifdef SAVE_WRITING
+    memset(pending_save, 0, sizeof(pending_save));
+#endif
 }
 
 static void initialize(void)
@@ -181,7 +184,7 @@ static void rejection(int dev, const char *reason)
             bup_update(dev ? MEMS_HDR : BUPSAVE);
         } else if (!strcmp(reason, "bad-chain")) {
             bup_dev = dev;
-            int block = find_save(target.file_name, 0, NULL);
+            int block = find_save_kind(target.file_name, 0, NULL, 1);
             assert(block > 0);
             u8 *bp = get_block_addr(START_BLOCK | block);
             if (dev) *(u16 *)(bp + 66) = *(u16 *)(bp + 64);

@@ -999,8 +999,13 @@ static int sel_handle(int ctrl)
 			SS_CMD = SSCMD_LOADDISC;
 			while(SS_CMD);
 
-			use_sys_load = 0;
-			my_cdplayer();
+            retv = SS_ARG;
+            if (retv) {
+                menu_error(menu, TT("游戏启动失败! %d"), retv);
+            } else {
+                use_sys_load = 0;
+                my_cdplayer();
+            }
 		}else{
 			menu_status(menu, TT("加载文件中......"));
 			cdblock_on(0);

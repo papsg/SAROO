@@ -56,8 +56,8 @@ static const char *fault;
 static int fault_target, fault_value, armed, hits;
 static int cleanup_calls;
 static int fault_nth = 1, fault_seen;
-static FSIZE_t write_offsets[32];
-static UINT write_sizes[32];
+static FSIZE_t write_offsets[1024];
+static UINT write_sizes[1024];
 static pthread_mutex_t fs_mutex;
 int ff_mutex_create(int vol) { assert(!vol); return pthread_mutex_init(&fs_mutex, NULL) == 0; }
 void ff_mutex_delete(int vol) { assert(!vol); assert(pthread_mutex_destroy(&fs_mutex) == 0); }
@@ -120,7 +120,7 @@ static FRESULT checked_read(FIL *fp, void *data, UINT size, UINT *count)
 }
 static FRESULT checked_write(FIL *fp, const void *data, UINT size, UINT *count)
 {
-    assert(api_writes < 32);
+    assert(api_writes < sizeof(write_offsets) / sizeof(write_offsets[0]));
     write_offsets[api_writes] = f_tell(fp); write_sizes[api_writes] = size;
     api_writes++; write_bytes += size;
     if (selected(fp, "write-error") || selected(fp, "write-short")) {

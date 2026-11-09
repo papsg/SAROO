@@ -107,36 +107,55 @@ typedef struct {
 #define MEMS_ALL 7
 #define BUPSAVE  8
 
-static void bup_update(int flag)
+/* Keep only the continuation's location and phase; payload remains in the
+ * existing shared buffers. A caller must resupply an interrupted payload. */
+#define SAVE_WRITING 1
+#define SAVE_COMMIT  2
+typedef struct {
+    u16 header;
+    short last;
+    u8 state, flags, mode;
+} PendingSave;
+static PendingSave pending_save[2];
+
+static int bup_update(int flag)
 {
-	int cmd = 0;
-	int arg = 0;
-
-	if(flag==BUPSAVE){
-		cmd = SSCMD_SSAVE;
-	}else{
-		arg = flag;
-		cmd = SSCMD_SMEMS;
-	}
-
-	SS_ARG = arg;
-	SS_CMD = cmd;
-	while(SS_CMD);
-    /* A successful buffer flush commits these dirty bits. A different command
-     * or a reported failure does not release this window for read-only reuse. */
-    if ((flag & MEMS_BUF) && SS_ARG == 0) {
-        mblk_bmp[0] = 0;
-        mblk_bmp[1] = 0;
-    }
+    SS_ARG = flag == BUPSAVE ? 0 : flag;
+    SS_CMD = flag == BUPSAVE ? SSCMD_SSAVE : SSCMD_SMEMS;
+    while (SS_CMD);
+    if (SS_ARG)
+        return BUP_BROKEN;
+    if (flag & MEMS_BUF)
+        mblk_bmp[0] = mblk_bmp[1] = 0;
+    return 0;
 }
 
-
-static void mems_load(int blk)
+static int finish_pending(int dev)
 {
-	//printk("mems_load %04x\n", blk);
-	SS_ARG = blk;
-	SS_CMD = SSCMD_LMEMS;
-	while(SS_CMD);
+    PendingSave *pending = &pending_save[dev];
+    if (pending->state == SAVE_WRITING)
+        return BUP_BROKEN;
+    if (pending->state == SAVE_COMMIT) {
+        if (bup_update(pending->flags))
+            return BUP_BROKEN;
+        pending->state = 0;
+    }
+    return 0;
+}
+
+static int commit_save(int dev, int flags)
+{
+    pending_save[dev].flags = flags;
+    pending_save[dev].state = SAVE_COMMIT;
+    return finish_pending(dev);
+}
+
+static int mems_load(int blk)
+{
+    SS_ARG = blk;
+    SS_CMD = SSCMD_LMEMS;
+    while (SS_CMD);
+    return SS_ARG ? BUP_BROKEN : 0;
 }
 
 
@@ -184,32 +203,32 @@ static int get_free_block(int pos)
 
 static u8 *get_block_addr(int id)
 {
-	int is_hdr = id&0x8000;
-	id &= 0x7fff;
-
-	if(bup_dev==0){
-		return (u8*)(BUP_MEM_ADDR + id*128);
-	}
-
-	if(is_hdr){
-		if(id!=msav_blk){
-			mems_load(0x8000|id);
-			msav_blk = id;
-		}
-		return (u8*)(MEMS_HEADER+0x2000);
-	}
-
-	if(id<mblk_start || id>mblk_end){
-		if(mblk_bmp[0] || mblk_bmp[1]){
-			bup_update(MEMS_BUF);
-		}
-		mems_load(id);
-		mblk_start = id;
-		mblk_end = id+63;
-		mblk_bmp[0] = 0;
-		mblk_bmp[1] = 0;
-	}
-	return (u8*)(MEMS_BUFFER+(id-mblk_start)*1024);
+    int header = id & START_BLOCK;
+    id &= 0x7fff;
+    if (bup_dev == 0)
+        return id < 512 ? (u8*)(BUP_MEM_ADDR + id * 128) : NULL;
+    if (id < 8 || id >= 8064)
+        return NULL;
+    if (header) {
+        if (id != msav_blk) {
+            msav_blk = 0;
+            if (mems_load(START_BLOCK | id))
+                return NULL;
+            msav_blk = id;
+        }
+        return (u8*)MEMS_TMP;
+    }
+    if (id < mblk_start || id > mblk_end) {
+        if ((mblk_bmp[0] || mblk_bmp[1]) && bup_update(MEMS_BUF))
+            return NULL; /* Keep this dirty window and its ownership for retry. */
+        mblk_start = mblk_end = 0;
+        if (mems_load(id))
+            return NULL;
+        mblk_start = id;
+        mblk_end = id + 63;
+        mblk_bmp[0] = mblk_bmp[1] = 0;
+    }
+    return (u8*)(MEMS_BUFFER + (id - mblk_start) * 1024);
 }
 
 
@@ -270,6 +289,7 @@ static int access_data(int block, u8 *data, int type)
 	bsize = (bup_dev==0) ? 128 : 1024;
 
 	bp = get_block_addr(START_BLOCK|block);
+    if (!bp) return BUP_BROKEN;
 	dsize = *(u32*)(bp+0x0c);
     if (!dsize)
         return 0;
@@ -296,6 +316,7 @@ static int access_data(int block, u8 *data, int type)
 	while(dsize>0){
 		block = get_next_block(bmp, block);
 		bp = get_block_addr(block);
+        if (!bp) return BUP_BROKEN;
 
 		asize = (dsize>bsize)? bsize : dsize;
 		//printk("dsize=%04x block=%04x asize=%04x", dsize, block, asize);
@@ -347,6 +368,7 @@ static int find_save_kind(char *file_name, int offset, int *last, int prefix)
 
 		while(block){
 			bp = get_block_addr(block);
+            if (!bp) return -1;
 			if(strncmp(file_name, (char*)bp, len)==0 && (prefix || len==11 || bp[len]==0)){
 				if(index==offset){
 					printk("  found at %04x\n", block);
@@ -385,11 +407,6 @@ static int find_save_kind(char *file_name, int offset, int *last, int prefix)
 }
 
 
-static int find_save(char *name, int offset, int *last)
-{
-    return find_save_kind(name, offset, last, 1);
-}
-
 static int find_exact_save(char *name, int *last)
 {
     return find_save_kind(name, 0, last, 0);
@@ -416,6 +433,7 @@ static int claim_block(int block)
 
 static int validate_save_layout(u8 *bp, u8 *entry)
 {
+    if (!bp) return BUP_BROKEN;
     u32 size = *(u32 *)(bp + 12);
     int count = 0, expected, i, block;
     if (!bp[0] || size > (bup_dev ? 479u * 1024 : 510u * 128) ||
@@ -524,8 +542,7 @@ static int validate_mems_headers(void)
             if (mblk_bmp[0] || mblk_bmp[1])
                 return BUP_BROKEN;
             mblk_start = mblk_end = 0;
-            mems_load(first);
-            if (SS_ARG != 0)
+            if (mems_load(first))
                 return BUP_BROKEN;
             for (int j = 0; j < count; j++) {
                 u8 *bp = (u8 *)MEMS_BUFFER + j * 1024;
@@ -545,6 +562,7 @@ static int check_backup(int dev)
     if (dev < 0 || dev > 1)
         return BUP_NON;
     bup_dev = dev;
+    if (finish_pending(dev)) return BUP_BROKEN;
     if (dev == 0) {
         if (BUPMEM->magic0 != 0x5361726f || BUPMEM->magic1 != 0x53617665)
             return BUP_UNFORMAT;
@@ -570,6 +588,7 @@ static int check_backup(int dev)
                 return BUP_BROKEN;
             checked_saves++;
             entry = get_block_addr(block);
+            if (!entry) return BUP_BROKEN;
             block = *(u16 *)(entry + 62);
         }
         block = BUPMEM->first_save;
@@ -577,6 +596,7 @@ static int check_backup(int dev)
             if (validate_save_layout(get_block_addr(START_BLOCK | block), NULL))
                 return BUP_BROKEN;
             entry = get_block_addr(block);
+            if (!entry) return BUP_BROKEN;
             block = *(u16 *)(entry + 62);
         }
     } else {
@@ -647,6 +667,13 @@ int sro_bup_format(int dev)
 	if(dev<0 || dev>1)
 		return BUP_NON;
 
+    pending_save[dev].state = 0;
+    pending_save[dev].header = 0;
+    if (dev) {
+        msav_blk = mblk_start = mblk_end = 0;
+        mblk_bmp[0] = mblk_bmp[1] = 0;
+    }
+
 	if(dev==0){
 		memset((u8*)BUP_MEM_ADDR, 0, 0x8000);
 		// SaroSave
@@ -660,7 +687,7 @@ int sro_bup_format(int dev)
 		BUPMEM->free_block = 512-1;
 		BUPMEM->bitmap[0] = 0x01;
 
-		bup_update(BUPSAVE);
+		return commit_save(dev, BUPSAVE);
 	}else{
 		memset((u8*)MEMS_HEADER, 0, 0x2000);
 		// SaroMems
@@ -670,7 +697,7 @@ int sro_bup_format(int dev)
 		MEMS->free_block = 1008*8-8;
 		MEMS->bitmap[0] = 0xff;
 
-		bup_update(MEMS_HDR);
+		return commit_save(dev, MEMS_HDR);
 	}
 
 	return 0;
@@ -720,6 +747,7 @@ static int resize_save(int header, u32 new_size)
         (bitmap[0] & ((1u << first) - 1)) != (1u << first) - 1)
         return BUP_BROKEN;
     bp = get_block_addr(START_BLOCK | header);
+    if (!bp) return BUP_BROKEN;
     old_size = *(u32 *)(bp + 12);
     if (old_size > limit)
         return BUP_BROKEN;
@@ -782,115 +810,112 @@ static int resize_save(int header, u32 new_size)
 }
 
 
-int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
+static int same_pending_write(int dev, BUPDIR *dir, int mode)
 {
-	int block_need, block, hdr, last, i;
-	u8 *bp;
+    PendingSave *pending = &pending_save[dev];
+    if (!pending->header || (dev && msav_blk != pending->header) ||
+        pending->mode != !!mode)
+        return 0;
+    u8 *bp = get_block_addr(START_BLOCK | pending->header);
+    return bp && !strncmp((char*)bp, dir->file_name, 11) &&
+           *(u32*)(bp + 12) == dir->data_size;
+}
 
-    int result = check_backup(dev);
+static int write_pending(int dev, BUPDIR *dir, u8 *data)
+{
+    PendingSave *pending = &pending_save[dev];
+    int header = pending->header;
+    u8 *bp = get_block_addr(START_BLOCK | header);
+    if (!bp)
+        return BUP_BROKEN;
+    pending->state = SAVE_WRITING;
+    *(u32*)(bp + 28) = dir->date;
+    if (pending->last >= 0) {
+        memcpy(bp + 16, dir->comment, 10);
+        bp[27] = dir->language;
+    }
+    int result = access_data(header, data, 2);
     if (result)
         return result;
-    if (dir == NULL || !dir->file_name[0] || (dir->data_size && data == NULL))
+    if (pending->last >= 0) {
+        if (dev) {
+            u8 *entry = (u8*)MEMS_HEADER + 1024 + pending->last * 16;
+            memcpy(entry, bp, 11);
+            *(u16*)(entry + 14) = header;
+        } else {
+            bp = get_block_addr(pending->last);
+            if (!bp)
+                return BUP_BROKEN;
+            *(u16*)(bp + 62) = header;
+        }
+    }
+    return commit_save(dev, pending->flags);
+}
+
+int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
+{
+    if (dev < 0 || dev > 1)
+        return BUP_NON;
+    if (!dir || !dir->file_name[0] || (dir->data_size && !data))
         return BUP_BROKEN;
     if (dir->data_size > (dev ? 479u * 1024 : 510u * 128))
         return BUP_NOT_ENOUGH_MEMORY;
-    printk("bup_write(%d): %.11s data=%08x dsize=%08x\n", dev, dir->file_name, data, dir->data_size);
+    bup_dev = dev;
+    PendingSave *pending = &pending_save[dev];
+    if (pending->state && same_pending_write(dev, dir, mode))
+        return write_pending(dev, dir, data);
+    int result = check_backup(dev);
+    if (result)
+        return result;
 
-	// 计算所需的块数量。
-	int block_size = (dev==0) ? 128 : 1024;
-	if(dev==1 && (dir->data_size <= (1024-64))){
-		block_need = 0;
-	}else{
-		block_need = (dir->data_size+block_size-1)/block_size;
-	}
-
-	// 1. 根据dir查找存档
-	block = find_exact_save(dir->file_name, &last);
-
-	// 2. 如果找到，且允许覆盖，则覆盖写入
-	if(block>0){
-		if(mode)
-			return BUP_FOUND;
-
-        bp = get_block_addr(START_BLOCK|block);
-        int resized = *(u32 *)(bp + 12) != dir->data_size;
-        if (resized) {
-            int result = resize_save(block, dir->data_size);
+    int bsize = dev ? 1024 : 128;
+    int blocks = dev && dir->data_size <= 960 ? 0 : (dir->data_size + bsize - 1) / bsize;
+    int last;
+    int header = find_exact_save(dir->file_name, &last);
+    u8 *bp;
+    if (header > 0) {
+        if (mode)
+            return BUP_FOUND;
+        bp = get_block_addr(START_BLOCK | header);
+        if (!bp)
+            return BUP_BROKEN;
+        if (*(u32*)(bp + 12) != dir->data_size) {
+            result = resize_save(header, dir->data_size);
             if (result)
                 return result;
-        }
-        if (!resized)
+        } else {
             set_free_count();
-        *(u32 *)(bp + 28) = dir->date;
-        access_data(block, data, 2);
-
-		if(dev==0){
-			bup_update(BUPSAVE);
-		}else{
-			bup_update(MEMS_HDR | MEMS_SAV | (block_need ? MEMS_BUF : 0));
-		}
-		printk("Over write.\n");
-		return 0;
-	}
-
-	// 3. 未找到。新建存档。
-	if (dir->data_size > (dev ? 479u * 1024 : 510u * 128) || (dev == 1 && last < 0))
-		return BUP_NOT_ENOUGH_MEMORY;
-	int free_block = checked_free;
-	printk("block_need=%d\n", block_need+1);
-	if((block_need+1) > free_block){
-		return BUP_NOT_ENOUGH_MEMORY;
-	}
-
-	// 分配起始块
-    set_free_count();
-	block = get_free_block(0);
-	hdr = block;
-
-	bp = get_block_addr(START_BLOCK|hdr);
-	printk("start at %04x %08x\n", hdr, bp);
-
-	// 写开始块
-	memset(bp, 0, block_size);
-	memcpy(bp+0x00, dir->file_name, 11);
-	*(u32*)(bp+0x0c) = dir->data_size;
-	memcpy(bp+0x10, dir->comment, 10);
-	bp[0x1b] = dir->language;
-	*(u32*)(bp+0x1c) = dir->date;
-
-	// 分配块
-	block = 0;
-	for(i=0; i<block_need; i++){
-		block = get_free_block(block);
-		if(dev==0){
-			set_bitmap(bp+0x40, block, 1);
-		}else{
-			*(u16*)(bp+0x40+i*2) = block;
-		}
-		block += 1;
-	}
-
-	// 写数据
-	access_data(hdr, data, 2);
-
-	// 更新last指针
-	if(dev==1){
-		memcpy((u8*)MEMS_HEADER+0x400+last*16, dir->file_name, 11);
-		*(u16*)(MEMS_HEADER+0x400+last*16+0x0e) = hdr;
-	}else{
-		printk("Link save: %04x -> %04x\n", last, hdr);
-		bp = get_block_addr(last);
-		*(u16*)(bp+0x3e) = hdr;
-	}
-
-	if(dev==0){
-		bup_update(BUPSAVE);
-	}else{
-		bup_update((block_need)? MEMS_ALL: MEMS_HDR|MEMS_SAV);
-	}
-
-	printk("Write done.\n");
-	return 0;
+        }
+        last = -1;
+    } else {
+        if ((dev && last < 0) || blocks + 1 > checked_free)
+            return BUP_NOT_ENOUGH_MEMORY;
+        set_free_count();
+        header = get_free_block(0);
+        bp = get_block_addr(START_BLOCK | header);
+        if (!bp) {
+            /* Header loading precedes all other allocation/publication. */
+            set_bitmap(dev ? (u8*)MEMS->bitmap : (u8*)BUPMEM->bitmap, header, 0);
+            if (dev) MEMS->free_block++; else BUPMEM->free_block++;
+            return BUP_BROKEN;
+        }
+        memset(bp, 0, bsize);
+        memcpy(bp, dir->file_name, 11);
+        *(u32*)(bp + 12) = dir->data_size;
+        int block = 0;
+        for (int i = 0; i < blocks; i++) {
+            block = get_free_block(block);
+            if (dev) *(u16*)(bp + 64 + i * 2) = block;
+            else set_bitmap(bp + 64, block, 1);
+            block++;
+        }
+    }
+    pending->header = header;
+    pending->last = last;
+    pending->flags = dev ? MEMS_HDR | MEMS_SAV | (blocks ? MEMS_BUF : 0) : BUPSAVE;
+    pending->mode = !!mode;
+    pending->state = SAVE_WRITING;
+    return write_pending(dev, dir, data);
 }
 
 
@@ -928,6 +953,7 @@ int sro_bup_delete(int dev, char *file_name)
 	}
 
 	bp = get_block_addr(START_BLOCK|block);
+    if (!bp) return BUP_BROKEN;
 
     set_free_count();
 	has_data = 1;
@@ -978,52 +1004,74 @@ int sro_bup_delete(int dev, char *file_name)
 	}
 
 	if(dev==0){
-		bup_update(BUPSAVE);
+        pending_save[dev].header = 0;
+		return commit_save(dev, BUPSAVE);
 	}else{
-		bup_update(MEMS_HDR);
+        pending_save[dev].header = 0;
+		return commit_save(dev, MEMS_HDR);
 	}
 
 	return 0;
 }
 
 
+static void directory_record(BUPDIR *dir, u8 *bp, int bsize)
+{
+    memset(dir, 0, sizeof(*dir));
+    memcpy(dir->file_name, bp, 11);
+    memcpy(dir->comment, bp + 16, 10);
+    dir->data_size = *(u32*)(bp + 12);
+    dir->language = bp[27];
+    dir->date = *(u32*)(bp + 28);
+    dir->block_size = (dir->data_size + bsize - 1) / bsize;
+}
+
 int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 {
-    int block, fnum;
-    u8 *bp;
-    if (check_backup(dev) || file_name == NULL || tbsize < 0 || (tbsize && dir == NULL))
+    if (check_backup(dev) || !file_name || tbsize < 0 || (tbsize && !dir))
         return 0;
-    printk("bup_dir(%d): %.11s  %d\n", dev, file_name, tbsize);
-
-	int block_size = (dev==0) ? 128 : 1024;
-
-	fnum = 0;
-	while(1){
-		block = find_save(file_name, fnum, NULL);
-		if(block<0){
-			break;
-		}
-
-		if(fnum<tbsize){
-			bp = get_block_addr(START_BLOCK|block);
-			memcpy(dir->file_name, (char*)(bp+0), 11);
-            dir->file_name[11] = 0;
-			dir->data_size = *(u32*)(bp+0x0c);
-			memcpy(dir->comment, bp+0x10, 10);
-            dir->comment[10] = 0;
-			dir->language = bp[0x1b];
-			dir->date = *(u32*)(bp+0x1c);
-			dir->block_size = (dir->data_size + block_size-1)/block_size;
-
-			dir += 1;
-		}
-		fnum += 1;
-	}
-
-	if(fnum>tbsize){
-		return -fnum;
-	}
-	return fnum;
+    int len = 0, count = 0;
+    while (len < 11 && file_name[len]) len++;
+    if (!dev) {
+        /* Slot records are already resident and fully validated. */
+        int block = BUPMEM->first_save;
+        while (block) {
+            u8 *bp = get_block_addr(block);
+            if (!strncmp((char*)bp, file_name, len)) {
+                if (count < tbsize) directory_record(dir + count, bp, 128);
+                count++;
+            }
+            block = *(u16*)(bp + 62);
+        }
+    } else {
+        for (int i = 0; i < 448; i++) {
+            u8 *entry = mems_entry(i);
+            if (entry[0] && !strncmp((char*)entry, file_name, len)) count++;
+        }
+        int copies = count < tbsize ? count : tbsize;
+        int bytes = copies * sizeof(BUPDIR);
+        /* Validation scratch fits 28 records. Larger tables borrow a clean
+         * payload window, avoiding a permanent table-sized allocation. */
+        u8 *stage = resize_bitmap;
+        if (bytes > (int)sizeof(resize_bitmap)) {
+            if (mblk_bmp[0] || mblk_bmp[1]) return 0;
+            mblk_start = mblk_end = 0;
+            stage = (u8*)MEMS_BUFFER;
+        }
+        int out = 0;
+        for (int i = 0; i < 448 && out < copies; i++) {
+            u8 *entry = mems_entry(i);
+            if (!entry[0] || strncmp((char*)entry, file_name, len)) continue;
+            u8 *bp = get_block_addr(START_BLOCK | *(u16*)(entry + 14));
+            if (!bp) return 0;
+            BUPDIR record;
+            directory_record(&record, bp, 1024);
+            memcpy(stage + out * sizeof(record), &record, sizeof(record));
+            out++;
+        }
+        if (bytes) memcpy(dir, stage, bytes);
+    }
+    return count > tbsize ? -count : count;
 }
 
 

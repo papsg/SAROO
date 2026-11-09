@@ -542,6 +542,7 @@ int bios_cd_cmd(int type)
 		SS_ARG = 0;
 		SS_CMD = SSCMD_LSAVE;
 		while(SS_CMD);
+        if (SS_ARG) return -1;
 	}
 
 	// 模拟执行1A3c()

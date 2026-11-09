@@ -46,7 +46,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.results = []
         module = (source / 'saturn_utils.c').read_bytes()
         begin = module.index(b'#define SSAVE_FILE')
-        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents') else b'int load_savefile(char *gameid)'
+        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'api') else b'int load_savefile(char *gameid)'
         end = module.index(marker, begin)
         (cls.target / 'save-startup.inc').write_bytes(
             module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
@@ -67,6 +67,14 @@ class MCUSaveTest(unittest.TestCase):
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']
         if cls.fixture == 'extents':
             harnesses += ['mcu_save_extents.c', 'test_mcu_save_extents.py']
+        if cls.fixture == 'api':
+            harnesses += ['mcu_save_api.c', 'test_mcu_save_api.py']
+            path = Path(os.environ.get('SAROO_GAME_SAVE_SOURCE', ROOT / 'Firm_Saturn/game_save.c'))
+            data = path.read_bytes(); inputs['Firm_Saturn/game_save.c'] = data
+            (cls.target / 'game_save.c').write_bytes(data.replace(b'0x06000c20', b'TEST_IP_ADDR'))
+            for name in ('main.h', 'smpc.h'):
+                data = (ROOT / 'tests/firmware-save-stubs' / name).read_bytes()
+                (cls.target / name).write_bytes(data); inputs['tests/firmware-save-stubs/' + name] = data
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
@@ -86,6 +94,8 @@ class MCUSaveTest(unittest.TestCase):
         cls.binary = cls.target / cls.fixture
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+        if cls.fixture == 'api':
+            flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / ('mcu_save_'+cls.fixture+'.c')),
                 str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)]

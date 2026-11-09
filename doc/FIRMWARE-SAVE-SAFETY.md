@@ -6,6 +6,9 @@ v0.8 firmware save corrections, preserving layouts/capacities. The desktop
 with no private patch framework, USB integration, added runtime diagnostics,
 native-backup migration or experimental journal/transaction system.
 
+All scoped members below are integrated and verified on public main. The
+remaining limits describe work outside this series, not hardware acceptance.
+
 ## SATURN-SAVE-002: unsigned dirty-window shifts
 
 `mbuf_mark` tracks modified blocks in two 32-bit words for the 64-block MEMS
@@ -590,11 +593,143 @@ on startup fails six. Twenty-one coupled MCU methods (240 scenarios) pass both
 profiles. Formatting is enabled only in this fixture's staged `ffconf.h`; the
 production configuration and its preserved copy differ from that test header
 only in `FF_USE_MKFS`. Disk geometry helpers and fixture entry selection are
-test-only. Source/configuration snapshots and results are preserved publicly
-under the existing ignored build directory, and `check-mcu-save` runs them.
+test-only. Source/configuration snapshots and results are preserved locally in
+the public checkout's ignored build directory, and `check-mcu-save` runs them.
 
 No firmware input changes in this checkpoint, so the preceding ARM/SH-2 builds
 and resource counts remain applicable. The fixture explicitly reopens the
 failed slot file; production automatic handle recovery is still pending. This
 is filesystem/extent qualification, not physical full-card behavior, hard-error
 recovery, game acceptance, power-loss atomicity or an archive-repair mechanism.
+
+## MCU-SAVE-001: propagate Saturn API errors and retain pending retries
+
+At public `bb49548`, the MCU reports checked I/O results but the Saturn backup
+service still ignores them. A failed load can become a valid cache; failed
+eviction can discard dirty data; write/delete/format can return success without
+persistence. Directory output can contain stale headers or a partial table.
+The optical save loader and menu's Z-button CD-player path also proceed after a
+failed save/disc load. The A-button path already checks its result.
+
+The service now checks every load/flush result. Failed loads invalidate cache
+ownership before their bytes can be consumed. Failed eviction preserves the
+dirty window and its owner. Ordinary backup operations return `BUP_BROKEN` for
+storage failures; status output stays untouched. A read can have copied earlier
+successful chunks, but never the failing chunk. Directory keeps its signed-hit
+count interface: zero on failure, with no caller output copied on header error.
+The two launch callers stop on a nonzero MCU result. The menu reuses its existing
+bounded `menu_error` formatter rather than importing the historical fixed-size
+`sprintf` buffer.
+
+Two eight-byte pending records retain header/link location, mode, flush flags
+and writing/commit phase. Payload stays in existing shared buffers; no caller
+pointer is retained. An incomplete write blocks unrelated operations on that
+device. A matching bounded name/size/mode retry resupplies the entire payload;
+the other device remains usable. A prepared commit retries persistence before
+another operation proceeds. A matching write can instead resupply data/date,
+including new-save mode; new-save comment/language follow that retry. Directory
+identity is copied from the header, preserving matching raw name bytes when
+unused bytes after the caller's terminator change. New-save header-load failure
+undoes its header allocation. Directory/parent publication follows complete
+payload transfer. Format explicitly supersedes pending state; failed format and
+delete commits remain retryable.
+
+MEMS directory stages up to 28 records in existing 1,008-byte scratch. Larger
+tables borrow the clean payload window and invalidate its Saturn index. Every
+needed header is loaded before copying caller output. Slot records are already
+resident/validated. Prefix order, terminated names/comments and negative total
+counts for undersized tables are retained. Two bounded directory passes replace
+repeated prefix rescans; this is not a measured physical CPU-speed claim.
+
+### Requirements and attribution
+
+Sega's [Saturn System Library User's Guide, ST-162-R1-092994](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf),
+Backup Library §2.1 `BupDir` (printed p. 42, PDF p. 47) defines the fixed fields.
+§2.3 No. 3 `BUP_Format` (printed p. 44/PDF p. 49), Nos. 4–5 `BUP_Stat`/
+`BUP_Write` (p. 45/50), Nos. 6–7 `BUP_Read`/`BUP_Delete` (p. 46/51) and Nos. 8–9
+`BUP_Dir`/`BUP_Verify` (p. 47/52) define success/failure and directory hit counts.
+The manual does not prescribe SAROO's continuation records, cache layout or
+zero-on-directory-error adaptation. Those come from the
+[existing service](https://github.com/papsg/SAROO/blob/bb49548/Firm_Saturn/game_save.c)
+and the [MCU dispatcher's result-before-completion protocol](https://github.com/papsg/SAROO/blob/3c2ab6f/Firm_MCU/Saturn/saturn_main.c#L681-L706).
+FatFs [`f_read`](https://elm-chan.org/fsw/ff/doc/read.html),
+[`f_write`](https://elm-chan.org/fsw/ff/doc/write.html) and
+[`f_sync`](https://elm-chan.org/fsw/ff/doc/sync.html), Description/Return Values,
+are the checked backend contracts. A completed command is not proof of a
+successful transfer.
+
+The original correction and fault fixtures were authored by `paps-g` in
+`1f90bc28` on 2026-09-05. This direct public port independently reproduces it
+after the checked startup/runtime and extent refinements. Public adaptations
+retain the already-bounded launch formatter, preserve the public source's legacy
+comment bytes, and enlarge only the host fixture's write trace for directory
+setup. Original notices remain unchanged. This is self-reported work, with no
+claim that [issue #363](https://github.com/tpunix/SAROO/issues/363) or another
+specific game's save failure is resolved.
+
+### Public verification and costs
+
+Six methods connect the actual Saturn C service to the actual MCU functions and
+public FatFs on synthetic FAT32 images. All **198 scenarios** pass ASan/UBSan and
+O2: failed/short/partial reads and seeks, dirty eviction, incomplete payload
+resupply, new/overwrite/growing/overlapping saves, failed repeated commits,
+format/delete, directory failures/counts/scratch boundaries and warm caches.
+Reloaded payloads, neighbors and archive bytes are checked. Two real disk-read
+error cases retain pending state until an explicit fixture reopen; production
+does not automatically reopen the file. Baseline `bb49548` fails 167 scenarios.
+Initial fixture trace-capacity/extraction setup failures are retained locally
+but excluded from that behavioral count.
+
+Ten isolated controls are detected: ignored flush status, discarded dirty
+eviction, ignored header failure, omitted payload restart, wrong retry name,
+direct caller-table staging, eviction of small directory output, omitted large
+staging invalidation, caller-padding identity and ignored payload error. Two
+actual caller-gate methods test results 0/1/2/19/65535; eight nonzero baseline
+cases fail and all ten corrected cases pass. All **22 menu save methods** and
+**27 coupled MCU methods (438 scenarios)** pass both profiles.
+
+Cold dense 64-save directory output still uses 64 header commands plus one
+64 KiB window, 131,072 bytes and no writes, in both versions. Small output
+preserves a warm payload window. Large output can evict it: the tested subsequent
+read changes from 64 header requests (65,536 bytes) to two window requests
+(131,072 bytes). The additional 64 KiB is the explicit cost of bounded staging.
+These host operation counts do not establish Saturn/SD latency.
+
+The full pinned SH-2 build passes entry/ELF/font/body bounds. Code/data grows
+624 bytes to **78,496**, BSS grows 16 to **9,232**, reserved stack remains 16,384,
+and body margin is **26,960**. Image length remains **488,751**, SHA-256
+`5fd6434c5a011cc82dce555f79d76e0d112f2d359c567d8d098638fb3f071781`;
+ELF SHA-256 `b88d6e9f41dbb158802f0db769e53f12addc3aa6a723c3304bf32a8d915d676b`.
+GCC direct frames: writer 104→92, new write continuation 44, directory 40→84
+plus its 24-byte record helper, format 28→32, delete 40→36, pending completion
+8; archive validation stays 48. These are individual frames, not transitive or
+IRQ/game peak-stack qualification. MCU production inputs are unchanged from
+the preceding complete GNU App/RTX build (59,732 load bytes).
+
+From the root, with a C compiler and the Python dependencies used by existing
+tests available:
+
+```sh
+make -C tests check-firmware-save check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-firmware-save check-mcu-save
+tools/target/debug/firmware-build menu --repo "$PWD" --out tests/build/menu-save-api
+```
+
+`SAROO_GAME_SAVE_SOURCE` selects an extracted baseline service for the coupled
+test. `SAROO_SATURN_SOURCE_DIR` selects a folder with baseline `game_load.c` and
+`main.c` for caller-gate tests. Unique ignored output directories retain source
+hashes, logs and results. No test substitutions enter firmware.
+
+Continuation lasts only within the current shared-buffer/firmware session. It
+does not add a journal, reset/card-generation coordination, automatic file
+recovery or atomic saves. In-place multiwindow writes may already be partially
+persisted on error or power loss. Host byte-order structs and serialized command
+substitution do not qualify SH-2 endianness, concurrency, bus/cache/interrupt
+timing, physical storage durability or game behavior. No hardware is accessed.
+
+The final complete public `make -C tests check` also passes, including existing
+contributions and offline Cargo formatting, strict clippy and unit tests. Its
+Python runtime includes Pillow for the existing Arabic asset check. The MCU
+production inputs are unchanged by this last Saturn-side member. All new tests,
+evidence and builds stay in the public checkout; the private repository and
+Saturn remain untouched.
