@@ -332,10 +332,25 @@ no PRs, USB, runtime diagnostics, private framework or device operations.
 
 | Candidate / original reference | Public checkpoint | Dependencies, evidence and limits |
 | --- | --- | --- |
-| SATURN-MENU-003; `681387bc` | [0812ccd](https://github.com/papsg/SAROO/commit/0812ccd); [codex/cover-display-ownership](https://github.com/papsg/SAROO/tree/codex/cover-display-ownership) | Consumer prerequisite. Four actual-display methods/11 scenarios; baseline10 failures, non-VBlank control passes, sanitizers/O2 pass. Four controls fail10/2/2/2. Public refinement uses selected stride in upward clipping; GIF stride retained. Complete SH-2 link adds16 code/data to78,836; BSS/stack/direct frame unchanged, margin26,620. [Exact Sega DMA sections/pages, paps-g attribution, source contracts, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/COVER-ARTWORK-SAFETY.md#saturn-menu-003-preserve-frame-ownership-through-final-dma). Synthetic asynchronous DMA is not bus/cache/VDP timing, physical-hang or game qualification. |
-| MCU-COVER-001; `681387bc` | [87ddb00](https://github.com/papsg/SAROO/commit/87ddb00); [codex/cover-cache-safety](https://github.com/papsg/SAROO/tree/codex/cover-cache-safety) | Requires0812ccd. Seven actual-C/FatFs/catalog/display methods/55 scenarios; baseline47 failures/eight valid controls, sanitizer/O2 pass. Four mutations fail7/6/3/1. All66 MCU regressions pass; complete166-vector GNU qualification link passes, load59,812/static DTCM61,112. Cache5,118 bytes; explicit scan invalidation and bounded ownership wait. [Citations, paps-g attribution, costs and limits](https://github.com/papsg/SAROO/blob/main/doc/COVER-ARTWORK-SAFETY.md#mcu-cover-001-bound-catalog-ownership-and-publish-complete-artwork). No physical/game/MDK qualification; later MCU capacity expansion remains separate. |
-| COVERTOOL-001; `2231f4b5` | Queued | Native artwork validation, exact deduplication, checked output publication and existing browser interoperability. |
+| SATURN-MENU-003; `681387bc` | [0812ccd](https://github.com/papsg/SAROO/commit/0812ccd); [codex/cover-display-ownership](https://github.com/papsg/SAROO/tree/codex/cover-display-ownership) | Consumer prerequisite. Four actual-display methods/11 scenarios; baseline 10 failures, non-VBlank control passes, sanitizers/O2 pass. Four controls fail 10/2/2/2. Public refinement uses selected stride in upward clipping; GIF stride retained. Complete SH-2 link adds 16 code/data to 78,836; BSS/stack/direct frame unchanged, margin 26,620. [Exact Sega DMA sections/pages, paps-g attribution, source contracts, commands and limits](https://github.com/papsg/SAROO/blob/main/doc/COVER-ARTWORK-SAFETY.md#saturn-menu-003-preserve-frame-ownership-through-final-dma). Synthetic asynchronous DMA is not bus/cache/VDP timing, physical-hang or game qualification. |
+| MCU-COVER-001; `681387bc` | [87ddb00](https://github.com/papsg/SAROO/commit/87ddb00); [codex/cover-cache-safety](https://github.com/papsg/SAROO/tree/codex/cover-cache-safety) | Requires 0812ccd. Seven actual-C/FatFs/catalog/display methods/55 scenarios; baseline 47 failures/eight valid controls, sanitizer/O2 pass. Four mutations fail 7/6/3/1. All 66 MCU regressions pass; complete 166-vector GNU qualification link passes, load 59,812/static DTCM 61,112. Cache 5,118 bytes; explicit scan invalidation and bounded ownership wait. [Citations, paps-g attribution, costs and limits](https://github.com/papsg/SAROO/blob/main/doc/COVER-ARTWORK-SAFETY.md#mcu-cover-001-bound-catalog-ownership-and-publish-complete-artwork). No physical/game/MDK qualification; later MCU capacity expansion remains separate. |
+| COVERTOOL-001; `2231f4b5`, required protected-file refinement `3151c6f5` | [f7d7299](https://github.com/papsg/SAROO/commit/f7d7299); [codex/native-cover-safety](https://github.com/papsg/SAROO/tree/codex/native-cover-safety) | Seventeen methods, 102 functional/metadata invocations and 39 fault cases pass sanitizer/O2; selected baseline has 53 failed assertions/two filename errors. Hash-only/protected-copy controls fail 1/9 cases. Seven browser/native round trips and original native Makefile build pass; browser product source unchanged. Native text 3,044→8,364 B, direct main stack 524,688→8,624 B; full tiny-image heap increases to 393,216 B and is documented. [Bucanero/paps-g attribution, C/BMP/source/system-call citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/NATIVE-COVER-SAFETY.md). Per-file publication and manifest-last behavior do not establish whole-directory rollback or power-loss qualification. |
 
-Series active; remaining rows are not complete. Verified menu and MCU checkpoints/main
-are pushed; evidence stays in public. Private repository and Saturn remain
-untouched. No upstream request is changed.
+Series complete at **f7d7299**. All three candidate IDs have verified direct
+source commits on main; topic/main checkpoints are pushed. Final integrated
+suite passes **212 Python methods**, authored C checks, **14 Rust tests**, fmt
+and clippy. Complete MCU/menu build receipts match all 56/36 current tracked
+source inputs respectively. Firmware load/body/image and native allocation costs
+are documented at the linked checkpoints; models are not hardware qualification.
+
+The fork's issue tracker is disabled and there are no open fork PRs, so no fork
+counterpart needs closing. Original tpunix/SAROO requests remain unchanged.
+Historical #215/#321/#332 tool features were already in v0.8, not imported again;
+this series does not establish an individual commenter's root cause.
+
+Private HEAD/status/all refs/four stashes match the starting snapshot. No private
+preparer/build/test, Saturn, USB, power/capture, runtime probe, new PR or subagent
+was used. All new evidence is preserved under the public repository's ignored
+`.git/porting/evidence/cover-artwork-safety/`, and tests retain their own copied
+inputs/logs under `tests/build/`. Baseline/master/default branch are preserved.
+Later MCU capacity/configuration/palette/GIF work remains outside this series.
