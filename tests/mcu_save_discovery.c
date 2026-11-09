@@ -64,6 +64,8 @@ static int read_file(const char *name,int offset,int size,void *out)
     binary_reads++;assert(!strcmp(name,"/SAROO/BIN/One.bin") && !offset && !size);
     assert((uintptr_t)out==0x06004000);return -7;
 }
+static int read_file_bounded(char *name,int offset,int size,void *out,u32 capacity)
+{ assert(capacity==0xfc000); return read_file(name,offset,size,out); }
 static void pad_suspend(void) { assert(0); }
 static void pad_resume(void) { assert(0); }
 #define strtoul binary_number

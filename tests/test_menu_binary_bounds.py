@@ -1,4 +1,5 @@
-"""Actual menu path/index selection; no payload loading or execution."""
+"""Actual catalog/destination/header checks with modeled payloads and jumps."""
+# Adapted from paps-g 4df2e67a; retain public controller handoff controls.
 import hashlib
 import json
 import os
@@ -17,15 +18,27 @@ class MenuBinaryBoundsTests(unittest.TestCase):
         build = ROOT / 'tests/build/menu-binary'; build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
         data = source.read_bytes()
-        begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
-        (cls.target / 'binary.inc').write_bytes(data[begin:end])
+        begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(',begin)
+        start=data.index(b'u32 BE32(')
+        helpers=data[start:data.index(b'/**********************************************************/',start)]
+        if b'static u32 file_capacity(' in data:
+            start=data.index(b'static u32 file_capacity(')
+            helpers+=data[start:data.index(b'\n}',start)+2]+b'\n'
+        code=helpers+data[begin:end]
+        code=code.replace(b'(void*)load_addr',b'binary_buffer(load_addr)')
+        code=code.replace(b'(char*)load_addr',b'(char*)binary_buffer(load_addr)')
+        code=code.replace(b'(u32*)load_addr',b'(u32*)binary_buffer(load_addr)')
+        # Equivalent byte predicate models the baseline's native big-endian loads.
+        code=code.replace(b'xbuf[0]==0x53454741 && xbuf[1]==0x20534547',b'!strncmp((char*)xbuf,"SEGA SEG",8)')
+        code=code.replace(b'(void(*)(void))(load_addr+offset)',b'binary_jump(load_addr+offset)')
+        (cls.target/'binary.inc').write_bytes(code)
         inputs = {'main.c': data, 'menu_binary_bounds.c': (ROOT / 'tests/menu_binary_bounds.c').read_bytes(),
                   'test_menu_binary_bounds.py': Path(__file__).read_bytes()}
         for name, data in inputs.items(): (cls.target / name).write_bytes(data)
         (cls.target / 'inputs.json').write_text(json.dumps(
             {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()}, indent=2)+'\n')
         cls.binary = cls.target / 'binary'
-        flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
+        flags = ['-O2'] if os.environ.get('SAROO_FILE_PROFILE',os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE')) == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
         result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags,
             '-Wno-int-to-pointer-cast', '-I', str(cls.target), str(cls.target / 'menu_binary_bounds.c'),
@@ -38,7 +51,7 @@ class MenuBinaryBoundsTests(unittest.TestCase):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2)+'\n')
 
     def test_indices_and_names_are_checked_before_io(self):
-        for value in range(9):
+        for value in range(40):
             with self.subTest(value=value):
                 result = subprocess.run([str(self.binary), str(value)], capture_output=True, timeout=5,
                     env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1', 'ASAN_OPTIONS': 'detect_leaks=0'})

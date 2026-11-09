@@ -575,66 +575,80 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch)
 
 /**********************************************************/
 
-int read_file (char *name, int offset, int size, void *buf)
+/* Physical limits for legacy whole-file calls; stricter binary destinations
+   exclude BIOS work/vectors, menu/catalog/stack, and cover workspaces. */
+static u32 file_capacity(u32 address, int binary)
 {
-	LE32W((void*)(TMPBUFF_ADDR+0x00), offset);
-	LE32W((void*)(TMPBUFF_ADDR+0x04), size);
-	strcpy((void*)(TMPBUFF_ADDR+0x10), name);
-
-	u32 bus_addr = (u32)buf & 0x0fffffff;
-	if(bus_addr>=0x02000000 && bus_addr<0x03000000){
-		// buf位于MCU和SS可以直接访问的空间内。
-		LE32W((void*)(TMPBUFF_ADDR+0x08), bus_addr);
-	}else{
-		// buf不可直接访问，必须中转。
-		LE32W((void*)(TMPBUFF_ADDR+0x08), TMPBUFF_ADDR+0x0100);
-	}
-
-
-	SS_ARG = 0;
-	SS_CMD = SSCMD_FILERD;
-	while(SS_CMD);
-
-	int retv = (signed short)SS_ARG;
-	if(retv<0)
-		return retv;
-
-	size = LE32((void*)(TMPBUFF_ADDR+0x04));
-	if(bus_addr<0x02000000 || bus_addr>=0x03000000){
-		memcpy(buf, (void*)(TMPBUFF_ADDR+0x0100), size);
-	}
-
-	return size;
+    if (address & 0xc0000000u) return 0;
+    address &= 0x1fffffffu;
+    if (address >= 0x00200000 && address < 0x00300000) return 0x00300000 - address;
+    if (!binary && address >= 0x02000000 && address < 0x03000000) {
+        if (address >= 0x020c7000 && address < 0x020c7100) return 0;
+        return (address < 0x020c7000 ? 0x020c7000 : 0x03000000) - address;
+    }
+    if (address >= (binary ? 0x06002000u : 0x06000000u) && address < 0x06100000) return 0x06100000 - address;
+    if (address >= 0x020c7100 && address < 0x02400000) return 0x02400000 - address;
+    if (address >= 0x02800000 && address < 0x03000000) return 0x03000000 - address;
+    return 0;
 }
 
+/* The caller owns size bytes at buf; this helper also bounds the shared hop. */
+static int file_command(char *name, int offset, u32 size, void *buf, int writing)
+{
+    if (!name || (!buf && size)) return -19; /* FR_INVALID_PARAMETER */
+    unsigned length = 0;
+    while (length < 0xf0 && name[length]) ++length;
+    if (length == 0xf0) return -19;
 
+    u32 bus_addr = (u32)buf & 0x1fffffff;
+    int direct = bus_addr >= 0x02000000 && bus_addr < 0x03000000;
+    u32 address = direct ? bus_addr : ((TMPBUFF_ADDR & 0x1fffffff) + 0x100);
+    /* Stop the bounce buffer before the active cover workspace at 0x02400000. */
+    u32 end = direct ? (address < 0x020c7000 ? 0x020c7000 : 0x03000000) : 0x02400000;
+    if ((address >= 0x020c7000 && address < 0x020c7100) || size > end - address)
+        return -19;
+    LE32W((void*)(TMPBUFF_ADDR+0x00), offset);
+    LE32W((void*)(TMPBUFF_ADDR+0x04), size);
+    LE32W((void*)(TMPBUFF_ADDR+0x08), address);
+    memcpy((void*)(TMPBUFF_ADDR+0x10), name, length+1);
+    if (writing && !direct && size) memcpy((void*)(TMPBUFF_ADDR+0x100), buf, size);
+    SS_ARG = 0;
+    SS_CMD = writing ? SSCMD_FILEWR : SSCMD_FILERD;
+    while (SS_CMD);
+    int result = (signed short)SS_ARG;
+    if (result < 0) return result;
+    u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
+    if (count > size) return -19;
+    if (!writing && !direct && count) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), count);
+    return count;
+}
+
+int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity)
+{
+    if (offset < 0 || size < 0 || (u32)size > capacity || (!size && !capacity)) return -19;
+    u32 requested = size ? (u32)size : capacity;
+    int count = file_command(name, offset, requested, buf, 0);
+    if (count < 0 || size || (u32)count < requested) return count;
+    /* An exact-capacity whole-file read needs one byte of EOF evidence.
+       Never issue the legacy unbounded size-zero command. */
+    if ((u32)offset > 0x7fffffffu - requested) return -19;
+    u8 extra;
+    int tail = file_command(name, offset + requested, 1, &extra, 0);
+    return tail < 0 ? tail : tail ? -19 : count;
+}
+
+/* Preserve the four-argument homebrew ABI at 0x02000f08. Whole-file callers
+   must own the remaining permitted region; new callers should give capacity. */
+int read_file(char *name, int offset, int size, void *buf)
+{
+    return read_file_bounded(name, offset, size, buf, size > 0 ? (u32)size : file_capacity((u32)buf, 0));
+}
+
+/* Preserve the four-argument homebrew ABI at 0x02000f0c. */
 int write_file(char *name, int offset, int size, void *buf)
 {
-	LE32W((void*)(TMPBUFF_ADDR), offset);
-	LE32W((void*)(TMPBUFF_ADDR+0x04), size);
-	strcpy((void*)(TMPBUFF_ADDR+0x10), name);
-
-	u32 bus_addr = (u32)buf & 0x0fffffff;
-	if(bus_addr>=0x02000000 && bus_addr<0x03000000){
-		// buf位于MCU和SS可以直接访问的空间内。
-		LE32W((void*)(TMPBUFF_ADDR+0x08), bus_addr);
-	}else{
-		// buf不可直接访问，必须中转。
-		LE32W((void*)(TMPBUFF_ADDR+0x08), TMPBUFF_ADDR+0x0100);
-		memcpy((void*)(TMPBUFF_ADDR+0x0100), buf, size);
-	}
-
-
-	SS_ARG = 0;
-	SS_CMD = SSCMD_FILEWR;
-	while(SS_CMD);
-
-	int retv = (signed short)SS_ARG;
-	if(retv<0)
-		return retv;
-
-	size = LE32((void*)(TMPBUFF_ADDR+0x04));
-	return size;
+    if (size < 0) return -19;
+    return file_command(name, offset, size, buf, 1);
 }
 
 
@@ -888,40 +902,51 @@ static void page_update(int up)
 
 int run_binary(int index, int run)
 {
-	int *disc_path = (int *)(IMGINFO_ADDR+0x04);
-	char *path_str = (char*)(IMGINFO_ADDR);
-	char bin_name[128];
-	int load_addr = 0x06004000;
-
-    if (index < 0 || index >= LE32((u8*)IMGINFO_ADDR)) return -1;
-    const char *name = path_str + LE32(&disc_path[index]);
-    if (strlen(name) > sizeof(bin_name) - sizeof("/SAROO/BIN/")) return -1;
+    char *catalog = (char*)IMGINFO_ADDR;
+    u32 count = LE32(catalog);
+    if (count > (0x2800-4)/4 || index < 0 || (u32)index >= count) return -1;
+    u32 name_offset = LE32(catalog+4+index*4);
+    if (name_offset < 0x2800 || name_offset >= 0x23000) return -1;
+    char *name = catalog + name_offset;
+    char bin_name[128];
+    unsigned length = 0;
+    while (length < 0x23000-name_offset && length <= sizeof(bin_name)-sizeof("/SAROO/BIN/") && name[length])
+        ++length;
+    if (length == 0x23000-name_offset || length > sizeof(bin_name)-sizeof("/SAROO/BIN/")) return -1;
     sprintf(bin_name, "/SAROO/BIN/%s", name);
-	char *p = strchr(bin_name, '@');
-	if(p){
-		load_addr = strtoul(p+1, NULL, 16, NULL);
-	}
-
-	int retv = read_file(bin_name, 0, 0, (void*)load_addr);
-	if(retv<0)
-		return retv;
-
-	int offset = 0;
-	u32 *xbuf = (u32*)load_addr;
-	if(xbuf[0]==0x53454741 && xbuf[1]==0x20534547)
-		offset = 0x0f00;
-
-	if(run){
-		printk("Jump to %08x ...\n", load_addr);
-		void (*go)(void) = (void(*)(void))(load_addr+offset);
-		pad_suspend();
-		go();
-		pad_resume();
-	}else{
-		printk("Load to %08x ...\n", load_addr);
-	}
-
-	return 0;
+    u32 load_addr = 0x06004000;
+    char *p = strchr(bin_name, '@');
+    if (p) {
+        ++p;
+        if (p[0]=='0' && (p[1]=='x' || p[1]=='X')) p += 2;
+        char *start = p;
+        load_addr = 0;
+        for (;;) {
+            unsigned digit = (unsigned char)*p;
+            if (digit >= '0' && digit <= '9') digit -= '0';
+            else if ((digit | 32) >= 'a' && (digit | 32) <= 'f') digit = (digit | 32)-'a'+10;
+            else break;
+            if (load_addr > 0x0fffffff) return -1;
+            load_addr = (load_addr << 4) | digit;
+            ++p;
+        }
+        if (p == start || (*p && *p != '.')) return -1;
+    }
+    u32 capacity = file_capacity(load_addr, 1);
+    if (!capacity || (run && (load_addr & 1))) return -1;
+    int retv = read_file_bounded(bin_name, 0, 0, (void*)load_addr, capacity);
+    if (retv < 0) return retv;
+    if (run) {
+        int offset = 0;
+        if (retv >= 8 && !strncmp((char*)load_addr, "SEGA SEG", 8)) offset = 0x0f00;
+        if (retv < offset + 2) return -1;
+        printk("Jump to %08x ...\n", load_addr);
+        void (*go)(void) = (void(*)(void))(load_addr+offset);
+        pad_suspend();
+        go();
+        pad_resume();
+    } else printk("Load to %08x ...\n", load_addr);
+    return 0;
 }
 
 
@@ -1361,6 +1386,9 @@ int _main(void)
 	*(u32*)(0x02000f04) =  (u32)cdc_read_sector;
 	*(u32*)(0x02000f08) =  (u32)read_file;
 	*(u32*)(0x02000f0c) =  (u32)write_file;
+    /* Optional bounded-reader ABI v1; original four-argument entries stay intact. */
+    *(u32*)(0x02000f10) = (u32)read_file_bounded;
+    *(u32*)(0x02000f14) = 0x53464231; /* SFB1 */
 	*(u32*)(0x02000f24) =  (u32)conio_getc;
 	*(u32*)(0x02000f30) =  (u32)bios_cd_cmd;
 	*(u32*)(0x02000f34) =  (u32)page_update;

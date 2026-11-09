@@ -159,7 +159,114 @@ or hardware acceptance is claimed. `check-file-transfer` now includes these test
 
 ## MCU-FILE-002: capacity-aware menu and binary loading
 
-Queued: preserve legacy exports while adding bounded reads, checked shared hops
-and binary destination/header limits. Existing catalog checks will be deduplicated.
-Legacy callers must still own valid storage; later cache/reset/ownership work
-remains separate.
+Original: **paps-g**, selected `4df2e67a` (2026-09-06), after the separately
+verified unsigned readers at `ae59ff3`. Preserve earlier catalog/path checks and
+extend their actual implementation. The public adaptation also preserves the
+existing controller suspend → jump → resume ordering, and checks it in the
+modeled-jump fixture. No title-specific code, runtime diagnostics or new loader
+is introduced; this bounds the existing BIN loader and file APIs.
+
+`read_file_bounded(name, offset, size, buffer, capacity)` requires caller-owned
+writable storage. Reject negative read offset/size, fixed size above capacity,
+zero whole-file capacity, missing/overlong names and invalid shared extents
+before publication/copy. Check returned counts against the requested extent
+before copying bounced data. Names retain239 bytes plus NUL; the shared bounce
+span stops before the existing cover/GIF workspace. Preserve fixed-size partial/
+EOF semantics and zero-byte write/create behavior. The unused request word at
+`+0x0c`, command IDs and all earlier export slots are unchanged.
+
+For a size-zero whole-file read, issue a capacity-sized ordinary request. A short
+result proves EOF within capacity. If it fills exactly, probe one byte at the
+checked following offset: EOF accepts the exact fit; extra data or a probe error
+rejects it. No unbounded read is sent. Smaller files use one command/open/seek/
+transfer/close; full-capacity reads add one sequential one-byte command and file
+sequence. Failure can leave a bounded copied prefix, which callers must discard.
+The probe uses one local byte and existing transfer storage, with no heap or
+retained buffer. Two commands are not an atomic snapshot of a mutable file.
+
+The four-argument `read_file` and `write_file` exports at `0x02000f08/0x02000f0c`
+remain. Legacy whole-file calls use remaining supported physical-bank capacity;
+they cannot infer a smaller C allocation. New homebrew can check `SFB1`
+(`0x53464231`) at `0x02000f14` before using the new five-argument reader at
+`0x02000f10`. Those slots were unused in the baseline. The producer uses existing
+fixed-size MCU requests and works with the original handlers for the tested
+valid transfers; it does not backport MCU error/bounds repairs into old firmware.
+
+The existing BIN loader checks catalog count/offset/string extent, joined-path
+length and optional `@hex` syntax/overflow before file I/O. Destination capacity
+comes from these supported ranges, with ends exclusive:
+
+| Permitted physical start | End | Basis |
+| --- | --- | --- |
+| `0x00200000` | `0x00300000` | Low work RAM |
+| `0x06002000` | `0x06100000` | High work RAM above BIOS work/vectors |
+| `0x020c7100` | `0x02400000` | Cartridge scratch after the live request |
+| `0x02800000` | `0x03000000` | Supported free cartridge span |
+
+Sega [SCU User's Manual ST-097-R5-072694, §1.2, Figure1.3, printed4/PDF20](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=20)
+and [Figure1.5, printed6/PDF22](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=22)
+define the two1 MiB work-RAM banks and cache-through aliases. Both cached pages
+were read and their memory-map diagrams rendered/inspected. They do not define
+SAROO's reserved buffers: [the linker](https://github.com/papsg/SAROO/blob/ae59ff3/Firm_Saturn/ldscript)
+places menu/BSS/stack in cartridge memory; [shared constants](https://github.com/papsg/SAROO/blob/ae59ff3/Firm_Saturn/main.h#L59)
+reserve catalogs/saves/request; [`game_load.c`](https://github.com/papsg/SAROO/blob/ae59ff3/Firm_Saturn/game_load.c#L296)
+uses BIOS work and the high-RAM IP start; [cover/GIF use](https://github.com/papsg/SAROO/blob/ae59ff3/Firm_Saturn/main.c)
+reserves `0x02400000`; [FPGA05's mapping](https://github.com/papsg/SAROO/blob/ae59ff3/FPGA/SSMaster.v#L669)
+supplies the supported cartridge decode. These project contracts define the
+restricted loader policy, not a universal allocation map or cache repair.
+
+Keep the default load address `0x06004000`. Accept its cache-through counterpart
+and supported alternative regions; reject unsupported classes and odd execution
+addresses. A jump requires at least one complete two-byte instruction. Inspect
+the eight-byte `SEGA SEG` prefix only when all eight bytes arrived, using a byte
+comparison; preserve the existing `+0x0f00` entry rule and require at least
+`0x0f02` loaded bytes. Load-without-execute retains zero/one-byte loads. Bounds
+and headers do not authenticate executable contents or authorize file paths.
+
+Nine coupled actual menu/MCU/FatFs methods cover30 transfer scenarios; one
+actual-loader method covers40 cases. All pass sanitizers and O2. The prior
+unsigned-reader menu fails15 transfer and21 loader cases, with15/19 preservation
+controls passing. The same30 transfer cases also pass with the original MCU
+handlers. Coverage includes exact/oversized/tail/EOF reads, invalid args/names,
+bad/high-bit response counts, probe errors, writes/zero-byte creates, direct/
+bounce/request boundaries, legacy function-pointer calls and actual ABI-slot
+assignments, default-capacity BIN/2 MiB companion transfers, malformed catalogs/
+addresses and short executable/header refusal. Jumps/data/storage/registers are
+modeled; source/controller order is checked without executing a real BIN.
+Seven real-FatFs discovery and seven cover regression methods pass with the
+updated actual loader, preserving catalog publication and earlier controls.
+
+Nine meaningful mutations are rejected: unchecked replies, missing EOF proof,
+ignored capacity, weakened full name bound, oversized bounce extent, missing
+header length, ignored address overflow, omitted controller suspension and
+unchecked catalog count. One initial loop-only name mutation passed the tested
+boundary because its rejecting-length guard was unchanged; that incomplete
+negative control is preserved and not counted as a rejected mutation.
+
+The complete SH-2 menu grows688 code/data bytes,78,884→79,572. BSS9,232,
+reserved stack16,384, font357,679 and padded image488,751 bytes remain; body
+margin is25,884. The MCU is unchanged at57,396 load/60,296 static DTCM bytes.
+Compiler direct frames: old read/write20/20; new legacy read24, bounded reader36,
+command helper36, write8; BIN loader144→148. The BIN read caller sum changes
+164→220 (+56), before utilities/interrupt frames; legacy read/write sums are
+96/44. Sequential probes do not accumulate their frames. These source/compiler
+caller sums and preserved target disassembly are not physical stack peaks.
+Added scans/checks and the occasional extra command have unmeasured device
+latency; no speed, audio, game, original-MDK or hardware qualification is claimed.
+
+```sh
+make -C tests check-file-transfer
+SAROO_FILE_PROFILE=release make -C tests check-file-transfer
+python3 -B -m unittest discover -s tests -p test_menu_binary_bounds.py -v
+# Overrides: SAROO_MENU_FILE_SOURCE, SAROO_MENU_MCU_SOURCE,
+#            SAROO_MENU_BINARY_SOURCE; all accept local source files.
+```
+
+MCU-FILE-002 retains its ownership limitation: mapped addresses and a capacity
+argument do not prove ownership of an arbitrary allocation. Legacy whole-file
+callers must provide sufficient storage or use the opt-in API. Names/buffers
+must remain valid and exclusively owned during the nonreentrant command.
+Expansion-RAM folding, calling/other-CPU cache coherence, reset generations,
+unbounded command waits, pending file recovery and atomic snapshots/writes are
+separate later work. This scoped port does not close those findings or any
+unattributed game/audio/save-loss report. Private repo and Saturn stay untouched.

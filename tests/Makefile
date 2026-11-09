@@ -28,6 +28,7 @@ check-mcu-shrink:
 check-file-transfer:
 	$(PYTHON) -B -m unittest discover -s . -p test_file_transfer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_word_access.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_file_transfer.py -v
 
 .PHONY: check-config
 check-config:

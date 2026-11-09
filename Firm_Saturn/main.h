@@ -332,6 +332,7 @@ int str2hex(char *str, int *hex);
 void dump(int argc, int *args, int width);
 void mem_dump(char *str, void *addr, int size);
 
+int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity);
 int read_file (char *name, int offset, int size, void *buf);
 int write_file(char *name, int offset, int size, void *buf);
 

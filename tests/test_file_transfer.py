@@ -14,6 +14,19 @@ from mcu_save_support import make_fat32
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def extract_command_source(raw):
+    helper=b''
+    if b'int ss_file_transfer(' in raw:
+        start=raw.rfind(b'\n',0,raw.index(b'int ss_file_transfer('))+1
+        helper=raw[start:raw.index(b'\n}',start)+2]+b'\n'
+    start=raw.index(b'\tcase SSCMD_FILERD:')
+    cases=raw[start:raw.index(b'\tcase SSCMD_SSAVE:',start)]
+    code=helper+b'\nstatic void command(void) { u32 cmd=SS_CMD; '+(b'int retv; ' if helper else b'')+b'switch(cmd) {\n'+cases+b'\n} }\n'
+    code,replacements=re.subn(rb'\(u8\s*\*\)\s*\(\(baddr\s*&\s*0x00ffffff\)\s*\|\s*0x61000000\)',b'(test_shared+(baddr & 0x00ffffff))',code)
+    assert replacements==(1 if helper else 2)
+    return code
+
+
 class FileTransferTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -21,16 +34,7 @@ class FileTransferTests(unittest.TestCase):
         raw = source.read_bytes()
         build=ROOT/'tests/build/file-transfer'; build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build)); cls.results=[]
-        helper=b''
-        if b'int ss_file_transfer(' in raw:
-            start=raw.rfind(b'\n',0,raw.index(b'int ss_file_transfer('))+1
-            helper=raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        start=raw.index(b'\tcase SSCMD_FILERD:')
-        cases=raw[start:raw.index(b'\tcase SSCMD_SSAVE:',start)]
-        code=helper+b'\nstatic void command(void) { u32 cmd=SS_CMD; '+(b'int retv; ' if helper else b'')+b'switch(cmd) {\n'+cases+b'\n} }\n'
-        code,replacements=re.subn(rb'\(u8\s*\*\)\s*\(\(baddr\s*&\s*0x00ffffff\)\s*\|\s*0x61000000\)',b'(test_shared+(baddr & 0x00ffffff))',code)
-        assert replacements==(1 if helper else 2)
-        (cls.target/'file-transfer.inc').write_bytes(code)
+        (cls.target/'file-transfer.inc').write_bytes(extract_command_source(raw))
         header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         addresses=dict(re.findall(rb'#define\s+(TMPBUFF_ADDR|FIRM_ADDR)\s+(0x[0-9a-fA-F]+)',header))
         assert addresses=={b'TMPBUFF_ADDR':b'0x610c7000',b'FIRM_ADDR':b'0x61000000'}
