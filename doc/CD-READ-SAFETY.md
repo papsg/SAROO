@@ -156,6 +156,102 @@ SAROO_CDC_PROFILE=release python3 tests/test_cdc_bounds.py
 make -C tests check-cdc-command-buffer
 ```
 
-Output/private-read ownership010 and corrected completion counts012 remain
-pending. The wider filesystem, asynchronous ownership and physical qualification
+Output/private-read ownership010 and corrected completion counts012 follow
+separately. The wider filesystem, asynchronous ownership and physical qualification
 limits above remain; no installed firmware or hardware was accessed.
+
+## MCU-CDC-010: stable read ownership and partition-output cancellation
+
+Original: selected paps-g `3d2c405e`, requiring008/009. GET borrows a public
+partition's linked blocks while delete/reset may free them. GETDEL formerly
+removed saved positions at DataEnd even if intervening mutations changed which
+sectors occupied them. Partition release also published an old head while
+freeing blocks and fetched each next pointer only after making the block reusable.
+
+Sega's [CD interface §8.2.7 introduction and functions7.2–7.4](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm)
+defines connector takeover/error and GET/erase/GETDEL. [ST-162 printed p.96](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=84)
+requires deleting the complete selected range even if the host fetches less.
+[§8.2.6 function6.3, printed p.93](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=81)
+also takes the partition output for size calculation. [§5.3.4(1)](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+defines stream errors after disconnection. Exact original-drive event timing is
+not inferred from these command requirements or host callback models.
+
+Before readiness, GETDEL validates and detaches the complete selection into a
+private list using existing next pointers. Its blocks stay allocated until
+DataEnd or whole-CD reset, independently of later public appends/deletions.
+The existing head byte stores a pool index and read progress becomes count-
+relative; pointer/count fields hold the selection with no extra state/table.
+Header comments now describe these meanings without changing layout or capacity.
+Ordinary GET keeps its public chain until a conflicting valid delete, removal,
+clear/reset or calculation cancels its output. Both read types stop further
+FIFO service and return an error after takeover; GETDEL retains its private
+blocks until cleanup. Unrelated partitions and condition resets preserve reads.
+Invalid requests do not steal output ownership.
+
+Partition clear detaches its public head and clears metadata under a short mask,
+then releases the old list outside it. Release captures next before making the
+current block reusable. New appends after detachment survive. Delete similarly
+detaches its exact range once before release. Detached GETDEL cleanup uses its
+original private chain, including untransferred sectors, rather than positions
+in a potentially changed public list. DataEnd clears pointer/progress ownership;
+software reset still owns and resets the entire pool.
+
+The public adaptation retains all original log formats/masks and valid-command
+text/order, instead of importing the private consolidated trace. Move the old
+transfer-start trace before acquiring the selection. Re-admit the original
+request under the mask after logs, since UART capacity waits may let disk work
+clear or shrink the partition. [Existing printk](https://github.com/papsg/SAROO/blob/f9ed8fe/Firm_MCU/Main/printk.c#L258)
+calls [UART output with delay-capable capacity handling](https://github.com/papsg/SAROO/blob/f9ed8fe/Firm_MCU/Main/uart4.c#L191).
+After publishing a borrowed pointer, transfer start/service perform no logging,
+blocking lock or delay before finishing their FIFO writes.
+
+Command/FIFO work stays priority31 and disk work24. The old unused High attribute
+was not passed to disk creation; the [pinned RTX null-attribute path](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_thread.c#L636)
+uses Normal. Pass the zeroed attribute with explicit Normal to preserve that
+effective ordering. The actual creation fixture and pinned dispatcher enforce
+it; raising disk above command is rejected. This preserves the nonblocking
+borrowed-pointer contract, not a measured priority/timing improvement. Other
+interrupts can run; source review finds partition release on disk/command paths,
+not those interrupt handlers. New blocking calls or priorities need re-review.
+
+Ten new actual-source groups pass sanitizers/O2. Coverage includes720 GETDEL
+head/middle/tail/full-pool selections plus a scrambled200-block chain;10
+conflicting and8 preservation cases; actual incoming appends; release-time reuse
+that overwrites freed next pointers;8 clear/shrink log-boundary cases;10,368
+read admissions; reset ownership; incomplete GETDEL rejection and baseline-valid
+exact log/payload controls. The preceding source fails nine groups and passes
+that valid control; failures share causes and are not nine hardware findings.
+Eighteen compiled ownership/scheduling mutants fail behavioral/sanitizer checks.
+
+The old transfer-state differential used fabricated partition counts and a fake
+trans_start. Its saved field positions cannot qualify private ownership. It is
+retired in favor of these actual list/FIFO/admission/log controls, with its source
+and results preserved in prior public commits. Both directory differentials
+remain unchanged in purpose. All81 CD methods and2 directory methods pass both
+profiles;6 scheduling/startup methods also pass both profiles. Final strengthened
+log-boundary tests pass separately after the full focused runs. Model callbacks
+are explicit host simulations, not captured preemption or physical IRQ timing.
+
+Complete MCU load grows224 bytes:58,452→58,676, leaving6,860 ITCM bytes. Static
+DTCM stays60,296, with no retained table, payload buffer, allocation or copy.
+Direct common-GET frame48→64, delete24→32, remove8→16; disconnect/detach/release
+helpers use8/20/8. Clear16, calculation32, first FIFO16, FIFO service24, DataEnd40,
+disk80 and IRQ/dispatch24/16 remain. Compiler frames exclude other callees and
+exceptions. Valid GETDEL/delete masks at most200 public nodes while selecting/
+detaching metadata; payload writes and list release remain outside that mask.
+Preserving logs requires bounded range revalidation after their possible waits.
+One detachment replaces repeated same-position removal searches. No measured
+physical cycle, IRQ-latency, peak-stack or game-speed claim follows.
+
+```sh
+python3 tests/test_cdc_read_ownership.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_read_ownership.py
+python3 tests/test_gif_scheduling.py
+make -C tests check-cdc-command-buffer
+# Baseline/mutant override: SAROO_CDC_READ_SOURCE=/path/to/saturn_cdc.c
+```
+
+This checkpoint deliberately leaves the preceding early-read count arithmetic
+for the separate012 correction. It does not import the old, superseded
+host-consumed count policy. Wider asynchronous copy/move/MPEG ownership,
+directory/ISO/XA workers and physical/game qualification remain separate.

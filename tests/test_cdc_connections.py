@@ -24,7 +24,10 @@ class CDConnectionTests(unittest.TestCase):
         def function(data,signature):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
-        code=b''.join(function(raw,sig) for sig in (b'BLOCK *alloc_block(void)',b'void free_block(',b'void free_partition(',b'void set_status('))
+        code=b''.join(function(raw,sig) for sig in (b'BLOCK *alloc_block(void)',b'void free_block('))
+        for sig in (b'static void disconnect_partition_output(',b'static void free_block_list('):
+            if sig in raw:code+=function(raw,sig)
+        code+=function(raw,b'void free_partition(')+function(raw,b'void set_status(')
         code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
         if b'static void disconnect_filter_input(' in raw:code+=function(raw,b'static void disconnect_filter_input(')
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))

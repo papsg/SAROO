@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "ff.h"
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -13,7 +14,7 @@ typedef int32_t s32;
 #include "types.h"
 static CDBLOCK cdb;
 static u8 sector_bytes[MAX_BLOCKS][2352];
-static u16 reply[4], hirq, hirq_clear, st_control;
+static u16 reply[4], hirq, hirq_clear, st_control,st_status;
 #undef SSCR1
 #undef SSCR2
 #undef SSCR3
@@ -21,6 +22,7 @@ static u16 reply[4], hirq, hirq_clear, st_control;
 #undef HIRQ
 #undef HIRQ_CLR
 #undef ST_CTRL
+#undef ST_STAT
 #define SSCR1 reply[0]
 #define SSCR2 reply[1]
 #define SSCR3 reply[2]
@@ -28,6 +30,7 @@ static u16 reply[4], hirq, hirq_clear, st_control;
 #define HIRQ hirq
 #define HIRQ_CLR hirq_clear
 #define ST_CTRL st_control
+#define ST_STAT st_status
 #define SSLOG(...) ((void)0)
 static unsigned log_count;
 int fixture_printk(const char *text)
@@ -36,6 +39,23 @@ int fixture_printk(const char *text)
 }
 #define printk fixture_printk
 static int irq_depth, lose_after, last_free;
+#ifdef CDC_OWNERSHIP_HOOKS
+static void (*irq_restore_hook)(void),(*boundary_log_hook)(void);
+static unsigned fixture_log_mask,fixture_log_used;
+static char fixture_log_text[1024];
+static void ownership_log(unsigned mask,const char *format,...)
+{
+    if (!(fixture_log_mask&mask)) return;
+    assert(!irq_depth);
+    va_list args;va_start(args,format);
+    int n=vsnprintf(fixture_log_text+fixture_log_used,sizeof fixture_log_text-fixture_log_used,format,args);
+    va_end(args);assert(n>=0 && (unsigned)n<sizeof fixture_log_text-fixture_log_used);
+    fixture_log_used+=n;
+    if(boundary_log_hook){void (*hook)(void)=boundary_log_hook;boundary_log_hook=NULL;hook();}
+}
+#undef SSLOG
+#define SSLOG(mask,...) ownership_log(mask,__VA_ARGS__)
+#endif
 static size_t copied_bytes;
 static int disable_irq(void) { return irq_depth++; }
 static void restore_irq(int old)
@@ -55,6 +75,9 @@ static void restore_irq(int old)
             cdb.block_free=0;
         }
     }
+#ifdef CDC_OWNERSHIP_HOOKS
+    if(!old && irq_restore_hook){void (*hook)(void)=irq_restore_hook;irq_restore_hook=NULL;hook();}
+#endif
 }
 static void disk_task_wakeup(void) { assert(0); }
 static void osDelay(int ticks) { (void)ticks; assert(0); }
@@ -72,6 +95,9 @@ static void *counted_memcpy(void *to,const void *from,size_t n)
 /* Independent initial lists: production append/unlink do not seed them. */
 static void setup(unsigned source_count,unsigned free_count)
 {
+#ifdef CDC_OWNERSHIP_HOOKS
+    irq_restore_hook=boundary_log_hook=NULL;fixture_log_mask=fixture_log_used=0;fixture_log_text[0]=0;
+#endif
     assert(source_count+free_count<=MAX_BLOCKS);
     memset(&cdb,0,sizeof cdb);
     for(unsigned i=0;i<MAX_SELECTORS;i++) {

@@ -1075,8 +1075,10 @@ void saturn_config(void)
 	attr.priority = osPriorityNormal+7;
 	osThreadNew(sirq_task, NULL, &attr);
 
-	attr.priority = osPriorityHigh;
-	osThreadNew(disk_task, NULL, NULL);
+    /* Preserve the effective Normal default explicitly: partition work must
+     * remain below command/FIFO service, including nonblocking borrowed reads. */
+    attr.priority = osPriorityNormal;
+    osThreadNew(disk_task, NULL, &attr);
 
 }
 

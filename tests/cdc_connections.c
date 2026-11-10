@@ -14,7 +14,7 @@ typedef int32_t s32;
 static CDBLOCK cdb;
 _Alignas(8) static u8 payload[MAX_BLOCKS][2352];
 _Alignas(8) static u8 info_bytes[0xe00+100*sizeof(TRACK_INFO)+2048];
-static u16 reply[4],st_control,hirq,hirq_clear;
+static u16 reply[4],st_control,st_status,hirq,hirq_clear;
 static int irq_depth;
 static unsigned pauses,wakeups;
 #undef SSCR1
@@ -22,6 +22,7 @@ static unsigned pauses,wakeups;
 #undef SSCR3
 #undef SSCR4
 #undef ST_CTRL
+#undef ST_STAT
 #undef HIRQ
 #undef HIRQ_CLR
 #define SSCR1 reply[0]
@@ -29,6 +30,7 @@ static unsigned pauses,wakeups;
 #define SSCR3 reply[2]
 #define SSCR4 reply[3]
 #define ST_CTRL st_control
+#define ST_STAT st_status
 #define HIRQ hirq
 #define HIRQ_CLR hirq_clear
 #define SSLOG(...) ((void)0)

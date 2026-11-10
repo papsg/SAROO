@@ -25,6 +25,8 @@ class CDMetadataTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         code=b''.join(function(cdc,sig) for sig in (b'BLOCK *alloc_block(void)',b'void free_block(',b'void append_block('))
         if b'static void unlink_block(' in cdc:code+=function(cdc,b'static void unlink_block(')
+        for signature in (b'static void disconnect_partition_output(',b'static void free_block_list('):
+            if signature in cdc:code+=function(cdc,signature)
         code+=function(cdc,b'void remove_block(')+function(cdc,b'void set_status(')
         operations=b''.join(function(cdc,sig) for sig in (b'void trans_handle(void)',b'int put_sector_data(',b'int end_trans('))
         if b'static int sector_transfer_size(' in cdc:code+=function(cdc,b'static int sector_transfer_size(')

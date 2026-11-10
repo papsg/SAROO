@@ -46,7 +46,6 @@ static void printk(const char *format, ...)
 }
 static void set_status(u8 status) { record(2, status); }
 static void set_report(u8 status) { record(3, status); }
-static void trans_start(void) { record(4, 0); }
 static int fad_to_track(u32 fad) { record(5, fad); return (fad / 75) % 32 + 1; }
 static void disk_task_wakeup(void) { record(6, 0); }
 #include "filter.inc"
@@ -74,32 +73,6 @@ static void reset(void)
     cdb.status = STAT_PLAY; cdb.fad = 4321; cdb.old_fad = 9876;
     cdb.pause_request = 1; cdb.play_type = PLAYTYPE_FILE;
     cdb.trans_part_index = 23; cdb.trans_block_start = 15; cdb.trans_block_end = 99;
-}
-static void transfers(void)
-{
-    const unsigned counts[] = {0, 1, 2, 17, 199, 200};
-    for (unsigned pt = 0; pt < 24; ++pt)
-    for (unsigned b = 0; b < 6; ++b) {
-        unsigned count = counts[b];
-        unsigned boundaries[] = {0, 1, count ? count-1 : 0, count, count+1, 0xffff};
-        for (unsigned s = 0; s < 6; ++s)
-        for (unsigned n = 0; n < 6; ++n)
-        for (unsigned busy = 0; busy < 2; ++busy)
-        for (unsigned logs = 0; logs < 2; ++logs)
-        for (unsigned remove = 0; remove < 2; ++remove) {
-            reset();
-            cdb.part[pt].numblocks = count;
-            cdb.cr3 = pt << 8; cdb.cr2 = boundaries[s]; cdb.cr4 = boundaries[n];
-            cdb.trans_type = busy ? TRANS_PUT : 0;
-            log_mask = logs ? _BUFIO : LOG_MASK_DEFAULT;
-            compare(remove ? original_get_del_sector_data : original_get_sector_data,
-                    remove ? get_del_sector_data : get_sector_data);
-        }
-    }
-    /* Busy transfers return before looking at even an invalid partition. */
-    reset(); cdb.trans_type = TRANS_PUT; cdb.cr3 = 0xff00;
-    compare(original_get_sector_data, get_sector_data);
-    compare(original_get_del_sector_data, get_del_sector_data);
 }
 static void directories(void)
 {
@@ -130,35 +103,6 @@ static void directories(void)
 }
 static void contracts(void)
 {
-    for (unsigned remove = 0; remove < 2; ++remove) {
-        reset(); memset(&captured, 0, sizeof captured); log_mask = 0;
-        cdb.part[3].numblocks = 2;
-        cdb.cr3 = 3u << 8; cdb.cr2 = cdb.cr4 = 0xffff;
-        int result = remove ? get_del_sector_data() : get_sector_data();
-        assert(result == (HIRQ_DRDY | HIRQ_EHST));
-        assert(cdb.trans_type == (remove ? TRANS_DATA_DEL : TRANS_DATA));
-        assert(cdb.trans_part_index == 3 && cdb.trans_block_start == 1 && cdb.trans_block_end == 2);
-        assert(captured.used == 2 && captured.event[0].kind == 4 && captured.event[1].kind == 2);
-        assert(captured.event[0].values[1] == (remove ? TRANS_DATA_DEL : TRANS_DATA));
-        assert(captured.event[0].values[2] == 3 && captured.event[0].values[3] == 1 &&
-               captured.event[0].values[4] == 2);
-        assert(captured.event[1].values[0] == (STAT_TRNS | STAT_PLAY));
-        ++cases;
-
-        reset(); memset(&captured, 0, sizeof captured);
-        cdb.trans_type = TRANS_PUT; cdb.cr3 = 0xff00;
-        result = remove ? get_del_sector_data() : get_sector_data();
-        assert(!result && cdb.trans_type == TRANS_PUT && captured.used == 1);
-        assert(captured.event[0].kind == 2 && captured.event[0].values[0] == (STAT_WAIT | STAT_PLAY));
-        ++cases;
-
-        reset(); memset(&captured, 0, sizeof captured);
-        cdb.part[3].numblocks = 2; cdb.cr3 = 3u << 8;
-        result = remove ? get_del_sector_data() : get_sector_data();
-        assert(!result && !cdb.trans_type && captured.used == 1);
-        assert(captured.event[0].kind == 2 && captured.event[0].values[0] == (STAT_WAIT | STAT_PLAY));
-        ++cases;
-    }
     reset(); memset(&captured, 0, sizeof captured); log_mask = 0;
     cdb.cdir_lba = 512; cdb.cdir_size = 2; cdb.cr3 = 4u << 8; cdb.cr4 = 7;
     assert(read_dir() == 0 && cdb.cdir_pfid == 7 && cdb.rdir_state == 2);
@@ -175,8 +119,7 @@ static void contracts(void)
 int main(int argc, char **argv)
 {
     assert(argc == 2);
-    if (!strcmp(argv[1], "transfer")) transfers();
-    else if (!strcmp(argv[1], "directory")) directories();
+    if (!strcmp(argv[1], "directory")) directories();
     else if (!strcmp(argv[1], "contracts")) contracts();
     else return 2;
     printf("pass: %u comparisons\n", cases);

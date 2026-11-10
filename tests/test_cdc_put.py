@@ -24,7 +24,7 @@ class CDPutTests(unittest.TestCase):
         def function(data,signature):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
-        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'disconnect_filter_input(')))
+        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'disconnect_filter_input(',b'free_block_list(')))
         code=b''.join(function(raw,sig) for sig in (b'void free_partition(',b'int reset_filter(',b'int set_cdev_connect(',b'int set_filter_connection(',b'void trans_handle(',b'int put_sector_data(',b'int end_trans('))
         if b'static int sector_transfer_size(' in raw:code=function(raw,b'static int sector_transfer_size(')+code
         init=function(main,b'void ss_sw_init(')

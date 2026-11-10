@@ -23,7 +23,7 @@ class CDBoundsTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',)))
+        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(')))
         code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
         code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',

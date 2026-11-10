@@ -3,7 +3,7 @@
 #include "cdc_copy.c"
 #undef main
 
-static u16 st_status,fifo_rcnt,fifo_input[2048];
+static u16 fifo_rcnt,fifo_input[2048];
 static unsigned fifo_pos,fifo_words,fifo_samples;
 static int min_num,require_ack;
 _Alignas(8) static u8 startup_info[0x0e00+100*sizeof(TRACK_INFO)+2048];

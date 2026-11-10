@@ -222,9 +222,9 @@ typedef struct
 
 	// 扇区数据传输
 	u8 trans_part_index;    // 要传输哪个分区的数据
-	u8 trans_block_start;   // 分区中第一个要传输的扇区
-	u8 trans_bk;            // 当前传输的扇区
-	u8 trans_block_end;     // 分区中最后一个要传输的扇区+1
+	u8 trans_block_start;   // Host-transfer head's pool index
+	u8 trans_bk;            // GET queued count; PUT remaining count
+	u8 trans_block_end;     // Admitted GET/GETDEL sector count
 	BLOCK *trans_block;
 	u16 trans_size;
 	u8 trans_finish;

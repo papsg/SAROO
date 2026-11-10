@@ -25,6 +25,10 @@ def copy_source(raw,required=()):
     code+=b'static BLOCK *alloc_block(void) { allocation_count++; return actual_alloc_block(); }\n'
     code+=b''.join(function(sig) for sig in (b'void free_block(BLOCK *block)',b'BLOCK *dup_block(BLOCK *block)',b'BLOCK *find_block(',b'void append_block('))
     if b'static void unlink_block(' in raw:code+=function(b'static void unlink_block(')
+    if b'static void disconnect_partition_output(' in raw:code+=function(b'static void disconnect_partition_output(')
+    for signature,call in ((b'static BLOCK *detach_sector_range(',b'detach_sector_range('),
+                           (b'static void free_block_list(',b'free_block_list(')):
+        if signature in raw and call in required:code+=function(signature)
     code+=function(b'void remove_block(')+function(b'void set_status(')
     code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
     start=raw.index(b'// 0x65 [SR]')

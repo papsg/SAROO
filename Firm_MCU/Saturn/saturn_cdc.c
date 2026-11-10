@@ -129,6 +129,55 @@ static void unlink_block(PARTITION *part, BLOCK *prev, BLOCK *block)
     block->next = NULL;
 }
 
+/* Stop a partition's host output before mutation. GETDEL retains its private
+ * selection until DataEnd; disk-side callers run below the command task. */
+static void disconnect_partition_output(PARTITION *part)
+{
+    int irqs = disable_irq();
+    if ((cdb.trans_type == TRANS_DATA || cdb.trans_type == TRANS_DATA_DEL) &&
+        cdb.trans_part_index < MAX_SELECTORS &&
+        part == &cdb.part[cdb.trans_part_index]) {
+        cdb.trans_part_index = 0xff;
+        cdb.trans_finish = 1;
+        ST_CTRL &= ~STIRQ_DAT;
+        ST_STAT = STIRQ_DAT;
+        HIRQ = HIRQ_EHST;
+    }
+    restore_irq(irqs);
+}
+
+/* Caller masks interrupts and admits the range. Validate the complete chain
+ * before changing ownership; reuse links without copying sector payloads. */
+static BLOCK *detach_sector_range(PARTITION *part, int start, int count)
+{
+    BLOCK *prev = NULL, *head = part->head, *last = NULL, *next;
+    while (head && start--) { prev = head; head = head->next; }
+    next = head;
+    int bytes = 0;
+    for (int i = 0; i < count; i++) {
+        if (!next) return NULL;
+        bytes += next->size;
+        last = next;
+        next = next->next;
+    }
+    if (prev) prev->next = next;
+    else part->head = next;
+    if (part->tail == last) part->tail = prev;
+    part->size -= bytes;
+    part->numblocks -= count;
+    last->next = NULL;
+    return head;
+}
+
+static void free_block_list(BLOCK *head)
+{
+    while (head) {
+        BLOCK *next = head->next;
+        free_block(head);
+        head = next;
+    }
+}
+
 void remove_block(PARTITION *part, int index)
 {
     int irqs = disable_irq();
@@ -139,6 +188,7 @@ void remove_block(PARTITION *part, int index)
         index -= 1;
     }
     if (block && index == 0) {
+        disconnect_partition_output(part);
         unlink_block(part, prev, block);
         free_block(block);
     }
@@ -182,12 +232,9 @@ void trans_start(void)
 	cdb.trans_finish = 0;
 
 	if(cdb.trans_type==TRANS_DATA || cdb.trans_type==TRANS_DATA_DEL){
-		PARTITION *pt = &cdb.part[cdb.trans_part_index];
-		BLOCK *bt = find_block(pt, cdb.trans_block_start);
-		SSLOG(_TRANS, "trans_start: pt=%d start=%d size=%d\n",
-			cdb.trans_part_index, cdb.trans_block_start, cdb.trans_block_end-cdb.trans_block_start);
-
-		cdb.trans_bk = cdb.trans_block_start;
+        /* Admission publishes this pointer after all potentially blocking logs. */
+        BLOCK *bt = cdb.trans_block;
+        cdb.trans_bk = 0;
 
 		if(cdb.sector_size==2352){
 			dp = bt->data;
@@ -242,6 +289,8 @@ void trans_start(void)
 void trans_handle(void)
 {
     if (!cdb.trans_type) return;
+    if ((cdb.trans_type == TRANS_DATA || cdb.trans_type == TRANS_DATA_DEL) &&
+        cdb.trans_part_index >= MAX_SELECTORS) return;
     if (cdb.trans_type == TRANS_PUT) {
         ST_CTRL &= ~STIRQ_DAT;
         /* Acknowledge before draining: preserve a subsequent threshold event. */
@@ -680,16 +729,10 @@ int end_trans(void)
 	ST_CTRL |= 0x0100;
 	ST_CTRL &=~0x0100;
 
-	if(cdb.trans_type==TRANS_DATA_DEL){
-		PARTITION *pp = &cdb.part[cdb.trans_part_index];
-		int spos = cdb.trans_block_start;
-		int snum = cdb.trans_block_end-spos;
-
-		while(snum){
-			remove_block(pp, spos);
-			snum -= 1;
-		}
-	}
+    if (cdb.trans_type == TRANS_DATA_DEL)
+        free_block_list(&cdb.block[cdb.trans_block_start]);
+    if ((cdb.trans_type == TRANS_DATA || cdb.trans_type == TRANS_DATA_DEL) &&
+        cdb.trans_part_index >= MAX_SELECTORS) cdb.cdwnum = 0;
 
 	if(cdb.cdwnum || (cdb.trans_type == TRANS_PUT &&
                          cdb.trans_part_index < MAX_SELECTORS)){
@@ -704,6 +747,8 @@ int end_trans(void)
 
 	cdb.cdwnum = 0;
 	cdb.trans_type = 0;
+    cdb.trans_block = NULL;
+    cdb.trans_bk = 0;
 
 	return HIRQ_EHST;
 }
@@ -1181,18 +1226,15 @@ int get_filter_connection(void)
 
 void free_partition(PARTITION *pt)
 {
-	BLOCK *bp = pt->head;
-	
-	while(bp){
-		free_block(bp);
-		bp = bp->next;
-	}
-	
-	pt->head = NULL;
-	pt->tail = NULL;
-	pt->numblocks = 0;
-	pt->size = -1;
-
+    int irqs = disable_irq();
+    disconnect_partition_output(pt);
+    BLOCK *head = pt->head;
+    pt->head = NULL;
+    pt->tail = NULL;
+    pt->numblocks = 0;
+    pt->size = -1;
+    restore_irq(irqs);
+    free_block_list(head);
 }
 
 
@@ -1330,6 +1372,7 @@ int cal_actual_size(void)
         set_status(STAT_WAIT | cdb.status);
         return 0;
     }
+    disconnect_partition_output(&cdb.part[pt]);
     size = snum*cdb.sector_size;
     if (cdb.sector_size == 2048) {
         bp = find_block(&cdb.part[pt], spos);
@@ -1445,10 +1488,26 @@ static __attribute__((noinline)) int get_sector_data_common(int type)
         set_status(STAT_WAIT | cdb.status);
         return 0;
     }
+    SSLOG(_TRANS, "trans_start: pt=%d start=%d size=%d\n", pt, spos, snum);
+    /* Logs may wait on UART capacity and let disk work mutate the partition.
+     * Re-admit the original request before publishing any borrowed pointer. */
+    int irqs = disable_irq();
+    spos = cdb.cr2;
+    snum = cdb.cr4;
+    BLOCK *head = NULL;
+    if (sector_range(pp, &spos, &snum))
+        head = type == TRANS_DATA_DEL ? detach_sector_range(pp, spos, snum) : find_block(pp, spos);
+    if (!head) {
+        restore_irq(irqs);
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
     cdb.trans_type = type;
     cdb.trans_part_index = pt;
-    cdb.trans_block_start = spos;
-    cdb.trans_block_end = spos + snum;
+    cdb.trans_block_start = head-cdb.block;
+    cdb.trans_block_end = snum;
+    cdb.trans_block = head;
+    restore_irq(irqs);
     trans_start();
     set_status(STAT_TRNS | cdb.status);
     return HIRQ_DRDY | HIRQ_EHST;
@@ -1483,10 +1542,18 @@ int del_sector_data(void)
 		return 0;
 	}
 
-	while(snum){
-		remove_block(pp, spos);
-		snum -= 1;
-	}
+    int irqs = disable_irq();
+    spos = cdb.cr2;
+    snum = cdb.cr4;
+    BLOCK *head = NULL;
+    if (sector_range(pp, &spos, &snum)) head = detach_sector_range(pp, spos, snum);
+    if (head) disconnect_partition_output(pp);
+    restore_irq(irqs);
+    if (!head) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    free_block_list(head);
 
 	return HIRQ_EHST;
 }

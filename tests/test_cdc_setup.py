@@ -29,13 +29,13 @@ class CDSetupTests(unittest.TestCase):
         def function(data, signature):
             start = data.index(signature)
             return data[start:data.index(b'\n}', start)+2]+b'\n'
-        names = ('get_sector_data', 'get_del_sector_data', 'change_dir', 'read_dir')
+        # The old transfer differential used synthetic counts without blocks
+        # and a fake trans_start. Actual ownership/FIFO fixtures supersede it.
+        names = ('change_dir', 'read_dir')
         for label, data in (('original', original), ('candidate', candidate)):
             code = b''
             if label == 'candidate':
-                for signature in (b'static int sector_range(',
-                                  b'static __attribute__((noinline)) int get_sector_data_common(',
-                                  b'static __attribute__((noinline)) void start_directory_read('):
+                for signature in (b'static __attribute__((noinline)) void start_directory_read(',):
                     if signature in data: code += function(data, signature)
             for name in names:
                 code += function(data, ('int '+name+'(void)\n{').encode())
@@ -78,11 +78,9 @@ class CDSetupTests(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         self.assertIn('pass:',r.stdout)
 
-    def test_transfer_ranges_busy_state_logs_and_partition_selection(self): self.invoke('transfer')
-
     def test_directory_state_and_wakeup_order(self): self.invoke('directory')
 
-    def test_independent_transfer_and_directory_contracts(self): self.invoke('contracts')
+    def test_independent_directory_contracts(self): self.invoke('contracts')
 
 
 if __name__ == '__main__':

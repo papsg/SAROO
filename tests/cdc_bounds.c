@@ -4,7 +4,7 @@
 #undef main
 
 static int old_numblocks,min_num;
-static u16 fifo_status,fifo_rcnt,st_status;
+static u16 fifo_status,fifo_rcnt;
 static u16 fifo_output[MAX_BLOCKS*1176];
 static unsigned fifo_words,wake_count,track_count;
 static u16 *fifo_slot(void)
@@ -224,7 +224,10 @@ static void incomplete_calculation_and_reset(void)
         seed(0,0);cdb.actsize=4096;cdb.cr1=noreset?0x80:0;init_cdblock();size_reply(2048);check_owners();
     }
 }
-int main(int argc,char **argv)
+#ifndef CDC_BOUNDS_MAIN
+#define CDC_BOUNDS_MAIN main
+#endif
+int CDC_BOUNDS_MAIN(int argc,char **argv)
 {
     assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<11);
     if(test==0)invalid_selectors();else if(test==1)valid_filter_registers();
