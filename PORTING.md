@@ -975,7 +975,7 @@ replacement invalidation, playback endpoints/repeats and CUE/subcode fixes.
    allocations/tasks/I/O/payload copies/per-sector work; one qualifying wakeup.
    Full-file/diff/message/identity and actual-blob privacy scans pass. Fork audit
    remains main/issues-disabled/no open PRs, with no applicable closures and
-   upstream unchanged. Final complete suite/build/preservation audit is running.
+   upstream unchanged. Final complete suite/build/preservation results are recorded below.
 
 Full source/diff/message/identity and committed-blob scans passed before
 publication. Public papsg/noreply identities and paps-g attribution retained.
@@ -984,3 +984,71 @@ Fork audit: default main, issues disabled, zero open issues/PRs; no applicable
 closure, upstream unchanged. Private repository and Saturn remain untouched;
 no USB/runtime diagnostics, unrelated research or subagents. Final full-suite,
 MCU/menu, publication and preservation audits follow after the scoped ports.
+
+
+### CD reset series final verification
+
+All three scoped source contributions are complete on public main `c890af9`;
+no PRs were opened. Topic/main remote hashes are verified. The selected paps-g
+`3772326a` changes were revalidated and separated rather than applied blindly.
+The port preserves the original selector log formats/masks and newer public
+ownership/cache/retirement fixes. Only init_cdblock/reset_filter runtime bodies
+changed; saturn_main has a reader-comment correction only. No other MCU, menu,
+FPGA, USB or research implementation changed.
+
+The complete standard regression run passes **444 Python methods in43 groups**
+(415.664 summed test seconds) and **18 Rust checks in4 groups**, with zero failed
+or ignored Rust tests. All43 Python groups report OK. The **156 CD methods in16
+optimized groups** also pass. All22 compiled behavioral negative controls across
+three stages are detected; every preceding-source exact valid report/log control
+passes. Failed original/fixture attempts are preserved and excluded from the
+accepted results. Actual commands, reports, helpers, acknowledgement branches,
+mode/flag matrices, complete in-wait state, FIFO/IRQ/output ownership, directory
+retirement, retained positions/ranges/repeats/cache and valid controls are covered.
+
+Final GNU App/RTX/166-vector MCU build binds all56 repository inputs to committed
+main and all85 SDK inputs to the unchanged baseline SDK. Its ELF exactly matches
+the selector checkpoint. Load60,888/ITCM free4,648; static DTCM60,312;
+main-stack/heap address gap70,760. Net load change against the series start is0
+bytes, with actual intermediate deltas -16/+16/0. Direct init24/selector32/disk72
+and nested shared pause16 are not whole-path or physical stack peaks. No new
+persistent field/buffer/task/allocation, payload copy, SD I/O or per-sector work.
+Qualifying selector reset adds one worker wakeup; ordinary/keep-settings init
+adds the required four-word report. Reset retains existing200-block/24-selector
+scan limits. Logging/scheduling/storage failure can exceed inferred wall time.
+
+Final menu build retains all36 inputs, exact prior ELF/image,79,572 code/data,
+9,232 BSS,16,384 reserved stack,25,884 body margin,357,679 font and488,751 image
+bytes. These host models and GNU builds do not qualify physical Saturn
+scheduling/bus/cache/audio/game behavior or original-MDK output. Nothing was
+installed; Saturn/USB/SSH/power/capture operations were not used.
+
+Read and preserved seven relevant later patch references. Separate output-reset
+mode8 behavior, virtual-tray semantics, cooperative PLAY updates, R-W decode
+sessions, file-abort reports, physical SYSRES/FPGA integration and reset sharing
+are not prerequisites for this scoped correction and were not imported. Broader
+software-reset completeness, standby/ECC/retry, tray/scan/session, all selector
+output modes and routing-wide pause policy remain explicit limits. This does not
+claim those later features or an audio/named-game defect are resolved.
+
+Citations distinguish Sega §8.2.1/function1.7 printed pp.78–79 and §8.2.5/function5.9
+printed p.91 from later English/Japanese editions and SAROO's semaphore policy.
+Cached RTX timeout handling supports the finite-wait distinction; it does not
+prove a physical deadline. Original paps-g attribution/notices remain; public
+papsg/noreply identities identify adaptations. No original upstream issue/PR is
+claimed as this self-reported finding's origin. Fork issues remain disabled,
+with zero open issues/PRs and no applicable closures; upstream is unchanged.
+
+Full proposed files/diffs/messages/identities, actual committed blobs and the
+entire three-commit source history pass secret/private-PII review. No secrets,
+private PII, personal paths/accounts/private URLs, raw receipts, runtime
+diagnostics/probes/telemetry/loaders or patch framework were published. Source,
+mutation, test/build, primary-reference and preservation evidence remains local.
+
+Public main is clean and matches its remote; all three topics match published
+commits, default main/v0.8 ancestry/historical master and unrelated refs/stashes
+are preserved. The private repository's exact HEAD/full status/all refs/four
+stashes match its starting snapshot. Research branches and other paused work
+remain untouched. No subagents were used. This final ledger checkpoint records
+completion of the scoped port, not physical qualification or broader reset
+conformance.
