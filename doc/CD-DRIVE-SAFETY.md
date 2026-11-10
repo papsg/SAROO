@@ -195,3 +195,70 @@ remain unmeasured. Use the existing public drive-test commands above.
 The scoped MCU drive contracts are now implemented. The separate FPGA clear
 contribution follows; CUE geometry and broader drive/reset behavior remain
 outside this series. No device or installed firmware was accessed.
+
+## FPGA-HIRQ-001: combine simultaneous clears on the original FPGA
+
+Original: selected paps-g `ad7c8307`. Its private correction was made on FPGA06;
+this port revalidates and adapts only the clear/clear expression to the public
+[original FPGA05 source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L254).
+No FPGA06 tree, revision/profile selection or binary is imported. This is a
+self-reported collision, with no original upstream PR or game failure asserted.
+
+Sega [ST-162 §3.1, HIRQREQ, printed p.28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16)
+specifies zero-written bits as clear requests while ones preserve other bits.
+[§8.2.9 function9.3, CDC_ClrHirqReq, PDF p.90](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=90)
+specifies that mask and reserves CMOK clearing to the communication interface.
+These describe the Saturn interface; they do not define SAROO's internal MCU
+register arbitration. The selected internal contract preserves both independent
+clear requests when their decoded strobes meet on one main-clock edge.
+
+The actual source generates MCU and Saturn write strobes independently, without
+mutual exclusion. MCU HIRQ_CLR at offset0x2c is used by the command handlers;
+Saturn HIRQ writes decode register address bits5:2=2. Initial0005, MCU mask0004
+and Saturn maskfffe should clear both pending bits. The preceding else-if chain
+leaves0001 by discarding the Saturn clear. Apply the Saturn mask in the MCU-clear
+branch as well, usingffff when the Saturn clear is absent or not selected.
+Ordinary single-writer updates, unrelated bits, decode, hold/reset and original
+MCU-SET priority are preserved. No new state, ports, buffer or MCU instruction
+is added; combinational gating grows. Collision frequency and game consequences
+are unmeasured.
+
+The actual-block baseline fails the collision method with0001 instead of0000;
+its1,857-update control method passes. Corrected source passes both methods:
+5,121 collision updates across all16x16 same/different-bit pairs, four initial
+patterns and4,096 deterministic multibit masks;1,857 single-writer/hold/decode/
+SET-priority controls; asynchronous reset in both. Ten compiled HDL behavioral
+mutants are detected, including removed gating, wrong polarity/address/neutral
+mask and an unwanted SET-priority change. Rust orchestration and an independent
+per-bit Verilog oracle replace the old private version/patch preparer. Public
+reproduction and tool requirements are in [tests/README.md](../tests/README.md#fpga-interrupt-clear-regression).
+
+FPGA05's separate MCU-SET/Saturn-CLEAR loss deliberately remains: old0001 with
+SET0004 and Saturnfffe still gives0005. The private06 test expected0004 and cannot
+be copied as this port's valid control. Broader priority/crossing/timing repairs
+remain separate; this series does not claim universal interrupt correctness.
+The [isolated build tool](../tools/README.md#original-fpga-project-comparison)
+compares complete original-device projects with equal verification-only Standard
+Fit/uncertainty settings. Reported constrained timing and complete artifacts do
+not qualify unconstrained external interfaces or hardware/game behavior.
+
+Both complete five-stage Quartus builds pass, including SOF/RBF/JIC generation
+and all21 reported constrained-timing summaries. Worst reported slack is
++0.042 ns before and+0.167 ns after; this is a fit comparison, not a guarantee
+of external/physical timing. Final use changes1,467→1,464 logic elements and
+1,332→1,333 combinational functions through different packing, with816 registers,
+32,768 memory bits,150 pins and one PLL unchanged. RBF grows121,706→121,905 bytes;
+SOF358,702 and JIC2,097,376 bytes are unchanged in size. These generated products
+remain build evidence and are not shipped or installed.
+
+All18 public project inputs bind to the baseline/candidate source cohorts;
+SSMaster.v is the sole changed input. Runtime, wrapper, compiler manifest and
+verification settings match. Each compiler manifest binds96,211 file/link
+entries and9,405,944,612 regular-file bytes, unchanged after each read-only build.
+The first tool run completed compiler stages but rejected the timing report's
+spacing; its exact source/logs/receipt remain archived and excluded. The corrected
+reader's fresh baseline and candidate both pass. Host process peaks and physical
+cycles are unmeasured; two CPUs/four GiB are container caps, not measured usage.
+The final GNU MCU image remains byte-identical to the021 checkpoint; menu source
+and image are unchanged. No MCU/menu layout, stream I/O, installation or runtime
+instrumentation accompanies this FPGA source change.

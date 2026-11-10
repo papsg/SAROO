@@ -260,8 +260,9 @@ module SSMaster(
 				// STM32 set
 				ss_hirq <= ss_hirq|ST_AD;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h2c)
-				// STM32 reset
-				ss_hirq <= ss_hirq&(~ST_AD);
+				// Both simultaneous clear requests must take effect.
+				ss_hirq <= ss_hirq&(~ST_AD)&
+					((ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10) ? SS_DATA : 16'hffff);
 			else if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10)
 				// Saturn reset
 				ss_hirq <= ss_hirq&SS_DATA;
