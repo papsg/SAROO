@@ -909,3 +909,44 @@ Broader initialization/reset/audio/session/tray/scan,canonical raw MODE1 and
 missing sync/FAD/ECC/EDC reconstruction,extra CUE formats/metadata,and inherited
 native subcode timing/overrun behavior remain separate. No unmeasured physical
 or named-game consequences are claimed resolved.
+
+
+## CD initialization and selector-reset safety
+
+Active series: selected paps-g `3772326a`, MCU-CDC-017; start `0010a39`.
+Revalidated against current main rather than applying the old combined patch.
+Direct source contributions; no PRs. Cached Sega initialization/selector-reset
+specifications and relevant edition/language differences are cited in
+[CD-RESET-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/CD-RESET-SAFETY.md).
+Preserve newer public directory/request retirement, same-reader cache,
+replacement invalidation, playback endpoints/repeats and CUE/subcode fixes.
+
+1. **Bounded initialization handoff — published**
+   [`2bbf325`](https://github.com/papsg/SAROO/commit/2bbf3250cae84789d299cea35ff109152f2c53cc),
+   topic `codex/cd-init-handoff`; main includes this checkpoint.
+   Delay policy changes until acknowledgement; reuse pause_drive, return WAIT
+   on failure without reclaiming buffers/FIFO or pretending reset completion.
+   Pending requests permit delayed acknowledgement/retry. Existing bit7/report/
+   reset-default behavior intentionally follows in checkpoint2.
+   73 focused methods pass ASan/UBSan and O2, including21 drive methods, both
+   actual worker branches, all3 owner types, complete state during waits,
+   final-wait and between-command acknowledgement, ownership/cache and valid
+   controls. Six compiled behavioral controls detected; preceding valid exact
+   report/log control passes. Corrected a fixture's mistaken low-byte WAIT
+   expectation; compiler-only failures do not count as reproduced defects.
+   GNU MCU App/RTX/166-vector load60,888→60,872(-16), ITCM free4,664; static
+   DTCM60,312 and stack/heap address gap70,760 unchanged. Direct init/disk24/72,
+   shared pause16 nested; full call-chain/physical peaks unknown. All56 public
+   source hashes match their own checkpoint and85 SDK hashes match baseline.
+   No new allocation/task/I/O/payload copy/per-sector work. GNU/host evidence
+   does not qualify Saturn/game timing or original-MDK output.
+2. **Initialization flags/reports/defaults — pending.**
+3. **Bounded selector-reset handoff/wakeup — pending.**
+
+Full source/diff/message/identity and committed-blob scans passed before
+publication. Public papsg/noreply identities and paps-g attribution retained.
+No secrets/private PII, personal paths/private URLs or raw receipts published.
+Fork audit: default main, issues disabled, zero open issues/PRs; no applicable
+closure, upstream unchanged. Private repository and Saturn remain untouched;
+no USB/runtime diagnostics, unrelated research or subagents. Final full-suite,
+MCU/menu, publication and preservation audits follow after the scoped ports.
