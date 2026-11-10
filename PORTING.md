@@ -835,3 +835,24 @@ applicable closures; original upstream requests remain unchanged.
 CUE geometry/raw formats, broader initialization/reset/audio/session/tray/scan,
 existing explicit-seek compatibility policy and FPGA05 SET/CLEAR arbitration
 remain separate. Unmeasured hardware/game consequences are not claimed resolved.
+
+## CUE layout and sector-reader safety
+
+Starts at public `bd4dc09`. Revalidate the remaining paps-g659fe4ee reader,
+CUE mapping, MODE2 normalization and subcode contracts as separate source ports.
+MCU-CDC-01699-track behavior is already present and deduplicated. Reader support
+and compact metadata precede the CUE mapper to avoid an intermediate firmware
+interpreting generated gaps as file data. No PRs, USB integration, runtime
+instrumentation, private writes or device operations.
+
+| Contribution / original | Public checkpoint | Verification, dependencies and limits |
+| --- | --- | --- |
+| MCU-CDIO-002 and narrow metadata/gap prerequisite; paps-g659fe4ee | [0cc4bb7](https://github.com/papsg/SAROO/commit/0cc4bb700d3f00630d33e6eb66bee38cee801e78); [codex/cd-image-reader](https://github.com/papsg/SAROO/tree/codex/cd-image-reader) | Five actual-source groups pass ASan/UBSan/O2: independent mixed-width metadata and every payload byte forward/reverse/permuted; index00..99 position-only reports; high offsets/clipped seeks; generated/stored gaps; unchanged single-track warm-cache control. Preceding source fails three groups/eight cases, control passes; new gap invariant explicitly skipped on old layout. Thirteen compiled behavioral mutants detected; one equivalent signed-local attempt preserved/excluded. All131 prior CD methods pass both profiles;68 MCU controls pass sanitizers, including parser/index capacity; final18 affected methods pass both profiles after fixture metadata corrections. GNU MCU60,248 load (+272),60,304 static DTCM (-8),5,288 ITCM free;56 exact committed source inputs and unchanged SDK. ARM records remain32 bytes/100 records, all2,048 indices and AXI allocation preserved. Reader direct frame64,index16,track0,TOC32,parser152,position16,disk72; checked I/O inlined. No new buffer/task/write/wait/mask/log format. [Exact Sega access keys/layout printed24/26,report data4.0 printed60,FatFs seek,original source,credit,reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CUE-SECTOR-SAFETY.md#mcu-cdio-002-extent-bounded-reads-and-coherent-reports). Actual I/O/preemption remain models; no Saturn/game/original-MDK qualification. |
+
+The reader checkpoint is published. MCU-CUE-002 mapping,MCU-CDIO-003 accepted
+MODE2 payloads andMCU-CDIO-004 optional sidecodes remain in progress. The full
+original combined baseline compiles and fails ten groups with the99-track
+control passing; it is not acceptance of the still-unported scopes. Per-stage
+privacy/full-file/metadata scans pass; raw evidence remains ignored. Final full
+suite, firmware builds and publication/preservation/closure audits follow after
+all scoped ports. No original upstream request is claimed closed.
