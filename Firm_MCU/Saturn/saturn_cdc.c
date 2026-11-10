@@ -380,14 +380,12 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 
 	int retv, irqs;
 
-	if(cdb.cddev_filter==0xff){
-		return 1;
-	}
-	ft = &cdb.filter[cdb.cddev_filter];
-	
-	//printk("filter %08x to %d ...\n", wblk->fad, cdb.cddev_filter);
+    int fid = cdb.cddev_filter, dst = 0xff;
 
-	while(1){
+    /* A valid chain can visit at most all selectors. Disconnected outputs
+     * discard sectors; they are never partition or filter array indices. */
+    for (int hops = 0; hops < MAX_SELECTORS && fid < MAX_SELECTORS; hops++) {
+        ft = &cdb.filter[fid];
 		retv = 1;
 
 		if(track->mode!=3 && track->sector_size==2352 && wblk->data[0x0f]==2){
@@ -417,21 +415,22 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 				retv = 0;
 		}
 
-		if(retv==1){
-			cdb.last_buffer = ft->c_true;
-			break;
-		}else{
-			if(ft->c_false==0xff){
-				if(track->mode==1)
-					printk("  c_false is FF!\n");
-				return 1;
-			}
-			ft = &cdb.filter[ft->c_false];
-		}
-	}
+        if(retv==1){
+            dst = ft->c_true;
+            break;
+        }
+        if(ft->c_false==0xff){
+            if(track->mode==1)
+                printk("  c_false is FF!\n");
+        }
+        fid = ft->c_false;
+    }
 
-	//printk("  ft->pt: %02x\n", ft->c_true);
-	pt = &cdb.part[ft->c_true];
+    if (dst >= MAX_SELECTORS) {
+        cdb.last_buffer = 0xff;
+        return 1;
+    }
+    pt = &cdb.part[dst];
 
 	blk = alloc_block();
 	if(blk==NULL){
@@ -464,6 +463,7 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 	}
 
 	irqs = disable_irq();
+	cdb.last_buffer = dst;
 
 	if(pt->size==-1)
 		pt->size = 0;

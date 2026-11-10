@@ -165,5 +165,58 @@ No complete command, MPEG or hardware-compatibility claim is made.
 
 ## MCU-CDC-004: bounded incoming filter traversal
 
-Queued. Preserve existing valid-route behavior and logging while checking invalid,
-disconnected/cyclic routes, block ownership and completed-destination reporting.
+Original: paps-g `661fd2d4` (2026-09-06), revalidated after003. The old
+incoming router follows false connectors without a bound and indexes device,
+next-filter and true destinations unchecked. A legal disconnected true output
+(`0xff`) reaches partition255; a false cycle never returns to disc service.
+The setter already permits disconnection, so this is reachable without an
+invalid command. Production predicates and sector-format conversions remain.
+
+Sega's [CD Communication Interface §5.2, §5.3.1–5.3.3](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+describes false connections to apertures, true connections to partitions,
+disconnected outputs erasing data, append order and last-sector reporting.
+[§8.2.4 function4.3, CDC_CdGetLastBuf](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_14.htm)
+requires the disconnected sentinel when the last sector was discarded.
+Validate every byte-valued index, evaluate at most24 filters, capture the valid
+destination before allocation, and publish it with completed append. Discard
+publishes0xff without allocating/copying. A full-buffer retry keeps the last
+completed destination until storage or discard. The unchanged disk-task caller
+uses return0 for stored,1 for discard and2 for retry; no caller IRQ/scheduling
+change is included.
+
+Discarding invalid/cyclic topology after the bound and retaining last completed
+destination during retry are bounded local policies, not measurements of real
+hardware topology or CSCT/query timing. The original false-disconnect log still
+prints exactly once for mode1 and stays silent for audio mode; unlike the private
+patch, this port does not remove that existing log. No new logging is added.
+
+Twelve actual-source methods pass sanitizers and O2:24 disconnected true outputs,
+all invalid byte-valued device/false/true indices,300 cycle/start combinations,
+576 full24-filter routes, discard after storage, full200-block pool plus retry,
+five existing sector-format conversions, payload ordering, metadata/byte/free/
+list ownership, enabled Mode2 subheader conditions/masks/inversion and FAD edges.
+A modeled connection change between allocation and append keeps the already
+validated destination. The baseline fails eight methods and times out in the
+cycle method; three valid route/format/delivery groups pass. Failures share
+causes rather than representing nine independent defects. Seven targeted
+mutations reject unvalidated input/output, unbounded/shortened chains, stale
+discard, premature destination and removed original logging. Host interruption
+models and timeouts do not establish physical concurrent safety or elapsed time.
+
+The full MCU link adds64 load bytes:57,476→57,540, leaving7,996 ITCM bytes.
+Static DTCM remains60,296, with disk-task/router direct frames80/32 unchanged.
+There is no new persistent state, workspace, allocation, payload copy or I/O.
+Valid routes gain bounded index/hop checks; routing and payload work remain
+outside the existing append mask. Only final destination publication is added
+inside it. The private20-byte image saving depended on removed logging and a
+different link context; it is not reused. Physical stack peaks, ESEL-setting
+timing, CSCT/query timing, games and original-MDK builds remain unqualified.
+Inversion with no subheader condition, non-Mode2 metadata normalization,
+filter-reset/connection ownership and005–007 copy/move/host-PUT routing are
+separate work.
+
+```sh
+python3 tests/test_cdc_filter.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_filter.py
+# Preserved baseline/mutation: SAROO_CDC_FILTER_SOURCE=/path/to/saturn_cdc.c
+```
