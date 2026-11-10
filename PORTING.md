@@ -787,10 +787,51 @@ blobs receive secret/private-PII review; raw evidence stays ignored.
 | MCU-CDC-014 plus selected016/022; paps-g47ec46a4/659fe4ee/cd83b371 | [3a68c3d](https://github.com/papsg/SAROO/commit/3a68c3d306f1d2b1aa7121b31399413b1a0a2431); [codex/cd-drive-positions](https://github.com/papsg/SAROO/tree/codex/cd-drive-positions) | Twelve actual-source methods pass ASan/UBSan/O2: all65,536 track/index words,120 FAD/count shapes,high addresses,boundary/refusal/missing-media controls,500-wait failure/retry,all16 repeat limits/exact final-sector admission,background completion,both actual cache acknowledgement branches,99 tracks,and exact baseline-valid position/report/log control. Baseline fails eleven groups with that control passing;21 compiled behavioral mutants detected, one initial compile-only attempt excluded. All124 CD methods and11 disc/save controls pass. GNU MCU59,816 load/60,312 static DTCM,5,720 ITCM free;56 exact source inputs and identical SDK checked. Adds176 load bytes,no retained allocation/payload copy/I/O; drive pause16/replacement8 nested frames,play/seek32/32,position helpers16/16,producer48/disk72/command24. Retains public atomic pause/directory retirement and all original log formats/masks; avoids private32-track regression and corrects the old mocked-cache claim. [Exact Sega CdcPos printed65–66,drive4.2 printed37–38,8.2.2 printed82–83,version/pickup ambiguity,attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-DRIVE-SAFETY.md#mcu-cdc-014-position-admission-final-sectors-and-bounded-handoff). Models/builds are not physical timing/concurrency/game/original-MDK qualification. |
 | MCU-CDC-015; paps-g6a00df29 | [2091c5c](https://github.com/papsg/SAROO/commit/2091c5c739b8f872b9d9814951c80210ada986c9); [codex/cd-repeat-history](https://github.com/papsg/SAROO/tree/codex/cd-repeat-history) | Requires014. Four new actual-source groups pass sanitizers/O2:2,880 repeat vectors,finite-budget exhaustion,modeled progress before actual acknowledgement,changed-setting/failure/retry controls,all15 counts through seek/stop with exact invalid words,home pause/direct resume and absent media. Baseline fails three groups with changed-setting/failure control passing;11 compiled mutants detected. All128 CD methods pass both profiles. GNU MCU59,928 load/60,312 static DTCM,5,608 ITCM free;56 exact source hashes/same SDK. Adds112 load bytes, no state/buffer/I/O/wait; direct play/seek32/32,report8,disk72,command24 unchanged. [Exact Sega4.2 printed37–38,later7.2.5(5),attribution/reproduction/costs/policies/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-DRIVE-SAFETY.md#mcu-cdc-015-repeat-history-and-home-position-recovery). Existing explicit-seek range exceptions remain separate; no physical/game/original-MDK qualification. |
 | MCU-CDC-021; paps-g cd83b371 | [d78c74f](https://github.com/papsg/SAROO/commit/d78c74f81a71073969b71c341a62592dae4e0670); [codex/cd-retained-positions](https://github.com/papsg/SAROO/tree/codex/cd-retained-positions) | Requires014/015. Three new actual-source groups pass sanitizers/O2:112 old/new endpoint pairs, failed-handoff/NOCHG/default controls, actual file/background range replacement. Preceding source fails two defect groups; third failure establishes new metadata lifetime, not another old hardware defect. Eight compiled behavioral mutants detected; all131 CD methods pass both profiles. GNU MCU59,976 load (+48),60,312 static DTCM,5,560 ITCM free;56 exact committed input hashes/same SDK. Reuses unused byte, no object/buffer/allocation/I/O/wait growth; play32,file-start32,disk72,pause16/replacement8 direct frames unchanged. [Sega later CdcPly note2,printed67–68,attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-DRIVE-SAFETY.md#mcu-cdc-021-retain-endpoint-forms-through-nochg). Existing seek policy remains; no physical concurrency/timing/game/original-MDK qualification. |
-| FPGA build prerequisite; paps-g procedure adapted in Rust | [cf42977](https://github.com/papsg/SAROO/commit/cf429775a1514ee286ebec318a54eb6eed50e000); [codex/fpga-build-check](https://github.com/papsg/SAROO/tree/codex/fpga-build-check) | Extend the existing firmware-build host tool for source-only original-project comparisons. Eight host checks, formatting/lint/release build pass; actual baseline completes five compiler stages, but its initial report reader rejects Quartus spacing. That attempt/source/receipts are preserved and excluded; corrected reader is tested and a fresh full baseline/candidate comparison is in progress. Pinned cached runtime, explicit read-only compiler/JRE, full streamed compiler manifests, bounded stages/logs/resources, network disabled, unique identities, no device access. [Original project/settings,usage,attribution,verification-only Standard Fit/uncertainty,dependencies and external-timing limits](https://github.com/papsg/SAROO/blob/main/tools/README.md#original-fpga-project-comparison). No runtime code, hardware or game qualification. |
+| FPGA build prerequisite; paps-g procedure adapted in Rust | [cf42977](https://github.com/papsg/SAROO/commit/cf429775a1514ee286ebec318a54eb6eed50e000); [codex/fpga-build-check](https://github.com/papsg/SAROO/tree/codex/fpga-build-check) | Extend the existing firmware-build host tool for source-only original-project comparisons. Eight host checks, formatting/lint/release build pass. Both fresh complete baseline/candidate projects pass five stages and21 reported timing checks. The first run completed stages but its initial report reader rejected Quartus spacing; that exact source/log/receipt remains preserved and excluded. The corrected reader and full builds pass. Pinned cached runtime, explicit read-only compiler/JRE, full streamed compiler manifests, bounded stages/logs/resources, network disabled, unique identities, no device access. [Original project/settings,usage,attribution,verification-only Standard Fit/uncertainty,dependencies and external-timing limits](https://github.com/papsg/SAROO/blob/main/tools/README.md#original-fpga-project-comparison). No runtime code, hardware or game qualification. |
+| FPGA-HIRQ-001 selected clear/clear; paps-g ad7c8307 | [bd4dc09](https://github.com/papsg/SAROO/commit/bd4dc0914d1de4d9fdf0b6b95189f1f1b63d4fa6); [codex/fpga-hirq-clears](https://github.com/papsg/SAROO/tree/codex/fpga-hirq-clears) | Narrow adaptation to original FPGA05, without FPGA06/profile/binary import. Actual RTL baseline fails distinct clears (0001 vs0000), passes1,857 controls; corrected source passes5,121 collision updates plus1,857 controls/reset. Ten compiled HDL behavioral mutants detected. Both complete five-stage Quartus builds, SOF/RBF/JIC and21 constrained summaries pass; worst reported slack+0.042/+0.167ns. Equal18 inputs except SSMaster.v, runtime/glue/compiler manifest;96,211 compiler file/link entries and9,405,944,612 regular bytes unchanged after each build. Fit1467→1464 logic elements,1332→1333 combinational functions,816 registers/32,768 memory bits/150 pins/one PLL unchanged; RBF121,706→121,905 bytes, SOF/JIC sizes unchanged. MCU/menu unchanged. [Exact Sega3.1 printed28,8.2.9 function9.3 PDF90,original source,credit,reproduction,costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-DRIVE-SAFETY.md#fpga-hirq-001-combine-simultaneous-clears-on-the-original-fpga). Deliberately retains separate FPGA05 SET/CLEAR loss; no external timing, crossing, hardware or game qualification/installation. |
 
-Position/final-sector/handoff,99-track/cache,repeat/home and retained endpoint
-contracts are published. The separate FPGA simultaneous-clear contribution
-remains in progress. CUE geometry, broad
-init/reset/audio/session/tray/scan and unrelated work stay separate. No original
-upstream request is claimed closed; fork closure audit follows at completion.
+All scoped position/final-sector/handoff,99-track/cache,repeat/home,retained
+endpoint and separate FPGA clear/clear contracts are published as verified
+linear contributions. The host FPGA build prerequisite is explicit and separate.
+No PRs were opened or merged.
+
+Final full suite passes419 Python methods across40 groups and18 Rust checks,
+including the actual-block HDL tests; formatting/lint/workspace checks pass.
+All131 CD methods pass ASan/UBSan and O2. Fifty compiled behavioral mutants across
+this series are detected; one initial compile-only attempt is excluded and
+preserved. The initial position-control fixture errors and FPGA report-reader
+spacing failure remain documented, with exact source/log/receipt evidence; they
+are not production findings or accepted qualification.
+
+Final complete GNU MCU load is59,976 bytes versus59,640 at series start (+336),
+with5,560 ITCM bytes free. Static DTCM remains60,312; pool/workspace/stack
+allocations remain unchanged. All56 committed MCU inputs and identical cached
+SDK bind to the per-checkpoint/final receipts. Final MCU image/ELF is byte-exact
+to021. Direct frames and nested pause-wrapper costs are recorded in the source
+document; these exclude callees/exceptions and physical peaks/cycles. Final menu
+retains36 baseline inputs and its exact preceding image:79,572 code/data,9,232
+BSS,16,384 reserved stack,25,884 body margin,357,679 font and488,751 image bytes.
+Both complete FPGA source cohorts and generated settings/dependencies bind to
+their receipts; generated products remain evidence, unshipped/uninstalled.
+No physical Saturn, concurrency, external-bus, game or original-MDK acceptance
+is inferred from host models or target builds.
+
+Full proposed files/messages/public identities and actual source/ledger blobs
+pass manual, secret and private-PII review. Approved paps-g attribution and
+papsg/noreply identities remain, with exact Sega/source citations and explicit
+version, translation, compatibility-policy and qualification limits. No private
+paths/accounts/network details, credentials, raw receipts or build artifacts are
+published. Original notices/APIs/log formats/masks are preserved. No USB, new
+runtime diagnostic/probe/telemetry/loader, subagent or upstream/private publication.
+
+Public main and all five source topics are clean and remotely verified. Default
+main, v0.8 ancestry, historical master and unrelated refs/stashes are preserved,
+apart from authorized main/progress advances and new topics. Exact private HEAD,
+full status, all refs and four stashes match the initial snapshot; source,
+research branches, other paused work and Saturn remain untouched. The final
+progress checkpoint is published. Fork issues are disabled with no open PRs or
+applicable closures; original upstream requests remain unchanged.
+
+CUE geometry/raw formats, broader initialization/reset/audio/session/tray/scan,
+existing explicit-seek compatibility policy and FPGA05 SET/CLEAR arbitration
+remain separate. Unmeasured hardware/game consequences are not claimed resolved.
