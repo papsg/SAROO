@@ -718,3 +718,19 @@ The selected008/009/010/012 source contracts are complete. Directory/ISO/XA
 filesystem011/013, broader asynchronous copy/move/MPEG ownership, later raw-
 Mode1/audio representations and initialization remain separate. Unknown exact
 malformed-command replies and physical/game qualification are not claimed fixed.
+
+## CD filesystem, directory streaming and XA safety
+
+Starts at public `5d221d0`. Selected paps-g `8e465233`/`05852d90`, adapted as
+separate direct source commits. No PRs, USB integration, new runtime diagnostics,
+private writes or Saturn operations. Full files/messages/identities and actual
+commits receive secret/private-PII review; original notices/log formats remain.
+
+| Contribution / original | Public checkpoint | Verification, dependencies and limits |
+| --- | --- | --- |
+| MCU-CDIO-001 producer core; selected paps-g `8e465233` | [525dc55](https://github.com/papsg/SAROO/commit/525dc554a71196577103e063ecfc3b75ea5787e8); [codex/cd-sector-input](https://github.com/papsg/SAROO/tree/codex/cd-sector-input) | Six actual-source methods pass ASan/UBSan/O2: all nonzero seek/read results,8,192 incomplete-input edges,6,144 valid fills,cache/boundary/retry payloads,track/metadata controls. Baseline fails two groups with four controls; six compiled mutants rejected. All91 CD methods pass both profiles. Complete MCU remains58,708 load/static DTCM60,296 bytes,6,828 ITCM free;56 exact source hashes and identical SDK checked. Producer/disk frames48/80 unchanged; no state/buffer/copy/mask/wait or valid-input I/O added. [FatFs result/count contracts, attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-FILESYSTEM-SAFETY.md#mcu-cdio-001-complete-sector-input-admission). Directory-error ownership deliberately follows with011 worker; subcode-sidecar I/O/wider offset arithmetic and physical/game/original-MDK qualification remain outside this checkpoint. |
+
+Input-admission core published; directory worker/ISO/query/lifecycle011 and
+selected XA013 are in progress. Broader asynchronous/MPEG/session/EOF/PEND/tray
+contracts stay separate. Fork issues are disabled, no open PRs or applicable
+closure; original upstream requests remain unchanged.
