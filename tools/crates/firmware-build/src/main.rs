@@ -10,6 +10,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
+mod fpga;
+#[cfg(unix)]
 mod mcu;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -403,7 +405,23 @@ fn run() -> Result<()> {
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2\nOffline GNU compile/link accounting for the original MDK App; never installs firmware.");
+        println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         return Ok(());
+    }
+    if args.len() == 7
+        && args[0] == "fpga"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--quartus"
+    {
+        #[cfg(unix)]
+        return fpga::build(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+        );
+        #[cfg(not(unix))]
+        return fail("The FPGA build check requires a Unix host");
     }
     if args.len() == 13
         && args[0] == "mcu"
@@ -427,7 +445,7 @@ fn run() -> Result<()> {
         return fail("The MCU compile/link check requires a Unix host");
     }
     if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
-        return fail("Expected menu or mcu arguments; use --help for both command forms");
+        return fail("Expected menu, mcu or fpga arguments; use --help");
     }
     build(Path::new(&args[2]), Path::new(&args[4]))
 }

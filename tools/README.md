@@ -82,6 +82,51 @@ This is GNU target compile/link accounting. It does not qualify the MDK image,
 cache/bus/clock behavior, physical endian transfers, concurrent access, SD
 durability, games or installed firmware.
 
+### Original FPGA project comparison
+
+The `fpga` command builds a new copy of the original [Quartus project](../FPGA/SSMaster.qsf)
+for EP4CE6F17C8, using an explicitly supplied, already installed Quartus Prime
+Lite25.1std.0.1129 Linux compiler and the already cached local amd64 runtime
+`sha256:d60907a0e1139b4c866760fbc76007971f7330ba1f5d47e99494acf1f8119c29`.
+This is a source-only verification environment, adapted from paps-g's offline
+Quartus/QEMU procedure. It never downloads a compiler/image or programs hardware.
+The original project remains usable through the ordinary Quartus flow; the
+specific cached runtime is a prerequisite for this pinned comparison command.
+
+```sh
+cargo build --offline --locked --release --manifest-path tools/Cargo.toml -p firmware-build
+tools/target/release/firmware-build fpga --repo "$PWD" \
+  --out tests/build/fpga-comparison --quartus /path/to/quartus-25.1
+```
+
+Only a local Unix-socket Docker endpoint is accepted. Compiler and original JRE
+mounts are read-only; the authored Java wrapper is overlaid inside the container,
+leaving the installed compiler unchanged. The pinned runtime supplies its existing
+launcher/QEMU. All new build orchestration is Rust. Each map/fit/assembly/timing/
+conversion phase has a recorded unique container identity, one-hour deadline,
+two-CPU/four-GiB limits, networking disabled and bounded logs. On a deadline the
+tool bounds removal of its own container. If the host tool is interrupted, inspect
+the last recorded container before retrying. New output directories are required;
+failures and prior source/ELF/bitstream/report cohorts are retained.
+
+Public project inputs are bounded regular files. The receipt records their
+SHA-256 values, exact copied-source cohort, generated setting additions, wrapper/
+builder identities, runtime ID, phase commands and artifact hashes. A streaming
+manifest binds every installed compiler regular file and internal symlink before
+and after the build, with count/nesting/size bounds; escaping links are rejected.
+No compiler or runtime binaries are distributed by this repository. Their vendor
+and distribution notices remain in the caller's unchanged installation/image.
+
+Both compared builds use the same verification-only additions to the copied QSF:
+two parallel processors, Standard Fit and an additional `derive_clock_uncertainty`
+SDC. Original project bytes in the checkout are unchanged. Required nonempty SOF,
+RBF, JIC, fit/STA reports and finite timing rows are checked. Java/helper fatal
+markers are rejected even after a zero exit status. Negative constrained slack
+is reported separately from complete artifacts and returns failure. Unconstrained
+external Saturn/MCU/SDRAM interfaces remain unqualified even when reported slack
+passes. No hardware, clock-domain, signal-integrity or game acceptance follows.
+Host-tool checks remain part of `make -C tests check-host-tools`.
+
 ## Browser and font assets
 
 The [offline save editor](savetool/web/README.md) and
