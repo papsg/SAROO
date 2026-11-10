@@ -796,16 +796,22 @@ static void set_drive_position(u32 fad)
         while (cdb.index < tk->max_index && fad >= (u32)tk->index[cdb.index-1]) cdb.index++;
 }
 
+/* Incoming positions are 24-bit. Normalized FADs lose their original form. */
+static unsigned retained_position_type(u32 position, unsigned previous)
+{
+    return position == 0xffffff ? previous :
+           !position ? 0 : (position >> 23) + 1;
+}
+
 int play_cd(void)
 {
     u32 start_pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     u32 end_pos = ((u32)(cdb.cr3&255)<<16) | cdb.cr4;
     unsigned mode = cdb.cr3>>8;
     if (!get_track_info(0xffff)) { set_status(STAT_REJECT); return 0; }
-    /* Explicit FAD and track forms cannot be mixed. Default and NOCHG are
-     * separate forms; retained-type validation is still a protocol follow-up. */
-    if (start_pos && end_pos && start_pos != 0xffffff && end_pos != 0xffffff &&
-        ((start_pos ^ end_pos) & 0x800000)) { set_status(STAT_REJECT); return 0; }
+    unsigned types = retained_position_type(start_pos, cdb.play_pos_types & 3) |
+                     (retained_position_type(end_pos, cdb.play_pos_types >> 2) << 2);
+    if (((types | (types >> 2)) & 3) == 3) { set_status(STAT_REJECT); return 0; }
     u32 start = start_pos == 0xffffff ? cdb.play_fad_start : drive_position(start_pos, 0);
     u32 end = cdb.play_fad_end;
     if (end_pos != 0xffffff) {
@@ -824,6 +830,7 @@ int play_cd(void)
      * after acknowledgement; failed handoff publishes no new settings. */
     if (start != cdb.play_fad_start || end != cdb.play_fad_end || repeat != cdb.max_repeat)
         cdb.repcnt = 0;
+    cdb.play_pos_types = types;
     cdb.play_fad_start = start;
     cdb.play_fad_end = end;
     cdb.max_repeat = repeat;
@@ -1782,6 +1789,7 @@ static void start_file_play(int selnum, u32 fad, u32 sectors, int type)
 {
     free_partition(&cdb.part[selnum]);
     set_file_selector(selnum, fad, sectors);
+    cdb.play_pos_types = 0;
     cdb.repcnt = 0;
     cdb.max_repeat = 0;
     /* Commands already paused. Internal directory phases must retain a new

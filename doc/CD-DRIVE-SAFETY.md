@@ -152,3 +152,46 @@ other callees/exceptions; physical cycles, latency and peaks are unmeasured.
 The existing public drive commands above reproduce these checks. Retained
 endpoint types021 and the separate FPGA clear contribution remain next. No
 physical game/audio or original-MDK qualification or installation is claimed.
+
+## MCU-CDC-021: retain endpoint forms through NOCHG
+
+Original: selected paps-g `cd83b371`, requiring014/015. Once track positions
+are normalized into FADs, the preceding command cannot distinguish a retained
+track endpoint from a retained FAD endpoint. It accepts a new FAD start with a
+retained track end, or the reverse. Sega's [later CdcPly data No6.4 note2](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p07_12.htm)
+explicitly rejects mixed track/FAD forms even when one endpoint is NOCHG.
+The cached source-language page agrees. The earlier [ST-162 CdcPly data No6.5,
+printed pp.67–68](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=55)
+provides the underlying position/no-change forms; the later note makes this
+retention requirement explicit.
+
+Reuse one formerly unused CDBLOCK byte for two bits per endpoint: default,
+track or FAD. Resolve NOCHG from the previous form and reject mixed forms before
+waiting, changing settings, waking the worker or clearing interrupts. Default
+removes only its endpoint's form constraint. Publish new forms only after
+successful handoff. File playback and background-audio range replacement clear
+these play-command constraints. Existing seek-range compatibility policies are
+retained; this does not add a new seek-form rule or broader reset behavior.
+
+Three new actual-source groups pass ASan/UBSan and O2:112 old/new endpoint pairs,
+failed handoff followed by NOCHG and default-removal controls, and actual file/
+background replacement followed by valid NOCHG/FAD commands. The preceding
+source fails the first two defect groups. The third also fails when compiled
+with the new field, but establishes a new metadata-lifetime invariant rather
+than a separately demonstrated old hardware defect. Eight compiled behavioral
+mutants are detected. All131 CD methods pass both profiles; the drive group now
+contains19 methods. Notifications, preemption and I/O remain host models.
+
+GNU MCU load grows48 bytes:59,928→59,976, leaving5,560 ITCM bytes. Static DTCM
+remains60,312; all56 repository inputs match the receipt and cached SDK hashes
+are identical. Direct play32, file-start32, disk72, drive-pause16 and replacement-
+pause8 frames remain unchanged; frames exclude callees/exceptions. The field
+reuses existing padding, with no object/pool/stack allocation growth. Only
+bounded command classification/comparison and range-replacement stores are
+added; no payload copy, I/O, wait, log format/mask or interrupt-mask change.
+Physical timing, memory peaks, concurrency, games and original-MDK qualification
+remain unmeasured. Use the existing public drive-test commands above.
+
+The scoped MCU drive contracts are now implemented. The separate FPGA clear
+contribution follows; CUE geometry and broader drive/reset behavior remain
+outside this series. No device or installed firmware was accessed.

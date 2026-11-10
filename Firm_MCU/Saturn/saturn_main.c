@@ -764,6 +764,7 @@ void ss_cmd_handle(void)
 		SS_ARG = retv;
 		//SS_CMD = 0;
 		if(retv==0){
+            cdb.play_pos_types = 0;
 			cdb.play_fad_start = track_to_fad(0x0100);
 			cdb.play_fad_end   = track_to_fad(0x0163)+1;
 			cdb.track = 0x01;

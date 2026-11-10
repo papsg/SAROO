@@ -29,6 +29,7 @@ static void wait_pause_ok(void)
     }
 }
 #include "drive.inc"
+#include "file-start.inc"
 #include "phase.inc"
 #include "background.inc"
 
@@ -339,6 +340,59 @@ static void home_resume(void)
     cdb.track_num=0;request(0xffffff,0,0);CDBLOCK before=cdb;
     assert(!seek_cd() && (reply[0]>>8)==STAT_REJECT && !memcmp(&before,&cdb,sizeof cdb));
 }
+static void retained_forms(void)
+{
+    const u32 starts[]={0,0x101,0x800096,0xffffff};
+    const u32 ends[]={0,0x201,0x800032,0xffffff};
+    for(unsigned old_start=0;old_start<3;old_start++)
+    for(unsigned old_end=0;old_end<3;old_end++) {
+        if((old_start|old_end)==3)continue;
+        for(unsigned new_start=0;new_start<4;new_start++)
+        for(unsigned new_end=0;new_end<4;new_end++) {
+            ready();request(starts[old_start],ends[old_end],0);assert(!play_cd());
+            unsigned expected_start=new_start==3?old_start:new_start;
+            unsigned expected_end=new_end==3?old_end:new_end;
+            request(starts[new_start],ends[new_end],0xff);
+            CDBLOCK before=cdb;waits=wakeups=0;hirq_clear=0;
+            assert(!play_cd());
+            if((expected_start|expected_end)==3) {
+                assert((reply[0]>>8)==STAT_REJECT && !waits && !wakeups && !hirq_clear);
+                assert(!memcmp(&before,&cdb,sizeof cdb));
+            } else assert((reply[0]>>8)!=STAT_REJECT && waits==1 && wakeups==2);
+        }
+    }
+}
+
+static void retained_form_failure(void)
+{
+    for(unsigned end=0;end<2;end++) {
+        ready();request(0x101,0x201,0);assert(!play_cd());
+        request(0x800096,0x800032,0);acknowledge_after=-1;
+        assert(!play_cd() && (reply[0]>>8)==(STAT_WAIT|cdb.status) && waits==500);
+        request(end?0xffffff:0x800096,end?0x800032:0xffffff,0);
+        CDBLOCK before=cdb;waits=wakeups=0;hirq_clear=0;
+        assert(!play_cd() && (reply[0]>>8)==STAT_REJECT);
+        assert(!waits && !wakeups && !hirq_clear && !memcmp(&before,&cdb,sizeof cdb));
+    }
+    /* Replacing a track endpoint by default removes only that constraint. */
+    ready();request(0x101,0,0);assert(!play_cd());
+    request(0,0xffffff,0);assert(!play_cd());
+    request(0xffffff,0x800032,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
+    ready();request(0,0x201,0);assert(!play_cd());
+    request(0xffffff,0,0);assert(!play_cd());
+    request(0x800096,0xffffff,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
+}
+
+static void replacement_types(void)
+{
+    ready();cdb.play_pos_types=5;
+    start_file_play(0,150,1,PLAYTYPE_FILE);assert(!cdb.play_pos_types);
+    request(0xffffff,0x800001,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
+    assert(cdb.play_pos_types==8);check_owners();
+    ready();cdb.play_pos_types=5;background_start(0);assert(!cdb.play_pos_types);
+    request(0xffffff,0x800001,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
+    assert(cdb.play_pos_types==8);check_owners();
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -351,6 +405,7 @@ int main(int argc,char **argv)
     case 10:valid_log_control();break;case 11:full_track_capacity();break;
     case 12:repeat_preservation();break;case 13:repeat_changes();break;
     case 14:repeat_seek_stop();break;case 15:home_resume();break;
+    case 16:retained_forms();break;case 17:retained_form_failure();break;case 18:replacement_types();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

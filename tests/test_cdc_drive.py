@@ -45,8 +45,11 @@ class CDDriveTests(unittest.TestCase):
         start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
         (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+b'read_calls++;return 1;\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n}\n')
         start=main.index(b'\t\t\tcdb.play_fad_start = track_to_fad(0x0100);');end=main.index(b'\n\t\t}',start)
+        marker=b'            cdb.play_pos_types = 0;';prefix=main.rfind(marker,0,start)
+        if prefix>=0 and not main[prefix+len(marker):start].strip():start=prefix
         (cls.target/'background.inc').write_bytes(b'static void background_start(int audio_repeat) {\n'+main[start:end]+b'\n}\n')
-        (cls.target/'copy.inc').write_bytes(copy_source(raw))
+        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'free_block_list(',b'disconnect_filter_input(')))
+        (cls.target/'file-start.inc').write_bytes(b''.join(function(raw,sig) for sig in (b'static void _set_filter(',b'void free_partition(',b'static void set_file_selector(',b'static void start_file_play(')))
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')]+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
         for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
@@ -88,6 +91,9 @@ class CDDriveTests(unittest.TestCase):
     def test_changed_settings_and_failed_handoff_controls(self):self.run_case(13)
     def test_seek_stop_preserve_repeat_and_exact_invalid_report(self):self.run_case(14)
     def test_home_pause_and_direct_resume_restore_first_sector(self):self.run_case(15)
+    def test_112_retained_endpoint_transition_pairs(self):self.run_case(16)
+    def test_failed_handoff_retains_types_and_default_removes_constraint(self):self.run_case(17)
+    def test_file_and_background_ranges_retire_play_type_constraints(self):self.run_case(18)
 
 
 if __name__=='__main__':unittest.main()
