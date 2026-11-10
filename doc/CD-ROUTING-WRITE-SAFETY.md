@@ -5,6 +5,8 @@ Port selected contributions from **paps-g** `50100444` and `3f7bba1a`
 (2026-09-06) as separate, freshly verified source changes. Original notices and
 logging remain. No USB, new runtime diagnostics or device operation is included.
 These source findings are not attributed to a named game's observed failure.
+Per-port measurements describe their own checkpoints; final verification is
+recorded below. Host writes here use the Saturn CD interface.
 
 ## MCU-CDC-005: coherent producer metadata
 
@@ -236,7 +238,144 @@ scheduling and games remain unqualified. Host writes are the separate007 port.
 
 ## MCU-CDC-007: reserved host writes and bounded completion
 
-Queued: admission from `50100444` plus the lifecycle in `3f7bba1a`. Reserve before
-readiness, consume actual available words, retain private ownership until
-DataEnd/reset, route completed sectors, and distinguish zero transfer from error.
-Undefined untransferred payload must not be fabricated by empty FIFO reads.
+Original: paps-g admission in `50100444` plus lifecycle in `3f7bba1a`; depends
+on005 metadata,006 ownership/defaults and the shared003 router. The preceding
+host handler allocates unchecked buffers as input arrives, exposes them in a
+same-number partition, and reads up to2,048 bytes without checking availability.
+DataEnd loops until the requested count is exhausted even when no further data
+exists. Write word counts are absent and valid zero transfer looks like error.
+
+Sega's [CD Communication Interface §8.2.7 function7.5, CDC_PutSctData](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm)
+requires an aperture destination, sufficient initial capacity and incorporation
+only after DataEnd. Initial shortage returns WAIT; capacity lost while preparing
+signals EHST without DRDY. Interrupted ordinary input still incorporates the
+requested sector count, with untransferred contents undefined.
+[§8.2.1 functions1.9/1.10, CDC_DataReady/CDC_DataEnd](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_11.htm)
+defines preparation-error handling and actual write words capped at the request.
+The cached Sega header's CdcDend constant `CDC_DEND_ERR=0xffffff` is corroborated
+by the existing [public menu decoder](https://github.com/papsg/SAROO/blob/a66041a/Firm_Saturn/cdblock.c#L158)
+and preceding MCU reply layout. Its [Sega header reference](https://github.com/johannes-fetz/joengine/blob/master/Compiler/COMMON/SGL_302j/INC/SEGA_CDC.H)
+is a cached identity, not a new online observation or imported dependency.
+
+Before DRDY, reserve the complete request into an unpublished linked list using
+the checked allocator. Failed preparation releases every acquired block. Existing
+next pointers and transfer-start/current/count fields carry ownership; the start
+byte is a pool index only for PUT and retains its partition-position meaning
+for GET. All consumers of that field were reviewed. Request count and length
+are captured locally; no input-time allocation or extra buffer is needed.
+Partitions remain unchanged until DataEnd, and another producer may consume
+all remaining free space without invalidating the reservation.
+
+The unchanged pinned [FPGA05 status mapping, SSMaster.v line424](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L424)
+exports11 used-word bits plus full bit11. The [FIFO declaration, lines83–94](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/cdcfifo.v#L83)
+sets2,048 sixteen-bit words. [Control bits9/8](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L224)
+select input direction/reset; [FIFO routing](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L579)
+and [latched threshold/ack logic](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L314)
+establish the actual interface. Current RTL matches that baseline byte for byte.
+Each host service acknowledges first, reads at most one occupancy snapshot and
+consumes at most4,096 available/requested bytes. New arrivals wait for a later
+service. This bound is per invocation, not an entire command-task wake cycle.
+
+DataEnd drains one final available snapshot and stops input, then normalizes and
+routes every reserved block before EHST. Each block is appended or freed,
+retaining original order and last incoming-CD reporting. Report actual consumed
+words; ordinary zero is valid, while disconnected/no-active transfer uses the
+error sentinel. Unknown unfilled payload remains untouched, not read from empty
+FIFO or zeroed to conceal a shortage. The absent prefix remains005's selected
+representation policy; poison-byte tests do not prescribe hardware fill values.
+
+The [selector stream-error rule, §5.3.4(1)](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+and buffer-I/O connection rules govern losing the active input. CD/false source
+replacement or all-input reset signals EHST and stops consumption, retaining the
+unpublished chain until DataEnd/software reset. Error DataEnd frees it without
+publishing or stealing back the new connection. Partition-only resets preserve
+the reservation; software reset releases it through006's whole-CD reset. Idle
+FIFO service is harmless and repeated DataEnd reports no-active-transfer error.
+Exact physical interrupt timing and global output ownership remain unqualified.
+
+The public adaptation preserves every original log format/mask, including valid
+PUT, DataEnd's conditional legacy wait message and GET/idle logs. That historic
+message now precedes a single available-data service; it causes no wait for future
+input. Host routing uses the shared helper's silent role. No new diagnostics,
+logging API, payload copy, thread, heap object or static state is added.
+
+Thirteen new actual-source groups pass ASan/UBSan and O2. Coverage includes:
+
+- All200 reservation counts, ownership before DataEnd, exhaustion of remaining
+  capacity by a modeled producer, and zero subsequent input/end allocation.
+- All8,196 combinations of four lengths and0–2,048-word prefixes, including
+  valid zero, exact bytes/counts, untouched remainder, all requested sectors,
+  repeated DataEnd and stale service.
+- Empty/single/threshold/full/cross-block/excess FIFO input, at-most-one snapshot,
+  acknowledge-before-read order, sparse chains and pool head199.
+- Raw host metadata, split/discard output at DataEnd, absence of premature
+  publication and extra host logs, and preserved last-CD reporting.
+- Real allocation loss at six preparation boundaries, rollback, atomic invalid/
+  capacity/busy admission, reset kinds, four input-theft paths, retained new
+  owner, recovery and unrelated-input/shared-true-output controls.
+- Actual relocated startup/default reset followed by writes and captured-length
+  defense. Changing sector length during transfer is prohibited by Sega; that
+  synthetic invariant test does not approve a forbidden command sequence.
+
+The baseline fails twelve groups; its complete transmitted-payload control
+passes. Failures share causes and are not twelve independent hardware defects.
+Twenty-one compiled mutants fail actual behavior/resource/sanitizer checks,
+including empty/full/count errors, overrun, rollback/leak/premature publication,
+wrong head/next, theft/reset/idle behavior, metadata routing/logging, masked FIFO
+work, duplicate snapshots and manufactured zero remainder. IRQ masks, occupancy,
+capacity loss and acknowledgment are host models, not Quartus/bus/concurrency
+or hardware-timing simulation. Their source/dependency identities are retained.
+
+The earlier005 fixture now calls actual PUT→windowed FIFO service→DataEnd,
+followed by an append request. All original payload, prefix, trailing-byte,
+poison, metadata and logical-FAD oracles remain. Its five groups also pass
+against the preceding source; original005 artifacts remain in their commit.
+All60 current CD methods pass in both final profiles.
+
+The complete MCU link adds240 load bytes:57,988→58,228, leaving7,308 ITCM bytes.
+Static DTCM remains60,296; the200-block pool and required stacks are unchanged.
+Direct host-service frame shrinks48→24, preparation grows16→48 and DataEnd
+32→40. IRQ/dispatch remain24/16, route32, disconnect8 and reset32. The host
+service caller sum falls from at least80 (task/handler/allocator) to48 before
+exceptions; preparation now needs96 (task/dispatch/preparation/allocator) and
+the route part of DataEnd112 before other callees. These are compiler-frame
+paths, not physical peaks. The whole compiled handler still calls the existing
+GET fill_fifo; it is not claimed to be a leaf.
+
+Reservation moves work before readiness and holds up to all200 blocks until
+completion. Prefix clearing is at most4,800 bytes per200-sector user-data request;
+allocator scans remain bounded by the fixed pool. Input updates metadata per
+block span instead of each word. The4,096-byte service cap is twice the old
+unconditional2,048-byte chunk cap. Routing and FIFO/prefix/payload work are
+outside whole-operation masks; only existing allocation/append/free critical
+sections and bounded input-ownership changes are masked. No physical latency,
+IRQ-peak or game-speed improvement is claimed.
+
+```sh
+python3 tests/test_cdc_put.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_put.py
+make -C tests check-cdc-command-buffer
+# Overrides: SAROO_CDC_PUT_SOURCE and SAROO_CDC_PUT_MAIN
+```
+
+## Final verification and scope
+
+The full project check passes351 Python methods and14 Rust tests. All60 final
+CD methods also pass ASan/UBSan and O2 after the final host I/O-budget assertions;
+all seven CD cohorts bind to current source, fixture and dependency hashes.
+MCU/menu receipts bind56/36 current source inputs. Menu image/resources match
+preceding public main exactly:79,572 code/data,9,232 BSS,16,384 reserved stack,
+357,679 font and488,751 total image bytes.
+
+Across the four scoped ports, MCU load grows688 bytes:57,540→58,228. Static DTCM
+stays60,296 and no persistent buffer/state is added. Public original-layout
+source, focused topics, attribution/citations, failing baselines/valid controls,
+mutations and resource limits remain separate from original-MDK, physical stack,
+bus/IRQ/concurrency/timing, game and Saturn qualification. No Saturn operation
+or installed-firmware change was made.
+
+The selected005/006/synchronous003/007 ports are complete at source/build level.
+Broader MCU-CDC-003 asynchronous/cancellation/erase/output-connection contracts,
+later008 GET/delete/size/ownership and initialization work remain outside this
+series. Inversion-only hardware ambiguity and unspecified absent-header fill
+are not converted into confirmed defects or claimed physical behavior.

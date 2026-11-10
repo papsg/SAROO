@@ -6,6 +6,11 @@ logging, source/dependency notices and prior public ports remain. No USB, new
 diagnostics, private preparer or device operation is included. These self-reported
 source findings are not attributed to a named game, audio or save-loss report.
 
+This document records the initial checkpoints. The subsequent
+[CD routing/write-safety series](CD-ROUTING-WRITE-SAFETY.md) adds shared filter
+routing and reserved host writes; its final section gives current status.
+The measurements and source limits below remain historical evidence.
+
 ## MCU-CDC-001: separate filter reply status and channel
 
 Original: `f0da2b0b` (2026-09-06). Correct the one expression in command0x43,

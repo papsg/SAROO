@@ -1,5 +1,5 @@
-"""Actual disc/host producers; synthetic cache and complete input, no device I/O."""
-# Public adaptation of paps-g 50100444; lifecycle safety is separate007 work.
+"""Actual disc/host producers; synthetic cache and occupancy-windowed input, no device I/O."""
+# Public adaptation of paps-g 50100444; producer controls maintained through007.
 import hashlib
 import json
 import os
@@ -23,7 +23,13 @@ class CDMetadataTests(unittest.TestCase):
         def function(raw,signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        code=function(cdc,b'BLOCK *alloc_block(void)')+function(cdc,b'void trans_handle(void)')
+        code=b''.join(function(cdc,sig) for sig in (b'BLOCK *alloc_block(void)',b'void free_block(',b'void append_block('))
+        if b'static void unlink_block(' in cdc:code+=function(cdc,b'static void unlink_block(')
+        code+=function(cdc,b'void remove_block(')+function(cdc,b'void set_status(')
+        operations=b''.join(function(cdc,sig) for sig in (b'void trans_handle(void)',b'int put_sector_data(',b'int end_trans('))
+        for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
+            if call in operations:code+=function(cdc,signature)
+        code+=operations
         # Existing FAD/cache comparisons mix signed/unsigned; no new arithmetic.
         code+=b'#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wsign-compare"\n'
         code+=function(main,b'int get_sector(')+b'#pragma GCC diagnostic pop\n'
@@ -35,7 +41,7 @@ class CDMetadataTests(unittest.TestCase):
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'metadata'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),str(cls.target/'cdc_metadata.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror','-Wno-unused-variable',*flags,'-I',str(cls.target),str(cls.target/'cdc_metadata.c'),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
@@ -51,7 +57,7 @@ class CDMetadataTests(unittest.TestCase):
 
     def test_disc_formats_zero_stale_fields_preserve_payload_and_logical_fad(self):self.run_case(0)
     def test_baseline_valid_mode2_disc_control(self):self.run_case(1)
-    def test_host_reuse_all_sizes_and_all_allocation_branches(self):self.run_case(2)
+    def test_host_reuse_all_sizes_and_append_requests(self):self.run_case(2)
     def test_baseline_valid_host_transmitted_payload_control(self):self.run_case(3)
     def test_raw_header_modes_and_bcd_without_validity_rejection(self):self.run_case(4)
 

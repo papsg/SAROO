@@ -16,9 +16,19 @@ static CDBLOCK cdb;
 _Alignas(4) static u8 payload[MAX_BLOCKS][2352], disc_bytes[0x8000];
 static u8 *sector_buffer=disc_bytes;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
-static u16 fifo_input[4*2352/2], fifo_status, st_control, st_status, hirq;
+static u16 fifo_input[4*2352/2], fifo_status, st_control, st_status, hirq, reply[4];
 static unsigned fifo_words,fifo_pos,prefix_bytes;
 static int irq_depth,min_num;
+#undef SSCR1
+#undef SSCR2
+#undef SSCR3
+#undef SSCR4
+#undef FIFO_RCNT
+#define SSCR1 reply[0]
+#define SSCR2 reply[1]
+#define SSCR3 reply[2]
+#define SSCR4 reply[3]
+#define FIFO_RCNT 0u
 #undef HIRQ
 #undef ST_CTRL
 #undef ST_STAT
@@ -30,9 +40,15 @@ static int irq_depth,min_num;
 #define FIFO_STAT fifo_status
 #define FIFO_DATA read_fifo()
 #define SSLOG(...) ((void)0)
+#define printk(...) ((void)0)
 static int disable_irq(void) { return irq_depth++; }
 static void restore_irq(int prior) { assert(irq_depth==prior+1);irq_depth=prior; }
-static u16 read_fifo(void) { assert(!irq_depth && fifo_pos<fifo_words);return fifo_input[fifo_pos++]; }
+static u16 read_fifo(void)
+{
+    assert(!irq_depth && fifo_pos<fifo_words && fifo_status);
+    fifo_status--;return fifo_input[fifo_pos++];
+}
+static void disk_task_wakeup(void) { assert(0); }
 static void fill_fifo(u8 *data,int size) { (void)data;(void)size;assert(0); }
 static int fad_to_track(u32 fad) { (void)fad;assert(0);return 0; }
 static void subcode_convert(void) { assert(0); }
@@ -56,8 +72,10 @@ static void setup(unsigned poison)
         cdb.block[i].fad=0xdeadbeef;
         cdb.block[i].fn=cdb.block[i].cn=cdb.block[i].sm=cdb.block[i].ci=poison;
     }
-    for(unsigned i=0;i<MAX_SELECTORS;i++)cdb.part[i].size=-1;
-    cdb.block_free=MAX_BLOCKS;cdb.sector_size=2048;
+    for(unsigned i=0;i<MAX_SELECTORS;i++) {
+        cdb.part[i].size=-1;cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
+    }
+    cdb.block_free=MAX_BLOCKS;cdb.sector_size=2048;cdb.status=STAT_PAUSE;
     fifo_words=fifo_pos=prefix_bytes=0;irq_depth=0;hirq=0;
 }
 
@@ -84,8 +102,8 @@ static void disc_cases(int mode2_only)
     }
 }
 
-/* Scripted complete input, not a physical FIFO timing/occupancy model.
- * MCU-CDC-007 will replace this legacy handler's unchecked service lifecycle. */
+/* Complete scripted input offered through <=2048-word FIFO windows.
+ * Register occupancy is modeled; physical bus/IRQ timing is not. */
 static void host_cases(int check_metadata,int headers)
 {
     const unsigned sizes[]={2048,2336,2340,2352};
@@ -108,13 +126,19 @@ static void host_cases(int check_metadata,int headers)
                 memset(expected[n],0,offset);
                 memset(expected[n]+offset+size,poison,2352-offset-size);
             }
-            cdb.put_sector_size=size;cdb.trans_part_index=1;cdb.trans_type=TRANS_PUT;
-            /* Empty partition, completion-time allocations, then append to an
-             * already full tail: exercise all three old allocation branches. */
-            cdb.trans_bk=3;unsigned turns=0;
-            while(cdb.trans_bk) { assert(++turns<20);trans_handle(); }
-            cdb.trans_bk=1;
-            while(cdb.trans_bk) { assert(++turns<20);trans_handle(); }
+            cdb.put_sector_size=size;unsigned turns=0;
+            for(unsigned request=0;request<2;request++) {
+                cdb.cr3=1<<8;cdb.cr4=request?1:3;
+                assert(put_sector_data()==HIRQ_DRDY);
+                unsigned limit=(request?4:3)*size/2;
+                while(cdb.trans_bk) {
+                    assert(++turns<20 && fifo_pos<limit);
+                    unsigned available=limit-fifo_pos;
+                    fifo_status=available>=2048?0x0800:available;
+                    trans_handle();
+                }
+                assert(end_trans()==HIRQ_EHST);
+            }
             assert(fifo_pos==fifo_words && cdb.block_free==196);
             assert(cdb.part[1].numblocks==4 && !irq_depth);
             BLOCK *b=cdb.part[1].head;
@@ -131,8 +155,8 @@ static void host_cases(int check_metadata,int headers)
             }
             assert(!b);
             if(check_metadata)assert(prefix_bytes==4*offset);
-            /* Byte-accounting and pre-DataEnd publication are known legacy
-             * lifecycle defects; neither is approved or asserted as correct. */
+            /* Metadata/payload oracles are retained from005. The dedicated PUT
+             * fixture also checks ownership/publication and transfer counts. */
         }
     }
 }

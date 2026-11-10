@@ -229,82 +229,34 @@ void trans_start(void)
 // 准备写入下一个block的数据，或者删除已经写完的block
 void trans_handle(void)
 {
-	if(cdb.trans_type==TRANS_PUT){
-		if(cdb.trans_bk==0)
-			return;
-
-		int offs = 0;
-		if(cdb.put_sector_size==2048){
-			offs = 24;
-		}else if(cdb.put_sector_size==2336){
-			offs = 16;
-		}else if(cdb.put_sector_size==2340){
-			offs= 12;
-		}
-		PARTITION *pt = &cdb.part[cdb.trans_part_index];
-		BLOCK *bt = pt->tail;
-
-		if(bt==NULL){
-			// PARTITION为空
-			bt = alloc_block();
-			bt->size = 0;
-			memset(bt->data, 0, offs);
-			bt->next = NULL;
-			pt->head = bt;
-			pt->tail = bt;
-			pt->numblocks += 1;
-		}else if(bt->size >= cdb.put_sector_size){
-			// PARTITION的最后的block已经有数据了
-			BLOCK *nbt = alloc_block();
-			nbt->size = 0;
-			memset(nbt->data, 0, offs);
-			nbt->next = NULL;
-			bt->next = nbt;
-			pt->tail = nbt;
-			pt->numblocks += 1;
-			bt = nbt;
-		}
-
-		ST_CTRL &= ~STIRQ_DAT;
-		//printk("trans_put: FIFO_STAT=%04x\n", FIFO_STAT);
-		int cnt = 2048;
-		while(cnt){
-			*(u16*)(bt->data + offs + bt->size) = FIFO_DATA;
-			bt->size += 2;
-			cnt -= 2;
-			if(bt->size == cdb.put_sector_size){
-                const u8 *data = bt->data;
-                /* CD header time is converted as BCD without validity rejection. */
-                bt->fad = ((data[12] >> 4)*10 + (data[12] & 15))*4500 +
-                          ((data[13] >> 4)*10 + (data[13] & 15))*75 +
-                          ((data[14] >> 4)*10 + (data[14] & 15));
-                bt->fn = data[15]==2 ? data[16] : 0;
-                bt->cn = data[15]==2 ? data[17] : 0;
-                bt->sm = data[15]==2 ? data[18] : 0;
-                bt->ci = data[15]==2 ? data[19] : 0;
-				pt->size += bt->size;
-				cdb.trans_bk -= 1;
-				if(cdb.trans_bk==0){
-					ST_CTRL &= ~(STIRQ_DAT|0x0200);
-					ST_STAT  = STIRQ_DAT;
-					return;
-				}else{
-					BLOCK *nbt = alloc_block();
-					nbt->size = 0;
-					memset(nbt->data, 0, offs);
-					nbt->next = 0;
-					bt->next = nbt;
-					pt->tail = nbt;
-					pt->numblocks += 1;
-					bt = nbt;
-				}
-			}
-		}
-
-		ST_STAT  = STIRQ_DAT;
-		ST_CTRL |= STIRQ_DAT;
-		return;
-	}
+    if (!cdb.trans_type) return;
+    if (cdb.trans_type == TRANS_PUT) {
+        ST_CTRL &= ~STIRQ_DAT;
+        /* Acknowledge before draining: preserve a subsequent threshold event. */
+        ST_STAT = STIRQ_DAT;
+        if (cdb.trans_part_index >= MAX_SELECTORS) return;
+        int stat = FIFO_STAT;
+        int words = (stat & 0x0800) ? 2048 : (stat & 0x07ff);
+        int offs = cdb.trans_size == 2048 ? 24 : 2352-cdb.trans_size;
+        BLOCK *bt = cdb.trans_block;
+        /* One available snapshot, at most4096 bytes; never await future input. */
+        while (words && bt) {
+            int count = (cdb.trans_size-bt->size)/2;
+            if (count > words) count = words;
+            u16 *out = (u16 *)(bt->data + offs + bt->size);
+            for (int i = 0; i < count; i++) out[i] = FIFO_DATA;
+            bt->size += count*2;
+            cdb.cdwnum += count*2;
+            words -= count;
+            if (bt->size == cdb.trans_size) {
+                bt = bt->next;
+                cdb.trans_bk -= 1;
+            }
+        }
+        cdb.trans_block = bt;
+        if (bt) ST_CTRL |= STIRQ_DAT;
+        return;
+    }
 
 	if(cdb.trans_finish==0){
 		// 中断在传输结束时会重复进入一次。这里做个判断，以免误加。
@@ -674,21 +626,45 @@ int end_trans(void)
 	ST_CTRL &= ~STIRQ_DAT;
 	ST_STAT = STIRQ_DAT;
 
-	if(cdb.trans_type==TRANS_PUT){
-		if(cdb.trans_bk){
-			SSLOG(_BUFIO, "end_trans: wait trans_put ...\n");
-			while(cdb.trans_bk){
-				trans_handle();
-			}
-		}
-	}else{
+    if (cdb.trans_type == TRANS_PUT) {
+        if (cdb.trans_bk) {
+            SSLOG(_BUFIO, "end_trans: wait trans_put ...\n");
+        }
+        trans_handle();
+        ST_CTRL &= ~(STIRQ_DAT | 0x0200);
+        ST_STAT = STIRQ_DAT;
+        BLOCK *bt = &cdb.block[cdb.trans_block_start];
+        while (bt) {
+            BLOCK *next = bt->next;
+            const u8 *data = bt->data;
+            /* Early DataEnd incorporates all reserved sectors. Unwritten
+             * payload stays undefined; only absent prefixes were initialized. */
+            bt->size = cdb.trans_size;
+            bt->fad = ((data[12] >> 4)*10 + (data[12] & 15))*4500 +
+                      ((data[13] >> 4)*10 + (data[13] & 15))*75 +
+                      ((data[14] >> 4)*10 + (data[14] & 15));
+            bt->fn = data[15]==2 ? data[16] : 0;
+            bt->cn = data[15]==2 ? data[17] : 0;
+            bt->sm = data[15]==2 ? data[18] : 0;
+            bt->ci = data[15]==2 ? data[19] : 0;
+            int dst = sector_destination(cdb.trans_part_index, bt, 0);
+            if (dst < MAX_SELECTORS) append_block(&cdb.part[dst], bt);
+            else free_block(bt);
+            bt = next;
+        }
+        cdb.trans_block = NULL;
+        cdb.trans_bk = 0;
+        if (cdb.trans_part_index >= MAX_SELECTORS) cdb.cdwnum = 0;
+    } else {
 		SSLOG(_BUFIO, "end_trans: cdwnum=%08x FIFO_STAT=%08x RCNT=%04x min_num=%d\n", cdb.cdwnum, FIFO_STAT, FIFO_RCNT, min_num);
+        if (cdb.trans_type) {
 		fifo_remain = (FIFO_STAT&0x0fff)*2; // FIFO中还有多少字节未读
 		if(fifo_remain>=512){
 			//FIFO中的数据大于512字节，不会产生中断。cdwnum会少记一次。
 			cdb.cdwnum += 0x800;
 		}
 		cdb.cdwnum -= fifo_remain;
+        }
 		SSLOG(_BUFIO, "         : cdwnum=%08x\n", cdb.cdwnum);
 	}
 
@@ -707,7 +683,8 @@ int end_trans(void)
 		}
 	}
 
-	if(cdb.cdwnum){
+	if(cdb.cdwnum || (cdb.trans_type == TRANS_PUT &&
+                         cdb.trans_part_index < MAX_SELECTORS)){
 		SSCR1 = (cdb.status<<8) | ((cdb.cdwnum>>17)&0xff);
 		SSCR2 = (cdb.cdwnum>>1)&0xffff;
 	}else{
@@ -959,6 +936,12 @@ int get_subcode(void)
 static void disconnect_filter_input(int fid)
 {
     if (fid >= MAX_SELECTORS) return;
+    if (cdb.trans_type == TRANS_PUT && cdb.trans_part_index == fid) {
+        /* Retain the private list until DataEnd/reset after losing its input. */
+        cdb.trans_part_index = 0xff;
+        ST_CTRL &= ~STIRQ_DAT;
+        HIRQ = HIRQ_EHST;
+    }
     if (cdb.cddev_filter == fid) cdb.cddev_filter = 0xff;
     for (int i = 0; i < MAX_SELECTORS; i++)
         if (cdb.filter[i].c_false == fid) cdb.filter[i].c_false = 0xff;
@@ -1212,7 +1195,13 @@ int reset_filter(void)
 			free_partition(&cdb.part[fid]);
 		}
 	}else{
-		if (mode & 0x20) cdb.cddev_filter = 0xff;
+        if (mode & 0x20) {
+            int irqs = disable_irq();
+            if (cdb.trans_type == TRANS_PUT)
+                disconnect_filter_input(cdb.trans_part_index);
+            cdb.cddev_filter = 0xff;
+            restore_irq(irqs);
+        }
 		for(i=0; i<MAX_SELECTORS; i++){
 			if(mode & (0x80|0x20)){
 				cdb.filter[i].c_false = 0xff;
@@ -1450,31 +1439,61 @@ int get_del_sector_data(void)
 // 0x64 [SR]
 int put_sector_data(void)
 {
-	int pt, snum;
-	PARTITION *pp;
-
-	if(cdb.trans_type){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	pt   = cdb.cr3>>8;
-	snum = cdb.cr4;
-	SSLOG(_BUFIO, "put_sector_data: part=%d snum=%d put_sector_size=%d\n", pt, snum, cdb.put_sector_size);
-
-	cdb.trans_type = TRANS_PUT;
-	cdb.trans_part_index = pt;
-	cdb.trans_bk = snum;
-
-	// reset fifo
-	ST_CTRL |= 0x0100;
-	ST_CTRL &=~0x0100;
-
-	ST_STAT  = STIRQ_DAT;
-	ST_CTRL |= 0x0200 | STIRQ_DAT;
-
-	set_status(cdb.status);
-	return HIRQ_DRDY;
+    if (cdb.trans_type) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    int fid = cdb.cr3 >> 8, count = cdb.cr4;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    if (count <= 0 || count > cdb.block_free) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    SSLOG(_BUFIO, "put_sector_data: part=%d snum=%d put_sector_size=%d\n", fid, count, cdb.put_sector_size);
+    int irqs = disable_irq();
+    disconnect_filter_input(fid);
+    restore_irq(irqs);
+    BLOCK *head = NULL, *tail = NULL;
+    int size = cdb.put_sector_size;
+    int offs = size == 2048 ? 24 : 2352-size;
+    /* Reserve before DRDY, outside partitions; no input-time allocations.
+     * PUT uses the existing start byte as a pool index, GET as a position. */
+    int remaining = count;
+    while (remaining--) {
+        BLOCK *bt = alloc_block();
+        if (!bt) {
+            while (head) {
+                BLOCK *next = head->next;
+                free_block(head);
+                head = next;
+            }
+            cdb.cdwnum = 0;
+            set_status(cdb.status);
+            return HIRQ_EHST;
+        }
+        bt->size = 0;
+        bt->next = NULL;
+        memset(bt->data, 0, offs);
+        if (tail) tail->next = bt;
+        else head = bt;
+        tail = bt;
+    }
+    cdb.trans_type = TRANS_PUT;
+    cdb.trans_part_index = fid;
+    cdb.trans_block_start = head-cdb.block;
+    cdb.trans_block = head;
+    cdb.trans_bk = count;
+    cdb.trans_size = size;
+    cdb.cdwnum = 0;
+    ST_CTRL |= 0x0100;
+    ST_CTRL &= ~0x0100;
+    ST_STAT = STIRQ_DAT;
+    ST_CTRL |= 0x0200 | STIRQ_DAT;
+    set_status(STAT_TRNS | cdb.status);
+    return HIRQ_DRDY;
 }
 
 
