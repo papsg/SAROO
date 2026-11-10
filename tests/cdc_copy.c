@@ -1,4 +1,4 @@
-/* Actual allocator/copy/query/reset; adapted from paps-g 93391efb/8432f7d8. */
+/* Adapted from paps-g 8432f7d8; independent list/payload oracles, host IRQ model. */
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -103,6 +103,23 @@ static void check_reply(unsigned expected)
         }
     }
 }
+static void check_owners(void)
+{
+    unsigned seen[MAX_BLOCKS]={0}, used=0;
+    for(unsigned p=0;p<MAX_SELECTORS;p++) {
+        PARTITION *part=&cdb.part[p]; BLOCK *b=part->head,*tail=NULL;
+        unsigned count=0,bytes=0;
+        while(b) {
+            ptrdiff_t i=b-cdb.block; assert(i>=0 && i<MAX_BLOCKS);
+            assert(!seen[i]++ && b->size>0 && ++count<=MAX_BLOCKS);
+            bytes+=b->size; used++; tail=b; b=b->next;
+        }
+        assert(part->numblocks==(int)count && part->tail==tail);
+        assert(part->size==(int)bytes || (!count && part->size==-1));
+    }
+    assert(used+cdb.block_free==MAX_BLOCKS);
+    for(unsigned i=0;i<MAX_BLOCKS;i++) assert(seen[i]==(cdb.block[i].size!=-1));
+}
 static void check_list(unsigned part,const unsigned *ids,unsigned count,int same_blocks)
 {
     BLOCK *b=cdb.part[part].head;
@@ -117,38 +134,107 @@ static void check_list(unsigned part,const unsigned *ids,unsigned count,int same
     }
     assert(!b);
 }
-/* The scoped outcome fixture intentionally leaves byte-accounting correction to003. */
 static void make_error(void)
 {
-    setup(4,4);command(0,0,1,0,4);lose_after=2;
-    assert(execute(0)==HIRQ_ECPY && cdb.block_free==0);
-    unsigned ids[]={0,1};check_list(1,ids,2,0);
-    assert(cdb.part[0].numblocks==4 && cdb.part[2].numblocks==194);
+    setup(4,4); command(0,0,1,0,4); lose_after=2;
+    assert(execute(0)==HIRQ_ECPY);
+    unsigned ids[]={0,1};check_list(1,ids,2,0);check_owners();check_reply(1);
+}
+static void check_refusal(int moving,u8 status)
+{
+    CDBLOCK before=cdb;
+    assert(execute(moving)==0 && (reply[0]>>8)==status);
+    assert(!memcmp(&before,&cdb,sizeof cdb) && !copied_bytes && !irq_depth);
     check_reply(1);
+}
+static void move_shapes(void)
+{
+    const unsigned sizes[]={1,2,4,17,100,200};
+    for(unsigned nidx=0;nidx<sizeof sizes/sizeof *sizes;nidx++) {
+        unsigned n=sizes[nidx],starts[]={0,n/2,n-1};
+        for(unsigned si=0;si<3;si++) for(unsigned tail=0;tail<2;tail++)
+        for(unsigned same=0;same<2;same++) {
+            unsigned start=starts[si],count=tail?n-start:1;
+            setup(n,0);command(1,0,same?0:1,start,count);
+            assert(execute(1)==HIRQ_ECPY && !copied_bytes && !cdb.block_free);
+            unsigned src[MAX_BLOCKS],dst[MAX_BLOCKS],ns=0,nd=0;
+            for(unsigned i=0;i<n;i++) {
+                if(i>=start && i<start+count) dst[nd++]=i; else src[ns++]=i;
+            }
+            if(same) { memcpy(src+ns,dst,nd*sizeof *dst);ns+=nd; }
+            else check_list(1,dst,nd,1);
+            check_list(0,src,ns,1);check_owners();check_reply(0);
+        }
+    }
 }
 int main(int argc,char **argv)
 {
-    assert(argc==2);int test=atoi(argv[1]);assert(test>=0 && test<8);
+    assert(argc==2);int test=atoi(argv[1]);assert(test>=0 && (test<=10 || (test>=20 && test<=27)));
     assert(MAX_BLOCKS==200 && MAX_SELECTORS==24);check_reply(0);
-    if (test==1) {
-        setup(4,4);command(0,0,1,0,4);
-        assert(execute(0)==HIRQ_ECPY);unsigned ids[]={0,1,2,3};check_list(1,ids,4,0);check_reply(0);
-    } else if (test>=2) {
-        make_error();
-        if (test==3 || test==4) {
-            setup(4,4);check_reply(1);command(test==4,0,1,0,4);
-            assert(execute(test==4)==HIRQ_ECPY);unsigned ids[]={0,1,2,3};check_list(1,ids,4,0);check_reply(0);
-        } else if (test>=5) {
-            cdb.status=STAT_PAUSE;
-            cdb.cr1=test==5?0x0401:test==6?0x0400:0x0481;
-            int result=init_cdblock();
-            assert(result==(test==6?0:HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST));
-            check_reply(test==5?0:1);
-            if(test==5) {
-                assert(cdb.block_free==MAX_BLOCKS);
-                for(unsigned i=0;i<MAX_SELECTORS;i++)assert(!cdb.part[i].numblocks && !cdb.part[i].head && !cdb.part[i].tail);
-            }
+    if(test==1 || test==4 || test==5) {
+        int moving=test!=1; setup(4,test==5?0:4);command(moving,0,1,0,4);
+        assert(execute(moving)==HIRQ_ECPY);
+        unsigned ids[]={0,1,2,3};check_list(1,ids,4,moving);
+        assert(copied_bytes==(moving?0:4*2352));check_owners();check_reply(0);
+    } else if(test==2) {
+        make_error();setup(4,0);command(0,0,1,0,4);check_refusal(0,STAT_WAIT|STAT_PAUSE);
+    } else if(test==3) make_error();
+    else if(test==6 || test==7) {
+        make_error();setup(4,4);check_reply(1);command(test==7,0,1,0,4);
+        assert(execute(test==7)==HIRQ_ECPY);check_owners();check_reply(0);
+    } else if(test>=8 && test<=10) {
+        make_error();cdb.cr1=test==8?0x0401:test==9?0x0400:0x0481;
+        cdb.status=STAT_PAUSE;
+        int result=init_cdblock();
+        assert(result==(test==9?0:HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST));
+        check_reply(test==8?0:1);
+        if(test==8) { assert(cdb.block_free==MAX_BLOCKS);check_owners(); }
+    } else if(test==20 || test==21) {
+        int moving=test==21;make_error();
+        for(unsigned v=24;v<256;v++) for(unsigned dest=0;dest<2;dest++) {
+            setup(4,4);command(moving,dest?0:v,dest?v:1,0,1);
+            check_refusal(moving,STAT_REJECT);
+        }
+    } else if(test==22 || test==23) {
+        int moving=test==23;make_error();
+        const unsigned bad[][3]={{4,0,0},{4,4,1},{4,5,0xffff},{4,0xfffe,1},
+            {4,0xffff,2},{4,0,5},{0,0xffff,0xffff},{0,0,1},{4,1,65534}};
+        for(unsigned i=0;i<sizeof bad/sizeof *bad;i++) {
+            setup(bad[i][0],4);command(moving,0,1,bad[i][1],bad[i][2]);
+            check_refusal(moving,STAT_WAIT|STAT_PAUSE);
+        }
+        for(unsigned transfer=1;transfer<=TRANS_PUT;transfer++) {
+            setup(4,4);command(moving,0,1,0,1);cdb.trans_type=transfer;
+            check_refusal(moving,STAT_WAIT|STAT_PAUSE);
+        }
+    } else if(test==24) move_shapes();
+    else if(test==25) {
+        const unsigned range[][2]={{0,0xffff},{1,0xffff},{0xffff,1},{0xffff,0xffff}};
+        for(unsigned r=0;r<4;r++) for(unsigned same=0;same<2;same++) {
+            setup(4,4);command(0,0,same?0:23,range[r][0],range[r][1]);
+            assert(execute(0)==HIRQ_ECPY);
+            unsigned start=range[r][0]==0xffff?3:range[r][0],n=4-start,ids[8],count=0;
+            if(same) for(unsigned i=0;i<4;i++) ids[count++]=i;
+            for(unsigned i=start;i<4;i++) ids[count++]=i;
+            check_list(same?0:23,ids,count,0);check_owners();check_reply(0);
+            assert(copied_bytes==n*2352);
+        }
+    } else if(test==27) {
+        /* Baseline-valid copy payload/free-count and reset controls, without
+         * claiming the known-broken old destination byte accounting. */
+        setup(4,4);command(0,0,1,0,4);assert(execute(0)==HIRQ_ECPY);
+        unsigned ids[]={0,1,2,3};check_list(0,ids,4,1);check_list(1,ids,4,0);
+        assert(!cdb.block_free && copied_bytes==4*2352);check_reply(0);
+        cdb.status=STAT_PAUSE;cdb.cr1=0x0401;assert(init_cdblock()==(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST));
+        assert(cdb.block_free==MAX_BLOCKS);check_owners();
+    } else if(test==26) {
+        for(int pos=-1;pos<=4;pos++) {
+            setup(4,0);remove_block(&cdb.part[0],pos);
+            unsigned ids[4],n=0;for(int i=0;i<4;i++) if(i!=pos) ids[n++]=i;
+            check_list(0,ids,n,1);check_owners();assert(!copied_bytes);
+            assert(cdb.block_free==(pos>=0 && pos<4));
         }
     }
-    puts("pass: copy outcome, actual exhaustion, retention and reset");return 0;
+    puts("pass: copy/move admission, ownership, payload, outcome and reset");
+    return 0;
 }

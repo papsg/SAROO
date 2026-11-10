@@ -50,10 +50,17 @@ class CDCopyTests(unittest.TestCase):
                 result=subprocess.run([str(self.binary),str(case)],capture_output=True,text=True,timeout=20,env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
                 self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr));self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('pass:',result.stdout)
 
-    def test_power_on_and_success(self):self.run_cases((0,1))
-    def test_real_exhaustion_partial_copy_and_query_retention(self):self.run_cases((2,))
-    def test_next_successful_copy_or_move_replaces_error(self):self.run_cases((3,4))
-    def test_software_reset_clears_but_nonreset_and_ignore_preserve(self):self.run_cases((5,6,7))
+    def test_power_on_and_success(self):self.run_cases((0,1,4))
+    def test_copy_admission_and_real_exhaustion(self):self.run_cases((2,3))
+    def test_full_buffer_move_needs_no_allocation(self):self.run_cases((5,))
+    def test_next_successful_copy_or_move_replaces_error(self):self.run_cases((6,7))
+    def test_software_reset_clears_but_nonreset_and_ignore_preserve(self):self.run_cases((8,9,10))
+    def test_all_invalid_selectors(self):self.run_cases((20,21))
+    def test_invalid_ranges_and_active_transfers(self):self.run_cases((22,23))
+    def test_full_same_partition_head_middle_tail_moves(self):self.run_cases((24,))
+    def test_copy_sentinels_and_same_partition(self):self.run_cases((25,))
+    def test_remove_one_block_or_preserve_invalid_index(self):self.run_cases((26,))
+    def test_baseline_valid_payload_and_reset_controls(self):self.run_cases((27,))
 
 
 if __name__=='__main__':unittest.main()

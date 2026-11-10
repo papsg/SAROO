@@ -107,58 +107,42 @@ BLOCK *find_block(PARTITION *part, int index)
 
 void append_block(PARTITION *part, BLOCK *block)
 {
-	BLOCK *p, *prev;
-	int i, irqs;
-
-	irqs = disable_irq();
-
-	if(part->tail==NULL){
-		part->head = block;
-	}else{
-		part->tail->next = block;
-	}
-	part->tail = block;
-
-	block->next = NULL;
-	part->numblocks += 1;
-
-	restore_irq(irqs);
+    int irqs = disable_irq();
+    if (part->tail) part->tail->next = block;
+    else part->head = block;
+    part->tail = block;
+    block->next = NULL;
+    if (part->size < 0) part->size = 0;
+    part->size += block->size;
+    part->numblocks += 1;
+    restore_irq(irqs);
 }
 
+/* Caller holds the interrupt mask; detached blocks remain allocated. */
+static void unlink_block(PARTITION *part, BLOCK *prev, BLOCK *block)
+{
+    if (prev) prev->next = block->next;
+    else part->head = block->next;
+    if (part->tail == block) part->tail = prev;
+    part->size -= block->size;
+    part->numblocks -= 1;
+    block->next = NULL;
+}
 
 void remove_block(PARTITION *part, int index)
 {
-	BLOCK *p, *prev;
-	int i, irqs;
-
-	irqs = disable_irq();
-
-	prev = NULL;
-	p = part->head;
-	i = 0;
-
-	while(p){
-		if(i==index){
-			if(prev==NULL){
-				part->head = p->next;
-			}else{
-				prev->next = p->next;
-			}
-			if(part->tail==p){
-				part->tail = prev;
-			}
-			part->size -= p->size;
-			part->numblocks -= 1;
-			free_block(p);
-			break;
-		}
-
-		i += 1;
-		prev = p;
-		p = p->next;
-	}
-
-	restore_irq(irqs);
+    int irqs = disable_irq();
+    BLOCK *prev = NULL, *block = part->head;
+    while (block && index > 0) {
+        prev = block;
+        block = block->next;
+        index -= 1;
+    }
+    if (block && index == 0) {
+        unlink_block(part, prev, block);
+        free_block(block);
+    }
+    restore_irq(irqs);
 }
 
 void fill_fifo(u8 *addr, int size)
@@ -1482,87 +1466,65 @@ int put_sector_data(void)
 
 
 // 0x65 [SR]
-int copy_sector_data(void)
+/* Admission is shared. Filter routing remains a separate pending correction. */
+static __attribute__((noinline)) int copy_move_sector_data(int moving)
 {
-	int src, dst, spos, snum;
-	PARTITION *ps, *pd;
-
-	dst  = cdb.cr1&0xff;
-	src  = cdb.cr3>>8;
-	spos = cdb.cr2;
-	snum = cdb.cr4;
-
-	ps = &cdb.part[src];
-	pd = &cdb.part[dst];
-
-	SSLOG(_BUFIO, "copy_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
-	if(spos==0xffff){
-		spos = ps->numblocks-1;
-	}
-	if(snum==0xffff){
-		snum = ps->numblocks-spos;
-	}
-	SSLOG(_BUFIO, "                : src=%d(%d) spos=%d snum=%d\n", src, ps->numblocks, spos, snum);
-
-	copy_move_error = 0;
-
-	BLOCK *bs = find_block(ps, spos);
-	while(snum){
-		BLOCK *new = dup_block(bs);
-		if(new==NULL){
-			copy_move_error = 1;
-			break;
-		}
-		append_block(pd, new);
-		bs = bs->next;
-		snum -= 1;
-	}
-
-	set_status(cdb.status);
-	return HIRQ_ECPY;
+    int src = cdb.cr3 >> 8, dst = cdb.cr1 & 0xff;
+    int spos = cdb.cr2, snum = cdb.cr4;
+    if (src >= MAX_SELECTORS || dst >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    PARTITION *ps = &cdb.part[src], *pd = &cdb.part[dst];
+    if (moving) {
+        SSLOG(_BUFIO, "move_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
+    } else {
+        SSLOG(_BUFIO, "copy_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
+    }
+    if (spos == 0xffff) spos = ps->numblocks - 1;
+    if (snum == 0xffff) snum = ps->numblocks - spos;
+    SSLOG(_BUFIO, "                : src=%d(%d) spos=%d snum=%d\n", src, ps->numblocks, spos, snum);
+    if (cdb.trans_type || spos < 0 || snum <= 0 ||
+        spos >= ps->numblocks || snum > ps->numblocks - spos ||
+        (!moving && snum > cdb.block_free)) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    copy_move_error = 0;
+    BLOCK *prev = NULL, *block = ps->head;
+    for (int i = 0; block && i < spos; i++) {
+        prev = block;
+        block = block->next;
+    }
+    while (snum--) {
+        if (!block) { copy_move_error = 1; break; }
+        BLOCK *next = block->next;
+        if (moving) {
+            int irqs = disable_irq();
+            unlink_block(ps, prev, block);
+            append_block(pd, block);
+            restore_irq(irqs);
+        } else {
+            BLOCK *copy = dup_block(block);
+            if (!copy) { copy_move_error = 1; break; }
+            append_block(pd, copy);
+        }
+        block = next;
+    }
+    set_status(cdb.status);
+    return HIRQ_ECPY;
 }
 
+int copy_sector_data(void)
+{
+    return copy_move_sector_data(0);
+}
 
 // 0x66 [SR]
 int move_sector_data(void)
 {
-	int src, dst, spos, snum, i;
-	PARTITION *ps, *pd;
-
-	dst  = cdb.cr1&0xff;
-	src  = cdb.cr3>>8;
-	spos = cdb.cr2;
-	snum = cdb.cr4;
-
-	ps = &cdb.part[src];
-	pd = &cdb.part[dst];
-
-	SSLOG(_BUFIO, "move_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
-	if(spos==0xffff){
-		spos = ps->numblocks-1;
-	}
-	if(snum==0xffff){
-		snum = ps->numblocks-spos;
-	}
-	SSLOG(_BUFIO, "                : src=%d(%d) spos=%d snum=%d\n", src, ps->numblocks, spos, snum);
-
-	copy_move_error = 0;
-
-	for(i=0; i<snum; i++){
-		BLOCK *bs = find_block(ps, spos);
-		BLOCK *new = dup_block(bs);
-		if(new==NULL){
-			copy_move_error = 1;
-			break;
-		}
-		append_block(pd, new);
-		remove_block(ps, spos);
-	}
-
-	set_status(cdb.status);
-	return HIRQ_ECPY;
+    return copy_move_sector_data(1);
 }
-
 
 // 0x67 [S-]
 int get_copy_error(void)
