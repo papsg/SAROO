@@ -1,5 +1,5 @@
 """Actual drive commands, helpers, pause branches and worker boundaries."""
-# Adapted from paps-g47ec46a4/cd83b371; no private preparer or devices.
+# Adapted from paps-g 47ec46a4/cd83b371/3772326a; no private preparer or devices.
 import hashlib
 import json
 import os
@@ -30,6 +30,7 @@ class CDDriveTests(unittest.TestCase):
         code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
         for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
             if sig in raw:code+=function(raw,sig)
+        code+=function(raw,b'int init_cdblock(')
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         (cls.target/'drive.inc').write_bytes(code)
         start=main.index(b'_restart_nowait:')
@@ -95,6 +96,8 @@ class CDDriveTests(unittest.TestCase):
     def test_112_retained_endpoint_transition_pairs(self):self.run_case(16)
     def test_failed_handoff_retains_types_and_default_removes_constraint(self):self.run_case(17)
     def test_file_and_background_ranges_retire_play_type_constraints(self):self.run_case(18)
+    def test_initialization_handoff_is_bounded_and_defers_all_mutation(self):self.run_case(19)
+    def test_initialization_late_acknowledgement_and_final_wait(self):self.run_case(20)
 
 
 if __name__=='__main__':unittest.main()

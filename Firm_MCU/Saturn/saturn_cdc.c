@@ -593,17 +593,10 @@ int init_cdblock(void)
 	if(iflag&0x80){
 		goto _exit;
 	}
+    /* The reader still owns its policy and buffers until it acknowledges.
+     * Keep its request pending if the bounded handoff cannot complete. */
+    if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
 	cdb.iflag = iflag;
-
-	// Stop Play task
-	if(cdb.play_type){
-		cdb.pause_request = 1;
-		cdb.play_wait = 0;
-		disk_task_wakeup();
-		do{
-			wait_pause_ok();
-		}while(cdb.pause_request);
-	}
 
 	if((iflag&0x01)==0){
 		return 0;

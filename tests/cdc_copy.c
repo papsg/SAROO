@@ -81,7 +81,11 @@ static void restore_irq(int old)
 }
 static void disk_task_wakeup(void) { assert(0); }
 static __attribute__((unused)) void osDelay(int ticks) { (void)ticks; assert(0); }
-static void wait_pause_ok(void) { assert(0); }
+static __attribute__((unused)) void wait_pause_ok(void) { assert(0); }
+/* Copy-only reset controls are idle. Active handoff uses the real helper and
+ * both worker branches in cdc_drive.c, rather than silently acknowledging here. */
+static __attribute__((unused)) int pause_drive(void)
+{ assert(!cdb.play_type); return 0; }
 static void set_report(u8 status) { reply[0]=(u16)status<<8; }
 static void *counted_memcpy(void *to,const void *from,size_t n)
 {

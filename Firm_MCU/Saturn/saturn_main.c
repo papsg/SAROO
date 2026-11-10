@@ -208,8 +208,8 @@ int get_sector(int fad, BLOCK *wblk)
     cdb.ctrladdr = TRACK_CTRL(tk);
     cdb.index = track_subindex(tk, fad);
     if (!wblk) return 0;
-    /* Initialization may change iflag while waiting for this reader. Complete
-     * one operation with a single mode; the next request observes the change. */
+    /* Complete one operation with a single mode across all reader stages.
+     * Initialization waits for this reader before changing its policy. */
     u8 subcode_mode = (cdb.iflag & 2) ? cdb.has_subrw : 0;
     if ((u32)fad >= buf_fad_start && (u32)fad < buf_fad_end &&
         buf_subcode_mode == subcode_mode) {

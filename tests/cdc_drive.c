@@ -1,14 +1,18 @@
-/* MCU-CDC-014/022: paps-g47ec46a4/cd83b371, public actual-source fixtures. */
+/* MCU-CDC-014/017/022: paps-g 47ec46a4/cd83b371/3772326a, actual-source fixtures. */
 #define CDC_OWNERSHIP_HOOKS
 #define main copy_fixture_main
 #define disk_task_wakeup copy_stub_wakeup
 #define wait_pause_ok copy_stub_wait
 #define set_report copy_stub_report
+#define init_cdblock copy_stub_init_cdblock
+#define pause_drive copy_stub_pause_drive
 #include "cdc_copy.c"
 #undef main
 #undef disk_task_wakeup
 #undef wait_pause_ok
 #undef set_report
+#undef init_cdblock
+#undef pause_drive
 static u32 buf_fad_start, buf_fad_end;
 static unsigned wakeups, waits, read_calls;
 static int acknowledge_after;
@@ -18,11 +22,17 @@ static void hw_delay(int delay) { (void)delay; }
 static void disk_task_wakeup(void) { assert(!irq_depth);wakeups++; }
 static int pause_active;
 static unsigned pause_signals;
+static const CDBLOCK *pause_state;
+static u16 pause_control,pause_hirq,pause_clear;
 static void set_pause_ok(void) { assert(!irq_depth);pause_signals++; }
 #include "pause-worker.inc"
 static void wait_pause_ok(void)
 {
     waits++;assert(waits <= 501 && !irq_depth);
+    if(pause_state) {
+        assert(!memcmp(pause_state,&cdb,sizeof cdb));
+        assert(st_control==pause_control && hirq==pause_hirq && hirq_clear==pause_clear);
+    }
     if (acknowledge_after >= 0 && waits >= (unsigned)acknowledge_after) {
         if(repeat_on_ack){cdb.repcnt++;repeat_on_ack=0;}
         worker_pause_step();
@@ -52,6 +62,7 @@ static void ready(void)
     buf_fad_start=123; buf_fad_end=456;
     wakeups=waits=read_calls=0; acknowledge_after=1;
     pause_active=0;pause_signals=0;repeat_on_ack=0;
+    pause_state=NULL;
     hirq=hirq_clear=0;
 }
 static void request(u32 start,u32 end,unsigned mode)
@@ -396,6 +407,77 @@ static void replacement_types(void)
     request(0xffffff,0x800001,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
     assert(cdb.play_pos_types==8);check_owners();
 }
+
+/* The complete command state, hardware-register model and block ownership must
+ * stay unchanged while the producer still owns its request. */
+static void init_request(unsigned flags,unsigned type,unsigned branch)
+{
+    ready();cdb.play_type=type;cdb.play_wait=1;cdb.status=STAT_PLAY;
+    cdb.iflag=0x14;cdb.cr1=0x400|flags;cdb.cr2=900;cdb.cr4=0x540;
+    cdb.trans_type=TRANS_DATA;cdb.trans_part_index=0;
+    cdb.trans_block=cdb.part[0].head;cdb.trans_bk=1;cdb.cdwnum=600;
+    cdb.subrw_rp=3;cdb.subrw_wp=7;cdb.rdir_state=2;cdb.cdir_pfnum=7;
+    cdb.play_pos_types=5;cdb.max_repeat=9;cdb.repcnt=4;
+    st_control=0x221;hirq=0x55;hirq_clear=0x66;copy_move_error=1;
+    reply[0]=0x5aa5;reply[1]=0xb2c3;reply[2]=0xd4e5;reply[3]=0xf678;
+    pause_active=branch;
+}
+static void expect_pause_state(CDBLOCK *before)
+{
+    memcpy(before,&cdb,sizeof cdb);before->pause_request=1;before->play_wait=0;
+    pause_state=before;pause_control=st_control;pause_hirq=hirq;pause_clear=hirq_clear;
+}
+static void init_handoff(void)
+{
+    const unsigned flags[]={0,2,1,0x7f};
+    for(unsigned type=1;type<=3;type++)for(unsigned branch=0;branch<2;branch++)
+    for(unsigned f=0;f<4;f++) {
+        init_request(flags[f],type,branch);CDBLOCK before;expect_pause_state(&before);
+        acknowledge_after=-1;
+        assert(!init_cdblock());
+        assert(waits==500 && wakeups==1 && reply[0]==(((STAT_WAIT|STAT_PLAY)<<8)|0xa5));
+        assert(reply[1]==0xb2c3 && reply[2]==0xd4e5 && reply[3]==0xf678);
+        assert(!memcmp(&before,&cdb,sizeof cdb) && copy_move_error==1);
+        assert(buf_fad_start==123 && buf_fad_end==456 && !pause_signals);
+        check_owners();
+        waits=wakeups=0;acknowledge_after=3;
+        int reset=flags[f]&1;
+        assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
+        pause_state=NULL;
+        assert(waits==3 && wakeups==1 && pause_signals==1);
+        assert(!cdb.play_type && !cdb.pause_request && cdb.status==STAT_PAUSE);
+        assert(cdb.fad==180 && cdb.play_fad_start==150 && cdb.play_fad_end==700);
+        assert(cdb.play_pos_types==5 && cdb.max_repeat==9 && cdb.repcnt==4);
+        assert(buf_fad_start==123 && buf_fad_end==456);
+        if(reset) {
+            assert(cdb.block_free==200 && !cdb.trans_type && !copy_move_error);
+            assert(hirq_clear==(HIRQ_PEND|HIRQ_DRDY|HIRQ_BFUL));
+        } else {
+            assert(cdb.iflag==flags[f] && cdb.block_free==198 && cdb.trans_type==TRANS_DATA);
+            assert(st_control==0x221 && hirq==0x55 && hirq_clear==0x66 && copy_move_error==1);
+        }
+        if(type==PLAYTYPE_DIR || reset)assert(!cdb.rdir_state && !cdb.cdir_pfnum);
+        check_owners();
+    }
+}
+static void init_late_ack(void)
+{
+    for(unsigned branch=0;branch<2;branch++)for(unsigned late=0;late<2;late++) {
+        init_request(2,PLAYTYPE_DIR,branch);CDBLOCK before;expect_pause_state(&before);
+        acknowledge_after=late?-1:500;
+        assert(!init_cdblock() && waits==500 && wakeups==1);
+        if(late) {
+            assert(cdb.pause_request && (reply[0]>>8)==(STAT_WAIT|STAT_PLAY));
+            worker_pause_step();assert(!cdb.pause_request && !cdb.play_type);
+            pause_state=NULL;waits=wakeups=0;
+            assert(!init_cdblock() && !waits && !wakeups);
+        }
+        pause_state=NULL;
+        assert(!cdb.play_type && !cdb.pause_request && pause_signals==1 && cdb.iflag==2);
+        assert(!cdb.rdir_state && !cdb.cdir_pfnum && cdb.block_free==198);
+        assert(buf_fad_start==123 && buf_fad_end==456);check_owners();
+    }
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -409,6 +491,7 @@ int main(int argc,char **argv)
     case 12:repeat_preservation();break;case 13:repeat_changes();break;
     case 14:repeat_seek_stop();break;case 15:home_resume();break;
     case 16:retained_forms();break;case 17:retained_form_failure();break;case 18:replacement_types();break;
+    case 19:init_handoff();break;case 20:init_late_ack();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }
