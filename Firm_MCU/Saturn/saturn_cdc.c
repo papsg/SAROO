@@ -446,6 +446,18 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 	if(wblk->size==2048){
 		memset(blk->data, 0, 24);
 		memcpy32(blk->data+24, wblk->data, 2048);
+	}else if(wblk->size==2336){
+        memset(blk->data, 0, 16);
+        blk->data[15] = 2;
+        memcpy32(blk->data+16, wblk->data, 2336);
+        if(wblk->sm & 0x20) blk->size = 2324;
+	}else if(wblk->size==2324){
+        memset(blk->data, 0, 24);
+        blk->data[15] = 2;
+        blk->data[18] = blk->data[22] = 0x20;
+        memcpy32(blk->data+24, wblk->data, 2324);
+        memset(blk->data+2348, 0, 4);
+        blk->size = 2324;
 	}else if(wblk->size==2352){
 		if(track->mode==3 || wblk->data[15]==2){
 			// MODE2 or AUDIO

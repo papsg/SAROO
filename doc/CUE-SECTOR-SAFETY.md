@@ -165,3 +165,64 @@ MODE2 container normalization and optional subcode I/O follow independently.
 The same commit's already-public99-track correction is deduplicated; replacing
 CUE_TRACKS's literal99 with the shared limit changes no capacity. No source,
 installed firmware or physical device in the private workspace is changed.
+
+## MCU-CDIO-003: normalize accepted MODE2 image payloads
+
+Original: selected paps-g `659fe4ee`. The parser already accepts MODE2/2336 and
+MODE2/2324, but the reader loses their subheader/form metadata and filter_sector
+has no payload-copy branch for either width. Allocating a block can therefore
+publish its unrelated previous bytes. Both producer metadata and direct filter
+copy defects reproduce independently against the preceding source.
+
+Sega [ST-162 §5.4(1), Figure5.8, printed p.48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
+defines the XA sector's16-byte sync/header prefix,8-byte repeated subheader,
+2,048/2,324-byte user regions and trailer sizes. [Submode constants, printed
+p.71](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=59)
+define the0x20 Form2 bit. Those describe native sector content; the accepted
+headerless image widths and zero-filled missing fields are SAROO image-adapter
+policy, not a Sega requirement to support those image files.
+
+Extract the2336-byte image's subheader from its beginning and copy all2336
+bytes at container offset16 after initializing the missing prefix/mode byte.
+For2324-byte payload-only input, use Form2 metadata, place all user bytes at
+byte24, initialize both subheaders/form markers and clear the four-byte tail.
+Unknown file/channel/coding fields are zero; removed image information cannot
+be recovered. Preserve configured Form1 transfer sizes and existing2324-byte
+Form2 reporting. This is the existing normalized buffer convention, not a
+claim of synthesized canonical raw sync/FAD/ECC/EDC or authentication data.
+Raw/cooked MODE1 and2352-byte/audio behavior remain outside this change.
+
+Two new actual-source groups each pass96 combinations: reader→filter→routed
+copy, and direct filter→copy with independently supplied metadata. They cover
+2336-byte Form1/Form2 and2324-byte input, all four configured transfer sizes,
+eight patterns, every2352 container byte, FAD/metadata, selected routing and
+block ownership. Free payloads are poisoned before allocation. Both preceding-
+source groups fail; six existing routing controls pass. Eight compiled
+behavioral mutants are detected. The initial fixture left block0 zero-filled,
+so header/tail-clear omissions survived; those results are preserved/excluded.
+The corrected poison-buffer fixture detects both and the other six variants.
+
+All144 current CD/reader/layout methods pass sanitizers and O2; final poisoned
+routing groups also pass both profiles. Existing sector-input metadata fixtures
+now seed real2336-byte subheaders and expect2324-byte Form2 flags. The unchanged
+payload bytes remain independently checked. No old zero-metadata expectation
+for these newly handled formats is asserted preserved.
+
+GNU MCU load grows128 bytes:60,648→60,776, leaving4,760 ITCM bytes. Static DTCM
+remains60,304; all56 input hashes and identical SDK bind to the receipt. Reader64,
+filter32 and disk72 direct frames remain unchanged. No buffer, state, allocation,
+I/O, wait, log or mask is added. The new branches copy the supplied payload once
+and initialize absent header/tail bytes outside the existing brief ownership
+masks. Physical timing, game behavior and MDK equivalence remain unqualified.
+
+```sh
+python3 -B tests/test_cdc_routing.py
+SAROO_CDC_PROFILE=release python3 -B tests/test_cdc_routing.py
+# To reproduce both old defects, select the preceding source functions:
+SAROO_CDC_ROUTING_SOURCE=/path/to/preceding/saturn_cdc.c \
+SAROO_CDC_ROUTING_MAIN=/path/to/preceding/saturn_main.c \
+  python3 -B tests/test_cdc_routing.py
+```
+
+Optional subcode I/O/mode/lookahead safety remains the last scoped contribution.
+No private source, device or installed firmware is changed.

@@ -45,6 +45,7 @@ static void setup(unsigned size,unsigned offset,unsigned mode)
     for(unsigned i=0;i<sizeof image;i++)image[i]=(u8)(i*13+offset);
     image[offset+15]=2;image[offset+16]=7;image[offset+17]=9;
     image[offset+18]=0x28;image[offset+19]=0x11;
+    if(size==2336) { image[offset]=7;image[offset+1]=9;image[offset+2]=0x28;image[offset+3]=0x11; }
     tracks[0]=(TRACK_INFO){.fp=&file,.mode=mode,.sector_size=size,.fad_0=150,.fad_start=150,.fad_end=400,.file_offset=offset,.max_index=1};
     cdb.play_track=&tracks[0];cdb.tracks=tracks;cdb.track_num=1;
     cdb.play_type=PLAYTYPE_FILE;cdb.status=STAT_PLAY;
@@ -122,9 +123,9 @@ static void track_and_metadata_controls(void)
     const unsigned sizes[]={2048,2324,2336,2352,2352},modes[]={1,2,2,2,3};
     for(unsigned format=0;format<5;format++) {
         setup(sizes[format],511,modes[format]);BLOCK block;
-        assert(!get_sector(150,&block));int raw_mode2=format==3;
+        assert(!get_sector(150,&block));int raw_mode2=format==2 || format==3;
         assert(block.fn==(raw_mode2?7:0) && block.cn==(raw_mode2?9:0));
-        assert(block.sm==(raw_mode2?0x28:0) && block.ci==(raw_mode2?0x11:0));
+        assert(block.sm==(raw_mode2?0x28:format==1?0x20:0) && block.ci==(raw_mode2?0x11:0));
         assert(block.fad==150 && !memcmp(block.data,image+511,sizes[format]));
     }
     setup(2048,0,1);assert(!get_sector(150,NULL) && !locks && !reads && !seeks);

@@ -60,5 +60,8 @@ class CDRoutingTests(unittest.TestCase):
     def test_normalized_non_mode2_conditions(self):self.run_case(4)
     def test_defined_full_width_range_representation_and_edges(self):self.run_case(5)
 
+    def test_96_mode2_reader_filter_and_routed_copy_layouts(self):self.run_case(6)
+    def test_96_mode2_filter_container_payload_and_metadata_controls(self):self.run_case(7)
+
 
 if __name__=='__main__':unittest.main()

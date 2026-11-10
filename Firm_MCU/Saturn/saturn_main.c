@@ -256,14 +256,18 @@ int get_sector(int fad, BLOCK *wblk)
     wblk->data = sector_buffer + buf_fad_offset + (fad - buf_fad_start)*buf_fad_size;
 	wblk->size = buf_fad_size ? buf_fad_size : tk->mode == 3 ? 2352 : 2048;
 	wblk->fad = fad;
-	if(tk->mode!=3 && wblk->size==2352 && wblk->data[0x0f]==0x02){
-		wblk->fn = wblk->data[0x10];
-		wblk->cn = wblk->data[0x11];
-		wblk->sm = wblk->data[0x12];
-		wblk->ci = wblk->data[0x13];
-	}else{
-		wblk->fn = wblk->cn = wblk->sm = wblk->ci = 0;
-	}
+    const u8 *subheader = NULL;
+    if (tk->mode != 3) {
+        if (wblk->size == 2352 && wblk->data[15] == 2) subheader = wblk->data + 16;
+        else if (wblk->size == 2336) subheader = wblk->data;
+    }
+    if (subheader) {
+        wblk->fn = subheader[0]; wblk->cn = subheader[1];
+        wblk->sm = subheader[2]; wblk->ci = subheader[3];
+    } else {
+        wblk->fn = wblk->cn = wblk->ci = 0;
+        wblk->sm = wblk->size == 2324 ? 0x20 : 0;
+    }
 
 	// 处理subcode
 	if(cdb.has_subrw && cdb.iflag&0x02){

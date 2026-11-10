@@ -143,11 +143,52 @@ static void range_representation(void)
     cdb.filter[5].range=0;compare_predicate(b,0xff);
     /* Last case tests full-width cached arithmetic, not a physical24-bit packet. */
 }
+/* Independent normalized-container oracle for accepted MODE2 image widths. */
+static void mode2_layouts(int producer)
+{
+    const unsigned readsizes[]={2048,2336,2340,2352};
+    for(unsigned form=0;form<3;form++)for(unsigned r=0;r<4;r++)
+    for(unsigned tag=0;tag<8;tag++) {
+        setup(0,200);unsigned width=form==2?2324:2336;
+        for(unsigned i=0;i<MAX_BLOCKS;i++)memset(cdb.block[i].data,0xa5,2352);
+        for(unsigned i=0;i<sizeof disc_bytes;i++)disc_bytes[i]=(u8)(i*13+tag*7);
+        unsigned fn=form==2?0:7+tag,cn=form==2?0:9+tag,ci=form==2?0:0x11+tag;
+        unsigned sm=form==0?8:0x28;
+        if(form==2)sm=0x20;
+        else for(unsigned copy=0;copy<2;copy++) {
+            disc_bytes[copy*4]=fn;disc_bytes[copy*4+1]=cn;
+            disc_bytes[copy*4+2]=sm;disc_bytes[copy*4+3]=ci;
+        }
+        TRACK_INFO track={.mode=2,.sector_size=width,.fad_0=150,.fad_start=150,.fad_end=150,.max_index=1};
+        cdb.tracks=cdb.play_track=&track;cdb.track_num=1;
+        buf_fad_start=150;buf_fad_end=151;buf_fad_offset=0;buf_fad_size=width;
+        BLOCK incoming;memset(&incoming,0xa5,sizeof incoming);
+        if(producer)assert(!get_sector(150,&incoming) && incoming.size==(int)width && incoming.fad==150);
+        else incoming=(BLOCK){.data=disc_bytes,.size=width,.fad=150,.fn=fn,.cn=cn,.sm=sm,.ci=ci};
+        assert(incoming.fn==(int)fn && incoming.cn==(int)cn && incoming.sm==(int)sm && incoming.ci==(int)ci);
+        cdb.cddev_filter=0;cdb.sector_size=readsizes[r];
+        assert(!filter_sector(&track,&incoming));BLOCK *source=cdb.part[0].head;assert(source);
+        u8 expected[2352]={0};expected[15]=2;
+        if(form==2) {
+            expected[18]=expected[22]=0x20;
+            for(unsigned i=0;i<2324;i++)expected[24+i]=disc_bytes[i];
+        } else for(unsigned i=0;i<2336;i++)expected[16+i]=disc_bytes[i];
+        assert(!memcmp(source->data,expected,sizeof expected));
+        assert(source->size==(int)(form?2324:readsizes[r]) && source->fad==150);
+        assert(source->fn==(int)fn && source->cn==(int)cn && source->sm==(int)sm && source->ci==(int)ci);
+        cdb.filter[5]=(FILTER){.mode=0x41,.fad=150,.range=1,.fid=fn,.c_true=7,.c_false=0xff};
+        command(0,0,5,0,1);assert(execute(0)==HIRQ_ECPY);
+        BLOCK *copy=cdb.part[7].head;assert(copy && copy!=source && copy->fad==150 && copy->size==source->size);
+        assert(copy->fn==(int)fn && copy->cn==(int)cn && copy->sm==(int)sm && copy->ci==(int)ci);
+        assert(!memcmp(copy->data,expected,sizeof expected));check_owners();
+    }
+}
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<6);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<8);
     if(test==0)routed_shapes();else if(test==1)discard_and_admission();
     else if(test==2)disc_metadata();else if(test==3)predicates();
-    else if(test==4)normalized_non_mode2();else range_representation();
+    else if(test==4)normalized_non_mode2();else if(test==5)range_representation();
+    else mode2_layouts(test==6);
     puts("pass: shared routing, original selection, metadata, discard and ownership");return 0;
 }
