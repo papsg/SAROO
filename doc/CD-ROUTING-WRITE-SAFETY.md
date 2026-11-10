@@ -81,9 +81,78 @@ is the later003 routing continuation; current incoming predicates remain.
 
 ## MCU-CDC-006: connection ownership and reset/default distinctions
 
-Queued: selected `50100444` and the defaults/reset continuation from `3f7bba1a`.
-Keep input exclusivity distinct from permitted shared true outputs; validate
-before mutation and preserve ignored-argument behavior.
+Original: selected paps-g `50100444`, plus defaults/reset prerequisites from
+`3f7bba1a`. Depends on005's producer representation; prepares later routing and
+private writes. The public adaptation preserves original log strings/masks,
+including the two spaces in the connection-setter format.
+
+Sega's [CD Communication Interface §5.2 and §5.3.3 Table5.1](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+defines one-to-one device/false-output connections to aperture inputs while
+allowing multiple true outputs to one partition. A new input owner disconnects
+prior CD/false sources; true outputs remain shared. Setters validate all selected
+fields before mutation, preserve ignored output fields, and allow0xff
+connection disconnection. Invalid array selectors return existing REJECT status
+without mutation; exact malformed-command hardware replies are unmeasured.
+
+[§8.2.5 functions5.5,5.7 and5.9](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_15.htm)
+define condition initialization, selected connection fields and reset flags.
+Condition reset now clears FN too. Input reset disconnects CD and false inputs
+without changing true outputs. A nonzero reset ignores the supplied partition;
+pause depends on actual incoming data erasure, with a valid data-track check,
+instead of comparing that ignored argument. Preserve the existing pause
+handshake; the host fixture acknowledges it without physical scheduling.
+
+Startup restores2048-byte read/write defaults, identity true connections and
+zero ranges. Accepted software reset restores lengths and FN, ends transfer
+pointer/count ownership and disables FIFO data direction/IRQ. Nonreset and
+no-change initialization retain state. These defaults follow §5.3's initial
+selector state, §8.2.5 function5.9 and
+[§8.2.7 function7.1](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm).
+[§5.5 Table5.2](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+and [§8.2.1 function1.7](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_11.htm)
+define software reset versus retained/no-change initialization. Other drive/init
+parameters and active partition-output reset are not completed by this port.
+
+Remove the blanket pool-free pass after global partition erasure. Partition
+release already frees its owned blocks; repeating a blanket reset would make
+an allocated, unpublished block reusable. An actual allocator/reset control
+proves that ownership violation in the model. This is also a necessary
+prerequisite for007's private reservations, not a claim of a captured hardware
+interleaving. Complete CD software reset still owns and releases the whole pool.
+
+Nine actual-source methods pass sanitizers/O2. They cover576 ownership pairs,
+invalid/ignored selected fields and atomic rejection, all24 condition resets,
+510 nonzero flag/ignored-argument combinations, pause/no-track/audio controls,
+actual relocated startup, software/nonreset/no-change initialization, an actual
+unpublished allocation and baseline-valid configuration. The flag sweep checks
+encoding/unchanged fields, not255 asserted valid hardware reset modes. Only two
+physical buffer address expressions are relocated in startup; the initializer
+itself is extracted unchanged. The baseline fails eight groups; its ordinary
+configuration control passes. Thirteen compiled mutations reject ownership,
+validation, reset/default and unpublished-block regressions. All40 current CD
+methods pass; original002 outcome/reset and005 producer controls remain.
+
+The full MCU link adds160 load bytes:57,748→57,908, leaving7,628 ITCM bytes.
+Static DTCM remains60,296, with no extra retained state, workspace, allocation,
+payload copy or I/O. CD-connection direct frame grows8→16, connection setter
+stays40, reset shrinks48→32, startup/init remain24/24 and IRQ/dispatch24/16.
+The new disconnect helper has an8-byte direct frame; caller sums include that
+additional frame before other callees/exceptions. Setters mask at most24
+connection checks and selected field writes; they do not mask payload/routing
+work or pause waits. The existing global reset loop is not promoted to a new
+atomic transaction. No physical latency, concurrency, peak-stack or game
+qualification follows from these host/build checks.
+
+```sh
+python3 tests/test_cdc_connections.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_connections.py
+# Overrides: SAROO_CDC_CONNECTION_SOURCE and SAROO_CDC_CONNECTION_MAIN
+```
+
+Active host-input theft and private-list lifecycle completion remain007;
+general partition-output/cancellation/GET ownership and later initialization
+corrections remain outside this selected slice. This is not full command or
+hardware reset qualification.
 
 ## MCU-CDC-003 continuation: shared destination-filter routing
 

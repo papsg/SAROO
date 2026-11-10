@@ -620,12 +620,16 @@ int init_cdblock(void)
 	cdb.subrw_wp = 0;
 
 	// disable fifo irq
-	ST_CTRL &= ~STIRQ_DAT;
+	ST_CTRL &= ~(STIRQ_DAT | 0x0200);
 	// reset fifo
 	ST_CTRL |= 0x0100;
 	ST_CTRL &=~0x0100;
 
+	cdb.sector_size = 2048;
+	cdb.put_sector_size = 2048;
 	cdb.trans_type = 0;
+	cdb.trans_block = NULL;
+	cdb.trans_bk = 0;
 	cdb.cdwnum = 0;
 	// Galaxy Fight: 在play之后发出init_cdblock命令. 此处不能设置当前fad，否则会破坏之前的play。
 	//cdb.fad = 150;
@@ -650,6 +654,7 @@ int init_cdblock(void)
 		cdb.filter[i].mode   = 0;
 		cdb.filter[i].fad    = 0;
 		cdb.filter[i].range  = 0;
+		cdb.filter[i].fid    = 0;
 		cdb.filter[i].chan   = 0;
 		cdb.filter[i].smmask = 0;
 		cdb.filter[i].cimask = 0;
@@ -972,13 +977,29 @@ int get_subcode(void)
 /******************************************************************************/
 // CD-ROM device 相关命令
 
+/* Caller serializes connection changes; true outputs may share partitions. */
+static void disconnect_filter_input(int fid)
+{
+    if (fid >= MAX_SELECTORS) return;
+    if (cdb.cddev_filter == fid) cdb.cddev_filter = 0xff;
+    for (int i = 0; i < MAX_SELECTORS; i++)
+        if (cdb.filter[i].c_false == fid) cdb.filter[i].c_false = 0xff;
+}
+
 // 0x30 [SR]
 int set_cdev_connect(void)
 {
-	SSLOG(_CDRV, "set_cdev_connect: %d\n", cdb.cr3>>8);
-	cdb.cddev_filter = cdb.cr3>>8;
-
-	return HIRQ_ESEL;
+    int fid = cdb.cr3 >> 8;
+    SSLOG(_CDRV, "set_cdev_connect: %d\n", fid);
+    if (fid >= MAX_SELECTORS && fid != 0xff) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    int irqs = disable_irq();
+    disconnect_filter_input(fid);
+    cdb.cddev_filter = fid;
+    restore_irq(irqs);
+    return HIRQ_ESEL;
 }
 
 // 0x31 [S-]
@@ -1091,6 +1112,10 @@ int set_filter_mode(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	cdb.filter[fid].mode = cdb.cr1&0xff;
 	SSLOG(_FILTER, "set_filter_mode: fid=%d  mode=%02x\n", fid, cdb.cr1&0xff);
 
@@ -1098,6 +1123,7 @@ int set_filter_mode(void)
 		cdb.filter[fid].mode   = 0;
 		cdb.filter[fid].fad    = 0;
 		cdb.filter[fid].range  = 0;
+		cdb.filter[fid].fid    = 0;
 		cdb.filter[fid].chan   = 0;
 		cdb.filter[fid].smmask = 0;
 		cdb.filter[fid].cimask = 0;
@@ -1126,29 +1152,23 @@ int get_filter_mode(void)
 // 0x46 [SR]
 int set_filter_connection(void)
 {
-	int fid, flag, ct, cf;
-
-	flag = cdb.cr1&0xff;
-	ct = cdb.cr2>>8;
-	cf = cdb.cr2&0xff;
-	fid = cdb.cr3>>8;
-	SSLOG(_FILTER, "set_filter_connection: fid=%d  flag=%d true=%02x false=%02x\n", fid, flag, ct, cf);
-
-	if(fid>=24)
-		return 0;
-
-	if(flag&1){
-		if(ct>=24 && ct!=0xff)
-			return 0;
-		cdb.filter[fid].c_true = ct;
-	}
-	if(flag&2){
-		if(cf>=24 && cf!=0xff)
-			return 0;
-		cdb.filter[fid].c_false = cf;
-	}
-
-	return HIRQ_ESEL;
+    int flag = cdb.cr1 & 0xff, ct = cdb.cr2 >> 8, cf = cdb.cr2 & 0xff;
+    int fid = cdb.cr3 >> 8;
+    SSLOG(_FILTER, "set_filter_connection: fid=%d  flag=%d true=%02x false=%02x\n", fid, flag, ct, cf);
+    if (fid >= MAX_SELECTORS ||
+        ((flag & 1) && ct >= MAX_SELECTORS && ct != 0xff) ||
+        ((flag & 2) && cf >= MAX_SELECTORS && cf != 0xff)) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    int irqs = disable_irq();
+    if (flag & 1) cdb.filter[fid].c_true = ct;
+    if (flag & 2) {
+        disconnect_filter_input(cf);
+        cdb.filter[fid].c_false = cf;
+    }
+    restore_irq(irqs);
+    return HIRQ_ESEL;
 }
 
 // 0x47 [S-]
@@ -1187,13 +1207,20 @@ void free_partition(PARTITION *pt)
 int reset_filter(void)
 {
 	int mode, fid;
-	int i, j;
+	int i;
 
 	mode = cdb.cr1&0xff;
 	fid = cdb.cr3>>8;
 	SSLOG(_FILTER, "reset_filter: mode=%02x fid=%d\n", mode, fid);
 
-	if(fid==cdb.cddev_filter && cdb.play_type!=0 && cdb.play_track->mode!=3){
+    if (mode == 0 && fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    /* Nonzero reset modes ignore fid; pause only for incoming data erasure. */
+    if (((mode & 0x04) || (mode == 0 && fid == cdb.cddev_filter)) &&
+        cdb.cddev_filter < MAX_SELECTORS && cdb.play_type != 0 &&
+        cdb.play_track && cdb.play_track->mode != 3) {
 		cdb.pause_request = 1;
 		cdb.play_wait = 0;
 		SSLOG(_CDRV, "reset_filter: Send PAUSE request!\n");
@@ -1207,8 +1234,9 @@ int reset_filter(void)
 			free_partition(&cdb.part[fid]);
 		}
 	}else{
+		if (mode & 0x20) cdb.cddev_filter = 0xff;
 		for(i=0; i<MAX_SELECTORS; i++){
-			if(mode&0x80){
+			if(mode & (0x80|0x20)){
 				cdb.filter[i].c_false = 0xff;
 			}
 			if(mode&0x40){
@@ -1218,6 +1246,7 @@ int reset_filter(void)
 				cdb.filter[i].mode   = 0;
 				cdb.filter[i].fad    = 0;
 				cdb.filter[i].range  = 0;
+				cdb.filter[i].fid    = 0;
 				cdb.filter[i].chan   = 0;
 				cdb.filter[i].smmask = 0;
 				cdb.filter[i].cimask = 0;
@@ -1229,12 +1258,7 @@ int reset_filter(void)
 			}
 		}
 
-		if(mode&0x04){
-			cdb.block_free = MAX_BLOCKS;
-			for(j=0; j<MAX_BLOCKS; j++){
-				cdb.block[j].size = -1;;
-			}
-		}
+		/* Only partition-owned blocks were released above. */
 	}
 
 	return HIRQ_ESEL;

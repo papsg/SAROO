@@ -933,6 +933,7 @@ void ss_sw_init(void)
 	cdb.index = 1;
 
 	cdb.sector_size = 2048;
+	cdb.put_sector_size = 2048;
 	cdb.block_free = MAX_BLOCKS;
 
 	for(i=0; i<MAX_BLOCKS; i++){
@@ -951,7 +952,7 @@ void ss_sw_init(void)
 	cdb.subrw_buf = cdb.subcode_buf+1536;
 
 	for(i=0; i<MAX_SELECTORS; i++){
-		cdb.filter[i].range = 0xffffffff;
+		cdb.filter[i].c_true = i;
 		cdb.filter[i].c_false = 0xff;
 
 		cdb.part[i].size = -1;
