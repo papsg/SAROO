@@ -24,7 +24,8 @@ class CDBoundsTests(unittest.TestCase):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',)))
-        code=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',
+        code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
+        code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',
             b'int get_filter_connection(',b'int get_sector_num(',b'int cal_actual_size(',b'int get_actual_size(',
             b'int get_sector_info(',b'static __attribute__((noinline)) int get_sector_data_common(',
@@ -66,6 +67,9 @@ class CDBoundsTests(unittest.TestCase):
     def test_408_valid_read_delete_tail_controls(self):self.run_case(5)
     def test_all_valid_directory_and_file_command_selectors(self):self.run_case(6)
     def test_valid_size_calculation_controls(self):self.run_case(7)
+    def test_405_size_ranges_sentinels_and_retained_refusals(self):self.run_case(8)
+    def test_800_calculations_match_actual_fifo_payload_and_full_counts(self):self.run_case(9)
+    def test_incomplete_variable_list_error_and_reset_lifetime(self):self.run_case(10)
 
 
 if __name__=='__main__':unittest.main()

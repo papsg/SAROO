@@ -27,6 +27,7 @@ class CDMetadataTests(unittest.TestCase):
         if b'static void unlink_block(' in cdc:code+=function(cdc,b'static void unlink_block(')
         code+=function(cdc,b'void remove_block(')+function(cdc,b'void set_status(')
         operations=b''.join(function(cdc,sig) for sig in (b'void trans_handle(void)',b'int put_sector_data(',b'int end_trans('))
+        if b'static int sector_transfer_size(' in cdc:code+=function(cdc,b'static int sector_transfer_size(')
         for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
             if call in operations:code+=function(cdc,signature)
         code+=operations

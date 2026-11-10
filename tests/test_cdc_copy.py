@@ -20,6 +20,7 @@ def copy_source(raw,required=()):
     # Rename only the real allocator's symbol, then count calls through a shim.
     # Its body/IRQ/allocation decisions remain the production implementation.
     code=b'#define alloc_block actual_alloc_block\n'+function(b'BLOCK *alloc_block(void)')
+    if b'static int sector_range(' in raw:code=function(b'static int sector_range(')+code
     code+=b'#undef alloc_block\nstatic unsigned allocation_count;\n'
     code+=b'static BLOCK *alloc_block(void) { allocation_count++; return actual_alloc_block(); }\n'
     code+=b''.join(function(sig) for sig in (b'void free_block(BLOCK *block)',b'BLOCK *dup_block(BLOCK *block)',b'BLOCK *find_block(',b'void append_block('))

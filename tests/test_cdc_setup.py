@@ -33,7 +33,8 @@ class CDSetupTests(unittest.TestCase):
         for label, data in (('original', original), ('candidate', candidate)):
             code = b''
             if label == 'candidate':
-                for signature in (b'static __attribute__((noinline)) int get_sector_data_common(',
+                for signature in (b'static int sector_range(',
+                                  b'static __attribute__((noinline)) int get_sector_data_common(',
                                   b'static __attribute__((noinline)) void start_directory_read('):
                     if signature in data: code += function(data, signature)
             for name in names:

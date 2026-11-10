@@ -156,6 +156,23 @@ void fill_fifo(u8 *addr, int size)
 
 static int min_num;
 
+/* Call only with a validated partition; resolve independent range sentinels. */
+static int sector_range(PARTITION *part, int *start, int *count)
+{
+    if (*start == 0xffff) *start = part->numblocks-1;
+    if (*count == 0xffff) *count = part->numblocks-*start;
+    return *start >= 0 && *count > 0 && *start < part->numblocks &&
+           *count <= part->numblocks-*start;
+}
+
+/* Keep calculation and both FIFO producers on the same selected-length rule. */
+static int sector_transfer_size(const BLOCK *block)
+{
+    if (cdb.sector_size == 2048 && block->data[15] == 2 &&
+        (block->data[18] & 0x20)) return 2324;
+    return cdb.sector_size;
+}
+
 void trans_start(void)
 {
 	u8 *dp = NULL;
@@ -182,12 +199,7 @@ void trans_start(void)
 			dp = bt->data+24;
 		}
 
-		if(cdb.sector_size==2048 && (bt->data[15]==2 && bt->data[18]&0x20)){
-			// MODE:2 Form:2
-			cdb.trans_size = 2324;
-		}else{
-			cdb.trans_size = cdb.sector_size;
-		}
+		cdb.trans_size = sector_transfer_size(bt);
 
 		cdb.trans_block = bt;
 		cdb.trans_bk += 1;
@@ -283,12 +295,7 @@ void trans_handle(void)
 				dp = bt->data+24;
 			}
 
-			if(cdb.sector_size==2048 && (bt->data[15]==2 && bt->data[18]&0x20)){
-				// MODE:2 Form:2
-				cdb.trans_size = 2324;
-			}else{
-				cdb.trans_size = cdb.sector_size;
-			}
+			cdb.trans_size = sector_transfer_size(bt);
 
 			cdb.trans_block = bt;
 			cdb.trans_bk += 1;
@@ -555,6 +562,7 @@ int init_cdblock(void)
 	ST_CTRL |= 0x0100;
 	ST_CTRL &=~0x0100;
 
+	cdb.actsize = 0;
 	cdb.sector_size = 2048;
 	cdb.put_sector_size = 2048;
 	cdb.trans_type = 0;
@@ -1318,13 +1326,20 @@ int cal_actual_size(void)
     }
 	SSLOG(_BUFINFO, "cacl_act_size: pt=%d spos=%d snum=%d\n", pt, spos, snum);
 
-	size = 0;
-	bp = find_block(&cdb.part[pt], spos);
-	while(bp && snum){
-		size += bp->size;
-		bp = bp->next;
-		snum -= 1;
-	}
+    if (!sector_range(&cdb.part[pt], &spos, &snum)) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    size = snum*cdb.sector_size;
+    if (cdb.sector_size == 2048) {
+        bp = find_block(&cdb.part[pt], spos);
+        size = 0;
+        while (snum--) {
+            if (!bp) { size = 0x01fffffe; break; }
+            size += sector_transfer_size(bp);
+            bp = bp->next;
+        }
+    }
 	cdb.actsize = size;
 
 	return HIRQ_ESEL;
@@ -1422,12 +1437,11 @@ static __attribute__((noinline)) int get_sector_data_common(int type)
     PARTITION *pp = &cdb.part[pt];
     if (type == TRANS_DATA_DEL)
         SSLOG(_BUFIO, "get_del_sector_data: part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
-    if (spos == 0xffff) spos = pp->numblocks - 1;
-    if (snum == 0xffff) snum = pp->numblocks - spos;
+    int valid = sector_range(pp, &spos, &snum);
     SSLOG(_BUFIO, type == TRANS_DATA ? "get_sector_data: part=%d(%d) spos=%d snum=%d\n" :
                                       "                   : part=%d(%d) spos=%d snum=%d\n",
           pt, pp->numblocks, spos, snum);
-    if (spos < 0 || snum <= 0 || spos + snum > pp->numblocks) {
+    if (!valid) {
         set_status(STAT_WAIT | cdb.status);
         return 0;
     }
@@ -1461,14 +1475,9 @@ int del_sector_data(void)
 
 	pp = &cdb.part[pt];
 
-	if(spos==0xffff){
-		spos = pp->numblocks-1;
-	}
-	if(snum==0xffff){
-		snum = pp->numblocks-spos;
-	}
+    int valid = sector_range(pp, &spos, &snum);
 	SSLOG(_BUFIO, "del_sector_data: part=%d spos=%d snum=%d\n", pt, spos, snum);
-	if(spos<0 || snum<=0 || (spos+snum) > pp->numblocks){
+	if(!valid){
 		// 梦幻之星1会传入spos=180导致后续错误
 		set_status(STAT_WAIT | cdb.status);
 		return 0;
@@ -1567,11 +1576,9 @@ static __attribute__((noinline)) int copy_move_sector_data(int moving)
     } else {
         SSLOG(_BUFIO, "copy_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
     }
-    if (spos == 0xffff) spos = ps->numblocks - 1;
-    if (snum == 0xffff) snum = ps->numblocks - spos;
+    int valid = sector_range(ps, &spos, &snum);
     SSLOG(_BUFIO, "                : src=%d(%d) spos=%d snum=%d\n", src, ps->numblocks, spos, snum);
-    if (cdb.trans_type || spos < 0 || snum <= 0 ||
-        spos >= ps->numblocks || snum > ps->numblocks - spos ||
+    if (cdb.trans_type || !valid ||
         (!moving && snum > cdb.block_free)) {
         set_status(STAT_WAIT | cdb.status);
         return 0;

@@ -1,4 +1,4 @@
-/* MCU-CDC-008: adapted from paps-g 89e644f6; independent command/list oracles. */
+/* MCU-CDC-008/009: adapted from paps-g 89e644f6; independent command/FIFO oracles. */
 #define main copy_fixture_main
 #include "cdc_copy.c"
 #undef main
@@ -154,12 +154,84 @@ static void calculated_size_control(void)
         check_owners();
     }
 }
+static void size_reply(unsigned words)
+{
+    unsigned original=cdb.actsize;
+    for(unsigned repeat=0;repeat<3;repeat++) {
+        assert(!get_actual_size());
+        assert((reply[0]>>8)==cdb.status && (((unsigned)(reply[0]&255)<<16)|reply[1])==words);
+        assert(!reply[2] && !reply[3] && cdb.actsize==(int)original);
+    }
+}
+static void calculation_ranges(void)
+{
+    const unsigned lengths[]={0,1,2,17,200};
+    for(unsigned l=0;l<sizeof lengths/sizeof *lengths;l++) {
+        unsigned n=lengths[l];seed(n,0);cdb.sector_size=2336;
+        unsigned boundaries[]={0,1,n?n-1:0,n,n+1,0xff,0x100,0xfffe,0xffff};
+        for(unsigned si=0;si<9;si++)for(unsigned ni=0;ni<9;ni++) {
+            cdb.cr2=boundaries[si];cdb.cr4=boundaries[ni];cdb.actsize=1234;
+            int start=boundaries[si]==65535?(int)n-1:(int)boundaries[si];
+            int count=boundaries[ni]==65535?(int)n-start:(int)boundaries[ni];
+            int valid=start>=0 && start<(int)n && count>0 && count<=(int)n-start;
+            CDBLOCK before=cdb;int result=cal_actual_size();
+            if(valid){assert(result==HIRQ_ESEL);size_reply(count*1168);}
+            else {assert(!result && (reply[0]>>8)==(STAT_WAIT|cdb.status));assert(!memcmp(&before,&cdb,sizeof cdb));}
+            check_owners();
+        }
+    }
+}
+static void calculation_matches_fifo(void)
+{
+    const unsigned lengths[]={2048,2336,2340,2352};
+    for(unsigned n=1;n<=200;n++)for(unsigned mode=0;mode<4;mode++) {
+        seed(n,0);cdb.sector_size=lengths[mode];cdb.part[0].size=0;
+        unsigned sum=0;
+        for(unsigned i=0;i<n;i++) {
+            BLOCK *b=&cdb.block[i];
+            /* Stored lengths/cached tags deliberately differ from read format.
+             * Mode1 also has bit5 set: mode must participate in XA detection. */
+            b->size=i&1?2048:2352;b->sm=0xff;cdb.part[0].size+=b->size;
+            unsigned format=(i+n)%3; /* Rotate first and subsequent formats. */
+            b->data[15]=format==0?1:2;b->data[18]=format==1?0:0x20;
+            sum+=mode==0 && format==2?2324:lengths[mode];
+        }
+        cdb.cr2=0;cdb.cr4=0xffff;assert(cal_actual_size()==HIRQ_ESEL);size_reply(sum/2);
+        assert(get_sector_data()==(HIRQ_DRDY|HIRQ_EHST));
+        unsigned services=0;
+        while(!cdb.trans_finish){assert(++services<=n);trans_handle();}
+        assert(fifo_words==sum/2 && cdb.cdwnum==(int)sum && !irq_depth);
+        unsigned pos=0;
+        for(unsigned i=0;i<n;i++) {
+            unsigned bytes=mode==0 && (i+n)%3==2?2324:lengths[mode];
+            unsigned offset=mode==0?24:2352-lengths[mode];
+            for(unsigned b=0;b<bytes;b+=2) {
+                u16 value=cdb.block[i].data[offset+b] | ((u16)cdb.block[i].data[offset+b+1]<<8);
+                assert(fifo_output[pos++]==value);
+            }
+        }
+        assert(pos==fifo_words && end_trans()==HIRQ_EHST && !cdb.trans_type);
+        assert((((unsigned)(reply[0]&255)<<16)|reply[1])==sum/2);check_owners();
+    }
+}
+static void incomplete_calculation_and_reset(void)
+{
+    seed(2,0);cdb.sector_size=2048;cdb.cr2=0;cdb.cr4=2;
+    cdb.block[0].next=NULL;assert(cal_actual_size()==HIRQ_ESEL);size_reply(0xffffff);
+    cdb.block[0].next=&cdb.block[1];check_owners();
+    cdb.cr1=1;init_cdblock();assert(!cdb.actsize);size_reply(0);check_owners();
+    for(unsigned noreset=0;noreset<2;noreset++) {
+        seed(0,0);cdb.actsize=4096;cdb.cr1=noreset?0x80:0;init_cdblock();size_reply(2048);check_owners();
+    }
+}
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<8);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<11);
     if(test==0)invalid_selectors();else if(test==1)valid_filter_registers();
     else if(test==2)sector_positions();else if(test==3)empty_and_broken_info();
     else if(test==4)busy_precedence();else if(test==5)read_delete_controls();
-    else if(test==6)valid_file_selectors();else calculated_size_control();
+    else if(test==6)valid_file_selectors();else if(test==7)calculated_size_control();
+    else if(test==8)calculation_ranges();else if(test==9)calculation_matches_fifo();
+    else incomplete_calculation_and_reset();
     puts("pass: actual command selector bounds, positions and valid controls");return 0;
 }
