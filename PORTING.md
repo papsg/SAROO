@@ -729,10 +729,48 @@ commits receive secret/private-PII review; original notices/log formats remain.
 | Contribution / original | Public checkpoint | Verification, dependencies and limits |
 | --- | --- | --- |
 | MCU-CDIO-001 producer core; selected paps-g `8e465233` | [525dc55](https://github.com/papsg/SAROO/commit/525dc554a71196577103e063ecfc3b75ea5787e8); [codex/cd-sector-input](https://github.com/papsg/SAROO/tree/codex/cd-sector-input) | Six actual-source methods pass ASan/UBSan/O2: all nonzero seek/read results,8,192 incomplete-input edges,6,144 valid fills,cache/boundary/retry payloads,track/metadata controls. Baseline fails two groups with four controls; six compiled mutants rejected. All91 CD methods pass both profiles. Complete MCU remains58,708 load/static DTCM60,296 bytes,6,828 ITCM free;56 exact source hashes and identical SDK checked. Producer/disk frames48/80 unchanged; no state/buffer/copy/mask/wait or valid-input I/O added. [FatFs result/count contracts, attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-FILESYSTEM-SAFETY.md#mcu-cdio-001-complete-sector-input-admission). Directory-error ownership deliberately follows with011 worker; subcode-sidecar I/O/wider offset arithmetic and physical/game/original-MDK qualification remain outside this checkpoint. |
-
 | MCU-CDC-011 plus CDIO-001 directory-error continuation; selected paps-g `8e465233` | [251f5d7](https://github.com/papsg/SAROO/commit/251f5d7ef6ac634a098d3100177e3aec9565f21e); [codex/cd-directory-streaming](https://github.com/papsg/SAROO/tree/codex/cd-directory-streaming) | Requires input/routing/read-ownership ports. Eleven actual-source directory methods pass ASan/UBSan/O2:1,512 pages/selectors/counts,65,540 records,one-free-block progress,record/name/descriptor bounds,full IDs/FIFO replies,spans/snapshots,abort/pause/redirect/private reuse,atomic error completion,pending phase pause and unchanged log/payload controls. Six isolated old-source probes fail with one valid control;20 compiled mutants detected. All103 CD methods and11 disc/save handoff methods pass; obsolete setup differential retired with Git history preserved. GNU MCU59,288 load/60,312 static DTCM,6,248 ITCM free;56 exact source inputs/same SDK. Adds580 load/16 static bytes, no pool/payload/workspace allocation. Producer/disk/command48/80/24 frames remain; optional readonly-name logger288,parsing/printing outside masks. All old log formats/masks retained. [Sega6.2.1/6.2.2 printed52,6.2.3 printed53,later8.2.8,ECMA-1196.8.1/9.1; attribution/reproduction/costs/version/policy limits](https://github.com/papsg/SAROO/blob/main/doc/CD-FILESYSTEM-SAFETY.md#mcu-cdc-011-bounded-directory-streaming-and-file-commands). Retains public atomic pause acknowledgement and pending requests across internal directory phases. Host boundaries are models, not hardware/game/original-MDK qualification. |
 
-Input-admission and directory lifecycle ports published; selected XA013 is
-in progress. Broader asynchronous/MPEG/session/EOF/PEND/tray
-contracts stay separate. Fork issues are disabled, no open PRs or applicable
-closure; original upstream requests remain unchanged.
+| MCU-CDC-013 selected XA metadata/interleave; paps-g `05852d90` | [64fc106](https://github.com/papsg/SAROO/commit/64fc10619dcb9d268f2f976aeea49bf318eca82e); [codex/cd-xa-files](https://github.com/papsg/SAROO/tree/codex/cd-xa-files) | Requires011 and its input/ownership/routing prerequisites. Nine actual-source methods pass ASan/UBSan/O2: suffix/padding/extended attributes,65,536 ISO/XA attribute pairs and exact replies,precedence,255 units×256 gaps×5 offsets against iterative lists,1,68064-bit extent cases,256 file numbers,accepted/discarded payloads,full-pool retries,full snapshots,ordinary playback and independent stale-repeat controls. All nine fail compiled preceding functions/fragments;11 directory methods pass as controls.24 compiled mutants detected. All112 CD methods/120 native cases per profile pass;12 current-source cohorts bind inputs/fragments. GNU MCU59,640 load/60,312 static DTCM,5,896 ITCM free,56 exact source inputs/same SDK. Adds352 load bytes; padding/alignment absorb cursor state, with no file-entry/payload/workspace allocation. File-read40→56/parser8→16/disk80→72 frames; other stated frames remain. [Sega6.2.3 Table6.1 printed53,7.2.6 dataNo6.7,ECMA-1196.4.3 printed5–6/9.1 printed27–29; attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-FILESYSTEM-SAFETY.md#mcu-cdc-013-selected-xa-metadata-and-interleaved-file-reads). Cached Mednafen ReadRecord corroborates layout only, with an observed SHA-256; original XA book unavailable and saved GNU homepage excluded as layout evidence. No emulator algorithm imported or geometry inferred from its TODO. Broader013 remains separate; no physical/game/original-MDK qualification. |
+
+All three scoped source contributions are separately verified linear commits,
+pushed with their topics to main, ending at[64fc106](https://github.com/papsg/SAROO/commit/64fc10619dcb9d268f2f976aeea49bf318eca82e).
+The full integrated suite passes400 Python methods in39 groups and14 Rust tests.
+Final ASan/UBSan and O2 runs pass all112 CD methods, with120 native cases per
+profile across12 current-source cohorts. Failing baselines, valid controls,50
+detected compiled mutants, original sources/corrections, primary references and
+raw results remain preserved locally; portable fixtures are public.
+
+Each MCU checkpoint binds56 repository inputs to its own committed blobs, with
+identical cached SDK hashes. Final MCU load59,640 leaves5,896 ITCM bytes; the
+series adds932 load/16 aligned static bytes, with static DTCM60,312. Required
+stacks,200-block pool and retained payload workspace are unchanged. Final menu
+binds36 committed inputs and exactly matches the preceding image/resources/ELF:
+79,572 code/data,9,232 BSS,16,384 reserved stack,357,679 font and488,751 image
+bytes. Per-port frame/log/masking/traversal costs remain explicit; host models
+and GNU builds are not original-MDK or physical stack/bus/IRQ/concurrency/timing/
+game qualification. No physical operation or installed-firmware change occurred.
+
+Full proposed files/messages/public identities and actual source/ledger commit
+blobs pass manual, secret and private-PII review; final source history scanning
+also passes. Approved public handles/noreply identities retain attribution, and
+exact primary/source citations distinguish requirements, defensive policies,
+translation/version differences and implementation corroboration. Original
+notices/log formats/masks remain; no credentials, private paths/accounts/network
+details, raw logs or build artifacts are published. No PRs, USB integration,
+new runtime diagnostics, subagents, private publication or upstream edits.
+
+Public main is clean; source topics/main are remotely verified. Default main,
+v0.8 ancestry and historical master are preserved, as are other existing public
+refs/stashes apart from authorized main/progress advances. Exact private HEAD,
+full status, all refs and four stashes match the start snapshot; private source,
+research branches and other paused work remain unchanged. The final public
+progress checkpoint is published with these source/audit results. Fork issues
+are disabled, no open PRs or applicable closures; upstream requests unchanged.
+
+Selected CDIO-001/CDC-011/XA-013 source contracts are complete. Broader013
+session/default drive-range/EOF/PEND/tray/drive, later raw-Mode1/audio layout and
+initialization, and asynchronous copy/move/MPEG ownership remain separate. The
+fixed FAD166 descriptor start does not implement last-session selection.
+Unmeasured malformed-command responses and physical/game compatibility are not
+claimed resolved.
