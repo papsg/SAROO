@@ -19,7 +19,8 @@ class CDSubheaderTests(unittest.TestCase):
         raw=source.read_bytes();header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-subheader';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
-        functions=b''
+        start=raw.index(b'void set_status(')
+        functions=raw[start:raw.index(b'\n}',start)+2]+b'\n'
         for name in ('set_filter_subheader','get_filter_subheader'):
             start=raw.index(('int '+name+'(void)\n{').encode())
             functions+=raw[start:raw.index(b'\n}',start)+2]+b'\n'

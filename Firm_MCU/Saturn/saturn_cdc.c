@@ -1004,6 +1004,10 @@ int set_filter_range(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	cdb.filter[fid].fad   = ((cdb.cr1&0xff)<<16) | cdb.cr2;
 	cdb.filter[fid].range = ((cdb.cr3&0xff)<<16) | cdb.cr4;
 	SSLOG(_FILTER, "set_filter_range: fid=%d fad=%08x range=%08x\n", fid, cdb.filter[fid].fad, cdb.filter[fid].range);
@@ -1018,6 +1022,10 @@ int get_filter_range(void)
 	int fad, range;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	fad   = cdb.filter[fid].fad;
 	range = cdb.filter[fid].range;
@@ -1036,6 +1044,10 @@ int set_filter_subheader(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	cdb.filter[fid].chan   = cdb.cr1&0xff;
 	cdb.filter[fid].smmask = cdb.cr2>>8;
@@ -1058,6 +1070,10 @@ int get_filter_subheader(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	SSCR1 = (cdb.status<<8) | cdb.filter[fid].chan;
 	SSCR2 = (cdb.filter[fid].smmask<<8) | cdb.filter[fid].cimask;
@@ -1101,6 +1117,10 @@ int get_filter_mode(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	SSCR1 = (cdb.status<<8) | cdb.filter[fid].mode;
 	SSCR2 = 0;
@@ -1138,6 +1158,10 @@ int get_filter_connection(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
+    if (fid >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	SSCR1 = (cdb.status<<8);
 	SSCR2 = (cdb.filter[fid].c_true<<8) | cdb.filter[fid].c_false;
@@ -1261,6 +1285,10 @@ int get_sector_num(void)
 	int pt;
 
 	pt = cdb.cr3>>8;
+    if (pt >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
 	SSCR1 = (cdb.status<<8);
 	SSCR2 = 0;
@@ -1284,6 +1312,10 @@ int cal_actual_size(void)
 	spos = cdb.cr2;
 	pt   = cdb.cr3>>8;
 	snum = cdb.cr4;
+    if (pt >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	SSLOG(_BUFINFO, "cacl_act_size: pt=%d spos=%d snum=%d\n", pt, spos, snum);
 
 	size = 0;
@@ -1319,12 +1351,25 @@ int get_sector_info(void)
 	BLOCK *bp;
 
 	pt = cdb.cr3>>8;
-	st = cdb.cr2&0xff;
+    if (pt >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+	st = cdb.cr2;
 
 	pp = &cdb.part[pt];
-	bp = find_block(pp, st);
+    if (st == 0xffff) st = pp->numblocks-1;
+    if (st < 0 || st >= pp->numblocks) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    bp = find_block(pp, st);
+    if (!bp) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
-	SSCR1 = (cdb.status<<8) | (bp->fad>>16)&0xff;
+	SSCR1 = (cdb.status<<8) | ((bp->fad>>16)&0xff);
 	SSCR2 = (bp->fad)&0xffff;
 	SSCR3 = (bp->fn<<8) | (bp->cn);
 	SSCR4 = (bp->sm<<8) | (bp->ci);
@@ -1370,6 +1415,10 @@ static __attribute__((noinline)) int get_sector_data_common(int type)
         return 0;
     }
     int pt = cdb.cr3 >> 8, spos = cdb.cr2, snum = cdb.cr4;
+    if (pt >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
     PARTITION *pp = &cdb.part[pt];
     if (type == TRANS_DATA_DEL)
         SSLOG(_BUFIO, "get_del_sector_data: part=%d(%d) spos=%d snum=%d\n", pt, pp->numblocks, spos, snum);
@@ -1403,6 +1452,10 @@ int del_sector_data(void)
 	PARTITION *pp;
 
 	pt   = cdb.cr3>>8;
+    if (pt >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	spos = cdb.cr2;
 	snum = cdb.cr4;
 
@@ -1716,6 +1769,10 @@ int change_dir(void)
 	FILE_INFO *fi;
 
 	selnum = cdb.cr3>>8;
+    if (selnum >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	fid = ((cdb.cr3&0xff)<<16) | (cdb.cr4);
 	SSLOG(_FILEIO, "change_dir: sel=%d fid=%08x root_lba=%08x\n", selnum, fid, cdb.root_lba);
 
@@ -1779,6 +1836,10 @@ int read_dir(void)
 	int selnum, fid;
 
 	selnum = cdb.cr3>>8;
+    if (selnum >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 	fid = ((cdb.cr3&0xff)<<16) | (cdb.cr4);
 	SSLOG(_FILEIO, "read_dir: sel=%d fid=%08x\n", selnum, fid);
 
@@ -1870,6 +1931,12 @@ int read_file(void)
 	FILTER *fsl;
 	FILE_INFO *fi;
 
+    selnum = cdb.cr3 >> 8;
+    if (selnum >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+
 	if(cdb.play_type){
 		SSLOG(_FILEIO, "read_file: waiting ...\n");
 		while(cdb.play_type){
@@ -1877,7 +1944,6 @@ int read_file(void)
 		}
 	}
 
-	selnum = cdb.cr3>>8;
 	offset = ((cdb.cr1&0xff)<<16) | cdb.cr2;
 	fid = ((cdb.cr3&0xff)<<16) | cdb.cr4;
 	SSLOG(_FILEIO, "read_file: sel=%d fid=%08x\n", selnum, fid);

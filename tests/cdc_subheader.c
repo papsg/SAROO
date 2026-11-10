@@ -20,6 +20,9 @@ static u16 reply[4];
 #define SSCR3 reply[2]
 #define SSCR4 reply[3]
 #define SSLOG(...) ((void)0)
+static int irq_depth;
+static int disable_irq(void) { return irq_depth++; }
+static void restore_irq(int old) { assert(irq_depth==old+1);irq_depth=old; }
 #include "reply.inc"
 static unsigned cases, failures;
 static int use_setter;
