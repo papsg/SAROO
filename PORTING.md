@@ -940,7 +940,23 @@ replacement invalidation, playback endpoints/repeats and CUE/subcode fixes.
    source hashes match their own checkpoint and85 SDK hashes match baseline.
    No new allocation/task/I/O/payload copy/per-sector work. GNU/host evidence
    does not qualify Saturn/game timing or original-MDK output.
-2. **Initialization flags/reports/defaults — pending.**
+2. **Initialization flags/reports/defaults — published**
+   [`98d1314`](https://github.com/papsg/SAROO/commit/98d13147453d1a578e16a7bd465b65d2d99bad75),
+   topic `codex/cd-init-policy`; depends on2bbf325 and is on main.
+   Keep-settings now pauses and reports without false reset completion; ordinary
+   initialization refreshes all4 words; software reset restores supported decode
+   defaults. Preserve existing bit7 precedence, positions/ranges/repeats and
+   unsupported-control limits. Correct two prior false-completion test oracles.
+   75 focused methods pass ASan/UBSan and O2, including1,024 active/idle/branch
+   flag combinations,512 missing-media flag cases, keep-settings timeout/retry,
+   FIFO/IRQ/default/ownership/cache and exact reports. Eight additional compiled
+   behavioral controls detected; preceding valid report/log control passes.
+   GNU MCU load60,872→60,888(+16), ITCM free4,648; DTCM/gap and direct frames
+   unchanged. All56 public inputs bind to their committed checkpoint;85 SDK
+   inputs unchanged. No installation or physical/game/MDK qualification.
+   Full-file/diff/message/identity and actual-blob privacy scans pass. Fork
+   remains default main, issues disabled, no open PRs; no applicable closures,
+   upstream unchanged. Private source and Saturn untouched.
 3. **Bounded selector-reset handoff/wakeup — pending.**
 
 Full source/diff/message/identity and committed-blob scans passed before
