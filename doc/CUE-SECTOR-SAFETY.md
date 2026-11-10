@@ -83,7 +83,7 @@ Complete GNU MCU App/RTX/166-vector load grows272 bytes:59,976→60,248, leaving
 stride globals; AXI/pool/task-stack capacities are unchanged. All56 source
 inputs bind to the receipt and cached SDK hashes match the preceding build.
 Direct reader frame is64, index lookup16, track lookup0, TOC32, parser152,
-position setter16 and disk72 bytes; checked I/O is inlined into the reader.
+position setter16 and disk 72 bytes; checked I/O is inlined into the reader.
 These exclude callees/exceptions and physical stack peaks, cycles or latency.
 No claim of byte equivalence to MDK or hardware/game qualification follows.
 
@@ -174,43 +174,43 @@ has no payload-copy branch for either width. Allocating a block can therefore
 publish its unrelated previous bytes. Both producer metadata and direct filter
 copy defects reproduce independently against the preceding source.
 
-Sega [ST-162 §5.4(1), Figure5.8, printed p.48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
+Sega [ST-162 §5.4(1), Figure 5.8, printed p.48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
 defines the XA sector's16-byte sync/header prefix,8-byte repeated subheader,
 2,048/2,324-byte user regions and trailer sizes. [Submode constants, printed
 p.71](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=59)
-define the0x20 Form2 bit. Those describe native sector content; the accepted
+define the 0x20 Form 2 bit. Those describe native sector content; the accepted
 headerless image widths and zero-filled missing fields are SAROO image-adapter
 policy, not a Sega requirement to support those image files.
 
-Extract the2336-byte image's subheader from its beginning and copy all2336
-bytes at container offset16 after initializing the missing prefix/mode byte.
-For2324-byte payload-only input, use Form2 metadata, place all user bytes at
-byte24, initialize both subheaders/form markers and clear the four-byte tail.
+Extract the 2336-byte image's subheader from its beginning and copy all 2336
+bytes at container offset 16 after initializing the missing prefix/mode byte.
+For 2324-byte payload-only input, use Form 2 metadata, place all user bytes at
+byte 24, initialize both subheaders/form markers and clear the four-byte tail.
 Unknown file/channel/coding fields are zero; removed image information cannot
-be recovered. Preserve configured Form1 transfer sizes and existing2324-byte
-Form2 reporting. This is the existing normalized buffer convention, not a
+be recovered. Preserve configured Form 1 transfer sizes and existing 2324-byte
+Form 2 reporting. This is the existing normalized buffer convention, not a
 claim of synthesized canonical raw sync/FAD/ECC/EDC or authentication data.
-Raw/cooked MODE1 and2352-byte/audio behavior remain outside this change.
+Raw/cooked MODE1 and 2352-byte/audio behavior remain outside this change.
 
-Two new actual-source groups each pass96 combinations: reader→filter→routed
+Two new actual-source groups each pass 96 combinations: reader→filter→routed
 copy, and direct filter→copy with independently supplied metadata. They cover
-2336-byte Form1/Form2 and2324-byte input, all four configured transfer sizes,
-eight patterns, every2352 container byte, FAD/metadata, selected routing and
+2336-byte Form 1/Form 2 and 2324-byte input, all four configured transfer sizes,
+eight patterns, every 2352 container byte, FAD/metadata, selected routing and
 block ownership. Free payloads are poisoned before allocation. Both preceding-
 source groups fail; six existing routing controls pass. Eight compiled
-behavioral mutants are detected. The initial fixture left block0 zero-filled,
+behavioral mutants are detected. The initial fixture left block 0 zero-filled,
 so header/tail-clear omissions survived; those results are preserved/excluded.
 The corrected poison-buffer fixture detects both and the other six variants.
 
-All144 current CD/reader/layout methods pass sanitizers and O2; final poisoned
+All 144 current CD/reader/layout methods pass sanitizers and O2; final poisoned
 routing groups also pass both profiles. Existing sector-input metadata fixtures
-now seed real2336-byte subheaders and expect2324-byte Form2 flags. The unchanged
+now seed real 2336-byte subheaders and expect 2324-byte Form 2 flags. The unchanged
 payload bytes remain independently checked. No old zero-metadata expectation
 for these newly handled formats is asserted preserved.
 
 GNU MCU load grows128 bytes:60,648→60,776, leaving4,760 ITCM bytes. Static DTCM
-remains60,304; all56 input hashes and identical SDK bind to the receipt. Reader64,
-filter32 and disk72 direct frames remain unchanged. No buffer, state, allocation,
+remains60,304; all 56 input hashes and identical SDK bind to the receipt. Reader 64,
+filter 32 and disk 72 direct frames remain unchanged. No buffer, state, allocation,
 I/O, wait, log or mask is added. The new branches copy the supplied payload once
 and initialize absent header/tail bytes outside the existing brief ownership
 masks. Physical timing, game behavior and MDK equivalence remain unqualified.
@@ -226,3 +226,72 @@ SAROO_CDC_ROUTING_MAIN=/path/to/preceding/saturn_main.c \
 
 Optional subcode I/O/mode/lookahead safety remains the last scoped contribution.
 No private source, device or installed firmware is changed.
+
+## MCU-CDIO-004: admit complete subcode windows under one mode
+
+Original: selected paps-g `659fe4ee`. The preceding optional reader ignores
+sidecar seek/read errors and partial frames, can reuse a sector-only cache after
+enabling sidecodes, and can change publication policy during I/O. Its planar
+converter consumes 16 input frames but yields 14; publishing a 16-frame window
+reads stale conversion tail bytes. These source defects reproduce separately
+from the parser and MODE2 payload work.
+
+Sega [ST-162 §7.2.5(2), data No. 5.0, printed p.62](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=50)
+defines 96 bytes per frame in four 24-byte R–W packs. [§8.2.3 function 3.2,
+printed p.85](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=73)
+defines pack retrieval and error/overrun reporting. The fourteen/sixteen-frame
+limits come from SAROO's existing converter and 1,536-byte staging allocation,
+not a Sega prefetch requirement. The cached FatFs seek contract cited above
+requires checking the resulting offset after success. Sidecar origins/formats,
+EOF lookahead padding and error admission are image-adapter policy.
+
+Snapshot the selected mode once before cache/I/O work and include it in the
+cache identity. Reuse the checked locked read helper for sidecars. Bound planar
+publication to 14 frames with two lookahead frames; raw sidecars retain up to 16
+frames. Require complete requested output frames and whole 96-byte input frames,
+zero absent EOF lookahead, then convert/copy. A subcode-enabled request below
+FAD 150 is refused before I/O; preserve the existing FAD 150 to sidecar-byte-0 map.
+Only successful sector completion publishes cache bounds/mode and ring data.
+If sector I/O fails after valid sidecodes, conversion scratch may change but
+output/cache/ring publication does not. Retry must reload the invalid cache.
+
+The entire operation uses the captured mode, including conversion and ring
+publication if initialization changes iflag during either read. The next
+operation observes the new mode and reloads as needed. This does not import
+broader initialization/reset changes or prove every RTOS interleaving.
+Preserve the inherited deinterleaver/permutation, ring allocation and overflow
+policy; native pack-buffer/read-rate timing and physical CD+G remain unqualified.
+No error flag or waveform fidelity beyond this file-I/O contract is asserted.
+
+Five actual-source groups / 16 scenarios pass sanitizers and O2: planar/raw EOF
+windows with exact conversion-byte oracles and 14/16-window controls; enabling
+sidecodes over a warm sector-only cache; six enable/disable changes during each
+I/O; failed/clipped/short/partial-error sidecar reads without ring/output
+publication; and both payload-failure-after-valid-sidecodes/retry controls.
+The preceding source fails 13 cases across four groups; raw EOF and the payload-
+failure controls already pass. Ten compiled behavioral mutants are detected,
+including missing lookahead/padding, wrong frame limits, ignored mode identity,
+live-mode conversion/publication and short/clipped admission. I/O/preemption and
+retry failures are injected models, not physical SD recovery or timing proof.
+
+GNU MCU App/RTX load grows112 bytes:60,776→60,888, leaving4,648 ITCM bytes.
+Static DTCM grows60,304→60,312: one cache-mode byte plus linked alignment costs 8
+bytes. Track/index/AXI/payload/task-stack allocations remain unchanged. All56
+source inputs and identical SDK bind to the checkpoint/final build receipts.
+Direct reader frame 64→56, checked-I/O 24 now out of line, converter40, filter 32
+and disk 72. The nested I/O path is not a stack saving; physical peaks/cycles are
+unmeasured. Ordinary warm hits add a mode comparison and perform no I/O; mode
+changes intentionally reload. Planar read windows may be shorter and request
+two lookahead frames. No new payload buffer, task, wait, SD write, log or mask.
+
+```sh
+python3 -B tests/test_cue_subcode.py
+SAROO_FIRMWARE_SAVE_PROFILE=release python3 -B tests/test_cue_subcode.py
+SAROO_MCU_SAVE_DIR=/path/to/mode2-checkpoint/Saturn python3 -B tests/test_cue_subcode.py
+```
+
+All four scoped source contributions are implemented independently. Final full
+suite, release CD controls and publication/preservation audits are recorded in
+the public progress ledger. Physical Saturn/game/original-MDK qualification and
+all broader reset/audio/session/raw-format behavior remain separate. No device
+or installed firmware is accessed.

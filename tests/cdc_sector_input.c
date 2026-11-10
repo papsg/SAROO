@@ -15,6 +15,7 @@ static CDBLOCK cdb;
 _Alignas(8) static u8 cache[32768],image[65536];
 static u8 *sector_buffer=cache;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
+static u8 buf_subcode_mode;
 int index_table[2048];
 static FIL file;
 static TRACK_INFO tracks[2];

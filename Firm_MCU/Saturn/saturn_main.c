@@ -129,6 +129,7 @@ static u32 buf_fad_end = 0;
 static u16 buf_fad_offset = 0;
 // 内部缓存中的扇区大小
 static u16 buf_fad_size = 0;
+static u8 buf_subcode_mode = 0;
 
 
 static u8 reorder[24] = {
@@ -207,23 +208,14 @@ int get_sector(int fad, BLOCK *wblk)
     cdb.ctrladdr = TRACK_CTRL(tk);
     cdb.index = track_subindex(tk, fad);
     if (!wblk) return 0;
-    if ((u32)fad >= buf_fad_start && (u32)fad < buf_fad_end) {
+    /* Initialization may change iflag while waiting for this reader. Complete
+     * one operation with a single mode; the next request observes the change. */
+    u8 subcode_mode = (cdb.iflag & 2) ? cdb.has_subrw : 0;
+    if ((u32)fad >= buf_fad_start && (u32)fad < buf_fad_end &&
+        buf_subcode_mode == subcode_mode) {
         //SSLOG(_DTASK, " fad_%08x found at buffer!\n", fad);
     } else {
         //SSLOG(_DTASK, " fad_%08x not found. need read from file.\n", fad);
-		// 先读subcode. 最多读1536字节((32768/2048)*96).
-		if(cdb.has_subrw && cdb.iflag&0x02){
-			f_lseek(&cdb.subcode_fp, (fad-150)*96);
-			f_read(&cdb.subcode_fp, sector_buffer, 1536, (u32*)&nread);
-			if(cdb.has_subrw==1){
-				// sub格式需要先解码
-				subcode_convert();
-			}else{
-				// cdg格式直接使用
-				memcpy(cdb.subcode_buf, sector_buffer, 1536);
-			}
-		}
-
         const u32 size = TRACK_SIZE(tk);
         u32 first = tk->fad_0 + tk->pregap;
         u32 end = tk->fad_end - tk->postgap + 1;
@@ -232,7 +224,6 @@ int get_sector(int fad, BLOCK *wblk)
         if (blank) {
             frames = ((u32)fad < first ? first : tk->fad_end + 1) - fad;
             if (frames > 16) frames = 16;
-            memset(sector_buffer, 0, 2352);
         } else {
             position = tk->file_offset;
             if ((u32)fad < tk->fad_start) position -= (tk->fad_start - fad) * size;
@@ -242,11 +233,31 @@ int get_sector(int fad, BLOCK *wblk)
             bytes = (end - fad) * size + offset;
             if (bytes > 0x8000) bytes = 0x8000;
             frames = (bytes - offset) / size;
+        }
+        /* Sixteen planar input frames yield fourteen deinterleaved frames. */
+        if (subcode_mode == 1 && frames > 14) {
+            frames = 14;
+            if (!blank) bytes = offset + frames*size;
+        }
+        if (subcode_mode) {
+            if (fad < 150) goto read_error;
+            u32 sub_position = ((u32)fad - 150) * 96;
+            u32 sub_bytes = (frames + (subcode_mode == 1 ? 2 : 0))*96;
+            nread = read_disc_bytes(&cdb.subcode_fp, sub_position, sub_bytes);
+            if (nread < (int)(frames*96) || nread % 96) goto read_error;
+            memset(sector_buffer + nread, 0, 1536 - nread);
+            if (subcode_mode == 1) subcode_convert();
+            else memcpy(cdb.subcode_buf, sector_buffer, 1536);
+        }
+        if (blank) {
+            memset(sector_buffer, 0, 2352);
+        } else {
             nread = read_disc_bytes(tk->fp, position, bytes);
             if (nread < (int)(offset + size)) goto read_error;
             u32 available = (nread - offset) / size;
             if (frames > available) frames = available;
         }
+        buf_subcode_mode = subcode_mode;
         buf_fad_start = fad;
         buf_fad_end = fad + frames;
         buf_fad_offset = offset;
@@ -270,7 +281,7 @@ int get_sector(int fad, BLOCK *wblk)
     }
 
 	// 处理subcode
-	if(cdb.has_subrw && cdb.iflag&0x02){
+	if(subcode_mode){
 		u8 *sbuf = cdb.subcode_buf+(fad-buf_fad_start)*96;
 		for(int i=0; i<4; i++){
 			memcpy(cdb.subrw_buf+cdb.subrw_wp*24, sbuf, 24);

@@ -6,6 +6,7 @@ typedef struct {u8 *data;int size,fad,fn,cn,sm,ci;} BLOCK;
 static u8 buffer[0x8000],subcode[1536],subring[1536];
 static u8 *sector_buffer=buffer;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
+static u8 buf_subcode_mode;
 #include "reader.inc"
 static unsigned width[]={2048,2352,2324,2336,2352,2352};
 static const char *mode[]={"MODE1/2048","AUDIO","MODE2/2324","MODE2/2336","MODE1/2352","MODE2/2352"};

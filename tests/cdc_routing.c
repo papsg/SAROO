@@ -6,6 +6,7 @@
 static u8 disc_bytes[0x8000];
 static u8 *sector_buffer=disc_bytes;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
+static u8 buf_subcode_mode;
 int index_table[2048];
 static int fad_to_track(u32 fad) { (void)fad;assert(0);return 0; }
 static void subcode_convert(void) { assert(0); }
