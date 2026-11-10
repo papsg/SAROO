@@ -957,7 +957,25 @@ replacement invalidation, playback endpoints/repeats and CUE/subcode fixes.
    Full-file/diff/message/identity and actual-blob privacy scans pass. Fork
    remains default main, issues disabled, no open PRs; no applicable closures,
    upstream unchanged. Private source and Saturn untouched.
-3. **Bounded selector-reset handoff/wakeup — pending.**
+3. **Bounded selector-reset handoff/wakeup — published**
+   [`c890af9`](https://github.com/papsg/SAROO/commit/c890af9ed109b808d77538559ed81cf438ae480e),
+   topic `codex/cd-selector-handoff`; depends on98d1314/2bbf325, included on main.
+   Reuse pause_drive before deleting partition data/changing connectors. Wake
+   once, bound failure, retain pending ownership for late acknowledgement/retry.
+   Preserve current selective reset/refusal/pause policy, audio/idle behavior,
+   output ownership and both original log formats/masks (unlike the old patch).
+   78 focused methods pass ASan/UBSan and O2, including1,280 selector-mode/input/
+   audio/data/idle combinations, timeout/retry across3 owner types and both real
+   acknowledgement branches, complete in-wait state, FIFO/IRQ/output completion,
+   directory retirement, cache retention and exact logs. Eight more compiled
+   behavioral controls detected; preceding exact valid report/log control passes.
+   GNU MCU load remains60,888 with4,648 ITCM free; DTCM/gap unchanged. Selector32
+   plus nested pause16 direct frames; full chains/physical peaks unknown. All56
+   committed public inputs and85 unchanged SDK inputs verified. No new fields,
+   allocations/tasks/I/O/payload copies/per-sector work; one qualifying wakeup.
+   Full-file/diff/message/identity and actual-blob privacy scans pass. Fork audit
+   remains main/issues-disabled/no open PRs, with no applicable closures and
+   upstream unchanged. Final complete suite/build/preservation audit is running.
 
 Full source/diff/message/identity and committed-blob scans passed before
 publication. Public papsg/noreply identities and paps-g attribution retained.
