@@ -773,3 +773,21 @@ initialization, and asynchronous copy/move/MPEG ownership remain separate. The
 fixed FAD166 descriptor start does not implement last-session selection.
 Unmeasured malformed-command responses and physical/game compatibility are not
 claimed resolved.
+
+## CD drive playback, seek and repeat safety
+
+Starts at public `64fc106`. Selected paps-g47ec46a4/6a00df29, necessary
+659fe4ee/cd83b371 corrections, and a separate selectedad7c8307 FPGA clear fix.
+Direct verified source commits; no PRs, USB integration, runtime diagnostics,
+private writes or Saturn operations. Full files/messages/identities and actual
+blobs receive secret/private-PII review; raw evidence stays ignored.
+
+| Contribution / original | Public checkpoint | Verification, dependencies and limits |
+| --- | --- | --- |
+| MCU-CDC-014 plus selected016/022; paps-g47ec46a4/659fe4ee/cd83b371 | [3a68c3d](https://github.com/papsg/SAROO/commit/3a68c3d306f1d2b1aa7121b31399413b1a0a2431); [codex/cd-drive-positions](https://github.com/papsg/SAROO/tree/codex/cd-drive-positions) | Twelve actual-source methods pass ASan/UBSan/O2: all65,536 track/index words,120 FAD/count shapes,high addresses,boundary/refusal/missing-media controls,500-wait failure/retry,all16 repeat limits/exact final-sector admission,background completion,both actual cache acknowledgement branches,99 tracks,and exact baseline-valid position/report/log control. Baseline fails eleven groups with that control passing;21 compiled behavioral mutants detected, one initial compile-only attempt excluded. All124 CD methods and11 disc/save controls pass. GNU MCU59,816 load/60,312 static DTCM,5,720 ITCM free;56 exact source inputs and identical SDK checked. Adds176 load bytes,no retained allocation/payload copy/I/O; drive pause16/replacement8 nested frames,play/seek32/32,position helpers16/16,producer48/disk72/command24. Retains public atomic pause/directory retirement and all original log formats/masks; avoids private32-track regression and corrects the old mocked-cache claim. [Exact Sega CdcPos printed65–66,drive4.2 printed37–38,8.2.2 printed82–83,version/pickup ambiguity,attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-DRIVE-SAFETY.md#mcu-cdc-014-position-admission-final-sectors-and-bounded-handoff). Models/builds are not physical timing/concurrency/game/original-MDK qualification. |
+
+Position/final-sector/bounded-handoff and necessary99-track/actual-worker cache
+contracts are published. Repeat/home015,retained endpoint-type021 and the separate
+FPGA simultaneous-clear contribution remain in progress. CUE geometry, broad
+init/reset/audio/session/tray/scan and unrelated work stay separate. No original
+upstream request is claimed closed; fork closure audit follows at completion.
