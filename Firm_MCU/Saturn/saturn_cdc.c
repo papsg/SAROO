@@ -375,7 +375,8 @@ void set_report(u8 status)
 
 	irqs = disable_irq();
 
-	SSCR1 = (status<<8) | ((cdb.options&0x0f)<<4) | (cdb.repcnt&0x0f);
+	SSCR1 = (status<<8) | ((cdb.options&0x0f)<<4) |
+             (cdb.options == 0xff ? 15 : cdb.repcnt&15);
 	SSCR2 = (cdb.ctrladdr<<8) | cdb.track;
 	SSCR3 = (cdb.index<<8) | ((cdb.fad>>16)&0xff);
 	SSCR4 = cdb.fad&0xffff;
@@ -818,19 +819,23 @@ int play_cd(void)
     if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
     SSLOG(_CDRV, "play_cd: start=%08x end=%08x mode=%02x\n", start_pos, end_pos, mode);
     HIRQ_CLR = HIRQ_PEND;
+    int repeat = (mode&0x7f) == 0x7f ? cdb.max_repeat : mode&15;
+    /* Only a changed range/limit clears history. Observe worker progress
+     * after acknowledgement; failed handoff publishes no new settings. */
+    if (start != cdb.play_fad_start || end != cdb.play_fad_end || repeat != cdb.max_repeat)
+        cdb.repcnt = 0;
     cdb.play_fad_start = start;
     cdb.play_fad_end = end;
+    cdb.max_repeat = repeat;
     /* Retain the existing explicit track/data restart used by Steam-Heart's. */
-    u32 pickup = cdb.fad;
+    u32 pickup = cdb.fad == 0xffffffff ? 150 : cdb.fad;
     if (!(mode&0x80)) pickup = start;
     else if (start_pos && start_pos < 0x800000 && end_pos && end_pos < 0x800000) {
         TRACK_INFO *tk = get_track_info(fad_to_track(start)<<8);
         if (tk && tk->mode != 3) pickup = start;
     }
     set_drive_position(pickup);
-    if ((mode&0x7f) != 0x7f) cdb.max_repeat = mode&15;
     cdb.options = 0x08;
-    cdb.repcnt = 0;
     cdb.pause_request = 0;
     cdb.play_wait = 0;
     cdb.play_type = PLAYTYPE_SECTOR;
@@ -844,7 +849,8 @@ int seek_cd(void)
 {
     u32 pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     SSLOG(_CDRV, "\nseek_cd: pos=%08x\n", pos);
-    if (pos && pos != 0xffffff && !get_track_info(0xffff)) {
+    int home_pause = pos == 0xffffff && cdb.fad == 0xffffffff;
+    if (((pos && pos != 0xffffff) || home_pause) && !get_track_info(0xffff)) {
         set_status(STAT_REJECT); return 0;
     }
     u32 fad = pos && pos != 0xffffff ? drive_position(pos, 0) : cdb.fad;
@@ -855,13 +861,17 @@ int seek_cd(void)
     if (!pos) {
         cdb.status = STAT_STANDBY;
         cdb.fad = 0xffffffff;
-        cdb.track = cdb.index = cdb.ctrladdr = cdb.repcnt = cdb.options = 0xff;
+        /* An invalid report must not overwrite the retained repeat count. */
+        cdb.track = cdb.index = cdb.ctrladdr = cdb.options = 0xff;
         cdb.play_track = NULL;
+    } else if (home_pause) {
+        set_drive_position(150);
+        cdb.options = 0;
     } else if (pos != 0xffffff) {
         cdb.play_fad_start = fad;
         set_drive_position(fad);
         TRACK_INFO *tk = cdb.play_track;
-        cdb.options = cdb.repcnt = 0;
+        cdb.options = 0;
         /* Preserve the upstream FAD-seek/resume exceptions while their
          * difference from retained-range semantics is investigated separately. */
         if (pos & 0x800000) cdb.play_fad_end = tk && tk->mode == 3 ? tk->fad_end+1 : fad;

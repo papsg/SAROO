@@ -104,3 +104,51 @@ Repeat/home lifetime and retained endpoint types follow as separate changes.
 CUE geometry/raw layouts, broad initialization/reset, uninterrupted live-range
 updates, session/tray/scan and broader drive-state behavior remain separate.
 No device or installed firmware is accessed.
+
+## MCU-CDC-015: repeat history and home-position recovery
+
+Original: selected paps-g `6a00df29`, requiring014 and its actual worker handoff.
+The preceding PLAY clears repeat history on every resume, so repeated pause/
+resume can replenish a finite budget. Seek also clears the count; stop writes
+0xff into it to generate an invalid report. Home-position pause/resume retains
+an invalid pickup FAD and can terminate or consume a repeat before playback.
+
+Sega [ST-162 §4.2(3–5), printed pp.37–38](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=25)
+defines count/range retention, clearing on changed range/limit and outside-range
+completion/repeat. The [later §7.2.5(5), invalid reports](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p07_11.htm)
+distinguishes retained counts from wire sentinels and restores FAD150 on home-to-
+pause. Cached English/source-language pages agree. These requirements do not
+endorse the existing explicit-seek range rewrites, retained separately as
+compatibility policy pending further investigation.
+
+After successful handoff, compare normalized range and repeat limit with current
+settings. Clear history only when they change. Equivalent explicit/default/
+NOCHG requests retain the count, including progress the worker made during the
+wait. Failed handoff publishes no settings. Seek/stop preserve the counter;
+the existing invalid-options sentinel generates the invalid low report nibble.
+No extra retained state is required. Home pause/direct resume resolves FAD150
+without consuming a repeat or replacing the range/limit; ordinary worker rules
+then apply if that position is outside the retained range. Validate media for
+home-to-pause before forming a track pointer.
+
+Four new actual-source groups pass ASan/UBSan and O2:2,880 counter/limit/form/
+mode combinations, actual finite-budget exhaustion, modeled repeat progress
+before real acknowledgement, changed settings and failed handoff/retry, all15
+reportable counts through pause/seek/stop with exact invalid words, home pause/
+direct resume and missing media. Compiled preceding source fails three groups
+and passes the changed-setting/failure control. Eleven compiled behavioral
+mutants are detected, including observing history before the wait. Actual
+completion/report/pause functions run; notification/preemption boundaries remain
+models. All128 current CD methods pass both profiles.
+
+GNU MCU load grows112 bytes:59,816→59,928, leaving5,608 ITCM bytes; static DTCM
+remains60,312. All56 repository inputs match the receipt and SDK hashes remain
+identical. Direct play/seek32/32, report8, disk72 and command24 frames are
+unchanged. The report adds a conditional inside its existing mask; command
+admission adds comparisons. No buffer, allocation, payload copy, I/O, extra wait,
+cache invalidation or new log format/mask is added. Individual frames exclude
+other callees/exceptions; physical cycles, latency and peaks are unmeasured.
+
+The existing public drive commands above reproduce these checks. Retained
+endpoint types021 and the separate FPGA clear contribution remain next. No
+physical game/audio or original-MDK qualification or installation is claimed.

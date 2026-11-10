@@ -12,6 +12,7 @@
 static u32 buf_fad_start, buf_fad_end;
 static unsigned wakeups, waits, read_calls;
 static int acknowledge_after;
+static int repeat_on_ack;
 static int pend_delay;
 static void hw_delay(int delay) { (void)delay; }
 static void disk_task_wakeup(void) { assert(!irq_depth);wakeups++; }
@@ -22,7 +23,10 @@ static void set_pause_ok(void) { assert(!irq_depth);pause_signals++; }
 static void wait_pause_ok(void)
 {
     waits++;assert(waits <= 501 && !irq_depth);
-    if (acknowledge_after >= 0 && waits >= (unsigned)acknowledge_after) worker_pause_step();
+    if (acknowledge_after >= 0 && waits >= (unsigned)acknowledge_after) {
+        if(repeat_on_ack){cdb.repcnt++;repeat_on_ack=0;}
+        worker_pause_step();
+    }
 }
 #include "drive.inc"
 #include "phase.inc"
@@ -43,7 +47,7 @@ static void ready(void)
     cdb.options=8; cdb.ctrladdr=0x41;cdb.max_repeat=0; cdb.repcnt=0;
     buf_fad_start=123; buf_fad_end=456;
     wakeups=waits=read_calls=0; acknowledge_after=1;
-    pause_active=0;pause_signals=0;
+    pause_active=0;pause_signals=0;repeat_on_ack=0;
     hirq=hirq_clear=0;
 }
 static void request(u32 start,u32 end,unsigned mode)
@@ -250,6 +254,91 @@ static void full_track_capacity(void)
     }
     cdb.track_num=100;assert(!get_track_info(0x100));
 }
+static void repeat_preservation(void)
+{
+    /* Equivalent FAD, track-default and NOCHG requests do not start a new
+     * repeat budget, even with an explicitly specified (unchanged) limit. */
+    for (unsigned count=0;count<=14;count++) for (unsigned limit=0;limit<=15;limit++)
+    for (unsigned form=0;form<3;form++) for (unsigned mode=0;mode<4;mode++) {
+        ready();cdb.repcnt=count;cdb.max_repeat=limit;cdb.play_type=PLAYTYPE_SECTOR;
+        request((u32[]){0xffffff,0x800096,0}[form],
+                (u32[]){0xffffff,0x800226,0}[form],
+                (unsigned[]){0xff,0x7f,limit,limit|0x80}[mode]);
+        assert(!play_cd() && cdb.repcnt==count && cdb.max_repeat==(int)limit);
+        assert((reply[0]&15)==count && cdb.play_fad_start==150 && cdb.play_fad_end==700);
+        cdb.fad=700;hirq=0;
+        if (count>=limit) assert(worker_step()==0 && hirq==HIRQ_PEND && !cdb.play_type);
+        else assert(worker_step()==2 && !hirq && cdb.repcnt==(count<14?count+1:14));
+    }
+    ready();cdb.repcnt=5;cdb.max_repeat=9;cdb.play_type=PLAYTYPE_SECTOR;repeat_on_ack=1;
+    request(0xffffff,0xffffff,0xff);assert(!play_cd() && cdb.repcnt==6);
+    /* Real completion blocks and pause/resume commands must exhaust a finite
+     * budget; repeated resumes previously replenished it indefinitely. */
+    ready();request(0x800096,0x800001,2);assert(!play_cd());
+    for (unsigned expected=1;expected<=2;expected++) {
+        cdb.fad=151;assert(worker_step()==2 && cdb.repcnt==expected);
+        request(0xffffff,0,0);assert(!seek_cd());
+        request(0xffffff,0xffffff,0xff);assert(!play_cd() && cdb.repcnt==expected);
+    }
+    cdb.fad=151;assert(worker_step()==0 && !cdb.play_type && hirq==HIRQ_PEND);
+}
+static void repeat_changes(void)
+{
+    for (unsigned which=0;which<4;which++) for (unsigned failing=0;failing<2;failing++) {
+        ready();cdb.repcnt=5;cdb.max_repeat=9;cdb.play_type=PLAYTYPE_SECTOR;
+        request((u32[]){0x800097,0xffffff,0xffffff,0xffffff}[which],
+                (u32[]){0xffffff,0x800001,0xffffff,0xffffff}[which],
+                (unsigned[]){0xff,0xff,0x88,0x80}[which]);
+        repeat_on_ack=1;if(failing)acknowledge_after=-1;
+        assert(!play_cd());
+        if (failing) {
+            assert(waits==500 && cdb.repcnt==5 && cdb.max_repeat==9);
+            assert(cdb.play_fad_start==150 && cdb.play_fad_end==700);
+            waits=0;acknowledge_after=1;assert(!play_cd());
+        }
+        assert(!cdb.repcnt && cdb.max_repeat==(which<2?9:which==2?8:0));
+        assert(cdb.play_fad_start==(which==0?151u:150u));
+        assert(cdb.play_fad_end==(which==1?151u:700u));
+    }
+}
+static void repeat_seek_stop(void)
+{
+    for (unsigned count=0;count<=14;count++) for (unsigned kind=0;kind<4;kind++) {
+        ready();cdb.repcnt=count;cdb.max_repeat=15;cdb.play_type=PLAYTYPE_SECTOR;
+        request((u32[]){0xffffff,0,0x201,0x800190}[kind],0,0);assert(!seek_cd());
+        assert(cdb.repcnt==count && cdb.max_repeat==15);
+        if (kind==1) {
+            assert(reply[0]==((STAT_STANDBY<<8)|255));
+            assert(reply[1]==65535 && reply[2]==65535 && reply[3]==65535);
+            assert(cdb.play_fad_start==150 && cdb.play_fad_end==700);
+        } else assert((reply[0]&15)==count);
+    }
+    for (unsigned kind=0;kind<4;kind++) {
+        ready();cdb.repcnt=7;cdb.max_repeat=11;cdb.play_type=PLAYTYPE_SECTOR;
+        acknowledge_after=-1;request((u32[]){0xffffff,0,0x201,0x800190}[kind],0,0);
+        assert(!seek_cd() && waits==500 && cdb.repcnt==7 && cdb.max_repeat==11);
+        assert(cdb.fad==180 && cdb.play_fad_start==150 && cdb.play_fad_end==700);
+    }
+}
+static void home_resume(void)
+{
+    for (unsigned pause_first=0;pause_first<2;pause_first++) {
+        ready();cdb.repcnt=2;cdb.max_repeat=4;cdb.play_fad_start=250;cdb.play_fad_end=300;
+        request(0,0,0);assert(!seek_cd());
+        if (pause_first) {
+            request(0xffffff,0,0);assert(!seek_cd() && cdb.status==STAT_PAUSE);
+            assert(cdb.fad==150 && cdb.track==1 && cdb.index==1 && cdb.ctrladdr==0x41);
+            assert((reply[0]&255)==2 && reply[1]==0x4101 && reply[2]==0x100 && reply[3]==150);
+        }
+        request(0xffffff,0xffffff,0xff);assert(!play_cd());
+        assert(cdb.fad==150 && cdb.play_fad_start==250 && cdb.play_fad_end==300);
+        assert(cdb.repcnt==2 && cdb.max_repeat==4 && cdb.play_track==media);
+        assert(worker_step()==2 && cdb.fad==250 && cdb.repcnt==3);
+    }
+    ready();request(0,0,0);assert(!seek_cd());
+    cdb.track_num=0;request(0xffffff,0,0);CDBLOCK before=cdb;
+    assert(!seek_cd() && (reply[0]>>8)==STAT_REJECT && !memcmp(&before,&cdb,sizeof cdb));
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -260,6 +349,8 @@ int main(int argc,char **argv)
     case 8:background_audio();break;
     case 9:cached_reader();break;
     case 10:valid_log_control();break;case 11:full_track_capacity();break;
+    case 12:repeat_preservation();break;case 13:repeat_changes();break;
+    case 14:repeat_seek_stop();break;case 15:home_resume();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

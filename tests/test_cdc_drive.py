@@ -84,6 +84,10 @@ class CDDriveTests(unittest.TestCase):
     def test_actual_pause_branches_preserve_same_reader_cache(self):self.run_case(9)
     def test_baseline_valid_position_metadata_and_exact_logs(self):self.run_case(10)
     def test_all_99_tracks_remain_addressable(self):self.run_case(11)
+    def test_2880_repeat_counts_and_finite_budget_exhaustion(self):self.run_case(12)
+    def test_changed_settings_and_failed_handoff_controls(self):self.run_case(13)
+    def test_seek_stop_preserve_repeat_and_exact_invalid_report(self):self.run_case(14)
+    def test_home_pause_and_direct_resume_restore_first_sector(self):self.run_case(15)
 
 
 if __name__=='__main__':unittest.main()
