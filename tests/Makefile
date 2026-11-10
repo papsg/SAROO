@@ -41,6 +41,7 @@ check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_put.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_bounds.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_read_ownership.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_sector_input.py -v
 
 .PHONY: check-config
 check-config:

@@ -240,10 +240,10 @@ int get_sector(int fad, BLOCK *wblk)
 
 		fs_lock();
 		//printk("  seek at %08x\n", dp);
-		f_lseek(cdb.play_track->fp, dp);
-		retv = f_read(cdb.play_track->fp, sector_buffer, 0x8000, (u32*)&nread);
+		retv = f_lseek(cdb.play_track->fp, dp);
+		if (!retv) retv = f_read(cdb.play_track->fp, sector_buffer, 0x8000, (u32*)&nread);
 		fs_unlock();
-		if(retv==0){
+		if(retv==0 && nread >= (int)(buf_fad_offset+buf_fad_size)){
 			int num_fad = (nread-buf_fad_offset)/buf_fad_size;
 			buf_fad_end = buf_fad_start+num_fad;
 		}else{
