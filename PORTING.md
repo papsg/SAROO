@@ -582,5 +582,31 @@ files/messages/metadata and actual commits receive privacy review before push.
 | MCU-CDC-004; paps-g `661fd2d4` | [b686232](https://github.com/papsg/SAROO/commit/b686232); [codex/cd-filter-bounds](https://github.com/papsg/SAROO/tree/codex/cd-filter-bounds) | Twelve actual-source methods pass sanitizers/O2: invalid/disconnected selectors,300 cycles,576 full-length routes, full200-block pool/retry, payload/metadata/byte/free/list ownership and original-log controls. Baseline fails eight groups and times out in one; three valid groups pass. Seven mutations rejected. Preserve original predicates, format conversions and false-disconnect log; publish last destination only with append, discard0xff, retry retains completed state. Full MCU adds64 load bytes to57,540, margin7,996; static DTCM60,296 and disk-task/router direct frames80/32 unchanged. No workspace/allocation/copy/I/O added. [Sega §5.2/5.3.1–5.3.3 and §8.2.4 function4.3, attribution/policies/reproduction/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-COMMAND-BUFFER-SAFETY.md#mcu-cdc-004-bounded-incoming-filter-traversal). Invalid/cyclic fallback and retry policy are not hardware timing/concurrency qualification; later metadata/connector/routing work remains separate. |
 
 The first verified source checkpoint and topic are pushed directly to main.
-All four scoped source checkpoints are published. Final integrated/build/privacy and preservation audit remains; broader003 stays partially resolved.
+All four scoped source checkpoints are complete and published, ending at
+[b686232](https://github.com/papsg/SAROO/commit/b686232). Final regression coverage
+passes317 Python methods and14 Rust tests: the full `make -C tests check` run
+passes305 methods; the final26-method CD target reruns its14 existing methods
+and adds the12 filter methods. That complete CD target also passes O2. The filter
+recipe was added after the full make had parsed its recipes; these separate logs
+are counted without double-counting. Current-source hashes bind all three final
+host cohorts in both profiles and56 MCU/36 menu inputs to their receipts.
+
+Final GNU App/RTX MCU is57,540 load bytes,7,996 ITCM free and60,296 static DTCM:
+144 load bytes added across the four ports with no static-span growth. The menu
+image/hash/resources are exactly unchanged:79,572 code/data,9,232 BSS,16,384
+reserved stack,357,679 font and488,751 total image bytes. Required MCU stacks,
+workspace and pool capacities remain. Direct-frame and masking tradeoffs are
+recorded per checkpoint; host models are not physical stack/concurrency/timing
+or game qualification.
+
+Full proposed files/messages/public identities and actual commit blobs were
+reviewed/scanned before publication; no secret/private-PII finding remains.
+Public main is clean, all four topic refs and main are published, v0.8 remains
+an ancestor, default main and preserved historical master are verified. Exact
+private HEAD/full status/refs/stashes match the start snapshot. No Saturn access,
+private write, PR, USB integration, new runtime diagnostic or upstream change
+was performed. No issue closure is applicable: fork issues are disabled and
+there are no open PRs. Broader MCU-CDC-003 remains partially resolved; later
+routing/metadata/host-PUT005–007, cancellation/erase/general ownership and
+physical/game qualification remain outside this scoped goal.
 Private repo, research refs/stashes, Saturn and other work remain untouched.
