@@ -192,7 +192,7 @@ static void software_init(void)
         for(unsigned i=0;i<24;i++)conditions(&cdb.filter[i]);
         st_control=STIRQ_DAT|0x0200|0x0040;cdb.cr1=0x0400|flags[n];
         CDBLOCK before;memcpy(&before,&cdb,sizeof cdb);
-        assert(init_cdblock()==(n==1?0:HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST));
+        assert(init_cdblock()==(n==0?HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST:0));
         if(n) {
             if(n==1)before.iflag=0;
             assert(!memcmp(&before,&cdb,sizeof cdb));

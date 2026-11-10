@@ -429,9 +429,9 @@ static void expect_pause_state(CDBLOCK *before)
 }
 static void init_handoff(void)
 {
-    const unsigned flags[]={0,2,1,0x7f};
+    const unsigned flags[]={0,2,1,0x7f,0x80,0x83};
     for(unsigned type=1;type<=3;type++)for(unsigned branch=0;branch<2;branch++)
-    for(unsigned f=0;f<4;f++) {
+    for(unsigned f=0;f<6;f++) {
         init_request(flags[f],type,branch);CDBLOCK before;expect_pause_state(&before);
         acknowledge_after=-1;
         assert(!init_cdblock());
@@ -441,7 +441,7 @@ static void init_handoff(void)
         assert(buf_fad_start==123 && buf_fad_end==456 && !pause_signals);
         check_owners();
         waits=wakeups=0;acknowledge_after=3;
-        int reset=flags[f]&1;
+        int reset=!(flags[f]&0x80) && (flags[f]&1);
         assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
         pause_state=NULL;
         assert(waits==3 && wakeups==1 && pause_signals==1);
@@ -453,11 +453,69 @@ static void init_handoff(void)
             assert(cdb.block_free==200 && !cdb.trans_type && !copy_move_error);
             assert(hirq_clear==(HIRQ_PEND|HIRQ_DRDY|HIRQ_BFUL));
         } else {
-            assert(cdb.iflag==flags[f] && cdb.block_free==198 && cdb.trans_type==TRANS_DATA);
+            assert(cdb.iflag==(flags[f]&0x80?0x14:flags[f]) && cdb.block_free==198 && cdb.trans_type==TRANS_DATA);
             assert(st_control==0x221 && hirq==0x55 && hirq_clear==0x66 && copy_move_error==1);
         }
         if(type==PLAYTYPE_DIR || reset)assert(!cdb.rdir_state && !cdb.cdir_pfnum);
         check_owners();
+    }
+}
+static void init_flags(void)
+{
+    for(unsigned flags=0;flags<256;flags++)for(unsigned active=0;active<2;active++)
+    for(unsigned branch=0;branch<2;branch++) {
+        init_request(flags,active?PLAYTYPE_SECTOR:0,branch);
+        st_control|=STIRQ_DAT;
+        if(!active)cdb.status=STAT_PAUSE;
+        CDBLOCK before;expect_pause_state(&before);
+        int reset=!(flags&0x80) && (flags&1);
+        assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
+        pause_state=NULL;
+        assert(waits==active && wakeups==active && pause_signals==active);
+        assert(!cdb.play_type && !cdb.pause_request && cdb.status==STAT_PAUSE);
+        assert(cdb.iflag==(flags&0x80?0x14:reset?0:flags));
+        assert(reply[0]==((STAT_PAUSE<<8)|0x84) && reply[1]==0x4101);
+        assert(reply[2]==0x100 && reply[3]==180 && !irq_depth);
+        assert(cdb.play_pos_types==5 && cdb.max_repeat==9 && cdb.repcnt==4);
+        assert(cdb.fad==180 && cdb.play_fad_start==150 && cdb.play_fad_end==700);
+        assert(buf_fad_start==123 && buf_fad_end==456);
+        if(reset) {
+            assert(cdb.block_free==200 && cdb.sector_size==2048 && cdb.put_sector_size==2048);
+            assert(!cdb.trans_type && !cdb.trans_block && !cdb.trans_bk && !cdb.cdwnum && !cdb.actsize);
+            assert(!cdb.subrw_rp && !cdb.subrw_wp && !copy_move_error);
+            assert(!cdb.rdir_state && !cdb.cdir_pfnum);
+            assert(st_control==0x21 && hirq==0x55 && hirq_clear==(HIRQ_PEND|HIRQ_DRDY|HIRQ_BFUL));
+            for(unsigned i=0;i<MAX_SELECTORS;i++) {
+                assert(cdb.part[i].size==-1 && !cdb.part[i].head && !cdb.part[i].tail);
+                FILTER expected;memset(&expected,0,sizeof expected);
+                expected.c_true=i;expected.c_false=0xff;
+                assert(!memcmp(&expected,&cdb.filter[i],sizeof expected));
+            }
+        } else {
+            /* Only the requested policy and acknowledged idle publication may
+             * differ; reset-only state and register contents remain exact. */
+            before.iflag=flags&0x80?0x14:flags;before.pause_request=0;
+            before.play_type=0;before.status=STAT_PAUSE;
+            if(!active)before.play_wait=1;
+            assert(!memcmp(&before,&cdb,sizeof cdb));
+            assert(cdb.block_free==198 && copy_move_error==1 && st_control==(0x221|STIRQ_DAT));
+            assert(hirq==0x55 && hirq_clear==0x66);
+        }
+        check_owners();
+    }
+}
+static void init_no_media(void)
+{
+    const unsigned states[]={STAT_OPEN,STAT_NODISC};
+    for(unsigned state=0;state<2;state++)for(unsigned flags=0;flags<256;flags++) {
+        init_request(flags,0,0);cdb.tracks=NULL;cdb.track_num=0;cdb.play_track=NULL;
+        cdb.status=states[state];int reset=!(flags&0x80) && (flags&1);
+        assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
+        assert(cdb.status==(int)states[state] && reply[0]==((states[state]<<8)|0x84));
+        assert(reply[1]==0x4101 && reply[2]==0x100 && reply[3]==180);
+        assert(!waits && !wakeups && !cdb.play_type && !cdb.pause_request);
+        assert(cdb.iflag==(flags&0x80?0x14:reset?0:flags));
+        assert(cdb.block_free==(reset?200:198));check_owners();
     }
 }
 static void init_late_ack(void)
@@ -492,6 +550,7 @@ int main(int argc,char **argv)
     case 14:repeat_seek_stop();break;case 15:home_resume();break;
     case 16:retained_forms();break;case 17:retained_form_failure();break;case 18:replacement_types();break;
     case 19:init_handoff();break;case 20:init_late_ack();break;
+    case 21:init_flags();break;case 22:init_no_media();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

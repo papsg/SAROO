@@ -590,15 +590,17 @@ int init_cdblock(void)
 
 	SSLOG(_INFO, "init_cdblock  iflag=%02x stnby=%04x ecc=%02x retry=%02x\n", iflag, stnby, ecc, retry);
 
-	if(iflag&0x80){
-		goto _exit;
-	}
     /* The reader still owns its policy and buffers until it acknowledges.
      * Keep its request pending if the bounded handoff cannot complete. */
     if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
-	cdb.iflag = iflag;
+    if (iflag & 0x80) {
+        set_report(cdb.status);
+        return 0;
+    }
+    cdb.iflag = (iflag & 1) ? 0 : iflag;
 
 	if((iflag&0x01)==0){
+		set_report(cdb.status);
 		return 0;
 	}
 
@@ -657,7 +659,6 @@ int init_cdblock(void)
 
 	HIRQ_CLR = HIRQ_PEND | HIRQ_DRDY | HIRQ_BFUL;
 
-_exit:
 	set_report(cdb.status);
 	return HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST;
 }

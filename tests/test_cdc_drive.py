@@ -98,6 +98,8 @@ class CDDriveTests(unittest.TestCase):
     def test_file_and_background_ranges_retire_play_type_constraints(self):self.run_case(18)
     def test_initialization_handoff_is_bounded_and_defers_all_mutation(self):self.run_case(19)
     def test_initialization_late_acknowledgement_and_final_wait(self):self.run_case(20)
+    def test_all_initialization_flags_preserve_settings_and_reset_only_when_requested(self):self.run_case(21)
+    def test_all_initialization_flags_without_media_preserve_drive_status(self):self.run_case(22)
 
 
 if __name__=='__main__':unittest.main()

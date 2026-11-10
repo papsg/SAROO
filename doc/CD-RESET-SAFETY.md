@@ -74,8 +74,47 @@ uses the real shared helper and acknowledgement branches in the drive fixture;
 the connection fixture also extracts the shared helper. No private preparer,
 runtime diagnostic or device is required.
 
-Keep-settings pause/report behavior, ordinary initialization reports and
-software-reset decode defaults follow separately. Selector reset still has its
-old unbounded wait and missing wakeup at this checkpoint. Broader reset state,
-standby/ECC/retry, tray/scan/session and routing-policy changes remain separate.
-No audio or named-game defect is claimed resolved.
+## Initialization flags, reports and reset defaults
+
+The next separate adaptation of paps-g `3772326a` removes three reachable
+initialization defects: bit7 skipped pausing and falsely returned reset-completion
+flags; ordinary nonreset initialization left the previous report in the registers;
+and software reset retained the request's nondefault decode flags. The same Sega
+§8.2.1/function1.7 references above specify current-position pause, keep-settings,
+zero-valued initialization defaults and reset-only ESEL completion. The later
+English and Japanese copies agree on these points. Bit7 retains its existing
+precedence over other flag bits; unsupported standby/ECC/retry controls are not
+introduced by this port.
+
+After successful handoff, bit7 retains the supported settings, refreshes the
+report and returns no reset-completion flags. Ordinary initialization applies its
+flags and refreshes all four report words. Software reset sets the decode policy
+to zero before the existing FIFO/filter/buffer cleanup, retaining the current
+position, play range, endpoint types and repeat budget. Inactive OPEN/NODISC
+states remain unchanged. Failure still returns WAIT before policy or cleanup.
+No extra cache invalidation is added; the per-sector mode snapshot remains.
+
+Twenty-three actual-source drive methods and the same52 related methods pass
+ASan/UBSan and O2. Every flag byte is checked with active/idle readers through
+both real worker branches (1,024 combinations), plus512 OPEN/NODISC flag cases.
+Independent exact reports, reset-only completion, FIFO/IRQ state, all selector
+defaults and retained ownership/playback/cache state are checked. Keep-settings
+now also participates in the timeout/late-retry matrix. The preceding source
+fails both new flag groups while retaining the exact valid report/log control.
+Eight additional compiled behavioral controls detect skipped keep-settings pause,
+stale/partial reports, retained reset flags, changed keep-settings policy, false
+keep-settings completion and missing reset completion, as well as preceding
+behavior. Two older fixtures explicitly expected the false completion; those
+oracles are corrected while preserving their unrelated ownership checks.
+
+GNU MCU load changes60,872→60,888(+16), leaving4,648 ITCM bytes. Static DTCM,
+stack/heap address gap and direct command/disk/helper frames remain unchanged;
+all56 public inputs and85 unchanged SDK inputs are verified. No field, allocation,
+task, payload copy, per-sector work or SD I/O is added. Ordinary/keep-settings
+initialization now writes its required four-word report. Nothing is installed;
+host/GNU evidence is not physical Saturn/game or original-MDK qualification.
+
+Selector reset still has its old unbounded wait and missing wakeup at this
+checkpoint. Broader software-reset state, standby/ECC/retry, tray/scan/session
+and routing-policy changes remain separate. No audio or named-game defect is
+claimed resolved.

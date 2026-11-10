@@ -224,7 +224,7 @@ int main(int argc,char **argv)
         make_error();cdb.cr1=test==8?0x0401:test==9?0x0400:0x0481;
         cdb.status=STAT_PAUSE;
         int result=init_cdblock();
-        assert(result==(test==9?0:HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST));
+        assert(result==(test==8?HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST:0));
         check_reply(test==8?0:1);
         if(test==8) { assert(cdb.block_free==MAX_BLOCKS);check_owners(); }
     } else if(test==20 || test==21) {
