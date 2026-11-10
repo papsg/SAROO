@@ -233,6 +233,14 @@ void trans_handle(void)
 		if(cdb.trans_bk==0)
 			return;
 
+		int offs = 0;
+		if(cdb.put_sector_size==2048){
+			offs = 24;
+		}else if(cdb.put_sector_size==2336){
+			offs = 16;
+		}else if(cdb.put_sector_size==2340){
+			offs= 12;
+		}
 		PARTITION *pt = &cdb.part[cdb.trans_part_index];
 		BLOCK *bt = pt->tail;
 
@@ -240,6 +248,7 @@ void trans_handle(void)
 			// PARTITION为空
 			bt = alloc_block();
 			bt->size = 0;
+			memset(bt->data, 0, offs);
 			bt->next = NULL;
 			pt->head = bt;
 			pt->tail = bt;
@@ -248,6 +257,7 @@ void trans_handle(void)
 			// PARTITION的最后的block已经有数据了
 			BLOCK *nbt = alloc_block();
 			nbt->size = 0;
+			memset(nbt->data, 0, offs);
 			nbt->next = NULL;
 			bt->next = nbt;
 			pt->tail = nbt;
@@ -258,19 +268,20 @@ void trans_handle(void)
 		ST_CTRL &= ~STIRQ_DAT;
 		//printk("trans_put: FIFO_STAT=%04x\n", FIFO_STAT);
 		int cnt = 2048;
-		int offs = 0;
-		if(cdb.put_sector_size==2048){
-			offs = 24;
-		}else if(cdb.put_sector_size==2336){
-			offs = 16;
-		}else if(cdb.put_sector_size==2340){
-			offs= 12;
-		}
 		while(cnt){
 			*(u16*)(bt->data + offs + bt->size) = FIFO_DATA;
 			bt->size += 2;
 			cnt -= 2;
 			if(bt->size == cdb.put_sector_size){
+                const u8 *data = bt->data;
+                /* CD header time is converted as BCD without validity rejection. */
+                bt->fad = ((data[12] >> 4)*10 + (data[12] & 15))*4500 +
+                          ((data[13] >> 4)*10 + (data[13] & 15))*75 +
+                          ((data[14] >> 4)*10 + (data[14] & 15));
+                bt->fn = data[15]==2 ? data[16] : 0;
+                bt->cn = data[15]==2 ? data[17] : 0;
+                bt->sm = data[15]==2 ? data[18] : 0;
+                bt->ci = data[15]==2 ? data[19] : 0;
 				pt->size += bt->size;
 				cdb.trans_bk -= 1;
 				if(cdb.trans_bk==0){
@@ -280,6 +291,7 @@ void trans_handle(void)
 				}else{
 					BLOCK *nbt = alloc_block();
 					nbt->size = 0;
+					memset(nbt->data, 0, offs);
 					nbt->next = 0;
 					bt->next = nbt;
 					pt->tail = nbt;

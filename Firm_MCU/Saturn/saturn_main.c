@@ -259,11 +259,13 @@ int get_sector(int fad, BLOCK *wblk)
 
 	wblk->size = buf_fad_size;
 	wblk->fad = fad;
-	if(buf_fad_size==2352 && wblk->data[0x0f]==0x02){
+	if(cdb.play_track->mode!=3 && buf_fad_size==2352 && wblk->data[0x0f]==0x02){
 		wblk->fn = wblk->data[0x10];
 		wblk->cn = wblk->data[0x11];
 		wblk->sm = wblk->data[0x12];
 		wblk->ci = wblk->data[0x13];
+	}else{
+		wblk->fn = wblk->cn = wblk->sm = wblk->ci = 0;
 	}
 
 	// 处理subcode

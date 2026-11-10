@@ -35,6 +35,7 @@ check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_subheader.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_copy.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_filter.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_metadata.py -v
 
 .PHONY: check-config
 check-config:
