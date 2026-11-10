@@ -73,8 +73,8 @@ make -C tests check-cdc-command-buffer
 # SAROO_CDC_METADATA_MAIN=/path/to/saturn_main.c
 ```
 
-Current host publication before DataEnd, byte accounting, unchecked allocation,
-empty/short FIFO service, transfer counts and reset/connection ownership remain
+At the005 milestone, host publication before DataEnd, byte accounting, unchecked allocation,
+empty/short FIFO service, transfer counts and reset/connection ownership were
 explicitly separate007/006 work. This metadata port does not make the entire
 host-write command compliant. Shared filtering of normalized non-Mode2 fields
 is the later003 routing continuation; current incoming predicates remain.
@@ -156,9 +156,83 @@ hardware reset qualification.
 
 ## MCU-CDC-003 continuation: shared destination-filter routing
 
-Queued: selected `50100444`, with producer and connection prerequisites explicit.
-Retain zero-copy full/same-pool moves, original selection, outcome and last-CD
-reporting. General asynchronous/output ownership remains separate.
+Original: selected paps-g `50100444`; depends on005 producer metadata and006
+connection/reset rules. The destination is an aperture, not a same-number
+partition. The preceding direct copy/move bypasses file/channel/submode/coding
+conditions, FAD range, false chains and intentional discard.
+
+Sega's [CD Communication Interface §5.3.1–5.3.3](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+and [§8.2.7 functions7.6–7.8](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm)
+define filter-based copy/move, initial full-request capacity and retained results.
+One bounded helper now consumes existing normalized metadata for incoming and
+copy/move paths, evaluates up to24 selectors, validates the destination and
+returns a partition or discard. Range comparison subtracts after the lower-bound
+check, avoiding unsigned addition wrap in the cached representation. No payload
+header reparsing replaces the logical disc FAD.
+
+After admission, take the requested filter input from previous sources. Copy
+allocates/copies only accepted sectors; discarded copies do neither. Move
+unlinks the original block and appends or frees it without copying or needing
+spare capacity. Fixed original selection length and captured next pointers
+preserve split, discard and return-to-source ordering. The existing requested-
+count capacity check still applies even if all copies would later be discarded.
+Copy/move do not change last incoming-CD destination or their IRQ-return masks.
+
+The public helper's logging argument preserves the existing incoming mode1
+false-disconnect print, including its audio silence, while copy/move stay silent
+on that path. Its null-track guard retains the old disconnected-input discard
+without needing a track or sector context. A baseline-valid control catches the
+initial uncommitted logging-adaptation regression; that failure is retained.
+Existing direction-specific logs/masks remain; no private log
+consolidation or new logging is imported. Incoming sector conversion and last-
+stored/retry policy remain as before. Normalized non-Mode2 subheaders are now
+compared as zero, as §5.4(2) requires, rather than bypassing conditions.
+[§8.2.5 function5.5](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_15.htm)
+defines inversion before range combination. Retain the prior Mode2 interpretation
+when inversion is enabled without another subheader condition; the historical
+emulator disagreement does not establish physical behavior for that combination.
+
+Six new actual-source methods pass sanitizers/O2:144 split copy/move selection
+shapes, discard/capacity/logging controls, five real cache-hit producer formats
+followed by incoming storage and routed copy,4,096 baseline-valid Mode2 predicate
+combinations, normalized non-Mode2 predicates and full-width range boundaries.
+Independent expected lists validate all payload bytes, metadata, byte/free counts,
+block identity and outcomes. The actual allocator symbol is wrapped only in the
+host fixture to count calls, with its body and decisions intact. Discarded copy
+has zero calls/copy bytes; accepted copy calls equal accepted sectors and moves
+make zero allocation calls. Existing pool setup now uses real startup's identity
+connections. Complete source/dependency snapshots accompany both profiles.
+
+The baseline fails five groups and passes the4,096-combination control. Those
+failures share causes; the full-width range case is a defensive representation
+check, not a physical24-bit packet reproduction. Eleven compiled mutations reject
+routing bypass, even allocate-then-free waste on discard, leaks, lost original
+selection, last-CD corruption, missed input takeover, predicates/range and added
+copy logging and lost disconnected-input guarding. All47 current CD methods pass
+in both profiles, including the
+prior full-pool/same-partition and incoming-cycle/format/log controls. Host IRQ
+and cache/FIFO substitutes do not qualify physical concurrency or game playback.
+
+The full MCU link adds80 load bytes:57,908→57,988, leaving7,548 ITCM bytes.
+Static DTCM remains60,296 with no new retained state, workspace or I/O. Shared
+route direct frame is32, copy/move grows56→64, incoming stays32, disconnect8,
+disk task80 and IRQ/dispatch24/16. The copy route caller sum rises96→136 and
+incoming sum112→144 before other callees/exception state; these are compiler
+frame sums, not measured peaks. The added input takeover masks at most24
+connection checks once per accepted command. Predicate walks and payload work
+remain outside the masks; existing per-move-block link/free work stays masked.
+Correct filtering adds CPU work that was previously skipped; no elapsed-time or
+game-speed gain is claimed.
+
+```sh
+python3 tests/test_cdc_routing.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_routing.py
+# Overrides: SAROO_CDC_ROUTING_SOURCE and SAROO_CDC_ROUTING_MAIN
+```
+
+This completes the selected synchronous routing port, not broader MCU-CDC-003.
+General output ownership, asynchronous cancellation/erase contracts, physical
+scheduling and games remain unqualified. Host writes are the separate007 port.
 
 ## MCU-CDC-007: reserved host writes and bounded completion
 

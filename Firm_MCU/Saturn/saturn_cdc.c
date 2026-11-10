@@ -384,59 +384,37 @@ void set_status(u8 status)
 }
 
 
-int filter_sector(TRACK_INFO *track, BLOCK *wblk)
+/* Route normalized producer metadata. Callers retain ownership of the block.
+ * The logging flag preserves the existing incoming mode1 false-disconnect log. */
+static int sector_destination(int fid, const BLOCK *block, int log_false_disconnect)
 {
-	PARTITION *pt;
-	FILTER *ft;
-	BLOCK *blk;
-
-	int retv, irqs;
-
-    int fid = cdb.cddev_filter, dst = 0xff;
-
-    /* A valid chain can visit at most all selectors. Disconnected outputs
-     * discard sectors; they are never partition or filter array indices. */
     for (int hops = 0; hops < MAX_SELECTORS && fid < MAX_SELECTORS; hops++) {
-        ft = &cdb.filter[fid];
-		retv = 1;
-
-		if(track->mode!=3 && track->sector_size==2352 && wblk->data[0x0f]==2){
-			//printk("wblk: fn=%02x cn=%02x sm=%02x ci=%02x\n", wblk->fn, wblk->cn, wblk->sm, wblk->ci);
-			if(ft->mode&0x01){
-				if(wblk->fn!=ft->fid)
-					retv = 0;
-			}
-			if(ft->mode&0x02){
-				if(wblk->cn!=ft->chan)
-					retv = 0;
-			}
-			if(ft->mode&0x04){
-				if((wblk->sm&ft->smmask)!=ft->smval)
-					retv = 0;
-			}
-			if(ft->mode&0x08){
-				if((wblk->ci&ft->cimask)!=ft->cival)
-					retv = 0;
-			}
-			if(ft->mode&0x10){
-				retv ^= 1;
-			}
-		}
-		if(ft->mode&0x40){
-			if( (wblk->fad < ft->fad) || (wblk->fad >= (ft->fad+ft->range)) )
-				retv = 0;
-		}
-
-        if(retv==1){
-            dst = ft->c_true;
-            break;
+        const FILTER *ft = &cdb.filter[fid];
+        int match = 1;
+        if ((ft->mode & 0x01) && block->fn != ft->fid) match = 0;
+        if ((ft->mode & 0x02) && block->cn != ft->chan) match = 0;
+        if ((ft->mode & 0x04) && (block->sm & ft->smmask) != ft->smval) match = 0;
+        if ((ft->mode & 0x08) && (block->ci & ft->cimask) != ft->cival) match = 0;
+        if (ft->mode & 0x10) match ^= 1;
+        if ((ft->mode & 0x40) &&
+            (block->fad < ft->fad || block->fad - ft->fad >= ft->range)) match = 0;
+        if (match) {
+            int dst = ft->c_true;
+            return dst < MAX_SELECTORS ? dst : 0xff;
         }
-        if(ft->c_false==0xff){
-            if(track->mode==1)
-                printk("  c_false is FF!\n");
-        }
+        if (ft->c_false == 0xff && log_false_disconnect)
+            printk("  c_false is FF!\n");
         fid = ft->c_false;
     }
+    return 0xff;
+}
+
+int filter_sector(TRACK_INFO *track, BLOCK *wblk)
+{
+    PARTITION *pt;
+    BLOCK *blk;
+    int irqs;
+    int dst = sector_destination(cdb.cddev_filter, wblk, track && track->mode==1);
 
     if (dst >= MAX_SELECTORS) {
         cdb.last_buffer = 0xff;
@@ -1502,7 +1480,7 @@ int put_sector_data(void)
 
 
 // 0x65 [SR]
-/* Admission is shared. Filter routing remains a separate pending correction. */
+/* Copy/move share admission, destination filtering and input ownership. */
 static __attribute__((noinline)) int copy_move_sector_data(int moving)
 {
     int src = cdb.cr3 >> 8, dst = cdb.cr1 & 0xff;
@@ -1511,7 +1489,7 @@ static __attribute__((noinline)) int copy_move_sector_data(int moving)
         set_status(STAT_REJECT);
         return 0;
     }
-    PARTITION *ps = &cdb.part[src], *pd = &cdb.part[dst];
+    PARTITION *ps = &cdb.part[src];
     if (moving) {
         SSLOG(_BUFIO, "move_sector_data: src=%d(%d) spos=%d snum=%d dst=%d\n", src, ps->numblocks, spos, snum, dst);
     } else {
@@ -1526,6 +1504,9 @@ static __attribute__((noinline)) int copy_move_sector_data(int moving)
         set_status(STAT_WAIT | cdb.status);
         return 0;
     }
+    int irqs = disable_irq();
+    disconnect_filter_input(dst);
+    restore_irq(irqs);
     copy_move_error = 0;
     BLOCK *prev = NULL, *block = ps->head;
     for (int i = 0; block && i < spos; i++) {
@@ -1535,15 +1516,17 @@ static __attribute__((noinline)) int copy_move_sector_data(int moving)
     while (snum--) {
         if (!block) { copy_move_error = 1; break; }
         BLOCK *next = block->next;
+        int target = sector_destination(dst, block, 0);
         if (moving) {
             int irqs = disable_irq();
             unlink_block(ps, prev, block);
-            append_block(pd, block);
+            if (target < MAX_SELECTORS) append_block(&cdb.part[target], block);
+            else free_block(block);
             restore_irq(irqs);
-        } else {
+        } else if (target < MAX_SELECTORS) {
             BLOCK *copy = dup_block(block);
             if (!copy) { copy_move_error = 1; break; }
-            append_block(pd, copy);
+            append_block(&cdb.part[target], copy);
         }
         block = next;
     }

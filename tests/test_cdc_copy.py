@@ -13,6 +13,28 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def copy_source(raw,required=()):
+    def function(signature):
+        start=raw.index(signature)
+        return raw[start:raw.index(b'\n}',start)+2]+b'\n'
+    # Rename only the real allocator's symbol, then count calls through a shim.
+    # Its body/IRQ/allocation decisions remain the production implementation.
+    code=b'#define alloc_block actual_alloc_block\n'+function(b'BLOCK *alloc_block(void)')
+    code+=b'#undef alloc_block\nstatic unsigned allocation_count;\n'
+    code+=b'static BLOCK *alloc_block(void) { allocation_count++; return actual_alloc_block(); }\n'
+    code+=b''.join(function(sig) for sig in (b'void free_block(BLOCK *block)',b'BLOCK *dup_block(BLOCK *block)',b'BLOCK *find_block(',b'void append_block('))
+    if b'static void unlink_block(' in raw:code+=function(b'static void unlink_block(')
+    code+=function(b'void remove_block(')+function(b'void set_status(')
+    code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
+    start=raw.index(b'// 0x65 [SR]')
+    operations=raw[start:raw.index(b'/******************************************************************************/',start)]
+    for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
+        if signature in raw and (call in operations or call in required):code+=function(signature)
+    code+=operations
+    code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
+    return code
+
+
 class CDCopyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -20,15 +42,7 @@ class CDCopyTests(unittest.TestCase):
         raw=source.read_bytes();header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-copy';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
-        def function(signature):
-            start=raw.index(signature)
-            return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        code=b''.join(function(s) for s in (b'BLOCK *alloc_block(void)',b'void free_block(BLOCK *block)',b'BLOCK *dup_block(BLOCK *block)',b'BLOCK *find_block(',b'void append_block('))
-        if b'static void unlink_block(' in raw:code+=function(b'static void unlink_block(')
-        code+=function(b'void remove_block(')+function(b'void set_status(')
-        code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
-        start=raw.index(b'// 0x65 [SR]');code+=raw[start:raw.index(b'/******************************************************************************/',start)]
-        code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
+        code=copy_source(raw)
         (cls.target/'copy.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'cdc.h':header,'cdc_copy.c':(ROOT/'tests/cdc_copy.c').read_bytes(),'test_cdc_copy.py':Path(__file__).read_bytes()}

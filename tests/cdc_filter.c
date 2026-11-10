@@ -122,7 +122,7 @@ static void delivered(unsigned partition,unsigned count,unsigned format)
 
 int main(int argc,char **argv)
 {
-    assert(argc==2); int test=atoi(argv[1]); assert(test>=0 && test<=11);
+    assert(argc==2); int test=atoi(argv[1]); assert(test>=0 && test<=12);
     assert(MAX_SELECTORS==24 && MAX_BLOCKS==200);
     if(test==0) {
         for(unsigned f=0;f<MAX_SELECTORS;f++) {
@@ -234,6 +234,11 @@ int main(int argc,char **argv)
             }
             assert(!log_lines);
         }
+    }
+    if(test==12)for(unsigned fid=24;fid<256;fid++) {
+        setup(2);cdb.cddev_filter=fid;CDBLOCK before=cdb;before.last_buffer=0xff;
+        assert(filter_sector(NULL,NULL)==1 && !memcmp(&before,&cdb,sizeof cdb));
+        assert(!payload_bytes && !irq_entries && !log_lines);owners();
     }
     puts("pass: incoming routing bounds, discard, retry, payload and ownership");
     return 0;

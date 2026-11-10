@@ -29,6 +29,12 @@ static u16 reply[4], hirq, hirq_clear, st_control;
 #define HIRQ_CLR hirq_clear
 #define ST_CTRL st_control
 #define SSLOG(...) ((void)0)
+static unsigned log_count;
+int fixture_printk(const char *text)
+{
+    assert(!strcmp(text,"  c_false is FF!\n"));log_count++;return 0;
+}
+#define printk fixture_printk
 static int irq_depth, lose_after, last_free;
 static size_t copied_bytes;
 static int disable_irq(void) { return irq_depth++; }
@@ -68,7 +74,9 @@ static void setup(unsigned source_count,unsigned free_count)
 {
     assert(source_count+free_count<=MAX_BLOCKS);
     memset(&cdb,0,sizeof cdb);
-    for(unsigned i=0;i<MAX_SELECTORS;i++) cdb.part[i].size=-1;
+    for(unsigned i=0;i<MAX_SELECTORS;i++) {
+        cdb.part[i].size=-1;cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
+    }
     for(unsigned i=0;i<MAX_BLOCKS;i++) {
         BLOCK *b=&cdb.block[i]; b->data=sector_bytes[i];
         b->size=i<source_count || i>=source_count+free_count ? 2352 : -1;
@@ -82,7 +90,7 @@ static void setup(unsigned source_count,unsigned free_count)
         }
     }
     cdb.block_free=free_count; cdb.sector_size=2352; cdb.status=STAT_PAUSE;
-    lose_after=0; last_free=free_count; copied_bytes=0; hirq=0;
+    lose_after=0; last_free=free_count; copied_bytes=0; allocation_count=0; log_count=0; hirq=0;
 }
 static void command(int moving,unsigned src,unsigned dst,unsigned pos,unsigned count)
 {

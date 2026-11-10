@@ -22,7 +22,9 @@ class CDFilterTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        code=b''.join(function(sig) for sig in (b'BLOCK *alloc_block(void)',b'int filter_sector('))
+        code=function(b'BLOCK *alloc_block(void)')
+        if b'static int sector_destination(' in raw:code+=function(b'static int sector_destination(')
+        code+=function(b'int filter_sector(')
         (cls.target/'filter.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'cdc.h':header,'cdc_filter.c':(ROOT/'tests/cdc_filter.c').read_bytes(),'test_cdc_filter.py':Path(__file__).read_bytes()}
@@ -56,6 +58,7 @@ class CDFilterTests(unittest.TestCase):
     def test_validated_destination_survives_modeled_connection_change(self):self.run_cases((9,))
     def test_existing_false_disconnect_logging(self):self.run_cases((10,))
     def test_baseline_valid_delivery_controls(self):self.run_cases((11,))
+    def test_disconnected_input_needs_no_sector_context(self):self.run_cases((12,))
 
 
 if __name__=='__main__':unittest.main()
