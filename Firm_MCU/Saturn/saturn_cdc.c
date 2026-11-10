@@ -1719,15 +1719,52 @@ static int read_directory_record(FILE_INFO *fi, const u8 *p, unsigned available)
 {
     if (available < 34 || p[0] < 34 || p[0] > available ||
         !p[32] || 33u + p[32] + !(p[32] & 1) > p[0]) return 0;
+    unsigned su = 33u + (p[32] | 1u);
+    unsigned su_size = p[0]-su;
+    int xa = su_size >= 8 && p[su+6] == 'X' && p[su+7] == 'A';
+    if (xa && su_size < 14) return 0;
+    /* An interleaved extended attribute occupies the entire first unit;
+     * file data starts after that unit's following gap (ECMA-119 6.4.3). */
+    unsigned prefix = p[1];
+    if (!p[26] && p[27]) return 0;
+    if (p[26] && prefix) {
+        if (prefix != p[26]) return 0;
+        prefix += p[27];
+    }
     u32 lba = isonum_733(p+2);
-    if (lba > 0xffffffffu-p[1]) return 0;
-    fi->lba = lba+p[1];
+    if (lba > 0xffffffffu-prefix) return 0;
+    fi->lba = lba+prefix;
     fi->size = isonum_733(p+10);
-    fi->attr = p[25];
+    fi->attr = (p[25] & 2) | (xa ? (p[su+4] & 0xf8) | FILE_ATTR_XA : 0);
     fi->unit = p[26];
     fi->gap = p[27];
-    fi->fid = 0;
+    fi->fid = xa ? p[su+8] : 0;
     return p[0];
+}
+
+/* XA presence uses a reserved internal bit; the 12-byte reply masks it out.
+ * With XA metadata, its directory flag takes precedence over the ISO flag. */
+static int file_is_directory(const FILE_INFO *fi)
+{
+    return fi->attr & ((fi->attr & FILE_ATTR_XA) ? 0x80 : 2);
+}
+
+/* Logical sector indices exclude gaps. UINT32_MAX-byte files have at most
+ * 2^21 sectors, so multiplication by an eight-bit gap cannot overflow. */
+static u32 file_sector_offset(u32 sector, unsigned unit, unsigned gap)
+{
+    return sector + (gap ? sector/unit*gap : 0);
+}
+
+/* Advance only after consumption/discard, never on a full-buffer retry.
+ * Unit boundaries use comparisons/addition, with division confined to setup. */
+void advance_file_unit(void)
+{
+    if (cdb.file_gap && cdb.fad == cdb.file_next_unit &&
+        cdb.fad < cdb.play_fad_end) {
+        cdb.fad += cdb.file_gap;
+        cdb.file_next_unit = cdb.fad+cdb.file_unit;
+    }
 }
 
 static u32 file_sector_count(u32 bytes)
@@ -1783,9 +1820,11 @@ static void start_file_play(int selnum, u32 fad, u32 sectors, int type)
     free_partition(&cdb.part[selnum]);
     set_file_selector(selnum, fad, sectors);
     cdb.repcnt = 0;
+    cdb.max_repeat = 0;
     /* Commands already paused. Internal directory phases must retain a new
      * pause request until the worker acknowledges it. */
     cdb.play_wait = 0;
+    cdb.file_gap = 0;
     cdb.play_type = type;
     cdb.play_fad_start = fad;
     cdb.play_fad_end = fad+sectors;
@@ -1832,7 +1871,7 @@ static int fill_fileinfo(const u8 *buf, unsigned available)
         int length = read_directory_record(&fi, buf+offset, available-offset);
         if (!length) return -1;
         if (directory_record < 2) {
-            if (!(fi.attr & 2) || buf[offset+32] != 1 ||
+            if (!file_is_directory(&fi) || buf[offset+32] != 1 ||
                 buf[offset+33] != directory_record) return -1;
             cdb.fi[directory_record] = fi;
             if (cdb.cdir_pfid == 2) log_directory_record(directory_record, &fi, buf+offset);
@@ -1875,7 +1914,7 @@ int handle_diread(void)
         if (buf[6] == 1 && !memcmp(buf+1, "CD001", 5)) {
             if (buf[0] == 1 && buf[128] == 0 && buf[129] == 8 &&
                 read_directory_record(&root, buf+156, 34) &&
-                (root.attr & 2) && !buf[189] && !root.unit && !root.gap &&
+                file_is_directory(&root) && !buf[189] && !root.unit && !root.gap &&
                 valid_file_extent(root.lba, file_sector_count(root.size))) {
                 cdb.root_lba = root.lba;
                 cdb.root_size = root.size;
@@ -1931,7 +1970,7 @@ int change_dir(void)
     u32 lba = cdb.root_lba, bytes = cdb.root_size;
     if (fid != 0xffffff) {
         int index = file_info_index(fid);
-        if (index < 0 || !(cdb.fi[index].attr & 2) ||
+        if (index < 0 || !file_is_directory(&cdb.fi[index]) ||
             cdb.fi[index].unit || cdb.fi[index].gap) {
             set_status(STAT_REJECT); return 0;
         }
@@ -2007,7 +2046,7 @@ int get_file_info(void)
         u8 *out = cdb.FINFO+i*12;
         *(u32*)(out+0) = bswap32(fi->lba+150);
         *(u32*)(out+4) = bswap32(fi->size);
-        out[8] = fi->gap; out[9] = fi->unit; out[10] = fi->fid; out[11] = fi->attr;
+        out[8] = fi->gap; out[9] = fi->unit; out[10] = fi->fid; out[11] = fi->attr & 0xfa;
     }
     cdb.trans_type = fid == 0xffffff ? TRANS_FINFO_ALL : TRANS_FINFO_ONE;
     trans_start();
@@ -2026,16 +2065,24 @@ int read_file(void)
     u32 fid = ((u32)(cdb.cr3 & 255)<<16) | cdb.cr4;
     int index = file_info_index(fid);
     if (index < 0) { set_status(STAT_REJECT); return 0; }
-    u32 lba = cdb.fi[index].lba;
-    u32 sectors = file_sector_count(cdb.fi[index].size);
+    FILE_INFO fi = cdb.fi[index];
+    u32 sectors = file_sector_count(fi.size);
     u32 offset = ((u32)(cdb.cr1 & 255)<<16) | cdb.cr2;
-    if (offset >= sectors || !valid_file_extent(lba, sectors)) {
+    if (offset >= sectors || (!fi.unit && fi.gap)) {
         set_status(STAT_REJECT); return 0;
     }
+    u32 span = file_sector_offset(sectors-1, fi.unit, fi.gap)+1;
+    if (!valid_file_extent(fi.lba, span)) { set_status(STAT_REJECT); return 0; }
+    u32 skip = file_sector_offset(offset, fi.unit, fi.gap);
     if (cdb.play_type) SSLOG(_FILEIO, "read_file: waiting ...\n");
     SSLOG(_FILEIO, "read_file: sel=%d fid=%08x\n", sel, fid);
     if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
-    start_file_play(sel, lba+offset+150, sectors-offset, PLAYTYPE_FILE);
+    start_file_play(sel, fi.lba+skip+150, span-skip, PLAYTYPE_FILE);
+    cdb.filter[sel].fid = fi.fid;
+    cdb.filter[sel].mode = 0x41; /* FAD range and file-number selection. */
+    cdb.file_unit = fi.unit;
+    cdb.file_gap = fi.gap;
+    if (fi.gap) cdb.file_next_unit = cdb.fad+fi.unit-(offset%fi.unit);
     cdb.options = 0x08;
     disk_task_wakeup();
     set_report(cdb.status);

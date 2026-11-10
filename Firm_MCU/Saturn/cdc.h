@@ -120,6 +120,9 @@
 #define MSF_TO_FAD(m,s,f) ((m * 4500) + (s * 75) + f)
 
 
+/* Internal XA-presence bit; mask it from file-information replies. */
+#define FILE_ATTR_XA 0x01
+
 typedef struct BLOCK_T
 {
 	s32 size;
@@ -244,6 +247,8 @@ typedef struct
 	u8  rdir_state;
 	u32 cdir_pfid;          // 当前目录页的文件开始编号
 	u16 cdir_pfnum;         // 当前目录页的文件个数
+	u8 file_unit, file_gap; /* Reuse the former alignment gap. */
+	u32 file_next_unit;     /* First FAD after the current file unit. */
 
 	u32 root_lba;           // 根目录的LBA地址
 	u32 root_size;          /* Exact root-directory byte length. */
@@ -413,3 +418,6 @@ void load_cover(int index);
 /* Retire unfinished directory metadata before worker ownership is released. */
 void invalidate_directory(void);
 int finish_directory(int valid);
+
+/* Skip the next physical interleave gap after consuming a file sector. */
+void advance_file_unit(void);

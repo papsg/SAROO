@@ -33,6 +33,8 @@ class CDBoundsTests(unittest.TestCase):
             b'void free_partition('))
         if b'static u32 directory_record;' in raw:
             code+=b'static u32 directory_record;\n'
+            for sig in (b'static int file_is_directory(',b'static u32 file_sector_offset(',b'void advance_file_unit('):
+                if sig in raw:code+=function(sig)
             code+=b''.join(function(sig) for sig in (b'static u32 file_sector_count(',
                 b'static int valid_file_extent(',b'static void set_file_selector(',
                 b'static void start_file_play(',b'static int file_info_index('))

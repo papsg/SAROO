@@ -520,6 +520,7 @@ _restart_nowait:
 
 			cdb.old_fad = cdb.fad;
 			cdb.fad++;
+            if (cdb.play_type == PLAYTYPE_FILE) advance_file_unit();
 		}
 
 		SSLOG(_DTASK, "\nplay end! fad=%08x end=%08x repcnt=%d maxrep=%d play_type=%d\n",

@@ -1,0 +1,69 @@
+"""Actual XA parser, file commands, router and worker advancement."""
+# Adapted from paps-g selected05852d90; iterative and wide arithmetic oracles.
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+import test_cdc_directory as directory
+
+ROOT=Path(__file__).resolve().parents[1]
+
+
+class CDXATests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source=Path(os.environ.get('SAROO_CDC_XA_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_cdc.c'))
+        main_source=Path(os.environ.get('SAROO_CDC_XA_MAIN',ROOT/'Firm_MCU/Saturn/saturn_main.c'))
+        with patch.dict(os.environ,{'SAROO_CDC_DIRECTORY_SOURCE':str(source),'SAROO_CDC_DIRECTORY_MAIN':str(main_source)}):
+            directory.CDDirectoryTests.setUpClass()
+        build=ROOT/'tests/build/cdc-xa';build.mkdir(parents=True,exist_ok=True)
+        cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
+        for f in directory.CDDirectoryTests.target.iterdir():
+            if f.is_file() and f.suffix in ('.c','.h','.inc'): (cls.target/f.name).write_bytes(f.read_bytes())
+        raw=source.read_bytes();main=main_source.read_bytes()
+        data=(ROOT/'tests/cdc_directory.c').read_bytes()
+        (cls.target/'directory-harness.inc').write_bytes(data[:data.index(b'int main(')])
+        start=main.index(b'\t\t\tcdb.old_fad = cdb.fad;\n\t\t\tcdb.fad++;')
+        end=main.index(b'\n\t\t}',start)
+        (cls.target/'advance.inc').write_bytes(b'static void advance(void) {\n'+main[start:end]+b'\n}\n')
+        for name in ('cdc_xa.c','test_cdc_xa.py'): (cls.target/name).write_bytes((ROOT/'tests'/name).read_bytes())
+        inputs={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in cls.target.iterdir() if f.is_file()}
+        inputs.update({'saturn_cdc.c':hashlib.sha256(raw).hexdigest(),'saturn_main.c':hashlib.sha256(main).hexdigest()})
+        (cls.target/'inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
+        flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
+        cls.binary=cls.target/'xa'
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
+              '-Wno-unused-function','-Wno-unused-variable','-Wno-unused-label','-Wno-parentheses',*flags,
+              '-I',str(cls.target),str(cls.target/'cdc_xa.c'),'-o',str(cls.binary)]
+        result=subprocess.run(args,capture_output=True,timeout=60)
+        (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
+        (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
+
+    @classmethod
+    def tearDownClass(cls):
+        directory.CDDirectoryTests.tearDownClass()
+        (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
+
+    def run_case(self,case):
+        result=subprocess.run([str(self.binary),str(case)],capture_output=True,text=True,timeout=60,
+            env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
+        self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr))
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('pass:',result.stdout)
+
+    def test_suffix_bounds_name_padding_and_extended_attributes(self):self.run_case(0)
+    def test_65536_iso_xa_attributes_and_exact_replies(self):self.run_case(1)
+    def test_xa_directory_precedence_and_streamed_self_parent(self):self.run_case(2)
+    def test_all_unit_gap_values_against_iterative_sector_lists(self):self.run_case(3)
+    def test_1680_wide_extent_and_offset_boundaries(self):self.run_case(4)
+    def test_all_file_numbers_range_and_payload_routing(self):self.run_case(5)
+    def test_full_pool_retries_preserve_unit_position(self):self.run_case(6)
+    def test_full_metadata_snapshot_and_sector_playback_control(self):self.run_case(7)
+    def test_contiguous_and_directory_setup_retire_old_repeat_and_cursor(self):self.run_case(8)
+
+
+if __name__=='__main__':unittest.main()

@@ -166,3 +166,118 @@ XA metadata, file-number selection and interleave geometry follow separately.
 Broader session/default drive-range/EOF/PEND/tray behavior and asynchronous
 copy/move/MPEG ownership remain separate; this is not complete CD-block or
 named-game qualification. No hardware or installed firmware is accessed.
+
+## MCU-CDC-013 selected: XA metadata and interleaved file reads
+
+Original: selected paps-g `05852d90`, requiring011 and its input/ownership
+prerequisites. The broader013 finding is not closed: session, default drive
+range, EOF/PEND and tray/drive semantics are separate work. No original upstream
+issue/PR is asserted for this self-reported contribution.
+
+Sega [ST-162 §6.2.3(2), Table6.1, printed p.53](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=41)
+requires FAD-range and file-number selection for file reads. Its later
+[§7.2.6 data specification No6.7, CdcFile](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p07_12.htm)
+defines the net size excluding gaps, zero file number without system metadata,
+ISO directory bit1, XA attribute bits3–7 and XA directory-bit precedence.
+No6.7 is the data specification number, not a section named6.7. English and
+source-language cached pages were checked; the English archive is a translation.
+[ECMA-119 second edition §6.4.3, printed pp.5–6, and §9.1.2/9.1.7/9.1.8/9.1.12,
+printed pp.27–29](https://ecma-international.org/wp-content/uploads/ECMA-119_2nd_edition_december_1987.pdf)
+defines file units, gaps, extended-attribute placement and record padding.
+
+The14-byte XA suffix layout is corroborated by cached upstream
+[Mednafen ReadRecord, src/ss/cdb.cpp](https://github.com/libretro-mirrors/mednafen-git/blob/master/src/ss/cdb.cpp#L1033):
+signature at+6/+7, attribute high byte at+4 and file number at+8, after the padded
+identifier. The inspected file SHA-256 is
+`7fe8c32271cca73960baa1728952c12686be399a5be48aebfb12b0bf2d082d5f`;
+the moving URL identifies that source, not a claim about its current contents.
+This is implementation corroboration, not the original Philips XA book, which
+was unavailable. The saved GNU documentation response was a project homepage
+and is excluded as layout evidence. Mednafen also questions its interleaved
+range calculation, so it is not the geometry oracle. Only field-layout facts
+are used; no emulator algorithm or new dependency is imported.
+
+After record/name bounds, recognize XA only at the padded system-use offset and
+require its complete suffix. A recognized truncated suffix rejects before
+output mutation; an unrecognized suffix retains ordinary ISO handling. Validate
+unit/gap and extended-attribute relationships and checked address addition before
+publishing metadata. An interleaved extended attribute occupies its complete
+first unit, with file data after that unit's following gap.
+
+Keep XA-presence in an internal reserved attribute bit, distinguishing zero XA
+attributes from absent metadata without growing each file entry. Mask reserved
+bits from12-byte public replies. Directory tests use XA bit7 when present,
+otherwise ISO bit1, including streamed self/parent entries. Existing log formats/
+masks and bounded name logging remain.
+
+ReadFile snapshots the full existing entry before waits, validates logical
+offset and complete physical span before destination mutation, and selects both
+range and file number. Logical indices exclude gaps; the physical span includes
+intervening gaps and excludes a trailing gap. For units2/gaps3, four sectors
+starting at FAD250 occupy250,251,255,256; offset2 starts255 and the exclusive end
+is257. Track a unit boundary and skip gaps after successful consumption or
+discard, preserving both position and boundary on full-buffer retries. Ordinary
+sector playback ignores the cursor. Shared file/directory setup retires stale
+repeat/interleave settings and retains011's pending-pause protection. Existing
+prefetch can still read gap bytes; this skips their delivery/processing, not
+every SD read containing them.
+
+Nine new actual-source methods pass ASan/UBSan and O2: suffix/padding bounds and
+65,536 extended-attribute unit/gap combinations;65,536 ISO/XA attribute pairs
+with exact12-byte replies; directory precedence;255 positive units×256 gaps×5
+offsets checked against independent iterative sector lists;1,680 wide extent/
+offset cases using64-bit expectations; all256 file numbers plus range edges;
+actual accepted/discarded interleaved payloads; full-pool retries; complete
+metadata replacement across pause; ordinary-sector and stale-repeat controls.
+All nine methods fail against the compiled preceding functions/worker fragment,
+with11 directory methods passing as controls. Twenty-four compiled behavioral
+mutants detect suffix/attribute/geometry/routing/snapshot/retry/repeat regressions.
+All112 CD methods pass ASan/UBSan and O2;12 current-source cohorts bind
+input/generated-fragment hashes with120 successful native cases per profile.
+The separate contiguous/setup
+method reproduces stale repeat independently; the snapshot method's old-source
+failure occurs earlier at geometry and is not counted as that proof.
+
+Complete GNU MCU load grows352 bytes:59,288→59,640, leaving5,896 ITCM bytes.
+Static DTCM remains60,312: unit/gap bytes use existing padding and surrounding
+alignment absorbs the new four-byte cursor. No file-entry, payload buffer/copy,
+heap allocation or cache is added. All56 source hashes and identical SDK inputs
+bind the build. Direct file-read frame40→56, parser8→16, disk80→72; shared
+file/directory starts32/8, command24, finish16, handle72 and optional name
+logger288 remain. Unit advance has a zero-byte leaf frame. These individual
+frames exclude other callees/exceptions and do not measure physical peaks.
+Geometry divisions occur at setup; per-sector work uses comparison/addition.
+No new mask, wait or logging is added; hardware cycle/latency/speed claims remain
+unqualified.
+
+```sh
+python3 tests/test_cdc_xa.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_xa.py
+make -C tests check-cdc-command-buffer
+# Baseline/mutant overrides: SAROO_CDC_XA_SOURCE, SAROO_CDC_XA_MAIN
+```
+
+This selected source contract does not implement ISO multi-extent files or
+complete CD-block emulation. Physical timing, concurrency, games and original-
+MDK qualification remain open; installed firmware and hardware stay untouched.
+
+## Integrated verification and scope
+
+The integrated project suite passes400 Python methods in39 groups and14 Rust
+tests. All112 CD methods also pass final ASan/UBSan and O2 runs, with120 native
+cases per profile across12 current-source cohorts. The three checkpoints retain
+their failing baselines, valid controls and50 detected compiled mutants.
+Full56-input MCU and36-input menu builds pass with exact source/hash binding.
+The menu image/resources/ELF are unchanged:79,572 code/data,9,232 BSS,16,384
+reserved stack,357,679 font and488,751 image bytes. Across the series MCU load
+grows932 bytes,58,708→59,640, with5,896 ITCM bytes free; static DTCM grows16
+aligned bytes to60,312. Per-port frame/log/masking/traversal costs and limits
+remain explicit above. Raw evidence stays ignored; portable tests are public.
+
+These selected CDIO-001/CDC-011/XA-013 source contracts are verified at host/GNU
+build level. Broader013 and later layout/initialization/asynchronous ownership
+work are separate. No physical timing, concurrency, games or original-MDK
+qualification is asserted. No PRs, USB integration or new runtime diagnostics
+are introduced; private sources, research branches and Saturn/installed firmware
+remain untouched. The public porting ledger records commits and preservation
+audits, using public attribution and noreply identities.
