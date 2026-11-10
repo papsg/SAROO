@@ -255,3 +255,100 @@ This checkpoint deliberately leaves the preceding early-read count arithmetic
 for the separate012 correction. It does not import the old, superseded
 host-consumed count policy. Wider asynchronous copy/move/MPEG ownership,
 directory/ISO/XA workers and physical/game qualification remain separate.
+
+## MCU-CDC-012: CD-produced read counts and pending windows
+
+Original: selected paps-g `3d2c405e`, corrected by `ac0aeac1` (2026-09-23),
+requiring010. The original handler guesses an unserviced window as2048 bytes
+and subtracts FIFO remainder. The earlier private repair tracked the correct
+window but still subtracted unconsumed words. That superseded host-consumed
+interpretation is deliberately not imported here.
+
+Sega [ST-162 §8.2.1 function1.10, printed p.81](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=69)
+explicitly distinguishes host words from effective CD-block words. For an
+interrupted read, CD output can exceed host consumption; writes report consumed
+input. Complete/excess transfers are capped at the normal request. Error/no
+active transfer is distinct from valid zero. This is also described in
+[the cached function reference](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_11.htm).
+
+Read service already accounts for each previously queued FIFO window before
+emitting another. DataEnd adds the actual current window exactly once if its
+service has not been processed; it does not subtract host-unread data or enqueue
+future requested sectors. A serviced final window is not added again. Preserve
+the impossible-occupancy error guard, cancelled/no-active errors and existing
+host PUT consumed counts/reservation/routing. A legitimate empty fixed reply
+returns zero rather than the error sentinel. All legacy log formats/masks remain.
+
+For example, an untouched user-data read has already produced1024 words even
+when the host consumed none. A first XA Form2 window plus an emitted user-data
+window reports1162+1024 words independently of how much remains in the FIFO.
+No total can grow merely because DataEnd is issued repeatedly. The public menu
+[decodes the same24-bit field](https://github.com/papsg/SAROO/blob/f7137f6/Firm_Saturn/cdblock.c#L158);
+its inspected callers either discard the count or do not reject read-ahead.
+No menu patch is required for this source contract.
+
+Four new actual-source groups pass ASan/UBSan and O2, with ten ownership groups
+retained. There are10,452 first-window prefix cases across both data-read types,
+all four sizes, XA and TOC;12 serviced/mixed/completed-window controls; five
+fixed-reply formats including254-file output; repeated/idle completion, valid
+zero and impossible occupancies. Expected counts come independently from actual
+FIFO writes, while modeled host consumption varies. Assert no extra FIFO writes
+at DataEnd. Full bit11 is tested separately from used-word bits; synthetic upper
+bits test the preserved mask, not claimed FPGA05 physical counter states. The
+preceding010 source fails all four new groups and passes its ten existing groups.
+Eleven compiled behavioral mutants fail, including the superseded subtraction,
+wrong pending length, double counting, zero/idle errors, full-bit/occupancy errors,
+lost cancellation/PUT theft and manufacturing extra read windows.
+
+All85 CD methods pass both profiles, including13 actual PUT groups and every
+earlier bounds/size/routing/metadata/control fixture. The host FIFO model does
+not simulate RTL clock crossings, bus timing or simultaneous physical service/
+DataEnd. The first valid reply is at most1524 words, a later sector at most1176
+plus the256-word threshold; both fit the existing2048-word FIFO. The200-sector
+pool remains below the24-bit result limit. These are scoped bounds, not complete
+physical interleaving or game qualification.
+
+The full MCU adds32 load bytes:58,676→58,708, leaving6,828 ITCM bytes. Static
+DTCM remains60,296 and DataEnd's direct frame remains40. The success flag is a
+local within the existing compiled frame. No retained state, buffer, allocation,
+payload copy, FIFO output or mask operation is added. Reading occupancy uses the
+preceding interface; existing logs can also read status when enabled. The
+pending-window arithmetic replaces a fixed-size guess/subtraction, with no
+measured physical cycle, latency or stack-peak improvement claimed.
+
+```sh
+python3 tests/test_cdc_read_ownership.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_read_ownership.py
+make -C tests check-cdc-command-buffer
+```
+
+The selected source-level012 contract is complete; exact physical service/end
+timing and games remain unqualified. Later layout/filesystem/asynchronous
+ownership and initialization findings remain outside this four-port series.
+
+## Final verification and limits
+
+The full project check passes375 Python methods in37 groups and14 Rust tests.
+All85 final CD methods also pass ASan/UBSan and O2. Nine cohorts bind exact
+current source, headers, fixtures, dependencies and generated fragments in both
+profiles; all93 native cases/modes per profile return success. Failing baselines,
+valid controls, compiled mutants and the explicitly uncounted redundant mutant
+remain preserved with the original contributions and later correction evidence.
+
+Each complete MCU receipt binds56 repository inputs to its respective source
+checkpoint. The final menu binds36 current inputs and exactly matches the prior
+resource/image/ELF cohort:79,572 code/data,9,232 BSS,16,384 reserved stack,
+357,679 font and488,751 total image bytes. Across these four ports MCU load
+grows480 bytes:58,228→58,708, leaving6,828 ITCM bytes. Static DTCM remains60,296;
+the200-block pool, required stacks and persistent workspace remain unchanged.
+Per-port stack, masking and traversal costs are retained above, with no claim
+of measured physical peaks, deadlines or speed gains.
+
+Selected008/009/010/012 source contracts are complete at the model/build level.
+This does not complete broader asynchronous copy/move/MPEG ownership, directory/
+ISO/XA filesystem011/013, later raw-Mode1/audio representation or initialization
+work. Exact malformed-command replies and physical service/interrupt/timing/game
+qualification remain separate. No Saturn operation or installed-firmware change
+was performed. Public source, citations, attribution and reproducible tests are
+published separately from ignored raw evidence; no USB integration or new
+runtime diagnostic is included.

@@ -59,6 +59,10 @@ class CDReadOwnershipTests(unittest.TestCase):
     def test_software_and_nonreset_private_ownership(self):self.run_case(7)
     def test_baseline_valid_payload_and_exact_log_controls(self):self.run_case(8)
     def test_incomplete_getdel_is_refused_without_partial_detachment(self):self.run_case(9)
+    def test_first_window_counts_ignore_host_consumption(self):self.run_case(10)
+    def test_serviced_mixed_and_completed_windows_count_once(self):self.run_case(11)
+    def test_fixed_reply_production_and_fifo_counter_full_flags(self):self.run_case(12)
+    def test_valid_zero_and_idle_error_with_retained_write_controls(self):self.run_case(13)
 
 
 if __name__=='__main__':unittest.main()

@@ -678,6 +678,7 @@ int open_tray(void)
 int end_trans(void)
 {
 	int fifo_remain;
+    int success = cdb.trans_type != 0;
 
 	// disable fifo irq
 	ST_CTRL &= ~STIRQ_DAT;
@@ -716,11 +717,10 @@ int end_trans(void)
 		SSLOG(_BUFIO, "end_trans: cdwnum=%08x FIFO_STAT=%08x RCNT=%04x min_num=%d\n", cdb.cdwnum, FIFO_STAT, FIFO_RCNT, min_num);
         if (cdb.trans_type) {
 		fifo_remain = (FIFO_STAT&0x0fff)*2; // FIFO中还有多少字节未读
-		if(fifo_remain>=512){
-			//FIFO中的数据大于512字节，不会产生中断。cdwnum会少记一次。
-			cdb.cdwnum += 0x800;
-		}
-		cdb.cdwnum -= fifo_remain;
+        /* Reads report CD-produced words, including the pending window;
+         * host consumption does not subtract from that output count. */
+        if (!cdb.trans_finish) cdb.cdwnum += cdb.trans_size;
+        if (fifo_remain > cdb.cdwnum) success = 0;
         }
 		SSLOG(_BUFIO, "         : cdwnum=%08x\n", cdb.cdwnum);
 	}
@@ -732,10 +732,11 @@ int end_trans(void)
     if (cdb.trans_type == TRANS_DATA_DEL)
         free_block_list(&cdb.block[cdb.trans_block_start]);
     if ((cdb.trans_type == TRANS_DATA || cdb.trans_type == TRANS_DATA_DEL) &&
-        cdb.trans_part_index >= MAX_SELECTORS) cdb.cdwnum = 0;
+        cdb.trans_part_index >= MAX_SELECTORS) success = 0;
+    if (cdb.trans_type == TRANS_PUT && cdb.trans_part_index >= MAX_SELECTORS)
+        success = 0;
 
-	if(cdb.cdwnum || (cdb.trans_type == TRANS_PUT &&
-                         cdb.trans_part_index < MAX_SELECTORS)){
+    if (success) {
 		SSCR1 = (cdb.status<<8) | ((cdb.cdwnum>>17)&0xff);
 		SSCR2 = (cdb.cdwnum>>1)&0xffff;
 	}else{

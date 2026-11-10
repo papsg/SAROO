@@ -192,11 +192,95 @@ static void incomplete_getdel(void)
     assert(!memcmp(&before,&cdb,sizeof cdb) && !fifo_words);
     cdb.block[0].next=&cdb.block[1];check_owners();
 }
+static void first_window_counts(void)
+{
+    const unsigned sizes[]={2048,2336,2340,2352};
+    for(unsigned type=TRANS_DATA;type<=TRANS_DATA_DEL;type++)
+    for(unsigned mode=0;mode<4;mode++)for(unsigned remaining=0;remaining<=sizes[mode]/2;remaining++) {
+        setup(4,196);cdb.sector_size=sizes[mode];start_read(type,0,1,2);
+        read_owners(type==TRANS_DATA_DEL?2:0);unsigned produced=fifo_words;
+        fifo_status=remaining;
+        assert(end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);
+        assert(!cdb.trans_type && !cdb.trans_block && cdb.block_free==(type==TRANS_DATA_DEL?198:196));
+        check_owners();assert(end_trans()==HIRQ_EHST && result_words()==0xffffff);
+    }
+    for(unsigned remaining=0;remaining<=1162;remaining++) {
+        setup(2,198);cdb.sector_size=2048;cdb.block[0].data[15]=2;cdb.block[0].data[18]=0x20;
+        start_read(TRANS_DATA_DEL,0,0,2);unsigned produced=fifo_words;assert(produced==1162);
+        fifo_status=remaining;assert(end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);
+        check_owners();
+    }
+    static u32 toc[102];
+    for(unsigned remaining=0;remaining<=204;remaining++) {
+        setup(0,200);cdb.TOC=toc;cdb.trans_type=TRANS_TOC;fifo_words=0;trans_start();
+        unsigned produced=fifo_words;fifo_status=remaining;
+        assert(produced==204 && end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);check_owners();
+    }
+}
+static void serviced_and_mixed_windows(void)
+{
+    const unsigned sizes[]={2048,2336,2340,2352};
+    for(unsigned type=TRANS_DATA;type<=TRANS_DATA_DEL;type++)for(unsigned mode=0;mode<4;mode++) {
+        setup(3,197);cdb.sector_size=sizes[mode];start_read(type,0,0,3);
+        fifo_status=256;trans_handle();unsigned produced=fifo_words;
+        fifo_status=256+sizes[mode]/2;
+        assert(produced==sizes[mode] && end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);check_owners();
+    }
+    for(unsigned type=TRANS_DATA;type<=TRANS_DATA_DEL;type++) {
+        setup(3,197);cdb.sector_size=2048;
+        cdb.block[0].data[15]=2;cdb.block[0].data[18]=0x20;
+        cdb.block[1].data[15]=2;cdb.block[1].data[18]=0;
+        start_read(type,0,0,3);assert(fifo_words==1162);
+        fifo_status=256;trans_handle();unsigned produced=fifo_words;assert(produced==2186);
+        fifo_status=1280;
+        assert(end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);check_owners();
+    }
+    /* A serviced final window must not be counted again at DataEnd. */
+    for(unsigned type=TRANS_DATA;type<=TRANS_DATA_DEL;type++) {
+        setup(1,199);start_read(type,0,0,1);trans_handle();assert(cdb.trans_finish);
+        unsigned produced=fifo_words;trans_handle();assert(fifo_words==produced);
+        assert(end_trans()==HIRQ_EHST && result_words()==produced && fifo_words==produced);check_owners();
+    }
+}
+static void fixed_replies_and_fifo_flags(void)
+{
+    static u32 toc[102],info[254*3];static u8 sub[64*24];
+    const unsigned types[]={TRANS_TOC,TRANS_FINFO_ALL,TRANS_FINFO_ONE,TRANS_SUBQ,TRANS_SUBRW};
+    const unsigned words[]={204,1524,6,5,12};
+    for(unsigned t=0;t<5;t++)for(unsigned high=0;high<2;high++) {
+        setup(0,200);cdb.TOC=toc;cdb.FINFO=(u8*)info;cdb.SUBH=sub;cdb.subrw_buf=sub;cdb.cdir_pfnum=254;
+        cdb.trans_type=types[t];fifo_words=0;trans_start();assert(fifo_words==words[t]);
+        fifo_status=(high?0xf000:0)|words[t];
+        assert(end_trans()==HIRQ_EHST && result_words()==words[t] && fifo_words==words[t]);check_owners();
+    }
+    /* Full is bit11, not zero used words. More available than produced is an
+     * impossible modeled state; keep the error guard rather than underflow. */
+    for(unsigned full=0;full<2;full++) {
+        setup(0,200);cdb.TOC=toc;cdb.trans_type=TRANS_TOC;fifo_words=0;trans_start();
+        fifo_status=full?0x0800:205;
+        assert(end_trans()==HIRQ_EHST && result_words()==0xffffff && fifo_words==204);check_owners();
+    }
+}
+static void zero_idle_and_retained_put_controls(void)
+{
+    static u8 info[12];
+    setup(0,200);cdb.FINFO=info;cdb.cdir_pfnum=0;cdb.trans_type=TRANS_FINFO_ALL;
+    fifo_words=0;trans_start();assert(!fifo_words && !cdb.trans_size);
+    assert(end_trans()==HIRQ_EHST && result_words()==0 && !cdb.trans_type);check_owners();
+    assert(end_trans()==HIRQ_EHST && result_words()==0xffffff);trans_handle();assert(!fifo_words);
+    /* Write consumed counts/reservations/routing/theft are exercised by the
+     * dedicated actual PUT fixture in the same default CD target. */
+    setup(0,200);cdb.cdwnum=1234;
+    assert(end_trans()==HIRQ_EHST && result_words()==0xffffff && !cdb.cdwnum);check_owners();
+}
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<10);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<14);
     if(test==0)detached_ranges();else if(test==1)cancellation();else if(test==2)preserved_connections();
     else if(test==3)incoming_append();else if(test==4)freeing_preemptions();else if(test==5)logging_boundary();
     else if(test==6)admission_ranges();else if(test==7)software_resets();else if(test==8)valid_log_controls();
-    else incomplete_getdel();puts("pass: actual read ownership, cancellation, release and log boundaries");return 0;
+    else if(test==9)incomplete_getdel();else if(test==10)first_window_counts();
+    else if(test==11)serviced_and_mixed_windows();else if(test==12)fixed_replies_and_fifo_flags();
+    else zero_idle_and_retained_put_controls();
+    puts("pass: actual read ownership, production counts, release and log boundaries");return 0;
 }
