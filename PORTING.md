@@ -852,11 +852,60 @@ instrumentation, private writes or device operations.
 | MCU-CDIO-003; paps-g659fe4ee | [ce58d51](https://github.com/papsg/SAROO/commit/ce58d51b672500b8dee6876a0595e5f7c175c51f); [codex/cd-mode2-layouts](https://github.com/papsg/SAROO/tree/codex/cd-mode2-layouts) | Two new actual-source groups each pass96 producer/filter/routed-copy vectors across2336 Form1/Form2 and2324 payload input,four read sizes,eight patterns,all2352 container bytes/metadata/ownership. Baseline fails both with six existing controls passing. Poisoned free buffers detect all eight compiled mutants; initial zero-filled-block fixture missed two variants, preserved/excluded and corrected. All144 current CD methods pass both profiles; final poisoned routing groups pass both. GNU MCU60,776 load (+128),60,304 static DTCM,4,760 ITCM free;56 exact bound inputs/same SDK. Reader64/filter32/disk72 direct frames unchanged,no new state/buffer/I/O/wait/log/mask. [Sega5.4/Figure5.8 printed48,Form bit printed71,source attribution,reproduction,costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CUE-SECTOR-SAFETY.md#mcu-cdio-003-normalize-accepted-mode2-image-payloads). Headerless image adaptation is policy,not canonical sync/FAD/ECC/EDC reconstruction; missing channel/file information remains unknown/zero. No physical/game/original-MDK qualification. |
 | MCU-CDIO-004; paps-g659fe4ee | [0010a39](https://github.com/papsg/SAROO/commit/0010a39a7dc0699b6a7a37d70448b1dfdc4a1cfa); [codex/cd-subcode-io](https://github.com/papsg/SAROO/tree/codex/cd-subcode-io) | Five actual-source groups/16 scenarios pass sanitizers/O2: planar/raw EOF conversion and14/16 windows,cache-mode admission,six mid-I/O flag changes,five sidecar failures,sector-failure-after-subcodes/ring/output/retry controls. Baseline fails13 cases across four groups;raw EOF and payload-failure controls pass. Ten compiled behavioral mutants detected. Final release CD suite149 methods passes. GNU MCU60,888 load (+112),60,312 static DTCM (+8 linked for mode byte/alignment),4,648 ITCM free;56 exact committed inputs/same SDK and final MCU build exact. No record/index/AXI/payload/task growth; reader56 plus nested I/O24,converter40/filter32/disk72 direct frames are not a stack saving. [Sega7.2.5(2)/data5.0 printed62,8.2.3/function3.2 printed85,source credit,reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CUE-SECTOR-SAFETY.md#mcu-cdio-004-admit-complete-subcode-windows-under-one-mode). Preserve inherited sidecar origin/converter/ring/overflow policy;native pack timing/physical SD recovery/CD+G/game/original-MDK qualification remain open. |
 
-All four scoped source checkpoints are published. Final project suite and
-publication/preservation audits remain in progress. Fork issues are
-disabled and no PRs are open; no applicable closures, original upstream unchanged. The full
-original combined baseline compiles and fails ten groups with the99-track
-control passing; it is not acceptance of the still-unported scopes. Per-stage
-privacy/full-file/metadata scans pass; raw evidence remains ignored. Final full
-suite, firmware builds and publication/preservation/closure audits follow after
-all scoped ports. No original upstream request is claimed closed.
+All four scoped contributions are complete as separate verified linear source
+commits: MCU-CDIO-002,MCU-CUE-002,MCU-CDIO-003 andMCU-CDIO-004. The already-public
+MCU-CDC-01699-track correction is deduplicated. Reader/compact-metadata support
+is the explicit prerequisite; no broader reset/audio/session/raw-format work
+or subsequent upstream changes were imported. No PRs were opened or merged.
+
+Final full project suite passes437 Python methods across43 groups and18 Rust
+checks, including the unchanged actual-block FPGA controls and workspace
+format/lint checks. All149 CD/reader/layout/subcode methods pass optimized
+checks as well as final sanitizers. Forty-four compiled behavioral mutants
+are detected across the four contributions. Preserve/exclude the equivalent
+signed-local attempt, rejected ambiguous preparation and initial zero-filled-
+block weak mutation campaign; the corrected current oracles pass. The original
+combined baseline's ten failing groups and99-track passing control remain
+historical negative evidence, not acceptance of the earlier broken source.
+
+Final complete GNU MCU App/RTX/166-vector build is60,888 loaded bytes (+912
+versus59,976 at series start), with4,648 ITCM bytes free. Static DTCM returns
+to the starting60,312 bytes after bounded cache-field narrowing and the new
+cache-mode byte/alignment. All 100 32-byte ARM records,2,048 index entries,
+existing payload/subcode/ring/AXI workspace and task-stack capacities remain.
+No new payload buffer, heap, task, wait, SD write or log/mask is added. Current
+direct and nested frames are recorded per checkpoint, without claiming whole-
+path stack savings or physical cycle/latency/headroom qualification. Exact56
+repository MCU input hashes at every checkpoint and final build match their
+own committed source; SDK hashes remain identical. The final build is byte-
+exact to the subcode checkpoint. No FPGA source/binary changed in this series.
+
+Final menu build retains all36 baseline inputs and its exact preceding ELF/
+image:79,572 code/data bytes,9,232 BSS,16,384 reserved stack,25,884 body margin,
+357,679 font and488,751 image bytes. Target builds and host I/O/preemption
+models are not Saturn bus/cache/concurrency/SD-recovery/game/audio/CD+G timing
+or original-MDK qualification. Generated products remain evidence, unshipped
+and uninstalled; synthetic fixtures/capacity limits are explicitly documented.
+
+Full proposed files/diffs/messages/public identities and actual source/ledger
+blobs pass manual, secret and private-PII review. Exact Sega sections/data/
+function numbers/pages and source/FatFs/CUE references distinguish interface
+requirements, image conventions, version/translation differences and policy.
+Original paps-g/vendor/upstream attribution and notices remain, with public
+papsg/noreply commit identities. No credentials/private PII, personal paths,
+private accounts/URLs/network details, raw logs or build receipts are published.
+No USB integration, runtime diagnostics/probes/telemetry/loaders or subagents.
+
+Public main and all four topics are clean and remotely verified. Default main,
+v0.8 ancestry,historical master and unrelated branches/stashes are preserved,
+apart from authorized main/progress advances and new topics. Exact private
+HEAD/full status/all refs/four stashes match the initial snapshot. Private
+source/evidence/research branches,other paused work and Saturn remain untouched.
+The final public progress checkpoint is published with these audit results.
+Fork issues remain disabled with no open PRs/applicable closures; no original
+upstream issue/PR is claimed closed and original requests remain unchanged.
+
+Broader initialization/reset/audio/session/tray/scan,canonical raw MODE1 and
+missing sync/FAD/ECC/EDC reconstruction,extra CUE formats/metadata,and inherited
+native subcode timing/overrun behavior remain separate. No unmeasured physical
+or named-game consequences are claimed resolved.
