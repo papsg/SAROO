@@ -624,8 +624,44 @@ diagnostics/log changes, private writes or device operations.
 | MCU-CDC-005 metadata; selected paps-g `50100444` | [fc7a222](https://github.com/papsg/SAROO/commit/fc7a222); [codex/cd-producer-metadata](https://github.com/papsg/SAROO/tree/codex/cd-producer-metadata) | Five actual-producer methods pass ASan/UBSan/O2; baseline fails three metadata groups and passes Mode2/transmitted-payload controls. Five disc formats; four host sizes/two poisons/all three allocation branches; header-mode/BCD matrix; independent full payload/prefix/trailing-byte, cached-field and logical-FAD checks. Seven mutants rejected; all31 CD methods pass. Full MCU adds208 load bytes to57,748, margin7,788; static DTCM60,296 unchanged. FIFO frame40→48, disc/task/dispatcher frames unchanged; no new workspace/allocation/I/O/payload copy/mask work. [Sega §5.4(2)-(3), §8.2.7 function7.1; attribution/policy/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-ROUTING-WRITE-SAFETY.md#mcu-cdc-005-coherent-producer-metadata). Complete scripted input is not physical FIFO timing/concurrency/game qualification; later lifecycle and shared routing remain explicit. |
 | MCU-CDC-006 connection/reset/defaults; selected paps-g `50100444` plus `3f7bba1a` continuation | [ad690b6](https://github.com/papsg/SAROO/commit/ad690b6); [codex/cd-connections-reset](https://github.com/papsg/SAROO/tree/codex/cd-connections-reset) | Nine actual-source groups pass sanitizers/O2; baseline fails eight with ordinary configuration control passing.576 owner pairs, atomic invalid/ignored-field cases, all24 condition resets,510 nonzero-flag/ignored-argument combinations, pause/no-track/audio controls, relocated startup, software/nonreset/no-change and real unpublished allocation. Thirteen compiled mutations rejected; all40 CD methods pass. Full MCU adds160 load bytes to57,908, margin7,628; static DTCM60,296 unchanged. CD setter frame8→16, filter setter40 unchanged, reset48→32, helper8; startup/init24/24 and IRQ/dispatch24/16 unchanged. No workspace/allocation/payload copy/I/O added; original logs/masks preserved. [Exact Sega §5.2/5.3.3 Table5.1, §5.5 Table5.2, §8.2.5 functions5.5/5.7/5.9, §8.2.7 function7.1 and §8.2.1 function1.7; attribution/policies/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-ROUTING-WRITE-SAFETY.md#mcu-cdc-006-connection-ownership-and-resetdefault-distinctions). Unpublished ownership is a007 prerequisite; no captured hardware interleaving or active partition-output qualification. Host-input theft/lifecycle and later init/GET/output work remain separate. |
 | MCU-CDC-003 routing continuation; selected paps-g `50100444` | [a66041a](https://github.com/papsg/SAROO/commit/a66041a); [codex/cd-shared-routing](https://github.com/papsg/SAROO/tree/codex/cd-shared-routing) | Requires005/006. Six new routing groups pass sanitizers/O2:144 selection/split/return shapes, zero-work discard/admission, five real producer formats,4,096 baseline-valid Mode2 predicate combinations, normalized non-Mode2 and full-width range controls. Baseline fails five groups with predicate control passing. Eleven mutants rejected; all47 CD methods pass both profiles, including a new baseline-valid null-context disconnected-input guard. Actual allocator body retained behind host-only call counter; discarded copies and moves make zero allocation calls. Full MCU adds80 load bytes to57,988, margin7,548; static DTCM60,296 unchanged. Route frame32, copy56→64; incoming32, disconnect8, disk80 and IRQ/dispatch24/16 remain. Joined copy/incoming sums96→136/112→144 exclude other callees/exceptions. Original logs/masks/incoming-only print preserved; no new workspace/state/I/O. [Sega §5.3.1–5.3.3, §5.4(2), §8.2.7 functions7.6–7.8, §8.2.5 function5.5; attribution/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-ROUTING-WRITE-SAFETY.md#mcu-cdc-003-continuation-shared-destination-filter-routing). Full-width arithmetic and inversion-only ambiguity are distinguished from hardware qualification. Broader asynchronous/output/cancellation ownership and007 remain separate. |
-| MCU-CDC-007 write admission/lifecycle; selected `50100444` plus `3f7bba1a` | Queued | Private reservation, occupancy/request bounds, DataEnd publication/counts, rollback, input theft/short input/reset ownership; no empty-read fabrication of undefined payload. |
+| MCU-CDC-007 write admission/lifecycle; selected paps-g `50100444` plus `3f7bba1a` | [f9ed8fe](https://github.com/papsg/SAROO/commit/f9ed8fe); [codex/cd-write-lifecycle](https://github.com/papsg/SAROO/tree/codex/cd-write-lifecycle) | Requires005/006/shared003. Thirteen actual-source groups pass sanitizers/O2: all200 reservation counts,8,196 short-input combinations, one-snapshot/FIFO/request bounds, metadata routing, six allocation-loss boundaries, sparse private chains, reset/theft/recovery and valid full-payload controls. Baseline fails twelve groups with its payload control passing;21 compiled behavioral mutants rejected. Updated005 producer fixture retains every payload/prefix/trailing-byte/metadata oracle and its five groups also pass the preceding source. All60 CD methods pass both final profiles. Full MCU adds240 load bytes to58,228, margin7,308; static DTCM60,296 unchanged. Service frame48→24, preparation16→48, DataEnd32→40; IRQ/dispatch24/16 unchanged. No new retained state, buffer, allocation during input/end, payload copy, thread or heap object; prefixes at most24 bytes/sector. One service consumes at most4,096 bytes versus the old unconditional2,048; whole handler retains the GET fill_fifo call. [Exact Sega §8.2.7 function7.5, §8.2.1 functions1.9/1.10, §5.3.4(1), DEND constant, pinned FPGA interface and menu decoder; attribution/costs/reproduction/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-ROUTING-WRITE-SAFETY.md#mcu-cdc-007-reserved-host-writes-and-bounded-completion). Undefined unfilled payload stays untouched; no empty-read fabrication, added logs or physical FIFO/IRQ/concurrency/timing/game qualification. |
 
-Three verified source checkpoints are published. One port and final integrated,
-build, privacy and preservation audit remain. The private repo, Saturn and other
-work remain untouched. No blanket command/game or broader003 disposition.
+All four scoped source ports are separately verified linear commits, published
+with their topics to main, ending at [f9ed8fe](https://github.com/papsg/SAROO/commit/f9ed8fe).
+Each row records its checkpoint; the integrated current-source suite passes351
+Python methods in35 groups and14 Rust tests. All60 CD methods also pass final
+ASan/UBSan and O2 checks after the final I/O-budget assertions. Seven cohorts
+bind source/header/fixture/dependency hashes in both profiles; all68 native
+cases/modes per profile return success. Failing baselines, valid controls,
+compiled mutants, adaptations and resource evidence remain preserved locally.
+
+Complete GNU App/RTX/166-vector MCU load grows688 bytes across the series,
+57,540→58,228, leaving7,308 ITCM bytes. Static DTCM stays60,296; required stacks,
+the200-block pool and retained workspace are unchanged.56 MCU/36 menu input
+hashes match their receipts and corresponding source commits. Menu image,
+resources and ELF exactly match the preceding public checkpoint:79,572 code/data,
+9,232 BSS,16,384 reserved stack,357,679 font and488,751 image bytes. Per-port
+frame sums exclude other callees/exceptions; reservation holds blocks before
+readiness and the FIFO service budget grows. These are source/model/build checks,
+not original-MDK, physical stack/bus/IRQ/concurrency/timing or game qualification.
+
+Full proposed files/messages/public identities and actual commit blobs pass
+manual, secret and private-PII review. Attribution uses approved public handles
+and noreply identities, with exact primary/source citations and public regression
+fixtures. Original notices remain. No private paths/accounts/network details,
+credentials, raw logs or build artifacts are published.
+
+Public main is clean, all four topic refs and main are published, default main,
+v0.8 ancestry and historical master are verified. Existing public refs/stashes
+are preserved apart from the authorized main/progress advances. Exact private
+HEAD/full status/all refs/four stashes match the start snapshot. Private source,
+research branches, Saturn/installed firmware and other paused work remain
+untouched. No PR, USB integration, new runtime diagnostic, subagent or upstream
+change was used. Fork issues are disabled, with no open PRs or applicable request
+closure; original upstream requests remain unchanged.
+
+The selected005/006/synchronous003/007 ports are complete at source/build level.
+Broader003 asynchronous/cancellation/erase/output contracts and later008
+GET/delete/size/ownership/initialization remain separate. Unspecified absent-
+header fill and inversion-only ambiguity are not claimed as physical behavior;
+this series is not blanket CD-command or Saturn/game qualification.
