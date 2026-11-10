@@ -610,3 +610,22 @@ there are no open PRs. Broader MCU-CDC-003 remains partially resolved; later
 routing/metadata/host-PUT005–007, cancellation/erase/general ownership and
 physical/game qualification remain outside this scoped goal.
 Private repo, research refs/stashes, Saturn and other work remain untouched.
+
+## CD routing and write safety
+
+Starts at public `b686232`; selected paps-g `50100444`/`3f7bba1a` contributions
+from September6. Four separate source ports, prerequisites explicit; public
+actual-source evidence, exact citations, attribution and resource review are
+required before each direct main/topic push. No PRs, USB, added runtime
+diagnostics/log changes, private writes or device operations.
+
+| Contribution / original | Public checkpoint | Validation, dependencies and limits |
+| --- | --- | --- |
+| MCU-CDC-005 metadata; selected paps-g `50100444` | [fc7a222](https://github.com/papsg/SAROO/commit/fc7a222); [codex/cd-producer-metadata](https://github.com/papsg/SAROO/tree/codex/cd-producer-metadata) | Five actual-producer methods pass ASan/UBSan/O2; baseline fails three metadata groups and passes Mode2/transmitted-payload controls. Five disc formats; four host sizes/two poisons/all three allocation branches; header-mode/BCD matrix; independent full payload/prefix/trailing-byte, cached-field and logical-FAD checks. Seven mutants rejected; all31 CD methods pass. Full MCU adds208 load bytes to57,748, margin7,788; static DTCM60,296 unchanged. FIFO frame40→48, disc/task/dispatcher frames unchanged; no new workspace/allocation/I/O/payload copy/mask work. [Sega §5.4(2)-(3), §8.2.7 function7.1; attribution/policy/reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-ROUTING-WRITE-SAFETY.md#mcu-cdc-005-coherent-producer-metadata). Complete scripted input is not physical FIFO timing/concurrency/game qualification; later lifecycle and shared routing remain explicit. |
+| MCU-CDC-006 connection/reset/defaults; selected `50100444` plus `3f7bba1a` continuation | Queued | Validate before mutation; input exclusivity, shared true outputs, conditions/connections/data and startup/software-reset defaults. |
+| MCU-CDC-003 routing continuation; selected `50100444` | Queued | Producer/connection prerequisites; shared split/discard/return routes retaining identity/counters/outcomes/last-CD. General asynchronous/output ownership remains separate. |
+| MCU-CDC-007 write admission/lifecycle; selected `50100444` plus `3f7bba1a` | Queued | Private reservation, occupancy/request bounds, DataEnd publication/counts, rollback, input theft/short input/reset ownership; no empty-read fabrication of undefined payload. |
+
+One verified source checkpoint is published. Three ports and final integrated,
+build, privacy and preservation audit remain. The private repo, Saturn and other
+work remain untouched. No blanket command/game or broader003 disposition.
