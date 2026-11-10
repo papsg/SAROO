@@ -6,7 +6,7 @@ BUILD_DIR = build
 
 .PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-config check-fatfs check-save-endian check-web-save check-web-cover
+check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-cdc-command-buffer check-config check-fatfs check-save-endian check-web-save check-web-cover
 
 .PHONY: check-menu-safety
 check-menu-safety:
@@ -29,6 +29,10 @@ check-file-transfer:
 	$(PYTHON) -B -m unittest discover -s . -p test_file_transfer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_word_access.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_file_transfer.py -v
+
+.PHONY: check-cdc-command-buffer
+check-cdc-command-buffer:
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_subheader.py -v
 
 .PHONY: check-config
 check-config:

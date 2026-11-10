@@ -1077,7 +1077,7 @@ int get_filter_subheader(void)
 
 	fid = cdb.cr3>>8;
 
-	SSCR1 = (cdb.status) | cdb.filter[fid].chan;
+	SSCR1 = (cdb.status<<8) | cdb.filter[fid].chan;
 	SSCR2 = (cdb.filter[fid].smmask<<8) | cdb.filter[fid].cimask;
 	SSCR3 =  cdb.filter[fid].fid;
 	SSCR4 = (cdb.filter[fid].smval<<8) | cdb.filter[fid].cival;
