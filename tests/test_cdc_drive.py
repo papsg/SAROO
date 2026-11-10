@@ -1,0 +1,89 @@
+"""Actual drive commands, helpers, pause branches and worker boundaries."""
+# Adapted from paps-g47ec46a4/cd83b371; no private preparer or devices.
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+import unittest
+from test_cdc_copy import copy_source
+
+ROOT=Path(__file__).resolve().parents[1]
+
+
+class CDDriveTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source=Path(os.environ.get('SAROO_CDC_DRIVE_DIR',ROOT/'Firm_MCU/Saturn'))
+        raw=(source/'saturn_cdc.c').read_bytes();main=(source/'saturn_main.c').read_bytes()
+        header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+        build=ROOT/'tests/build/cdc-drive';build.mkdir(parents=True,exist_ok=True)
+        cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
+        def function(data,signature):
+            start=data.index(signature)
+            return data[start:data.index(b'\n}',start)+2]+b'\n'
+        code=b''.join(function(main,sig) for sig in (b'TRACK_INFO *get_track_info(',b'u32 track_to_fad(',b'int fad_to_track('))
+        if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
+        code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
+        for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
+            if sig in raw:code+=function(raw,sig)
+        code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
+        (cls.target/'drive.inc').write_bytes(code)
+        start=main.index(b'_restart_nowait:')
+        start=main.index(b'\t\tif(cdb.pause_request)',start)
+        end=main.index(b'\n\t\t}',start)+4
+        restart=main[start:end]
+        start=main.index(b'\t\t\tif(cdb.pause_request)',end)
+        end=main.index(b'\n\t\t\t}',start)+5
+        active=main[start:end]
+        ack=function(main,b'static void acknowledge_disc_pause(')
+        (cls.target/'pause-worker.inc').write_bytes(ack+b'\nstatic void worker_pause_step(void) {\nif(pause_active) {\n'+active+b'\n} else {\n'+restart+b'\n}\n_restart_wait: return;\n}\n')
+        guard=b'';start=main.find(b'        if (cdb.play_type == PLAYTYPE_SECTOR &&')
+        if start>=0:guard=main[start:main.index(b'        int was_directory =',start)]
+        start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
+        (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+b'read_calls++;return 1;\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n}\n')
+        start=main.index(b'\t\t\tcdb.play_fad_start = track_to_fad(0x0100);');end=main.index(b'\n\t\t}',start)
+        (cls.target/'background.inc').write_bytes(b'static void background_start(int audio_repeat) {\n'+main[start:end]+b'\n}\n')
+        (cls.target/'copy.inc').write_bytes(copy_source(raw))
+        (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')]+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
+        inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
+        for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
+        for name,data in inputs.items():(cls.target/name).write_bytes(data)
+        (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(v).hexdigest() for n,v in inputs.items()},indent=2)+'\n')
+        flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
+        cls.binary=cls.target/'drive'
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
+              '-Wno-unused-variable','-Wno-unused-function','-Wno-unused-label','-Wno-parentheses',*flags,
+              '-I',str(cls.target),str(cls.target/'cdc_drive.c'),'-o',str(cls.binary)]
+        result=subprocess.run(args,capture_output=True,timeout=60)
+        (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
+        (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
+
+    @classmethod
+    def tearDownClass(cls):
+        (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
+
+    def run_case(self,case):
+        result=subprocess.run([str(self.binary),str(case)],capture_output=True,text=True,timeout=60,
+            env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
+        self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr))
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('pass:',result.stdout)
+
+    def test_track_helper_bounds_and_index_storage(self):self.run_case(0)
+    def test_all_track_index_bytes_for_play_start_end_and_seek(self):self.run_case(1)
+    def test_fad_clamping_counts_and_high_bits(self):self.run_case(2)
+    def test_mixed_forms_refuse_before_pause_or_mutation(self):self.run_case(3)
+    def test_bounded_pause_failure_and_retry_all_worker_types(self):self.run_case(4)
+    def test_real_worker_admission_completion_and_final_sector(self):self.run_case(5)
+    def test_pause_stop_and_retained_compatibility_controls(self):self.run_case(6)
+    def test_missing_media_and_invalid_tables(self):self.run_case(7)
+    def test_actual_background_setup_includes_final_frame(self):self.run_case(8)
+    def test_actual_pause_branches_preserve_same_reader_cache(self):self.run_case(9)
+    def test_baseline_valid_position_metadata_and_exact_logs(self):self.run_case(10)
+    def test_all_99_tracks_remain_addressable(self):self.run_case(11)
+
+
+if __name__=='__main__':unittest.main()

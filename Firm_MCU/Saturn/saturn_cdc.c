@@ -757,166 +757,119 @@ int end_trans(void)
 // cdb.fad: 当前播放的位置
 
 // 0x10 [SR]
+/* Return an exclusive end for end positions, and a sector FAD for starts.
+ * Callers handle NOCHG and FAD-length ends separately. Track/index exceptions
+ * follow Sega CdcPos 6.3; no caller forms an unchecked track pointer. */
+static u32 drive_position(u32 position, int ending)
+{
+    u32 leadout = cdb.tracks[cdb.track_num-1].fad_end+1;
+    if (!position) return ending ? leadout : 150;
+    if (position & 0x800000) {
+        u32 fad = position & 0x7fffff;
+        return fad < 150 ? 150 : fad > leadout ? leadout : fad;
+    }
+    unsigned track = (position>>8)&255, index = position&255;
+    if (!track) track = ending ? cdb.track_num : 1;
+    else if (track > (unsigned)cdb.track_num) { track = cdb.track_num; index = 0; }
+    if (!index) index = ending ? 99 : 1;
+    TRACK_INFO *tk = &cdb.tracks[track-1];
+    if (ending) {
+        if (index < (unsigned)tk->max_index && tk->index) return tk->index[index-1];
+        return tk->fad_end+1;
+    }
+    if (index <= 1) return tk->fad_start;
+    if (index <= (unsigned)tk->max_index && tk->index) return tk->index[index-2];
+    return track < (unsigned)cdb.track_num ? cdb.tracks[track].fad_start : leadout;
+}
+
+static void set_drive_position(u32 fad)
+{
+    cdb.old_fad = cdb.fad;
+    cdb.fad = fad;
+    cdb.track = fad_to_track(fad);
+    TRACK_INFO *tk = get_track_info(cdb.track<<8);
+    cdb.play_track = tk;
+    cdb.index = 1;
+    cdb.ctrladdr = tk ? tk->ctrl_addr : 0xff;
+    if (tk && tk->index)
+        while (cdb.index < tk->max_index && fad >= (u32)tk->index[cdb.index-1]) cdb.index++;
+}
+
 int play_cd(void)
 {
-	int start_pos, end_pos, mode;
-
-	start_pos = ((cdb.cr1&0xff)<<16) | cdb.cr2;
-	end_pos   = ((cdb.cr3&0xff)<<16) | cdb.cr4;
-	mode = cdb.cr3>>8;
-
-	if(cdb.play_type!=0){
-		cdb.pause_request = 1;
-		cdb.play_wait = 0;
-		SSLOG(_CDRV, "play_cd: Send PAUSE request!\n");
-		do{
-			wait_pause_ok();
-		}while(cdb.pause_request);
-	}
-
-	SSLOG(_CDRV, "play_cd: start=%08x end=%08x mode=%02x\n", start_pos, end_pos, mode);
-	
-	HIRQ_CLR = HIRQ_PEND;
-
-	int play_tno = 0;
-	if(start_pos==0xffffff){
-		// PTYPE_NOCHG
-	}else if(start_pos&0x800000){
-		// PTYPE_FAD
-		cdb.play_fad_start = start_pos&0x0fffff;
-		cdb.track = fad_to_track(cdb.play_fad_start);
-		cdb.index = 1;
-	}else{
-		// PTYPE_TNO or PTYPE_DFL
-		int track = (start_pos>>8)&0xff;
-		if(start_pos==0 || track==0)
-			start_pos = 0x0100;
-		cdb.play_fad_start = track_to_fad(start_pos);
-		cdb.track = (start_pos>>8)&0xff;
-		cdb.index = start_pos&0xff;
-		play_tno = 1;
-	}
-	cdb.play_track = &cdb.tracks[cdb.track-1];
-
-
-	if(end_pos==0xffffff){
-		// PTYPE_NOCHG
-	}else if(end_pos&0x800000){
-		// PTYPE_FAD
-		cdb.play_fad_end = cdb.play_fad_start+end_pos&0x0fffff;
-	}else if(end_pos){
-		// PTYPE_TNO
-		int track = (end_pos>>8)&0xff;
-		int index = end_pos&0xff;
-		if(track==0)
-			end_pos |= 0x0100;
-		if(start_pos==end_pos && index>0){
-			cdb.play_fad_end = track_to_fad((end_pos&0xff00)|(index+1)) - 1;
-		}else{
-			cdb.play_fad_end = track_to_fad((end_pos&0xff00)|0x63);
-		}
-
-		if(play_tno && cdb.play_track->mode!=3){
-			// STEAM-HEART'S fixup
-			// 明确指定start与stop的情况下,强制更新fad.
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-		}
-	}else{
-		// PTYPE_DFL
-		cdb.play_fad_end = track_to_fad(0xffff);
-	}
-
-	if((mode&0x80)==0){
-		cdb.old_fad = cdb.fad;
-		cdb.fad = cdb.play_fad_start;
-	}
-	if((mode&0x7f)!=0x7f)
-		cdb.max_repeat = mode&0x0f;
-
-	cdb.options = 0x08;
-	cdb.repcnt = 0;
-	cdb.pause_request = 0;
-	cdb.play_type = PLAYTYPE_SECTOR;
-	disk_task_wakeup();
-
-	set_report(STAT_BUSY);
-	return 0;
+    u32 start_pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
+    u32 end_pos = ((u32)(cdb.cr3&255)<<16) | cdb.cr4;
+    unsigned mode = cdb.cr3>>8;
+    if (!get_track_info(0xffff)) { set_status(STAT_REJECT); return 0; }
+    /* Explicit FAD and track forms cannot be mixed. Default and NOCHG are
+     * separate forms; retained-type validation is still a protocol follow-up. */
+    if (start_pos && end_pos && start_pos != 0xffffff && end_pos != 0xffffff &&
+        ((start_pos ^ end_pos) & 0x800000)) { set_status(STAT_REJECT); return 0; }
+    u32 start = start_pos == 0xffffff ? cdb.play_fad_start : drive_position(start_pos, 0);
+    u32 end = cdb.play_fad_end;
+    if (end_pos != 0xffffff) {
+        if (end_pos & 0x800000) {
+            u32 leadout = cdb.tracks[cdb.track_num-1].fad_end+1;
+            end = start + (end_pos & 0x7fffff);
+            if (end > leadout) end = leadout;
+        } else end = drive_position(end_pos, 1);
+    }
+    if (cdb.play_type) SSLOG(_CDRV, "play_cd: Send PAUSE request!\n");
+    if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    SSLOG(_CDRV, "play_cd: start=%08x end=%08x mode=%02x\n", start_pos, end_pos, mode);
+    HIRQ_CLR = HIRQ_PEND;
+    cdb.play_fad_start = start;
+    cdb.play_fad_end = end;
+    /* Retain the existing explicit track/data restart used by Steam-Heart's. */
+    u32 pickup = cdb.fad;
+    if (!(mode&0x80)) pickup = start;
+    else if (start_pos && start_pos < 0x800000 && end_pos && end_pos < 0x800000) {
+        TRACK_INFO *tk = get_track_info(fad_to_track(start)<<8);
+        if (tk && tk->mode != 3) pickup = start;
+    }
+    set_drive_position(pickup);
+    if ((mode&0x7f) != 0x7f) cdb.max_repeat = mode&15;
+    cdb.options = 0x08;
+    cdb.repcnt = 0;
+    cdb.pause_request = 0;
+    cdb.play_wait = 0;
+    cdb.play_type = PLAYTYPE_SECTOR;
+    disk_task_wakeup();
+    set_report(STAT_BUSY);
+    return 0;
 }
 
 // 0x11 [SR]
 int seek_cd(void)
 {
-	int pos;
-	TRACK_INFO *ti;
-
-	pos = ((cdb.cr1&0xff)<<16) | cdb.cr2;
-	SSLOG(_CDRV, "\nseek_cd: pos=%08x\n", pos);
-
-	if(cdb.play_type!=0){
-		cdb.pause_request = 1;
-		cdb.play_wait = 0;
-		SSLOG(_CDRV, "       : Send PAUSE request!\n");
-		do{
-			wait_pause_ok();
-		}while(cdb.pause_request);
-	}
-	cdb.status = STAT_PAUSE;
-
-	if(pos==0xffffff){
-		// act as PAUSE cmd
-		SSLOG(_CDRV, "       : PAUSE cmd\n");
-	}else if(pos&0x800000){
-		// PTYPE_FAD
-		cdb.play_fad_start = pos&0x0fffff;
-		cdb.old_fad = cdb.fad;
-		cdb.fad = cdb.play_fad_start;
-		cdb.track = fad_to_track(cdb.play_fad_start);
-		cdb.index = 1;
-		cdb.options = 0x00;
-		cdb.repcnt = 0;
-		ti = &cdb.tracks[cdb.track-1];
-		if(ti->mode==3){
-			// Steam Heart
-			// 使用Seek, Play(00ffffff, 00ffffff, ff)来继续播放音轨
-			// 需要指定play_fad_end.
-			cdb.play_fad_end = ti->fad_end;
-		}else{
-			// 三国志: 吞食天地2
-			// Seek后, Play(00ffffff, 00ffffff, ff).
-			// 需要指定play_fad_end以免Play多读数据.
-			cdb.old_fad = cdb.fad;
-			cdb.play_fad_end = cdb.fad;
-		}
-	}else{
-		// PTYPE_TNO
-		if(pos){
-
-			cdb.play_fad_start = track_to_fad(pos);
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-			cdb.track = (pos>>8)&0xff;
-			cdb.index = pos&0xff;
-			cdb.options = 0x00;
-			cdb.repcnt = 0;
-			ti = get_track_info(pos);
-			cdb.ctrladdr = ti->ctrl_addr;
-		}else{
-			cdb.status = STAT_STANDBY;
-			cdb.fad = 0xffffffff;
-			cdb.track = 0xff;
-			cdb.index = 0xff;
-			cdb.ctrladdr = 0xff;
-			cdb.repcnt = 0xff;
-			cdb.options = 0xff;
-		}
-	}
-
-	SSLOG(_CDRV, "       : fad=%08x track=%d index=%d ctladr=%02x opt=%02x\n",
-			cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
-
-	set_report(cdb.status);
-	return 0;
+    u32 pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
+    SSLOG(_CDRV, "\nseek_cd: pos=%08x\n", pos);
+    if (pos && pos != 0xffffff && !get_track_info(0xffff)) {
+        set_status(STAT_REJECT); return 0;
+    }
+    u32 fad = pos && pos != 0xffffff ? drive_position(pos, 0) : cdb.fad;
+    if (cdb.play_type) SSLOG(_CDRV, "       : Send PAUSE request!\n");
+    if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    cdb.status = STAT_PAUSE;
+    if (pos == 0xffffff) SSLOG(_CDRV, "       : PAUSE cmd\n");
+    if (!pos) {
+        cdb.status = STAT_STANDBY;
+        cdb.fad = 0xffffffff;
+        cdb.track = cdb.index = cdb.ctrladdr = cdb.repcnt = cdb.options = 0xff;
+        cdb.play_track = NULL;
+    } else if (pos != 0xffffff) {
+        cdb.play_fad_start = fad;
+        set_drive_position(fad);
+        TRACK_INFO *tk = cdb.play_track;
+        cdb.options = cdb.repcnt = 0;
+        /* Preserve the upstream FAD-seek/resume exceptions while their
+         * difference from retained-range semantics is investigated separately. */
+        if (pos & 0x800000) cdb.play_fad_end = tk && tk->mode == 3 ? tk->fad_end+1 : fad;
+    }
+    SSLOG(_CDRV, "       : fad=%08x track=%d index=%d ctladr=%02x opt=%02x\n",
+          cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
+    set_report(cdb.status);
+    return 0;
 }
 
 // 0x12 [SR]

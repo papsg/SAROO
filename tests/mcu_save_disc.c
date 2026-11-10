@@ -277,7 +277,7 @@ static void publication(int value)
     pause_worker();
     assert(publication_attempts==1 && published_requests==1 && !pending_publication);
     assert(cdb.play_type==1 && cdb.pause_request==1 && pause_acks==1);
-    assert(!buf_fad_start && !buf_fad_end && !pause_irq_mask);
+    assert(buf_fad_start==150 && buf_fad_end==160 && !pause_irq_mask);
 }
 static void automatic_no_wait(void)
 {

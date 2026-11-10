@@ -102,7 +102,7 @@ class MCUSaveTest(unittest.TestCase):
             signature = b'int load_disc(int index, int start_save)' in disc
             (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
             if b'int pause_disc(void)' in main:
-                begin = main.index(b'int pause_disc(void)')
+                begin = main.index(b'int pause_drive(void)') if b'int pause_drive(void)' in main else main.index(b'int pause_disc(void)')
                 pause = main[begin:main.index(b'void cdc_delay(', begin)]
             else:
                 pause = b'static int pause_disc(void) { return 0; }\n'
@@ -116,12 +116,11 @@ class MCUSaveTest(unittest.TestCase):
                     begin=cdc.index(b'void invalidate_directory(')
                     ack=cdc[begin:cdc.index(b'\n}',begin)+2]+b'\n'+ack
             begin = main.index(b'_restart_nowait:')
-            marker=b'\n        int was_directory =' if b'        int was_directory =' in main else b'\n\t\tget_sector(cdb.fad, NULL);'
-            end = main.index(marker, begin)
-            restart = main[main.index(b'\n', begin)+1:end]
-            begin = main.index(b'\t\t\tif(cdb.pause_request)', end)
-            marker=b'\n            int reading_directory =' if b'            int reading_directory =' in main else b'\n\t\t\tretv = get_sector'
-            end = main.index(marker, begin)
+            begin = main.index(b'\t\tif(cdb.pause_request)',begin)
+            end = main.index(b'\n\t\t}',begin)+4
+            restart = main[begin:end]
+            begin = main.index(b'\t\t\tif(cdb.pause_request)',end)
+            end = main.index(b'\n\t\t\t}',begin)+5
             active = main[begin:end]
             # Test-only preemption checkpoint after actual idle publication.
             for name, code in (('pause-ack.inc', ack), ('pause-worker.inc', restart), ('pause-active-worker.inc', active)):

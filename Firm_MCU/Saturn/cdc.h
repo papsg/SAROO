@@ -82,7 +82,7 @@
 #define MAX_SELECTORS   24
 #define MAX_FILES       256
 
-#define MAX_TRACKS      32
+#define MAX_TRACKS      99
 
 
 
@@ -389,6 +389,7 @@ int list_disc(int cid, int show);
 int load_disc(int index, int start_save);
 int load_pcm(char *fname);
 int unload_disc(void);
+int pause_drive(void);
 int pause_disc(void);
 int get_disc_ip(int index, u8 *ipbuf);
 

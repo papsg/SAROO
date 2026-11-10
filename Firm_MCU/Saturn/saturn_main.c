@@ -70,27 +70,14 @@ void init_toc(void)
 
 u32 track_to_fad(u16 track_index)
 {
-	int t, index;
-
-	if(track_index==0xffff){
-		return cdb.tracks[cdb.track_num-1].fad_end;
-	}else if(track_index==0){
-		return 0;
-	}
-
-	t     = (track_index>>8)-1;
-	if(t<0)
-		t = 0;
-	index = track_index&0xff;
-	TRACK_INFO *tk = &cdb.tracks[t];
-
-	if(index<=0x01){
-		return tk->fad_start;
-	} else if(index > tk->max_index){
-		return tk->fad_end;
-	} else{
-		return tk->index[index-2];
-	}
+    if (!track_index) return 0;
+    TRACK_INFO *tk = get_track_info(track_index);
+    if (!tk) return 0xffffffffu;
+    unsigned index = track_index & 255;
+    if (index <= 1) return tk->fad_start;
+    if (index > (unsigned)tk->max_index) return tk->fad_end;
+    if (!tk->index) return 0xffffffffu;
+    return tk->index[index-2];
 }
 
 int fad_to_track(u32 fad)
@@ -107,20 +94,10 @@ int fad_to_track(u32 fad)
 
 TRACK_INFO *get_track_info(int track_index)
 {
-	int t;
-
-	if(track_index==0xffff){
-		t = cdb.track_num-1;
-	}else if(track_index==0){
-		return NULL;
-	}else{
-		t = (track_index>>8)-1;
-	}
-
-	if(t>=cdb.track_num)
-		return NULL;
-	
-	return &cdb.tracks[t];
+    int t = track_index == 0xffff ? cdb.track_num-1 : (track_index>>8)-1;
+    if (!cdb.tracks || cdb.track_num <= 0 || cdb.track_num > MAX_TRACKS ||
+        t < 0 || t >= cdb.track_num) return NULL;
+    return &cdb.tracks[t];
 }
 
 
@@ -327,7 +304,6 @@ static void acknowledge_disc_pause(void)
     cdb.status = STAT_PAUSE;
     if (cdb.play_type == PLAYTYPE_DIR) invalidate_directory();
     cdb.play_type = 0;
-    buf_fad_start = buf_fad_end = 0;
     cdb.pause_request = 0;
     restore_irq(irqs);
     set_pause_ok();
@@ -397,6 +373,10 @@ _restart_nowait:
 			goto _restart_wait;
 		}
 		
+        if (cdb.play_type == PLAYTYPE_SECTOR &&
+            (cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end ||
+             cdb.play_fad_start >= cdb.play_fad_end)) goto _play_end;
+
         int was_directory = cdb.play_type == PLAYTYPE_DIR;
         if (get_sector(cdb.fad, NULL) && was_directory) {
             finish_directory(0);
@@ -523,14 +503,16 @@ _restart_nowait:
             if (cdb.play_type == PLAYTYPE_FILE) advance_file_unit();
 		}
 
+_play_end:
 		SSLOG(_DTASK, "\nplay end! fad=%08x end=%08x repcnt=%d maxrep=%d play_type=%d\n",
 				cdb.fad, cdb.play_fad_end, cdb.repcnt, cdb.max_repeat, cdb.play_type);
 
-		if(cdb.fad>=cdb.play_fad_end){
+		if(cdb.fad>=cdb.play_fad_end || cdb.fad<cdb.play_fad_start ||
+           cdb.play_fad_start>=cdb.play_fad_end){
 			// 本次play结束
 			cdb.play_track = NULL;
 			{
-				if(cdb.repcnt>=cdb.max_repeat){
+				if(cdb.repcnt>=cdb.max_repeat || cdb.play_fad_start>=cdb.play_fad_end){
 					if(pend_delay){
 						hw_delay(pend_delay);
 						cdb.status = STAT_BUSY;
@@ -585,7 +567,7 @@ void wait_pause_ok(void)
 
 /* Explicit callers wait before replacing readers. Automatic changes run on
  * the producer itself and must not wait for their own acknowledgment. */
-int pause_disc(void)
+int pause_drive(void)
 {
     if (cdb.play_type) {
         cdb.pause_request = 1;
@@ -595,6 +577,13 @@ int pause_disc(void)
             wait_pause_ok();
         if (cdb.pause_request) return -1;
     }
+    return 0;
+}
+
+/* Replacing a reader invalidates its cache only after successful handoff. */
+int pause_disc(void)
+{
+    if (pause_drive()) return -1;
     /* An already-idle reader may still own cached sectors. */
     buf_fad_start = buf_fad_end = 0;
     return 0;
@@ -776,7 +765,7 @@ void ss_cmd_handle(void)
 		//SS_CMD = 0;
 		if(retv==0){
 			cdb.play_fad_start = track_to_fad(0x0100);
-			cdb.play_fad_end   = track_to_fad(0x0163);
+			cdb.play_fad_end   = track_to_fad(0x0163)+1;
 			cdb.track = 0x01;
 			cdb.index = 0x00;
 			cdb.fad = cdb.play_fad_start;

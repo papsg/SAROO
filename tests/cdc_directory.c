@@ -263,7 +263,7 @@ static void pauses(void)
     buf_fad_start=150;buf_fad_end=170;pause_signals=0;
     irq_restore_hook=new_request_after_ack;acknowledge_disc_pause();
     assert(cdb.play_type==PLAYTYPE_FILE && cdb.pause_request==1 && cdb.status==STAT_BUSY);
-    assert(!buf_fad_start && !buf_fad_end && pause_signals==1 && !irq_depth);
+    assert(buf_fad_start==150 && buf_fad_end==170 && pause_signals==1 && !irq_depth);
     /* A command can request pause while the descriptor's privately owned
      * block is being parsed. The internal phase transition cannot retire it. */
     setup(0,200);cdb.cr3=255;cdb.cr4=65535;assert(!change_dir());
