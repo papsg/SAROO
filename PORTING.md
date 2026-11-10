@@ -565,3 +565,22 @@ repo, Saturn/installed firmware, research branches, other work and paused goals
 remain untouched. No USB, added runtime diagnostics, PRs, subagents or unrelated
 imports were used. Fork issues are disabled, with no open PRs or matching
 requests to close; original upstream requests remain unchanged.
+
+## Initial CD-command and buffer safety
+
+Starts at public `de549dc`. Port MCU-CDC-001–004 as separately verified source
+commits, oldest first; include accepted-software-reset error clearing with002.
+Keep005–007/later work separate. No PRs, USB, added diagnostics, logging changes,
+private writes or device operations. Raw evidence remains ignored; complete
+files/messages/metadata and actual commits receive privacy review before push.
+
+| Contribution / original | Public checkpoint | Verification, costs and limits |
+| --- | --- | --- |
+| MCU-CDC-001; paps-g `f0da2b0b` | [1d9a126](https://github.com/papsg/SAROO/commit/1d9a126); [codex/cd-filter-reply](https://github.com/papsg/SAROO/tree/codex/cd-filter-reply) | Three actual-code methods pass sanitizers/O2:71,680 reply cases,6,144 valid zero-status controls,6,144 actual set/get round trips. Baseline full sweep has71,400 byte failures and round-trip fails; zero-status control passes. Four mutations rejected; three prior CD setup methods pass. Complete App/RTX/166-vector link adds16 load bytes to57,412, margin8,124; static DTCM60,296 and IRQ/dispatch/getter frames24/16/8 unchanged. No allocation/copy/I/O/call/mask work added. [Exact Sega §8.2.5 functions5.3/5.4, public source contracts, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-COMMAND-BUFFER-SAFETY.md#mcu-cdc-001-separate-filter-reply-status-and-channel). Getter IRQ return0 preserved; encoding sweep is not256 physical states, invalid selectors/hardware timing/game acceptance remain separate. |
+| MCU-CDC-002; paps-g `93391efb` plus reset continuation in `8432f7d8` | Queued | Retained copy/move result and accepted software reset, with ignored/nonreset/unrelated-query retention. No incomplete reset milestone. |
+| MCU-CDC-003; selected paps-g `8432f7d8` | Queued | Admission, byte accounting, full-pool/same-partition zero-copy moves; broader destination routing/cancellation/output ownership remains separate. |
+| MCU-CDC-004; paps-g `661fd2d4` | Queued | Bounded filter selectors/traversal, safe discard and completed-destination/ownership accounting; preserve original logging. |
+
+The first verified source checkpoint and topic are pushed directly to main.
+Three checkpoints and final integrated/build/preservation audit remain.
+Private repo, research refs/stashes, Saturn and other work remain untouched.
