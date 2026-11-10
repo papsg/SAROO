@@ -45,6 +45,7 @@ check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_xa.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_drive.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cue_geometry.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cue_layout.py -v
 
 .PHONY: check-config
 check-config:

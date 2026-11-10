@@ -223,7 +223,7 @@ class MCUSaveTest(unittest.TestCase):
                 code += main[start:main.index(b'int get_sector(', start)]
                 code += function(b'int get_sector(')
                 (cls.target / 'reader.inc').write_bytes(code)
-                harnesses += [cls.c_source, 'test_cue_geometry.py']
+                harnesses += [cls.c_source, getattr(cls, 'test_source', 'test_cue_geometry.py')]
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data

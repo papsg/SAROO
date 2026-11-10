@@ -90,7 +90,7 @@ int parse_iso(char *fname)
 
 
 /* CD TOC entries 0..98 are tracks; slot 99 in track_fp is preview scratch. */
-#define CUE_TRACKS 99
+#define CUE_TRACKS MAX_TRACKS
 #define CUE_BYTES (MAX_BLOCKS * 2352 - 0x1000)
 
 static int close_tracks(int count);
@@ -147,14 +147,33 @@ static int cue_last_index(TRACK_INFO *tk)
     return tk->max_index > 1 ? TRACK_INDEX(tk)[tk->max_index-2] : tk->fad_start;
 }
 
+/* Finish stored sectors before adding unbacked postgap frames. */
+static int cue_end(TRACK_INFO *tk, u32 frames)
+{
+    if (!tk->max_index || !frames || frames > 0xffffffu - tk->fad_start ||
+        tk->postgap > 0xffffffu - tk->fad_start - frames) return -1;
+    u32 end = tk->fad_start + frames - 1;
+    if (cue_last_index(tk) > end) return -1;
+    tk->fad_end = end + tk->postgap;
+    return 0;
+}
+
 static int cue_finish(TRACK_INFO *tk)
 {
     FSIZE_t bytes = f_size(tk->fp);
-    if (!tk->max_index || bytes > 0xffffffffu || tk->file_offset >= bytes) return -1;
-    unsigned frames = ((u32)bytes - tk->file_offset) / TRACK_SIZE(tk);
-    if (!frames || frames > 0xffffffu - tk->fad_start) return -1;
-    tk->fad_end = tk->fad_start + frames - 1;
-    return cue_last_index(tk) > tk->fad_end ? -1 : 0;
+    if (bytes > 0xffffffffu || tk->file_offset >= bytes) return -1;
+    return cue_end(tk, ((u32)bytes - tk->file_offset) / TRACK_SIZE(tk));
+}
+
+/* A FILE-relative frame delta uses the preceding/current track width, never
+ * the new track width multiplied by the complete FILE timeline. */
+static int cue_offset(TRACK_INFO *tk, u32 frames, u32 *offset)
+{
+    FSIZE_t bytes = f_size(tk->fp);
+    if (bytes > 0xffffffffu || tk->file_offset > bytes ||
+        frames > ((u32)bytes - tk->file_offset) / TRACK_SIZE(tk)) return -1;
+    *offset = tk->file_offset + frames * TRACK_SIZE(tk);
+    return 0;
 }
 
 int parse_cue(char *fname, u8 *ipbuf)
@@ -164,7 +183,8 @@ int parse_cue(char *fname, u8 *ipbuf)
     u8 *fbuf = (u8*)0x2400b000;
     char *dir_name = (char*)0x2400a000;
     char *full_path = (char*)0x2400a200;
-    int retv, count = 0, first = 0, fad_offset = 150;
+    int retv, count = 0, first = 0, track_relative = -1, file_index1 = 0, gaps = 0;
+    u32 next_fad = 150;
     FIL *tk_fp = NULL;
     TRACK_INFO *tk = NULL;
     u32 nread;
@@ -196,7 +216,7 @@ int parse_cue(char *fname, u8 *ipbuf)
                 join_path(full_path, 512, dir_name, file)) goto failed;
             if (tk_fp) {
                 if (cue_finish(tk)) goto failed;
-                fad_offset = tk->fad_end + 1;
+                next_fad = tk->fad_end + 1;
             }
             first = count;
             tk_fp = NULL;
@@ -226,37 +246,66 @@ int parse_cue(char *fname, u8 *ipbuf)
             tk->fp = tk_fp;
             TRACK_SIZE(tk) = size;
             tk->mode = kind;
+            track_relative = -1;
+            gaps = 0;
+        } else if (!strcmp(token, "PREGAP") || !strcmp(token, "POSTGAP")) {
+            int post = token[1] == 'O';
+            int length = cue_time(cue_token(&line));
+            if (!tk_fp || count == first || length < 0 || length > 0xffffff || (gaps & (post ? 2 : 1)) ||
+                (post ? !tk->max_index : track_relative >= 0)) goto failed;
+            if (post) tk->postgap = length;
+            else tk->pregap = length;
+            gaps |= post ? 2 : 1;
         } else if (!strcmp(token, "INDEX")) {
             char *number = cue_token(&line), *time = cue_token(&line);
             int index = cue_number(&number, 0, 99);
             int relative = cue_time(time);
-            if (!tk || count == first || index < 0 || relative < 0) goto failed;
-            if (relative >= 0x1000000u - fad_offset) goto failed;
-            unsigned fad = fad_offset + relative;
-            if (!tk->max_index && !tk->fad_0 && count > first + 1) {
-                TRACK_INFO *previous = tk - 1;
-                if (fad <= cue_last_index(previous)) goto failed;
-                previous->fad_end = fad - 1;
-            }
-            if (index == 0) {
-                if (tk->fad_0 || tk->max_index) goto failed;
-                tk->fad_0 = fad;
-            } else if (index == 1) {
-                if (tk->max_index || fad < tk->fad_0 || relative > 0xffffffffu / TRACK_SIZE(tk)) goto failed;
-                tk->fad_start = fad;
-                if (!tk->fad_0) tk->fad_0 = fad;
-                tk->file_offset = relative * TRACK_SIZE(tk);
+            if (!tk_fp || count == first || index < 0 || relative < 0 || (gaps & 2)) goto failed;
+            if (track_relative < 0) {
+                if (index > 1) goto failed;
+                u32 offset;
+                if (count > first + 1) {
+                    TRACK_INFO *previous = tk - 1;
+                    if (relative <= file_index1 ||
+                        cue_offset(previous, relative - file_index1, &offset) ||
+                        cue_end(previous, relative - file_index1)) goto failed;
+                    next_fad = previous->fad_end + 1;
+                } else if (cue_offset(tk, relative, &offset)) goto failed;
+                tk->file_offset = offset;
+                tk->fad_0 = next_fad;
+                if (tk->pregap > 0xffffffu - next_fad) goto failed;
+                tk->fad_start = next_fad + tk->pregap;
+                track_relative = relative;
+            } else if (index == 0) goto failed;
+            if (relative < track_relative) goto failed;
+            u32 delta = relative - track_relative, offset;
+            if (cue_offset(tk, delta, &offset) ||
+                (FSIZE_t)offset + TRACK_SIZE(tk) > f_size(tk->fp)) goto failed;
+            if (index == 1) {
+                if (tk->max_index || delta > 0xffffffu - tk->fad_start) goto failed;
+                tk->fad_start += delta;
+                /* First INDEX01 is LBA0/FAD150, retaining its FILE offset.
+                 * Stored prefix frames before FAD0 are not exposed. */
+                if (count == 1) {
+                    u32 stored = delta < 150 ? 150 - delta : 0;
+                    tk->fad_0 = tk->pregap < stored ? stored - tk->pregap : 0;
+                    tk->pregap = stored - tk->fad_0;
+                    tk->fad_start = 150;
+                }
+                tk->file_offset = offset;
+                file_index1 = track_relative = relative;
                 tk->index_base = ipbuf ? 0 : current_index + 1;
                 tk->max_index = 1;
-                if (cue_finish(tk)) goto failed;
                 if (ipbuf) {
                     retv = read_track_ip(tk, ipbuf);
                     closed = f_close(tk_fp);
                     return retv || closed ? -1 : 0;
                 }
-            } else {
+            } else if (index > 1) {
                 if (index != tk->max_index + 1 || !tk->max_index ||
-                    current_index == 2048 || fad <= cue_last_index(tk) || fad > tk->fad_end) goto failed;
+                    current_index == 2048 || delta > 0xffffffu - tk->fad_start) goto failed;
+                u32 fad = tk->fad_start + delta;
+                if (fad <= cue_last_index(tk)) goto failed;
                 index_table[current_index++] = fad;
                 tk->max_index = index;
             }
