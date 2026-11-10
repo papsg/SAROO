@@ -1,6 +1,7 @@
 /* Adapted from paps-g 82125993/cb3abf06; atomic publication follows c6dc9847. Actual save state/ISO/FatFs; scheduling and registers are stubs. */
 #include "coupled-harness.inc"
 #include "disc-api.h"
+#define PLAYTYPE_DIR 3
 #define STAT_PAUSE 1
 #define STAT_OPEN 6
 #define STAT_NODISC 7
@@ -11,7 +12,7 @@ typedef struct {
     u32 fad_end,file_offset; u16 sector_size; u8 ctrl_addr,mode;
 } TRACK_INFO;
 static FIL track_fp[100];
-static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
+static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request,rdir_state,cdir_pfnum,cdir_drend; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
 static int current_index,category_current,total_disc=2,next_disc;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";

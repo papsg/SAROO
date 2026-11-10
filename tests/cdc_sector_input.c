@@ -143,10 +143,23 @@ static void read_error_controls(void)
         assert(get_sector(150,&block)==-2 && reads==1 && seeks==1);failed(&block,&before);
     }
 }
+static void directory_error_ownership(void)
+{
+    for(unsigned kind=0;kind<4;kind++) {
+        setup(2352,511,2);cdb.play_type=PLAYTYPE_DIR;
+        if(kind==0) seek_result=FR_DISK_ERR;
+        if(kind==1) read_result=FR_DISK_ERR;
+        if(kind==2) supplied=511+2352-1;
+        if(kind==3) cdb.play_track=NULL;
+        BLOCK block,before;memset(&block,0x5a,sizeof block);memcpy(&before,&block,sizeof before);
+        assert(get_sector(150,&block)<0 && cdb.play_type==PLAYTYPE_DIR && cdb.status==STAT_ERROR);
+        assert(!memcmp(&block,&before,sizeof block) && !buf_fad_end && !locked);
+    }
+}
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<6);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<7);
     if(test==0)seek_errors();else if(test==1)short_reads();else if(test==2)exact_and_full_reads();
     else if(test==3)cache_boundaries_and_recovery();else if(test==4)track_and_metadata_controls();
-    else read_error_controls();puts("pass: actual sector-input error, cache, payload and valid controls");return 0;
+    else if(test==5) read_error_controls();else directory_error_ownership();puts("pass: actual sector-input error, cache, payload and valid controls");return 0;
 }

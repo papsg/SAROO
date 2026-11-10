@@ -80,7 +80,7 @@ static void restore_irq(int old)
 #endif
 }
 static void disk_task_wakeup(void) { assert(0); }
-static void osDelay(int ticks) { (void)ticks; assert(0); }
+static __attribute__((unused)) void osDelay(int ticks) { (void)ticks; assert(0); }
 static void wait_pause_ok(void) { assert(0); }
 static void set_report(u8 status) { reply[0]=(u16)status<<8; }
 static void *counted_memcpy(void *to,const void *from,size_t n)

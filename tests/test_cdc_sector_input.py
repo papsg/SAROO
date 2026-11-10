@@ -51,6 +51,7 @@ class CDSectorInputTests(unittest.TestCase):
     def test_cache_hits_boundary_misses_and_error_recovery(self):self.run_case(3)
     def test_track_lookup_metadata_audio_and_null_output_controls(self):self.run_case(4)
     def test_baseline_valid_read_error_controls(self):self.run_case(5)
+    def test_directory_errors_retain_worker_ownership(self):self.run_case(6)
 
 
 if __name__=='__main__':unittest.main()

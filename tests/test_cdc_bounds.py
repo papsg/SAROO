@@ -23,14 +23,20 @@ class CDBoundsTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(')))
+        (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(',b'disconnect_filter_input(')))
         code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
         code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',
             b'int get_filter_connection(',b'int get_sector_num(',b'int cal_actual_size(',b'int get_actual_size(',
             b'int get_sector_info(',b'static __attribute__((noinline)) int get_sector_data_common(',
             b'int get_sector_data(',b'int get_del_sector_data(',b'int del_sector_data(',b'static void _set_filter(',
-            b'void free_partition(',b'static __attribute__((noinline)) void start_directory_read(',
+            b'void free_partition('))
+        if b'static u32 directory_record;' in raw:
+            code+=b'static u32 directory_record;\n'
+            code+=b''.join(function(sig) for sig in (b'static u32 file_sector_count(',
+                b'static int valid_file_extent(',b'static void set_file_selector(',
+                b'static void start_file_play(',b'static int file_info_index('))
+        code+=b''.join(function(sig) for sig in (b'static __attribute__((noinline)) void start_directory_read(',
             b'int change_dir(',b'int read_dir(',b'int read_file('))
         (cls.target/'bounds.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])

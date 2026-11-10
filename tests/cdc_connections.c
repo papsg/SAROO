@@ -38,7 +38,7 @@ static int disable_irq(void) { return irq_depth++; }
 static void restore_irq(int prior) { assert(irq_depth==prior+1);irq_depth=prior; }
 static void set_report(u8 status) { reply[0]=(u16)status<<8; }
 static void disk_task_wakeup(void) { wakeups++; }
-static void osDelay(int value) { (void)value;assert(0); }
+static __attribute__((unused)) void osDelay(int value) { (void)value;assert(0); }
 static void wait_pause_ok(void)
 { assert(cdb.pause_request && !irq_depth);cdb.pause_request=0;pauses++; }
 #include "connections.inc"

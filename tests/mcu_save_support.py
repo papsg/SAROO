@@ -111,11 +111,17 @@ class MCUSaveTest(unittest.TestCase):
             if b'static void acknowledge_disc_pause(void)' in main:
                 begin = main.index(b'static void acknowledge_disc_pause(void)')
                 ack = main[begin:main.index(b'\n}', begin)+2]
+                cdc = (source/'saturn_cdc.c').read_bytes(); inputs['Saturn/saturn_cdc.c']=cdc
+                if b'void invalidate_directory(' in cdc:
+                    begin=cdc.index(b'void invalidate_directory(')
+                    ack=cdc[begin:cdc.index(b'\n}',begin)+2]+b'\n'+ack
             begin = main.index(b'_restart_nowait:')
-            end = main.index(b'\n\t\tget_sector(cdb.fad, NULL);', begin)
+            marker=b'\n        int was_directory =' if b'        int was_directory =' in main else b'\n\t\tget_sector(cdb.fad, NULL);'
+            end = main.index(marker, begin)
             restart = main[main.index(b'\n', begin)+1:end]
             begin = main.index(b'\t\t\tif(cdb.pause_request)', end)
-            end = main.index(b'\n\t\t\tretv = get_sector', begin)
+            marker=b'\n            int reading_directory =' if b'            int reading_directory =' in main else b'\n\t\t\tretv = get_sector'
+            end = main.index(marker, begin)
             active = main[begin:end]
             # Test-only preemption checkpoint after actual idle publication.
             for name, code in (('pause-ack.inc', ack), ('pause-worker.inc', restart), ('pause-active-worker.inc', active)):

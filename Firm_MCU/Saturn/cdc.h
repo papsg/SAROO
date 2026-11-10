@@ -238,15 +238,15 @@ typedef struct
 ////// 文件操作 ///////////////////////////////////////////////
 
 	u32 cdir_lba;           // 当前目录的LBA地址
-	u8  cdir_size;          // 当前目录的LBA大小
+	u32 cdir_size;          /* Exact directory byte length. */
 	u8  dir_filter;
 	u8  cdir_drend;
 	u8  rdir_state;
-	u16 cdir_pfid;          // 当前目录页的文件开始编号
+	u32 cdir_pfid;          // 当前目录页的文件开始编号
 	u16 cdir_pfnum;         // 当前目录页的文件个数
 
 	u32 root_lba;           // 根目录的LBA地址
-	u32 root_size;          // 根目录的LBA大小
+	u32 root_size;          /* Exact root-directory byte length. */
 
 	FILE_INFO fi[256];
 	u8 *FINFO;
@@ -409,3 +409,7 @@ void load_cover(int index);
 
 /******************************************************************************/
 
+
+/* Retire unfinished directory metadata before worker ownership is released. */
+void invalidate_directory(void);
+int finish_directory(int valid);

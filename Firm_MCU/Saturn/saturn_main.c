@@ -199,7 +199,7 @@ int get_sector(int fad, BLOCK *wblk)
 			// play的FAD参数错误
 			SSLOG(_DTASK, "play_track not found!\n");
 			cdb.status = STAT_ERROR;
-			cdb.play_type = 0;
+			if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
 			return -1;
 		}
 	}
@@ -249,7 +249,7 @@ int get_sector(int fad, BLOCK *wblk)
 		}else{
 			SSLOG(_DTASK, "f_read error!\n");
 			cdb.status = STAT_ERROR;
-			cdb.play_type = 0;
+			if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
 			buf_fad_end = 0;
 			return -2;
 		}
@@ -325,6 +325,7 @@ static void acknowledge_disc_pause(void)
 {
     int irqs = disable_irq();
     cdb.status = STAT_PAUSE;
+    if (cdb.play_type == PLAYTYPE_DIR) invalidate_directory();
     cdb.play_type = 0;
     buf_fad_start = buf_fad_end = 0;
     cdb.pause_request = 0;
@@ -396,7 +397,11 @@ _restart_nowait:
 			goto _restart_wait;
 		}
 		
-		get_sector(cdb.fad, NULL);
+        int was_directory = cdb.play_type == PLAYTYPE_DIR;
+        if (get_sector(cdb.fad, NULL) && was_directory) {
+            finish_directory(0);
+            goto _restart_wait;
+        }
 
 		if(cdb.play_fad_start==0 || cdb.play_type==0){
 			SSLOG(_DTASK, "play_task: play_type=%d! play_fad_start=%08x!\n", cdb.play_type, cdb.play_fad_start);
@@ -404,7 +409,7 @@ _restart_nowait:
 			goto _restart_wait;
 		}
 
-		if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_track->mode==3){
+		if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3){
 		}else{
 			SSLOG(_DTASK, "\nplay_task! fad_start=%08x(lba_%d) fad_end=%08x fad=%08x type=%d free=%d\n",
 					cdb.play_fad_start, cdb.play_fad_start-150, cdb.play_fad_end, cdb.fad, cdb.play_type, cdb.block_free);
@@ -457,14 +462,17 @@ _restart_nowait:
 				goto _restart_wait;
 			}
 
-			retv = get_sector(cdb.fad, &wblk);
-			if(retv)
-				break;
+            int reading_directory = cdb.play_type == PLAYTYPE_DIR;
+            retv = get_sector(cdb.fad, &wblk);
+            if (retv) {
+                if (reading_directory) { finish_directory(0); goto _restart_wait; }
+                break;
+            }
 			led_event(LEDEV_CSCT);
 			HIRQ = HIRQ_SCDQ;
 			set_peri_report();
 
-			if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_track->mode==3){
+			if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3){
 				int asize = fill_audio_buffer(wblk.data);
 				if(asize<0){
 					cdb.play_wait = 1;
@@ -499,7 +507,15 @@ _restart_nowait:
 				}else{
 					// 无人接收这个扇区
 				}
-				//printk("filter return %d\n", retv);
+                if (cdb.play_type == PLAYTYPE_DIR) {
+                    if (retv != 0) {
+                        finish_directory(0);
+                        goto _restart_wait;
+                    }
+                    int next = handle_diread();
+                    if (next == 2) goto _restart_nowait;
+                    if (!next) goto _restart_wait;
+                }
 			}
 
 			cdb.old_fad = cdb.fad;
@@ -512,16 +528,7 @@ _restart_nowait:
 		if(cdb.fad>=cdb.play_fad_end){
 			// 本次play结束
 			cdb.play_track = NULL;
-			if(cdb.play_type==PLAYTYPE_DIR){
-				if(handle_diread()==0){
-					// 返回0表示本次dir_read完成
-					// 返回1表示需要继续读取下一个扇区
-					cdb.status = STAT_PAUSE;
-					cdb.play_type = 0;
-				}else{
-					goto _restart_nowait;
-				}
-			}else{
+			{
 				if(cdb.repcnt>=cdb.max_repeat){
 					if(pend_delay){
 						hw_delay(pend_delay);

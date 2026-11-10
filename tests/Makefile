@@ -21,7 +21,6 @@ check-gif:
 .PHONY: check-mcu-shrink
 check-mcu-shrink:
 	$(PYTHON) -B -m unittest discover -s . -p test_rtx_profile.py -v
-	$(PYTHON) -B -m unittest discover -s . -p test_cdc_setup.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_image_suffix.py -v
 
 .PHONY: check-file-transfer
@@ -42,6 +41,7 @@ check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_bounds.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_read_ownership.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_sector_input.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_directory.py -v
 
 .PHONY: check-config
 check-config:

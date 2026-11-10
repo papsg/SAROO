@@ -36,6 +36,7 @@ def copy_source(raw,required=()):
     for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
         if signature in raw and (call in operations or call in required):code+=function(signature)
     code+=operations
+    if b'void invalidate_directory(' in raw:code+=function(b'void invalidate_directory(')
     code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
     return code
 

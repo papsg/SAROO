@@ -582,10 +582,6 @@ int init_cdblock(void)
 	}
 	cdb.iflag = iflag;
 
-	// Wait change_dir finished
-	while(cdb.play_type==PLAYTYPE_DIR){
-		osDelay(1);
-	}
 	// Stop Play task
 	if(cdb.play_type){
 		cdb.pause_request = 1;
@@ -620,6 +616,7 @@ int init_cdblock(void)
 	cdb.cdwnum = 0;
 	// Galaxy Fight: 在play之后发出init_cdblock命令. 此处不能设置当前fad，否则会破坏之前的play。
 	//cdb.fad = 150;
+	invalidate_directory();
 	cdb.cdir_lba = 0;
 	cdb.root_lba = 0;
 
@@ -1705,373 +1702,356 @@ int get_copy_error(void)
 
 /******************************************************************************/
 
-static u32 isonum_711(u8 *p)
+/* Directory state: 0 invalid, 1 volume descriptors, 2 records, 3 valid page.
+ * Only the disk worker advances the parser; command readers wait while active.
+ * Stop/replace commands wait for the worker before changing its source state. */
+static u32 directory_record;
+
+static u32 isonum_733(const u8 *p)
 {
-	return p[0];
+    return (u32)p[0] | ((u32)p[1]<<8) | ((u32)p[2]<<16) | ((u32)p[3]<<24);
 }
 
-static u32 isonum_733(u8 *p)
+/* ISO 9660 records cannot cross a logical-sector boundary. No temporary
+ * terminator: filenames are not part of the CD file reply. The old trace
+ * uses a separate bounded name copy only when its existing log mask is set. */
+static int read_directory_record(FILE_INFO *fi, const u8 *p, unsigned available)
 {
-	return p[0] | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+    if (available < 34 || p[0] < 34 || p[0] > available ||
+        !p[32] || 33u + p[32] + !(p[32] & 1) > p[0]) return 0;
+    u32 lba = isonum_733(p+2);
+    if (lba > 0xffffffffu-p[1]) return 0;
+    fi->lba = lba+p[1];
+    fi->size = isonum_733(p+10);
+    fi->attr = p[25];
+    fi->unit = p[26];
+    fi->gap = p[27];
+    fi->fid = 0;
+    return p[0];
 }
 
-void fill_fileinfo(void)
+static u32 file_sector_count(u32 bytes)
 {
-	int ptid = cdb.filter[cdb.dir_filter].c_true;
-	PARTITION *pt = &cdb.part[ptid];
-	BLOCK *blk = pt->head;
-	u8 *buf = blk->data+24;
-	int rsize, p, start, end, pfn, fid;
-
-	rsize = cdb.cdir_size-1;
-	p = 0;
-
-	start = cdb.cdir_pfid;
-	if(start<2){
-		end = 256;
-		pfn = 0;
-		cdb.cdir_pfid = 2;
-	}else{
-		end = start+254;
-		pfn = 2;
-		cdb.cdir_pfid = start;
-	}
-	cdb.cdir_drend = 0;
-
-	fid = 0;
-	while(fid<end){
-		if(fid>=start){
-			cdb.fi[pfn].lba  = isonum_733(buf+p+2);
-			cdb.fi[pfn].size = isonum_733(buf+p+10);
-			cdb.fi[pfn].attr = isonum_711(buf+p+25);
-			cdb.fi[pfn].unit = isonum_711(buf+p+26);
-			cdb.fi[pfn].gap  = isonum_711(buf+p+27);
-			cdb.fi[pfn].fid  = 0;
-#if 1
-			int nlen = *(u8*)(buf+p+32);
-			char *fname = (char*)(buf+p+33);
-			if(nlen>2)
-				nlen -= 2;
-			u8 save_byte = fname[nlen];
-			fname[nlen] = 0;
-			SSLOG(_FILEIO, "  fid %3d:  lba=%08x size=%08x attr=%02x  %d %s\n",
-						fid, cdb.fi[pfn].lba, cdb.fi[pfn].size, cdb.fi[pfn].attr, nlen, buf+p+33);
-			fname[nlen] = save_byte;
-#endif
-			if(fid>1 && cdb.fi[pfn].attr&0x02)
-				cdb.cdir_drend = 1;
-			pfn += 1;
-		}
-
-		fid += 1;
-		p += buf[p];
-		if(p>=2048 || buf[p]==0){
-			if(rsize==0)
-				break;
-			rsize -= 1;
-			p = 0;
-			blk = blk->next;
-			buf = blk->data+24;
-		}
-	}
-
-	cdb.cdir_pfnum = pfn-2;
-	SSLOG(_FILEIO, "  cdir_pfid=%d fnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
+    return (bytes >> 11) + ((bytes & 2047) != 0);
 }
 
-
-int handle_diread(void)
+/* Keep on-disc LBAs and counts in the 24-bit CD command address domain. */
+static int valid_file_extent(u32 lba, u32 sectors)
 {
-	int ptid = cdb.filter[cdb.dir_filter].c_true;
-	PARTITION *pt = &cdb.part[ptid];
-	BLOCK *blk = pt->head;
-	u8 *buf = blk->data+24;
-
-	SSLOG(_FILEIO, "handle_diread %d\n", cdb.rdir_state);
-	if(cdb.rdir_state==1){
-		// 主描述符已读
-		cdb.root_lba  = isonum_733(buf+0x9c+2);
-		cdb.root_size = isonum_733(buf+0x9c+10)/2048;
-		free_partition(pt);
-		SSLOG(_FILEIO, "  root_lba=%08x size=%08x\n", cdb.root_lba, cdb.root_size);
-
-		cdb.cdir_lba = cdb.root_lba;
-		cdb.cdir_size = cdb.root_size;
-
-		// 准备读根目录
-		cdb.rdir_state = 2;
-		cdb.pause_request = 0;
-		cdb.play_type = PLAYTYPE_DIR;
-		cdb.play_fad_start = cdb.cdir_lba+150;
-		cdb.track = fad_to_track(cdb.play_fad_start);
-		cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
-		cdb.old_fad = cdb.fad;
-		cdb.fad = cdb.play_fad_start;
-		_set_filter(cdb.dir_filter, 0x40, cdb.play_fad_start, cdb.cdir_size);
-		return 1;
-	}else if(cdb.rdir_state==2){
-		// 目录数据已读。开始填充文件信息
-		SSLOG(_FILEIO, "  cdir_lba=%08x size=%08x\n", cdb.cdir_lba, cdb.cdir_size);
-		fill_fileinfo();
-		free_partition(pt);
-		HIRQ = HIRQ_EFLS;
-	}
-
-	return 0;
+    return sectors && lba <= 0xffffffu-150 &&
+           sectors <= 0x1000000u-(lba+150);
 }
 
+void invalidate_directory(void)
+{
+    cdb.rdir_state = 0;
+    cdb.cdir_pfnum = 0;
+    cdb.cdir_drend = 0;
+}
 
-// 0x70 [SR]
-/* Share the unchanged directory-read setup across all three paths. */
+int finish_directory(int valid)
+{
+    if (valid) {
+        SSLOG(_FILEIO, "  cdir_pfid=%d fnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
+    }
+    int irqs = disable_irq();
+    if (valid) cdb.rdir_state = 3;
+    else invalidate_directory();
+    cdb.status = valid ? STAT_PAUSE : STAT_ERROR;
+    cdb.play_type = 0;
+    cdb.play_track = NULL;
+    HIRQ = HIRQ_EFLS;
+    restore_irq(irqs);
+    return 0;
+}
+
+/* A working selector uses its own partition, independent of its old true
+ * output. Configure connections through the same ownership rules as commands. */
+static void set_file_selector(int selnum, u32 fad, u32 count)
+{
+    int irqs = disable_irq();
+    disconnect_filter_input(selnum);
+    cdb.cddev_filter = selnum;
+    cdb.filter[selnum].c_true = selnum;
+    cdb.filter[selnum].c_false = 0xff;
+    _set_filter(selnum, 0x40, fad, count);
+    restore_irq(irqs);
+}
+
+static void start_file_play(int selnum, u32 fad, u32 sectors, int type)
+{
+    free_partition(&cdb.part[selnum]);
+    set_file_selector(selnum, fad, sectors);
+    cdb.repcnt = 0;
+    /* Commands already paused. Internal directory phases must retain a new
+     * pause request until the worker acknowledges it. */
+    cdb.play_wait = 0;
+    cdb.play_type = type;
+    cdb.play_fad_start = fad;
+    cdb.play_fad_end = fad+sectors;
+    cdb.track = fad_to_track(fad);
+    cdb.old_fad = cdb.fad;
+    cdb.fad = fad;
+}
+
 static __attribute__((noinline)) void start_directory_read(int selnum)
 {
+    cdb.dir_filter = selnum;
     cdb.rdir_state = 2;
-			cdb.cddev_filter = selnum;
-			cdb.pause_request = 0;
-			cdb.play_type = PLAYTYPE_DIR;
-			cdb.play_fad_start = cdb.cdir_lba+150;
-			cdb.track = fad_to_track(cdb.play_fad_start);
-			cdb.play_fad_end = cdb.play_fad_start+cdb.cdir_size;
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-			_set_filter(selnum, 0x40, cdb.play_fad_start, cdb.cdir_size);
-			disk_task_wakeup();
+    cdb.cdir_pfnum = 0;
+    cdb.cdir_drend = 0;
+    if (cdb.cdir_pfid < 2) cdb.cdir_pfid = 2;
+    directory_record = 0;
+    start_file_play(selnum, cdb.cdir_lba+150,
+                    file_sector_count(cdb.cdir_size), PLAYTYPE_DIR);
+    disk_task_wakeup();
 }
 
+/* Preserve the original trace without writing a terminator into the record.
+ * Only called with validated records, outside masks and while owning the block. */
+static __attribute__((noinline)) void log_directory_record(u32 fid, const FILE_INFO *fi, const u8 *p)
+{
+    if (log_mask & _FILEIO) {
+        char name[256];
+        int nlen = p[32];
+        if (nlen > 2) nlen -= 2;
+        memcpy(name, p+33, nlen);
+        name[nlen] = 0;
+        SSLOG(_FILEIO, "  fid %3d:  lba=%08x size=%08x attr=%02x  %d %s\n",
+              fid, fi->lba, fi->size, fi->attr, nlen, name);
+    }
+}
+
+/* Consume one privately detached sector. Return 1 for more input, 0 for a
+ * complete page, -1 for invalid records. One extra record establishes more. */
+static int fill_fileinfo(const u8 *buf, unsigned available)
+{
+    unsigned offset = 0;
+    while (offset < available && buf[offset]) {
+        FILE_INFO fi;
+        int length = read_directory_record(&fi, buf+offset, available-offset);
+        if (!length) return -1;
+        if (directory_record < 2) {
+            if (!(fi.attr & 2) || buf[offset+32] != 1 ||
+                buf[offset+33] != directory_record) return -1;
+            cdb.fi[directory_record] = fi;
+            if (cdb.cdir_pfid == 2) log_directory_record(directory_record, &fi, buf+offset);
+        } else if (directory_record >= cdb.cdir_pfid) {
+            if (cdb.cdir_pfnum == 254) return 0;
+            cdb.fi[cdb.cdir_pfnum+2] = fi;
+            cdb.cdir_pfnum++;
+            log_directory_record(directory_record, &fi, buf+offset);
+        }
+        directory_record++;
+        offset += length;
+    }
+    return 1;
+}
+
+/* Called immediately after routing each directory sector. Public commands may
+ * preempt parsing, so detach before following payload pointers, without copying.
+ * A reset/abort waits for this worker and cannot reuse its private block. */
+int handle_diread(void)
+{
+    SSLOG(_FILEIO, "handle_diread %d\n", cdb.rdir_state);
+    int sel = cdb.dir_filter;
+    if (cdb.play_type != PLAYTYPE_DIR) return 0;
+    if (sel >= MAX_SELECTORS || cdb.cddev_filter != sel ||
+        cdb.filter[sel].c_true != sel) return finish_directory(0);
+    int irqs = disable_irq();
+    PARTITION *pt = &cdb.part[sel];
+    BLOCK *blk = pt->head;
+    if (!blk || blk->fad != cdb.fad) {
+        restore_irq(irqs);
+        return finish_directory(0);
+    }
+    disconnect_partition_output(pt);
+    unlink_block(pt, NULL, blk);
+    restore_irq(irqs);
+    const u8 *buf = blk->data+24;
+    int result = -1;
+    if (cdb.rdir_state == 1) {
+        FILE_INFO root;
+        if (buf[6] == 1 && !memcmp(buf+1, "CD001", 5)) {
+            if (buf[0] == 1 && buf[128] == 0 && buf[129] == 8 &&
+                read_directory_record(&root, buf+156, 34) &&
+                (root.attr & 2) && !buf[189] && !root.unit && !root.gap &&
+                valid_file_extent(root.lba, file_sector_count(root.size))) {
+                cdb.root_lba = root.lba;
+                cdb.root_size = root.size;
+                SSLOG(_FILEIO, "  root_lba=%08x size=%08x\n", cdb.root_lba, file_sector_count(cdb.root_size));
+                result = 2;
+            } else if (buf[0] != 1 && buf[0] != 255 && cdb.fad < 0xffffff) {
+                cdb.play_fad_end++;
+                cdb.filter[sel].range++;
+                result = 1;
+            }
+        }
+    } else if (cdb.rdir_state == 2) {
+        SSLOG(_FILEIO, "  cdir_lba=%08x size=%08x\n", cdb.cdir_lba, file_sector_count(cdb.cdir_size));
+        u32 consumed = (cdb.fad-cdb.play_fad_start)*2048u;
+        if (consumed < cdb.cdir_size) {
+            u32 available = cdb.cdir_size-consumed;
+            if (available > 2048) available = 2048;
+            result = fill_fileinfo(buf, available);
+            if (result == 1 && available == cdb.cdir_size-consumed &&
+                cdb.fad+1 == cdb.play_fad_end) {
+                if (directory_record < 2) result = -1;
+                else { cdb.cdir_drend = 1; result = 0; }
+            }
+        }
+    }
+    free_block(blk);
+    if (result == 2) {
+        cdb.cdir_lba = cdb.root_lba;
+        cdb.cdir_size = cdb.root_size;
+        start_directory_read(sel);
+        return 2;
+    }
+    if (result <= 0) return finish_directory(result == 0);
+    return 1;
+}
+
+static int file_info_index(u32 fid)
+{
+    if (cdb.rdir_state != 3 || cdb.cdir_pfnum > 254) return -1;
+    if (fid < 2) return fid;
+    if (fid < cdb.cdir_pfid || fid-cdb.cdir_pfid >= cdb.cdir_pfnum) return -1;
+    return fid-cdb.cdir_pfid+2;
+}
+
+// 0x70 [SR]
 int change_dir(void)
 {
-	int selnum, fid;
-	FILE_INFO *fi;
-
-	selnum = cdb.cr3>>8;
-    if (selnum >= MAX_SELECTORS) {
-        set_status(STAT_REJECT);
-        return 0;
+    int sel = cdb.cr3 >> 8;
+    u32 fid = ((u32)(cdb.cr3 & 255)<<16) | cdb.cr4;
+    if (sel >= MAX_SELECTORS) { set_status(STAT_REJECT); return 0; }
+    SSLOG(_FILEIO, "change_dir: sel=%d fid=%08x root_lba=%08x\n", sel, fid, cdb.root_lba);
+    if (cdb.play_type == PLAYTYPE_DIR) { set_status(STAT_WAIT|cdb.status); return 0; }
+    u32 lba = cdb.root_lba, bytes = cdb.root_size;
+    if (fid != 0xffffff) {
+        int index = file_info_index(fid);
+        if (index < 0 || !(cdb.fi[index].attr & 2) ||
+            cdb.fi[index].unit || cdb.fi[index].gap) {
+            set_status(STAT_REJECT); return 0;
+        }
+        lba = cdb.fi[index].lba; bytes = cdb.fi[index].size;
     }
-	fid = ((cdb.cr3&0xff)<<16) | (cdb.cr4);
-	SSLOG(_FILEIO, "change_dir: sel=%d fid=%08x root_lba=%08x\n", selnum, fid, cdb.root_lba);
-
-	cdb.dir_filter = selnum;
-
-	if(fid==0xffffff){
-		// 切换到根目录
-		cdb.cdir_pfid = 0;
-		if(cdb.root_lba==0){
-			// 需要先读主描述符扇区,以便取得根目录的LBA地址
-			cdb.rdir_state = 1;
-			cdb.cddev_filter = selnum;
-			cdb.pause_request = 0;
-			cdb.play_type = PLAYTYPE_DIR;
-			cdb.play_fad_start = 16+150;
-			cdb.track = fad_to_track(cdb.play_fad_start);
-			cdb.play_fad_end = cdb.play_fad_start+1;
-			cdb.old_fad = cdb.fad;
-			cdb.fad = cdb.play_fad_start;
-			_set_filter(selnum, 0x40, cdb.play_fad_start, 1);
-			disk_task_wakeup();
-		}else{
-			// 已经有根目录的LBA地址
-			cdb.cdir_lba = cdb.root_lba;
-			cdb.cdir_size = cdb.root_size;
-
-			start_directory_read(selnum);
-		}
-	}else{
-		// 切换到fid所指的目录
-		if(cdb.cdir_lba){
-			if(fid<2){
-				fi = &cdb.fi[fid];
-			}else{
-				if(fid<cdb.cdir_pfid || fid>=(cdb.cdir_pfid+cdb.cdir_pfnum)){
-					set_status(STAT_REJECT);
-					return 0;
-				}else{
-					fi = &cdb.fi[fid-cdb.cdir_pfid+2];
-				}
-			}
-
-			cdb.cdir_lba = fi->lba;
-			cdb.cdir_size = fi->size/2048;
-
-			cdb.cdir_pfid = 0;
-			start_directory_read(selnum);
-		}else{
-			set_status(STAT_REJECT);
-			return 0;
-		}
-	}
-
-	set_report(cdb.status);
-	return 0;
+    if ((lba || fid != 0xffffff) &&
+        !valid_file_extent(lba, file_sector_count(bytes))) {
+        set_status(STAT_REJECT); return 0;
+    }
+    if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    cdb.cdir_pfid = 2;
+    if (fid == 0xffffff && !cdb.root_lba) {
+        invalidate_directory();
+        cdb.dir_filter = sel;
+        cdb.rdir_state = 1;
+        start_file_play(sel, 166, 1, PLAYTYPE_DIR);
+        disk_task_wakeup();
+    } else {
+        cdb.cdir_lba = lba; cdb.cdir_size = bytes;
+        start_directory_read(sel);
+    }
+    set_report(cdb.status);
+    return 0;
 }
 
 // 0x71 [SR]
 int read_dir(void)
 {
-	int selnum, fid;
-
-	selnum = cdb.cr3>>8;
-    if (selnum >= MAX_SELECTORS) {
-        set_status(STAT_REJECT);
-        return 0;
+    int sel = cdb.cr3 >> 8;
+    u32 fid = ((u32)(cdb.cr3 & 255)<<16) | cdb.cr4;
+    if (sel >= MAX_SELECTORS) { set_status(STAT_REJECT); return 0; }
+    SSLOG(_FILEIO, "read_dir: sel=%d fid=%08x\n", sel, fid);
+    if (cdb.play_type == PLAYTYPE_DIR) { set_status(STAT_WAIT|cdb.status); return 0; }
+    if (cdb.rdir_state != 3 ||
+        !valid_file_extent(cdb.cdir_lba, file_sector_count(cdb.cdir_size))) {
+        set_status(STAT_REJECT); return 0;
     }
-	fid = ((cdb.cr3&0xff)<<16) | (cdb.cr4);
-	SSLOG(_FILEIO, "read_dir: sel=%d fid=%08x\n", selnum, fid);
-
-	if(cdb.cdir_lba){
-		cdb.cdir_pfid = fid;
-		start_directory_read(selnum);
-	}else{
-		set_status(STAT_REJECT);
-		return 0;
-	}
-
-	set_report(cdb.status);
-	return 0;
+    if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    cdb.cdir_pfid = fid;
+    start_directory_read(sel);
+    set_report(cdb.status);
+    return 0;
 }
 
 // 0x72 [S-]
 int get_file_scope(void)
 {
-	SSLOG(_FILEIO, "get_file_scope: pfid=%d  pfnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = cdb.cdir_pfnum;
-	SSCR3 = cdb.cdir_drend<<8;
-	SSCR4 = cdb.cdir_pfid;
-
-	return HIRQ_EFLS;
+    SSLOG(_FILEIO, "get_file_scope: pfid=%d  pfnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
+    if (cdb.play_type == PLAYTYPE_DIR) { set_status(STAT_WAIT|cdb.status); return 0; }
+    if (cdb.rdir_state != 3) { set_status(STAT_REJECT); return 0; }
+    SSCR1 = cdb.status<<8;
+    SSCR2 = cdb.cdir_pfnum;
+    SSCR3 = (cdb.cdir_drend<<8) | (cdb.cdir_pfid>>16);
+    SSCR4 = cdb.cdir_pfid;
+    return 0;
 }
 
 // 0x73 [S-]
 int get_file_info(void)
 {
-	int i;
-
-	if(cdb.trans_type){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	i = ((cdb.cr3&0xff)<<16) | cdb.cr4;
-	SSLOG(_FILEIO, "get_file_info: fid=%08x\n", i);
-
-	if(i==0xffffff){
-		// 不返回当前目录和根目录信息
-		for(i=0; i<cdb.cdir_pfnum; i++){
-			*(u32*)(cdb.FINFO+i*12+0) = bswap32(cdb.fi[i+2].lba+150); 
-			*(u32*)(cdb.FINFO+i*12+4) = bswap32(cdb.fi[i+2].size); 
-			*(u8 *)(cdb.FINFO+i*12+8) = cdb.fi[i+2].gap;
-			*(u8 *)(cdb.FINFO+i*12+9) = cdb.fi[i+2].unit;
-			*(u8 *)(cdb.FINFO+i*12+10)= cdb.fi[i+2].fid;
-			*(u8 *)(cdb.FINFO+i*12+11)= cdb.fi[i+2].attr;
-		}
-		cdb.trans_type = TRANS_FINFO_ALL;
-		trans_start();
-
-		SSCR1 = 0x4000 | (cdb.status<<8);
-		SSCR2 = (cdb.cdir_pfnum*12)/2;
-		SSCR3 = 0x0000;
-		SSCR4 = 0x0000;
-	}else{
-		if(i<cdb.cdir_pfid || i>=(cdb.cdir_pfid+cdb.cdir_pfnum)){
-			// fid不在当前目录页的范围内
-			set_status(STAT_REJECT);
-			return 0;
-		}
-		i = i-cdb.cdir_pfid+2;
-		*(u32*)(cdb.FINFO+0) = bswap32(cdb.fi[i].lba+150); 
-		*(u32*)(cdb.FINFO+4) = bswap32(cdb.fi[i].size); 
-		*(u8 *)(cdb.FINFO+8) = cdb.fi[i].gap;
-		*(u8 *)(cdb.FINFO+9) = cdb.fi[i].unit;
-		*(u8 *)(cdb.FINFO+10)= cdb.fi[i].fid;
-		*(u8 *)(cdb.FINFO+11)= cdb.fi[i].attr;
-
-		cdb.trans_type = TRANS_FINFO_ONE;
-		trans_start();
-
-		SSCR1 = 0x4000 | (cdb.status<<8);
-		SSCR2 = 0x0006;
-		SSCR3 = 0x0000;
-		SSCR4 = 0x0000;
-	}
-
-	return HIRQ_DRDY;
+    if (cdb.trans_type || cdb.play_type == PLAYTYPE_DIR) {
+        set_status(STAT_WAIT|cdb.status); return 0;
+    }
+    u32 fid = ((u32)(cdb.cr3&255)<<16) | cdb.cr4;
+    SSLOG(_FILEIO, "get_file_info: fid=%08x\n", fid);
+    int index = fid == 0xffffff ? 2 : file_info_index(fid);
+    int count = fid == 0xffffff ? cdb.cdir_pfnum : 1;
+    if (cdb.rdir_state != 3 || index < 0 || !count || count > 254) {
+        set_status(STAT_REJECT); return 0;
+    }
+    for (int i = 0; i < count; i++) {
+        FILE_INFO *fi = &cdb.fi[index+i];
+        u8 *out = cdb.FINFO+i*12;
+        *(u32*)(out+0) = bswap32(fi->lba+150);
+        *(u32*)(out+4) = bswap32(fi->size);
+        out[8] = fi->gap; out[9] = fi->unit; out[10] = fi->fid; out[11] = fi->attr;
+    }
+    cdb.trans_type = fid == 0xffffff ? TRANS_FINFO_ALL : TRANS_FINFO_ONE;
+    trans_start();
+    SSCR1 = 0x4000 | (cdb.status<<8);
+    SSCR2 = count*6;
+    SSCR3 = SSCR4 = 0;
+    return HIRQ_DRDY;
 }
-
 
 // 0x74 [SR]
 int read_file(void)
 {
-	int selnum, fid, offset, lba_size;
-	FILTER *fsl;
-	FILE_INFO *fi;
-
-    selnum = cdb.cr3 >> 8;
-    if (selnum >= MAX_SELECTORS) {
-        set_status(STAT_REJECT);
-        return 0;
+    int sel = cdb.cr3 >> 8;
+    if (sel >= MAX_SELECTORS) { set_status(STAT_REJECT); return 0; }
+    if (cdb.play_type == PLAYTYPE_DIR) { set_status(STAT_WAIT|cdb.status); return 0; }
+    u32 fid = ((u32)(cdb.cr3 & 255)<<16) | cdb.cr4;
+    int index = file_info_index(fid);
+    if (index < 0) { set_status(STAT_REJECT); return 0; }
+    u32 lba = cdb.fi[index].lba;
+    u32 sectors = file_sector_count(cdb.fi[index].size);
+    u32 offset = ((u32)(cdb.cr1 & 255)<<16) | cdb.cr2;
+    if (offset >= sectors || !valid_file_extent(lba, sectors)) {
+        set_status(STAT_REJECT); return 0;
     }
-
-	if(cdb.play_type){
-		SSLOG(_FILEIO, "read_file: waiting ...\n");
-		while(cdb.play_type){
-			cdc_delay(10);
-		}
-	}
-
-	offset = ((cdb.cr1&0xff)<<16) | cdb.cr2;
-	fid = ((cdb.cr3&0xff)<<16) | cdb.cr4;
-	SSLOG(_FILEIO, "read_file: sel=%d fid=%08x\n", selnum, fid);
-
-	if(fid<cdb.cdir_pfid || fid>=(cdb.cdir_pfid+cdb.cdir_pfnum)){
-		set_status(STAT_REJECT);
-		return 0;
-	}
-
-	fid = fid-cdb.cdir_pfid+2;
-	fi = &cdb.fi[fid];
-	lba_size = (fi->size+2047)/2048;
-
-	if(offset>=lba_size){
-		set_status(STAT_REJECT);
-		return 0;
-	}
-
-	fsl = &cdb.filter[selnum];
-	free_partition(&cdb.part[fsl->c_true]);
-
-	cdb.cddev_filter = selnum;
-	cdb.repcnt = 0;
-	cdb.pause_request = 0;
-	cdb.play_type = PLAYTYPE_FILE;
-	cdb.play_fad_start = fi->lba+offset+150;
-	cdb.track = fad_to_track(cdb.play_fad_start);
-	cdb.play_fad_end = cdb.play_fad_start + lba_size-offset;
-	cdb.old_fad = cdb.fad;
-	cdb.fad = cdb.play_fad_start;
-	cdb.options = 0x08;
-	_set_filter(selnum, 0x40, cdb.play_fad_start, lba_size-offset);
-	disk_task_wakeup();
-
-	set_report(cdb.status);
-	return 0;
+    if (cdb.play_type) SSLOG(_FILEIO, "read_file: waiting ...\n");
+    SSLOG(_FILEIO, "read_file: sel=%d fid=%08x\n", sel, fid);
+    if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    start_file_play(sel, lba+offset+150, sectors-offset, PLAYTYPE_FILE);
+    cdb.options = 0x08;
+    disk_task_wakeup();
+    set_report(cdb.status);
+    return 0;
 }
-
 
 // 0x75 [SR]
 int abort_file(void)
 {
-	SSLOG(_FILEIO, "abort_file\n");
-	if(cdb.play_type==PLAYTYPE_FILE){
-		cdb.pause_request = 1;
-		cdb.play_wait = 0;
-		disk_task_wakeup();
-		do{
-			wait_pause_ok();
-		}while(cdb.pause_request);
-	}
-
-	return HIRQ_EFLS;
+    SSLOG(_FILEIO, "abort_file\n");
+    int directory = cdb.play_type == PLAYTYPE_DIR;
+    if (directory || cdb.play_type == PLAYTYPE_FILE) {
+        if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
+        if (directory) invalidate_directory();
+    }
+    return HIRQ_EFLS;
 }
 
 /******************************************************************************/

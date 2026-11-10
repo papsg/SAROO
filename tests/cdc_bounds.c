@@ -22,8 +22,10 @@ static u16 *fifo_slot(void)
 #define FIFO_RCNT fifo_rcnt
 #define ST_STAT st_status
 #define printk(...) ((void)0)
+static int (*file_pause_hook)(void);
+static int pause_disc(void) { if(file_pause_hook) return file_pause_hook(); assert(!cdb.play_type);return 0; }
 static int fad_to_track(int fad) { assert(fad>=150);track_count++;return 1; }
-static void cdc_delay(int ticks) { (void)ticks;assert(0); }
+static __attribute__((unused)) void cdc_delay(int ticks) { (void)ticks;assert(0); }
 static void bounds_wakeup(void) { wake_count++; }
 #define disk_task_wakeup bounds_wakeup
 #include "bounds.inc"
@@ -131,14 +133,14 @@ static void valid_file_selectors(void)
 {
     for(unsigned selector=0;selector<24;selector++) {
         seed(0,0);cdb.cr3=(selector<<8)|0xff;cdb.cr4=0xffff;
-        cdb.root_lba=20;cdb.root_size=3;
+        cdb.root_lba=20;cdb.root_size=3*2048;
         assert(!change_dir() && cdb.dir_filter==(int)selector && cdb.cddev_filter==(int)selector);
         assert(cdb.filter[selector].mode==0x40 && cdb.filter[selector].fad==170 && cdb.filter[selector].range==3);
         assert(wake_count==1 && track_count==1);
-        seed(0,0);cdb.cr3=selector<<8;cdb.cr4=7;cdb.cdir_lba=20;cdb.cdir_size=3;
+        seed(0,0);cdb.cr3=selector<<8;cdb.cr4=7;cdb.cdir_lba=20;cdb.cdir_size=3*2048;cdb.rdir_state=3;
         assert(!read_dir() && cdb.cdir_pfid==7 && cdb.cddev_filter==(int)selector);
         assert(cdb.filter[selector].fad==170 && wake_count==1 && track_count==1);
-        seed(0,0);cdb.cr3=selector<<8;cdb.cr4=2;cdb.cdir_pfid=2;cdb.cdir_pfnum=1;
+        seed(0,0);cdb.cr3=selector<<8;cdb.cr4=2;cdb.cdir_pfid=2;cdb.cdir_pfnum=1;cdb.rdir_state=3;
         cdb.fi[2]=(FILE_INFO){.lba=20,.size=4096};
         assert(!read_file() && cdb.cddev_filter==(int)selector && cdb.play_type==PLAYTYPE_FILE);
         assert(cdb.play_fad_start==170 && cdb.play_fad_end==172 && wake_count==1 && track_count==1);
