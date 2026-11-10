@@ -8,6 +8,9 @@
 
 CDBLOCK cdb;
 
+/* Retain the result until accepted copy/move or CD software reset. */
+static u8 copy_move_error;
+
 /******************************************************************************/
 // 数据传输
 
@@ -616,6 +619,7 @@ int init_cdblock(void)
 	}
 
 
+	copy_move_error = 0;
 	cdb.subrw_rp = 0;
 	cdb.subrw_wp = 0;
 
@@ -1476,7 +1480,7 @@ int put_sector_data(void)
 }
 
 
-static int copy_move_error;
+
 // 0x65 [SR]
 int copy_sector_data(void)
 {
@@ -1563,7 +1567,7 @@ int move_sector_data(void)
 // 0x67 [S-]
 int get_copy_error(void)
 {
-	SSCR1 = (cdb.status<<8);
+	SSCR1 = (cdb.status<<8) | copy_move_error;
 	SSCR2 = 0;
 	SSCR3 = 0;
 	SSCR4 = 0;

@@ -1,0 +1,59 @@
+"""Actual CD allocator/copy/query/reset with independently seeded pool lists."""
+# Adapted from paps-g 93391efb/8432f7d8; physical registers/IRQs are modeled.
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import tempfile
+import unittest
+
+ROOT=Path(__file__).resolve().parents[1]
+
+
+class CDCopyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source=Path(os.environ.get('SAROO_CDC_COPY_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_cdc.c'))
+        raw=source.read_bytes();header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+        build=ROOT/'tests/build/cdc-copy';build.mkdir(parents=True,exist_ok=True)
+        cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
+        def function(signature):
+            start=raw.index(signature)
+            return raw[start:raw.index(b'\n}',start)+2]+b'\n'
+        code=b''.join(function(s) for s in (b'BLOCK *alloc_block(void)',b'void free_block(BLOCK *block)',b'BLOCK *dup_block(BLOCK *block)',b'BLOCK *find_block(',b'void append_block('))
+        if b'static void unlink_block(' in raw:code+=function(b'static void unlink_block(')
+        code+=function(b'void remove_block(')+function(b'void set_status(')
+        code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
+        start=raw.index(b'// 0x65 [SR]');code+=raw[start:raw.index(b'/******************************************************************************/',start)]
+        code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
+        (cls.target/'copy.inc').write_bytes(code)
+        (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
+        inputs={'saturn_cdc.c':raw,'cdc.h':header,'cdc_copy.c':(ROOT/'tests/cdc_copy.c').read_bytes(),'test_cdc_copy.py':Path(__file__).read_bytes()}
+        for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
+        for name,blob in inputs.items():(cls.target/name).write_bytes(blob)
+        (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
+        flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
+        cls.binary=cls.target/'copy'
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror','-Wno-unused-variable',*flags,'-I',str(cls.target),str(cls.target/'cdc_copy.c'),'-o',str(cls.binary)]
+        result=subprocess.run(args,capture_output=True,timeout=60);(cls.target/'compile.log').write_bytes(result.stdout+result.stderr);(cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
+
+    @classmethod
+    def tearDownClass(cls):
+        (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
+
+    def run_cases(self,cases):
+        for case in cases:
+            with self.subTest(case=case):
+                result=subprocess.run([str(self.binary),str(case)],capture_output=True,text=True,timeout=20,env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
+                self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr));self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('pass:',result.stdout)
+
+    def test_power_on_and_success(self):self.run_cases((0,1))
+    def test_real_exhaustion_partial_copy_and_query_retention(self):self.run_cases((2,))
+    def test_next_successful_copy_or_move_replaces_error(self):self.run_cases((3,4))
+    def test_software_reset_clears_but_nonreset_and_ignore_preserve(self):self.run_cases((5,6,7))
+
+
+if __name__=='__main__':unittest.main()

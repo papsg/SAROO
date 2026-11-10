@@ -33,6 +33,7 @@ check-file-transfer:
 .PHONY: check-cdc-command-buffer
 check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_subheader.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_copy.py -v
 
 .PHONY: check-config
 check-config:

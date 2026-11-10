@@ -58,8 +58,51 @@ SAROO_CDC_PROFILE=release make -C tests check-cdc-command-buffer
 
 ## MCU-CDC-002: retained copy/move error and software reset
 
-Queued together with its accepted-software-reset continuation; preserve
-ignored/nonreset initialization and unrelated-query retention.
+Original: paps-g `93391efb` (2026-09-06), together with its reset continuation
+from `8432f7d8`. Command0x65/0x66 already record allocator failure, but
+[the old0x67 getter](https://github.com/papsg/SAROO/blob/1d9a126/Firm_MCU/Saturn/saturn_cdc.c#L1564)
+always reports success. Return the retained error in CR1's low byte, preserving
+status in its high byte. Keep the result across repeated and unrelated queries;
+clear it on a subsequent successful copy/move or accepted software reset. Move
+the existing state before initialization and narrow its storage from int to u8.
+
+Sega's [CD Communication Interface §8.2.7 function7.8, CDC_GetCopyErr](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_17.htm)
+specifies retained results until the next copy/move. Function7.6 explicitly
+describes partial failure when another buffer consumer exhausts space.
+[§5.5 Table5.2 and host-information list](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p05_10.htm)
+include copy/move errors in software reset, while initialization without reset
+retains them. [§8.2.1 function1.7, CDC_CdInit](https://www.infochunk.com/saturn/segahtml_en/prgg/sysg/cdif/hon/p08_11.htm)
+defines flag bit0 reset and bit7 unchanged settings. The preserved Sega
+[SEGA_CDC.H CdcCopyErr enumeration](https://github.com/johannes-fetz/joengine/blob/master/Compiler/COMMON/SGL_302j/INC/SEGA_CDC.H)
+assigns OK=0, NG=1 and BUSY=255; this header is reference evidence, not an imported
+dependency. The local source identity is preserved; the moving URL is not a
+claim of new online verification. The present synchronous worker does not offer
+an asynchronous BUSY-query window; no asynchronous engine is added.
+
+Four actual-source methods/eight native cases pass ASan/UBSan and O2. An
+independent pool fixture invokes the real allocator and makes another modeled
+consumer take the remaining capacity after two allocations: copying stops after
+two sectors with intact source, payload and metadata, and reports NG repeatedly.
+All256 status-byte encodings preserve the low-byte result. Successful copy/move
+replaces NG; soft reset clears it, while ignored and nonreset initialization
+retain it. Power-on/success are valid baseline controls; six other native cases
+fail against the previous getter. Four mutations reject hidden/consumed error,
+missing reset and unconditional initialization clearing. This allocator schedule
+is host fault injection, not proof of physical concurrency. Production logging
+and command IRQ returns are unchanged; no host-only assertion enters firmware.
+
+The full MCU link adds32 load bytes:57,412→57,444, leaving8,092 ITCM bytes.
+Static DTCM remains60,296; IRQ/dispatch/init/getter direct frames remain
+24/16/24/0 bytes. No payload copy, allocation, I/O, new call or mask operation is
+added by this correction. Buffer admission/refusal semantics, byte accounting
+and zero-copy moves are the separate003 checkpoint below. No physical
+concurrency/timing/game or original-MDK qualification is claimed.
+
+```sh
+python3 tests/test_cdc_copy.py
+SAROO_CDC_PROFILE=release python3 tests/test_cdc_copy.py
+# Preserved baseline/mutation: SAROO_CDC_COPY_SOURCE=/path/to/saturn_cdc.c
+```
 
 ## MCU-CDC-003: buffer admission, accounting and existing-block moves
 
