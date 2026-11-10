@@ -33,16 +33,19 @@ static void wait_pause_ok(void)
 #include "phase.inc"
 #include "background.inc"
 
+int index_table[2048];
+#include "track_fixture.h"
 static TRACK_INFO *media;
 static int indices[3][2] = {{200,250},{400,450},{600,650}};
 static void ready(void)
 {
     free(media); media=calloc(3,sizeof *media); assert(media);
     setup(2,198); cdb.tracks=media; cdb.track_num=3;
-    for(unsigned i=0;i<3;i++) media[i]=(TRACK_INFO){
-        .fad_0=i?150+i*200-50:150,.fad_start=150+i*200,
-        .fad_end=299+i*200,.max_index=3,.index=indices[i],
-        .ctrl_addr=i?0x01:0x41,.mode=i?3:1};
+    for(unsigned i=0;i<3;i++) {
+        media[i]=(TRACK_INFO){.fad_0=i?150+i*200-50:150,.fad_start=150+i*200,
+            .fad_end=299+i*200,.max_index=3,.mode=i?3:1};
+        test_track_indices(&media[i],indices[i],i*2);
+    }
     cdb.play_fad_start=150; cdb.play_fad_end=700;
     cdb.fad=180; cdb.track=1; cdb.index=1; cdb.play_track=&media[0];
     cdb.options=8; cdb.ctrladdr=0x41;cdb.max_repeat=0; cdb.repcnt=0;
@@ -71,7 +74,7 @@ static void helpers(void)
         else if(t<1 || t>3)assert(result==0xffffffffu);
         else assert(result==(i<=1?media[t-1].fad_start:i>3?media[t-1].fad_end:(u32)indices[t-1][i-2]));
     }
-    media[0].index=NULL;assert(track_to_fad(0x102)==0xffffffffu);
+    test_track_indices(&media[0],NULL,0);assert(track_to_fad(0x102)==0xffffffffu);
     cdb.track_num=0;assert(!get_track_info(0xffff) && track_to_fad(0xffff)==0xffffffffu);
     cdb.track_num=100;assert(!get_track_info(0x100));
     cdb.track_num=3;cdb.tracks=NULL;assert(!get_track_info(0x100));
@@ -247,7 +250,7 @@ static void full_track_capacity(void)
 {
     ready();free(media);media=calloc(99,sizeof *media);assert(media);cdb.tracks=media;cdb.track_num=99;
     for(unsigned i=0;i<99;i++)media[i]=(TRACK_INFO){.fad_0=150+i*10,.fad_start=150+i*10,
-        .fad_end=159+i*10,.max_index=1,.ctrl_addr=0x41,.mode=1};
+        .fad_end=159+i*10,.max_index=1,.mode=1};
     for(unsigned i=0;i<99;i++) {
         assert(get_track_info((i+1)<<8)==media+i && track_to_fad((i+1)<<8)==150+i*10);
         cdb.play_type=0;request((i+1)<<8,0,0);assert(!play_cd());

@@ -160,17 +160,20 @@ typedef struct
 
 typedef struct
 {
-	FIL *fp;
-	u32 fad_0;
-	u32 fad_start;
-	int *index;
-	int max_index;
-	u32 fad_end;
-	u32 file_offset;
-	u16 sector_size;
-	u8  ctrl_addr;
-	u8  mode;
+    FIL *fp;
+    u32 fad_0, fad_start;
+    u16 index_base, sector_size;
+    u32 fad_end, file_offset;
+    u32 pregap:24, max_index:8;
+    u32 postgap:24, mode:8;
 }TRACK_INFO;
+_Static_assert(sizeof(void*) != 4 || sizeof(TRACK_INFO) == 32, "Unexpected ARM track layout");
+/* Zero means absent; otherwise index_base-1 is an offset in the existing pool.
+ * Offset2048 may be retained only when no higher index is dereferenced. */
+extern int index_table[2048];
+#define TRACK_INDEX(tk) ((tk)->index_base ? &index_table[(tk)->index_base-1] : NULL)
+#define TRACK_SIZE(tk) ((tk)->sector_size)
+#define TRACK_CTRL(tk) ((tk)->mode == 3 ? 0x01 : 0x41)
 
 typedef struct
 {
@@ -377,6 +380,7 @@ int parse_config(char *fname, char *gameid);
 
 
 TRACK_INFO *get_track_info(int tn);
+u8 track_subindex(const TRACK_INFO *tk, u32 fad);
 u32 track_to_fad(u16 track_index);
 int fad_to_track(u32 fad);
 u32 bswap32(u32 d);

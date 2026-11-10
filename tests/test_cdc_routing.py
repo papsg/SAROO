@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from test_cdc_copy import copy_source
+from test_cdc_sector_input import reader_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -27,12 +28,12 @@ class CDRoutingTests(unittest.TestCase):
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',)))
         code=function(raw,b'int filter_sector(')
         code+=b'#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wsign-compare"\n'
-        code+=function(main,b'int get_sector(')+b'#pragma GCC diagnostic pop\n'
+        code+=reader_source(main)+b'#pragma GCC diagnostic pop\n'
         if b'static int sector_destination(' in raw:code+=b'#define TEST_HAS_SHARED_ROUTE 1\n'
         (cls.target/'routing.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
-        for name in ('cdc_copy.c','test_cdc_copy.py','cdc_routing.c','test_cdc_routing.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        for name in ('cdc_copy.c','test_cdc_copy.py','cdc_routing.c','test_cdc_routing.py','test_cdc_sector_input.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')

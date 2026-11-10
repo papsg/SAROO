@@ -50,16 +50,16 @@ void init_toc(void)
 	}
 
 	for(i=0; i<cdb.track_num; i++){
-		cdb.TOC[i] = bswap32((cdb.tracks[i].ctrl_addr<<24) | cdb.tracks[i].fad_start);
+		cdb.TOC[i] = bswap32((TRACK_CTRL(&cdb.tracks[i])<<24) | cdb.tracks[i].fad_start);
 		SSLOG(_INFO, "track %2d: fad_0=%08x fad_start=%08x fad_end=%08x offset=%08x %d\n",
 					i, cdb.tracks[i].fad_0, cdb.tracks[i].fad_start, cdb.tracks[i].fad_end,
 					cdb.tracks[i].file_offset, cdb.tracks[i].sector_size);
 	}
 
 	last = &cdb.tracks[cdb.track_num-1];
-	cdb.TOC[99]  = bswap32((cdb.tracks[0].ctrl_addr<<24) | 0x010000);
-	cdb.TOC[100] = bswap32((last->ctrl_addr<<24) | (cdb.track_num<<16));
-	cdb.TOC[101] = bswap32((last->ctrl_addr<<24) | (last->fad_end+1));
+	cdb.TOC[99]  = bswap32((TRACK_CTRL(&cdb.tracks[0])<<24) | 0x010000);
+	cdb.TOC[100] = bswap32((TRACK_CTRL(last)<<24) | (cdb.track_num<<16));
+	cdb.TOC[101] = bswap32((TRACK_CTRL(last)<<24) | (last->fad_end+1));
 	
 	cdb.status = STAT_PAUSE;
 	set_status(cdb.status);
@@ -67,6 +67,20 @@ void init_toc(void)
 	sector_delay = 0;
 }
 
+
+/* Upper bound of the parser's strictly increasing INDEX02..99 table. */
+u8 track_subindex(const TRACK_INFO *tk, u32 fad)
+{
+    if (fad < tk->fad_start) return 0;
+    unsigned low = 1, high = tk->max_index;
+    const int *indices = TRACK_INDEX(tk);
+    if (indices) while (low < high) {
+        unsigned mid = (low + high) / 2;
+        if (fad >= (u32)indices[mid-1]) low = mid + 1;
+        else high = mid;
+    }
+    return low;
+}
 
 u32 track_to_fad(u16 track_index)
 {
@@ -76,8 +90,8 @@ u32 track_to_fad(u16 track_index)
     unsigned index = track_index & 255;
     if (index <= 1) return tk->fad_start;
     if (index > (unsigned)tk->max_index) return tk->fad_end;
-    if (!tk->index) return 0xffffffffu;
-    return tk->index[index-2];
+    if (!tk->index_base) return 0xffffffffu;
+    return TRACK_INDEX(tk)[index-2];
 }
 
 int fad_to_track(u32 fad)
@@ -112,9 +126,9 @@ static u32 buf_fad_start = 0;
 static u32 buf_fad_end = 0;
 // 由于存在2352这样的扇区格式, FAD扇区不是2048字节对齐的.
 // FATFS层以512为单位读取数据. FAD扇区相对于sector_buffer有一个偏移.
-static u32 buf_fad_offset = 0;
+static u16 buf_fad_offset = 0;
 // 内部缓存中的扇区大小
-static u32 buf_fad_size = 0;
+static u16 buf_fad_size = 0;
 
 
 static u8 reorder[24] = {
@@ -161,37 +175,42 @@ void subcode_convert(void)
 }
 
 
+/* Shared locked transfer checks the actual seek position before reading. */
+static int read_disc_bytes(FIL *fp, u32 position, u32 bytes)
+{
+    u32 nread;
+    fs_lock();
+    int retv = f_lseek(fp, position);
+    if (!retv && f_tell(fp) != position) retv = FR_DISK_ERR;
+    if (!retv) retv = f_read(fp, sector_buffer, bytes, &nread);
+    fs_unlock();
+    return retv ? -1 : (int)nread;
+}
+
 int get_sector(int fad, BLOCK *wblk)
 {
-	int retv, dp, nread;
-
-	// 先查找track信息
-	if(cdb.play_track==NULL || fad<cdb.play_track->fad_0 || fad>cdb.play_track->fad_end){
-		cdb.track = fad_to_track(fad);
-		SSLOG(_DTASK, "Change to track %d\n", cdb.track);
-		if(cdb.track!=0xff){
-			cdb.play_track = &cdb.tracks[cdb.track-1];
-			cdb.subrw_wp = cdb.subrw_rp;
-		}else{
-			// play的FAD参数错误
-			SSLOG(_DTASK, "play_track not found!\n");
-			cdb.status = STAT_ERROR;
-			if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
-			return -1;
-		}
-	}
-	if(wblk==NULL)
-		return 0;
-
-	if(fad>=buf_fad_start && fad<buf_fad_end){
-		// 在内部缓存中找到了要play的扇区
-		//SSLOG(_DTASK, " fad_%08x found at buffer!\n", fad);
-		dp = buf_fad_offset+(fad-buf_fad_start)*buf_fad_size;
-		wblk->data = sector_buffer+dp;
-	}else{
-		// 内部缓存中没有要play的扇区. 从文件重新读取.
-		//SSLOG(_DTASK, " fad_%08x not found. need read from file.\n", fad);
-		
+    int nread;
+    if (cdb.play_track == NULL || (u32)fad < cdb.play_track->fad_0 ||
+        (u32)fad > cdb.play_track->fad_end) {
+        cdb.track = fad_to_track(fad);
+        SSLOG(_DTASK, "Change to track %d\n", cdb.track);
+        cdb.play_track = get_track_info(cdb.track << 8);
+        if (!cdb.play_track) {
+            SSLOG(_DTASK, "play_track not found!\n");
+            cdb.status = STAT_ERROR;
+            if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
+            return -1;
+        }
+        cdb.subrw_wp = cdb.subrw_rp;
+    }
+    TRACK_INFO *tk = cdb.play_track;
+    cdb.ctrladdr = TRACK_CTRL(tk);
+    cdb.index = track_subindex(tk, fad);
+    if (!wblk) return 0;
+    if ((u32)fad >= buf_fad_start && (u32)fad < buf_fad_end) {
+        //SSLOG(_DTASK, " fad_%08x found at buffer!\n", fad);
+    } else {
+        //SSLOG(_DTASK, " fad_%08x not found. need read from file.\n", fad);
 		// 先读subcode. 最多读1536字节((32768/2048)*96).
 		if(cdb.has_subrw && cdb.iflag&0x02){
 			f_lseek(&cdb.subcode_fp, (fad-150)*96);
@@ -205,38 +224,39 @@ int get_sector(int fad, BLOCK *wblk)
 			}
 		}
 
-		cdb.ctrladdr = cdb.play_track->ctrl_addr;
-		cdb.index = 1;
-
-		buf_fad_start = fad;
-		buf_fad_size = cdb.play_track->sector_size;
-
-		dp = cdb.play_track->file_offset+(fad-cdb.play_track->fad_start)*cdb.play_track->sector_size;
-		buf_fad_offset = dp&0x1ff;
-		dp &= ~0x1ff;
-
-		fs_lock();
-		//printk("  seek at %08x\n", dp);
-		retv = f_lseek(cdb.play_track->fp, dp);
-		if (!retv) retv = f_read(cdb.play_track->fp, sector_buffer, 0x8000, (u32*)&nread);
-		fs_unlock();
-		if(retv==0 && nread >= (int)(buf_fad_offset+buf_fad_size)){
-			int num_fad = (nread-buf_fad_offset)/buf_fad_size;
-			buf_fad_end = buf_fad_start+num_fad;
-		}else{
-			SSLOG(_DTASK, "f_read error!\n");
-			cdb.status = STAT_ERROR;
-			if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
-			buf_fad_end = 0;
-			return -2;
-		}
-
-		wblk->data = sector_buffer+buf_fad_offset;
-	}
-
-	wblk->size = buf_fad_size;
+        const u32 size = TRACK_SIZE(tk);
+        u32 first = tk->fad_0 + tk->pregap;
+        u32 end = tk->fad_end - tk->postgap + 1;
+        int blank = (u32)fad < first || (u32)fad >= end;
+        u32 offset = 0, position = 0, bytes = 0, frames;
+        if (blank) {
+            frames = ((u32)fad < first ? first : tk->fad_end + 1) - fad;
+            if (frames > 16) frames = 16;
+            memset(sector_buffer, 0, 2352);
+        } else {
+            position = tk->file_offset;
+            if ((u32)fad < tk->fad_start) position -= (tk->fad_start - fad) * size;
+            else position += ((u32)fad - tk->fad_start) * size;
+            offset = position & 511;
+            position &= ~511u;
+            bytes = (end - fad) * size + offset;
+            if (bytes > 0x8000) bytes = 0x8000;
+            frames = (bytes - offset) / size;
+            nread = read_disc_bytes(tk->fp, position, bytes);
+            if (nread < (int)(offset + size)) goto read_error;
+            u32 available = (nread - offset) / size;
+            if (frames > available) frames = available;
+        }
+        buf_fad_start = fad;
+        buf_fad_end = fad + frames;
+        buf_fad_offset = offset;
+        /* Zero stride reuses one silent/zero-payload frame across a gap. */
+        buf_fad_size = blank ? 0 : size;
+    }
+    wblk->data = sector_buffer + buf_fad_offset + (fad - buf_fad_start)*buf_fad_size;
+	wblk->size = buf_fad_size ? buf_fad_size : tk->mode == 3 ? 2352 : 2048;
 	wblk->fad = fad;
-	if(cdb.play_track->mode!=3 && buf_fad_size==2352 && wblk->data[0x0f]==0x02){
+	if(tk->mode!=3 && wblk->size==2352 && wblk->data[0x0f]==0x02){
 		wblk->fn = wblk->data[0x10];
 		wblk->cn = wblk->data[0x11];
 		wblk->sm = wblk->data[0x12];
@@ -259,7 +279,13 @@ int get_sector(int fad, BLOCK *wblk)
 		}
 	}
 
-	return 0;
+    return 0;
+read_error:
+    SSLOG(_DTASK, "f_read error!\n");
+    cdb.status = STAT_ERROR;
+    if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
+    buf_fad_end = 0;
+    return -2;
 }
 
 
@@ -944,6 +970,8 @@ void ss_sw_init(void)
 	cdb.FINFO = (u8*)(info_buf+0x00000);
 	cdb.TOC  = (u32*)(info_buf+0x00c00);
 	cdb.SUBH  = (u8*)(info_buf+0x00da0);
+    _Static_assert(0x0e00 + 100*sizeof(TRACK_INFO) + 2*1536 <=
+                   0x80000 - (0x0a000 + MAX_BLOCKS*2352), "CD metadata exceeds AXI SRAM");
 	cdb.tracks = (TRACK_INFO*)(info_buf+0x00e00); // 0x7db80
 	memset(cdb.tracks, 0, 100*sizeof(TRACK_INFO));
 	cdb.subcode_buf = (u8*)(info_buf+0x0e00+100*sizeof(TRACK_INFO));

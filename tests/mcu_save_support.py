@@ -58,6 +58,14 @@ class MCUSaveTest(unittest.TestCase):
         (cls.target / 'save-startup-gate.inc').write_bytes(main[begin:end])
         inputs = {'Saturn/saturn_utils.c': module, 'Saturn/saturn_main.c': main}
         harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py']
+        if cls.fixture in ('runtime', 'extents', 'disc', 'cue', 'header'):
+            header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
+            start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
+            end = header.index(b'typedef struct', header.index(b'}TRACK_INFO;'))
+            (cls.target / 'track-layout.h').write_bytes(header[start:end])
+            (cls.target / 'track-limit.h').write_bytes(b'\n'.join(
+                line for line in header.splitlines() if line.startswith((b'#define MAX_TRACKS', b'#define PLAYTYPE_')))+b'\n')
+            harnesses += ['track_fixture.h']
         if cls.fixture in ('runtime', 'extents'):
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
             begin = disc.index(b'int get_gameid(')
@@ -205,6 +213,17 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'toc.inc').write_bytes(main[begin:end])
             begin = module.index(b'char *get_token('); end = module.index(b'\n}', module.index(b'char *get_line(', begin)) + 3
             (cls.target / 'token.inc').write_bytes(module[begin:end])
+            if getattr(cls, 'reader_fixture', False):
+                def function(signature):
+                    start = main.index(signature)
+                    return main[start:main.index(b'\n}', start)+2]+b'\n'
+                code = b''.join(function(signature) for signature in (
+                    b'TRACK_INFO *get_track_info(', b'u32 track_to_fad(', b'int fad_to_track('))
+                start = main.index(b'static u8 reorder[')
+                code += main[start:main.index(b'int get_sector(', start)]
+                code += function(b'int get_sector(')
+                (cls.target / 'reader.inc').write_bytes(code)
+                harnesses += [cls.c_source, 'test_cue_geometry.py']
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
@@ -227,7 +246,7 @@ class MCUSaveTest(unittest.TestCase):
         if cls.fixture in ('api', 'disc', 'discovery', 'cover'):
             flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
-                '-I', str(cls.target), '-I', str(fatfs), str(cls.target / ('mcu_save_'+cls.fixture+'.c')),
+                '-I', str(cls.target), '-I', str(fatfs), str(cls.target / getattr(cls, 'c_source', 'mcu_save_'+cls.fixture+'.c')),
                 str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)]
         result = subprocess.run(args, capture_output=True)
         (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr)

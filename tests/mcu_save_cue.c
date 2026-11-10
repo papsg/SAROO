@@ -5,12 +5,12 @@
 #undef main
 #include <stdarg.h>
 typedef uint16_t u16;
-typedef struct {
-    FIL *fp; u32 fad_0,fad_start; int *index,max_index;
-    u32 fad_end,file_offset; u16 sector_size; u8 ctrl_addr,mode;
-} TRACK_INFO;
+#include "track-layout.h"
+#include "track_fixture.h"
+#include "track-limit.h"
 static FIL track_fp[100];
-static int index_table[2048],current_index;
+int index_table[2048];
+static int current_index;
 #define MAX_BLOCKS 200
 #define STAT_NODISC 7
 #define STAT_PAUSE 1
@@ -22,7 +22,8 @@ _Alignas(8) static struct { u8 before[32],dir[512],between[32],full[512],after[3
 #define TEST_DIR_PATH ((uintptr_t)paths.dir)
 #define TEST_FULL_PATH ((uintptr_t)paths.full)
 static struct {
-    int status,track_num,has_subrw;
+    int status,track_num,has_subrw,track,index,ctrladdr,play_type,iflag,subrw_wp,subrw_rp;
+    u8 *subcode_buf,*subrw_buf;
     TRACK_INFO tracks[100];
     TRACK_INFO *play_track;
     FIL subcode_fp;

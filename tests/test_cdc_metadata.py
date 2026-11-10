@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from test_cdc_sector_input import reader_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -35,10 +36,11 @@ class CDMetadataTests(unittest.TestCase):
         code+=operations
         # Existing FAD/cache comparisons mix signed/unsigned; no new arithmetic.
         code+=b'#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wsign-compare"\n'
-        code+=function(main,b'int get_sector(')+b'#pragma GCC diagnostic pop\n'
+        code+=reader_source(main)+b'#pragma GCC diagnostic pop\n'
         (cls.target/'metadata.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':cdc,'saturn_main.c':main,'cdc.h':header,'cdc_metadata.c':(ROOT/'tests/cdc_metadata.c').read_bytes(),'test_cdc_metadata.py':Path(__file__).read_bytes()}
+        inputs['test_cdc_sector_input.py']=(ROOT/'tests/test_cdc_sector_input.py').read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')

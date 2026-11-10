@@ -11,6 +11,13 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 
+def reader_source(raw):
+    code=b''
+    for signature in (b'TRACK_INFO *get_track_info(', b'u8 track_subindex(', b'static int read_disc_bytes(', b'int get_sector('):
+        start=raw.find(signature)
+        if start>=0:code+=raw[start:raw.index(b'\n}',start)+2]+b'\n'
+    return code
+
 
 class CDSectorInputTests(unittest.TestCase):
     @classmethod
@@ -19,7 +26,7 @@ class CDSectorInputTests(unittest.TestCase):
         header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-sector-input';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
-        start=raw.index(b'int get_sector(');code=raw[start:raw.index(b'\n}',start)+2]
+        code=reader_source(raw)
         (cls.target/'sector-input.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_main.c':raw,'cdc.h':header}

@@ -3,7 +3,8 @@
 #include "mcu_save_startup.c"
 #undef main
 
-typedef struct { FIL *fp; int sector_size; u32 file_offset; u8 mode; } TRACK_INFO;
+typedef uint16_t u16;
+#include "track-layout.h"
 static struct { TRACK_INFO tracks[1]; } cdb;
 #define f_read checked_read
 #include "game-id.inc"

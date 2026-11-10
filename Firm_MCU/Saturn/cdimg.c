@@ -40,8 +40,8 @@ static int read_ip(FIL *fp, FSIZE_t offset, u8 *out)
 
 static int read_track_ip(TRACK_INFO *tk, u8 *out)
 {
-    unsigned prefix = tk->sector_size == 2352 ? (tk->mode == 2 ? 24 : 16) :
-                      tk->sector_size == 2336 ? 8 : 0;
+    unsigned prefix = TRACK_SIZE(tk) == 2352 ? (tk->mode == 2 ? 24 : 16) :
+                      TRACK_SIZE(tk) == 2336 ? 8 : 0;
     return read_ip(tk->fp, (FSIZE_t)tk->file_offset + prefix, out);
 }
 
@@ -69,11 +69,10 @@ static int parse_raw(char *fname, int mode, unsigned size)
     TRACK_INFO *tk = &cdb.tracks[0];
     memset(tk, 0, sizeof(*tk));
     tk->fp = fp;
-    tk->sector_size = size;
+    TRACK_SIZE(tk) = size;
     tk->fad_0 = tk->fad_start = 150;
     tk->fad_end = 149 + (u32)bytes / size;
     tk->mode = mode;
-    tk->ctrl_addr = mode == 3 ? 0x01 : 0x41;
     cdb.track_num = 1;
     init_toc();
     return 0;
@@ -145,14 +144,14 @@ static int cue_time(char *text)
 
 static int cue_last_index(TRACK_INFO *tk)
 {
-    return tk->max_index > 1 ? tk->index[tk->max_index-2] : tk->fad_start;
+    return tk->max_index > 1 ? TRACK_INDEX(tk)[tk->max_index-2] : tk->fad_start;
 }
 
 static int cue_finish(TRACK_INFO *tk)
 {
     FSIZE_t bytes = f_size(tk->fp);
     if (!tk->max_index || bytes > 0xffffffffu || tk->file_offset >= bytes) return -1;
-    unsigned frames = ((u32)bytes - tk->file_offset) / tk->sector_size;
+    unsigned frames = ((u32)bytes - tk->file_offset) / TRACK_SIZE(tk);
     if (!frames || frames > 0xffffffu - tk->fad_start) return -1;
     tk->fad_end = tk->fad_start + frames - 1;
     return cue_last_index(tk) > tk->fad_end ? -1 : 0;
@@ -225,7 +224,7 @@ int parse_cue(char *fname, u8 *ipbuf)
             count++;
             memset(tk, 0, sizeof(*tk));
             tk->fp = tk_fp;
-            tk->sector_size = size;
+            TRACK_SIZE(tk) = size;
             tk->mode = kind;
         } else if (!strcmp(token, "INDEX")) {
             char *number = cue_token(&line), *time = cue_token(&line);
@@ -243,13 +242,12 @@ int parse_cue(char *fname, u8 *ipbuf)
                 if (tk->fad_0 || tk->max_index) goto failed;
                 tk->fad_0 = fad;
             } else if (index == 1) {
-                if (tk->max_index || fad < tk->fad_0 || relative > 0xffffffffu / tk->sector_size) goto failed;
+                if (tk->max_index || fad < tk->fad_0 || relative > 0xffffffffu / TRACK_SIZE(tk)) goto failed;
                 tk->fad_start = fad;
                 if (!tk->fad_0) tk->fad_0 = fad;
-                tk->file_offset = relative * tk->sector_size;
-                tk->index = ipbuf ? NULL : &index_table[current_index];
+                tk->file_offset = relative * TRACK_SIZE(tk);
+                tk->index_base = ipbuf ? 0 : current_index + 1;
                 tk->max_index = 1;
-                tk->ctrl_addr = tk->mode == 3 ? 0x01 : 0x41;
                 if (cue_finish(tk)) goto failed;
                 if (ipbuf) {
                     retv = read_track_ip(tk, ipbuf);

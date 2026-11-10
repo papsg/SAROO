@@ -775,11 +775,11 @@ static u32 drive_position(u32 position, int ending)
     if (!index) index = ending ? 99 : 1;
     TRACK_INFO *tk = &cdb.tracks[track-1];
     if (ending) {
-        if (index < (unsigned)tk->max_index && tk->index) return tk->index[index-1];
+        if (index < (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX(tk)[index-1];
         return tk->fad_end+1;
     }
     if (index <= 1) return tk->fad_start;
-    if (index <= (unsigned)tk->max_index && tk->index) return tk->index[index-2];
+    if (index <= (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX(tk)[index-2];
     return track < (unsigned)cdb.track_num ? cdb.tracks[track].fad_start : leadout;
 }
 
@@ -790,10 +790,8 @@ static void set_drive_position(u32 fad)
     cdb.track = fad_to_track(fad);
     TRACK_INFO *tk = get_track_info(cdb.track<<8);
     cdb.play_track = tk;
-    cdb.index = 1;
-    cdb.ctrladdr = tk ? tk->ctrl_addr : 0xff;
-    if (tk && tk->index)
-        while (cdb.index < tk->max_index && fad >= (u32)tk->index[cdb.index-1]) cdb.index++;
+    cdb.index = tk ? track_subindex(tk, fad) : 1;
+    cdb.ctrladdr = tk ? TRACK_CTRL(tk) : 0xff;
 }
 
 /* Incoming positions are 24-bit. Normalized FADs lose their original form. */

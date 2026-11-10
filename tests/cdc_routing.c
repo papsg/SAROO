@@ -6,6 +6,7 @@
 static u8 disc_bytes[0x8000];
 static u8 *sector_buffer=disc_bytes;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
+int index_table[2048];
 static int fad_to_track(u32 fad) { (void)fad;assert(0);return 0; }
 static void subcode_convert(void) { assert(0); }
 static void fs_lock(void) { assert(0); }
@@ -68,7 +69,7 @@ static void disc_metadata(void)
 {
     for(unsigned format=0;format<5;format++) {
         setup(0,200);memset(disc_bytes,0x5a,sizeof disc_bytes);
-        TRACK_INFO track={.fad_0=150,.fad_end=1000};
+        TRACK_INFO track={.fad_0=150,.fad_start=150,.fad_end=1000,.max_index=1};
         track.mode=format==4?3:1;track.sector_size=format==0?2048:2352;
         cdb.tracks=&track;cdb.play_track=&track;
         buf_fad_start=150;buf_fad_end=151;buf_fad_offset=0;buf_fad_size=track.sector_size;

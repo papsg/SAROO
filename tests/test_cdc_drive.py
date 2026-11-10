@@ -25,6 +25,7 @@ class CDDriveTests(unittest.TestCase):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
         code=b''.join(function(main,sig) for sig in (b'TRACK_INFO *get_track_info(',b'u32 track_to_fad(',b'int fad_to_track('))
+        if b'u8 track_subindex(' in main:code=function(main,b'u8 track_subindex(')+code
         if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
         code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
         for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
@@ -52,7 +53,7 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'file-start.inc').write_bytes(b''.join(function(raw,sig) for sig in (b'static void _set_filter(',b'void free_partition(',b'static void set_file_selector(',b'static void start_file_play(')))
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')]+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
-        for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py','track_fixture.h'):inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(v).hexdigest() for n,v in inputs.items()},indent=2)+'\n')

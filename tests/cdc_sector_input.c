@@ -15,6 +15,7 @@ static CDBLOCK cdb;
 _Alignas(8) static u8 cache[32768],image[65536];
 static u8 *sector_buffer=cache;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
+int index_table[2048];
 static FIL file;
 static TRACK_INFO tracks[2];
 static FRESULT seek_result,read_result;
@@ -28,7 +29,7 @@ static void fs_lock(void) { assert(!locked);locked=1;locks++; }
 static void fs_unlock(void) { assert(locked);locked=0;unlocks++; }
 FRESULT f_lseek(FIL *fp,FSIZE_t offset)
 {
-    assert(locked && fp==&file);seeks++;sought=offset;return seek_result;
+    assert(locked && fp==&file);seeks++;sought=offset;if(!seek_result)fp->fptr=offset;return seek_result;
 }
 FRESULT f_read(FIL *fp,void *data,UINT count,UINT *actual)
 {
@@ -44,7 +45,7 @@ static void setup(unsigned size,unsigned offset,unsigned mode)
     for(unsigned i=0;i<sizeof image;i++)image[i]=(u8)(i*13+offset);
     image[offset+15]=2;image[offset+16]=7;image[offset+17]=9;
     image[offset+18]=0x28;image[offset+19]=0x11;
-    tracks[0]=(TRACK_INFO){.fp=&file,.mode=mode,.sector_size=size,.fad_0=150,.fad_start=150,.fad_end=400,.file_offset=offset,.ctrl_addr=0x41};
+    tracks[0]=(TRACK_INFO){.fp=&file,.mode=mode,.sector_size=size,.fad_0=150,.fad_start=150,.fad_end=400,.file_offset=offset,.max_index=1};
     cdb.play_track=&tracks[0];cdb.tracks=tracks;cdb.track_num=1;
     cdb.play_type=PLAYTYPE_FILE;cdb.status=STAT_PLAY;
     seek_result=read_result=FR_OK;supplied=sizeof cache;
@@ -130,7 +131,7 @@ static void track_and_metadata_controls(void)
     cdb.play_track=NULL;BLOCK block,before;memset(&block,0x5a,sizeof block);memcpy(&before,&block,sizeof before);
     assert(get_sector(150,&block)==-1 && lookups==1 && !locks && !reads && !seeks);
     assert(!memcmp(&block,&before,sizeof block) && !cdb.play_type && cdb.status==STAT_ERROR);
-    setup(2048,0,1);tracks[1]=tracks[0];cdb.play_track=NULL;lookup_result=2;
+    setup(2048,0,1);tracks[1]=tracks[0];cdb.track_num=2;cdb.play_track=NULL;lookup_result=2;
     assert(!get_sector(150,NULL) && cdb.play_track==&tracks[1] && lookups==1 && !reads);
 }
 static void read_error_controls(void)

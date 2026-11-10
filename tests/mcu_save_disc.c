@@ -7,10 +7,7 @@
 #define STAT_NODISC 7
 #define HIRQ_DCHG 0x20
 static int HIRQ;
-typedef struct {
-    FIL *fp; u32 fad_0,fad_start; int *index,max_index;
-    u32 fad_end,file_offset; u16 sector_size; u8 ctrl_addr,mode;
-} TRACK_INFO;
+#include "track-layout.h"
 static FIL track_fp[100];
 static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request,rdir_state,cdir_pfnum,cdir_drend; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
 static int current_index,category_current,total_disc=2,next_disc;
