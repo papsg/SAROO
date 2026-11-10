@@ -52,6 +52,7 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'background.inc').write_bytes(b'static void background_start(int audio_repeat) {\n'+main[start:end]+b'\n}\n')
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'free_block_list(',b'disconnect_filter_input(')))
         (cls.target/'file-start.inc').write_bytes(b''.join(function(raw,sig) for sig in (b'static void _set_filter(',b'void free_partition(',b'static void set_file_selector(',b'static void start_file_play(')))
+        (cls.target/'reset.inc').write_bytes(function(raw,b'int reset_filter('))
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')]+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
         for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py','track_fixture.h'):inputs[name]=(ROOT/'tests'/name).read_bytes()
@@ -100,6 +101,9 @@ class CDDriveTests(unittest.TestCase):
     def test_initialization_late_acknowledgement_and_final_wait(self):self.run_case(20)
     def test_all_initialization_flags_preserve_settings_and_reset_only_when_requested(self):self.run_case(21)
     def test_all_initialization_flags_without_media_preserve_drive_status(self):self.run_case(22)
+    def test_selector_reset_handoff_preserves_ownership_and_retries(self):self.run_case(23)
+    def test_all_selector_modes_preserve_existing_scope_and_pause_decisions(self):self.run_case(24)
+    def test_selector_reset_preserves_exact_log_formats_and_masks(self):self.run_case(25)
 
 
 if __name__=='__main__':unittest.main()

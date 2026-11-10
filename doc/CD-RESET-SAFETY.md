@@ -114,7 +114,56 @@ task, payload copy, per-sector work or SD I/O is added. Ordinary/keep-settings
 initialization now writes its required four-word report. Nothing is installed;
 host/GNU evidence is not physical Saturn/game or original-MDK qualification.
 
-Selector reset still has its old unbounded wait and missing wakeup at this
-checkpoint. Broader software-reset state, standby/ECC/retry, tray/scan/session
-and routing-policy changes remain separate. No audio or named-game defect is
-claimed resolved.
+## Bounded selector reset and worker wakeup
+
+The third adaptation of paps-g `3772326a` replaces selector reset's open-ended
+wait with the same bounded helper. Command `0x48` previously set the pause request
+without waking the worker. When its existing predicate requires a pause, it now
+wakes once and waits before deleting partition data or changing connectors.
+Failure returns WAIT with no premature deletion, output disconnection or ESEL
+completion; a late acknowledgement/retry can finish normally.
+
+Sega [ST-162-062094 §8.2.5, function5.9, printed p.91](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=79)
+and the [later CDC_ResetSelector §8.2.5, function5.9](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p08_15.htm)
+define selective data/connector/condition reset and ESEL completion. The cached
+Japanese original agrees. These define the interface; they do not prescribe
+SAROO's worker wakeup or retry count. The existing wait_pause_ok wrapper calls
+osSemaphoreAcquire with a two-tick timeout; the cached RTX svcRtxSemaphoreAcquire
+uses that timeout when entering its semaphore wait. Repeating finite waits
+indefinitely was still unbounded. Arbitrary scheduler/storage/logging failure
+can exceed any inferred wall-clock deadline even with the new retry bound.
+
+The existing pause predicate, mode interpretation, invalid selected-buffer
+refusal, nonzero-mode ignored buffer number, audio/idle behavior and output
+ownership corrections remain intact. In contrast to the original combined
+patch, keep both original selector log formats/masks and check them exactly.
+Same-reader cache bounds and playback position/range/repeat metadata are retained.
+
+Twenty-six drive methods and the same52 related methods pass ASan/UBSan and O2.
+All256 mode bytes run across own/other/disconnected inputs and audio/data/idle
+cases (1,280 combinations), checking all selective conditions/connectors and
+partition ownership. Timeout/retry checks cover all3 worker types and both actual
+acknowledgement branches, complete state during every wait, output transfer
+termination, IRQ/FIFO state, unfinished-directory retirement and cache retention.
+Eight more compiled behavioral controls detect preceding selector code,
+unbounded waits, early deletion, ignored timeout, broadened pause scope, missing
+log/wakeup and cache loss. The preceding exact valid report/log control passes.
+
+Complete GNU MCU load remains60,888 bytes with4,648 ITCM free. Static DTCM,
+main-stack/heap gap and direct init/disk frames remain unchanged; selector32 and
+shared pause16 are nested, with full call-chain/interrupt peaks unmeasured.
+All56 public source inputs and85 unchanged SDK inputs are verified. No new
+field/allocation/task/SD I/O/payload copy/per-sector work is added. A qualifying
+selector reset adds one worker wakeup. Existing deletion scans remain bounded
+by200 blocks and24 selectors; logging can still wait.
+
+The same saved preceding source can reproduce selector failure by selecting
+the test_selector_reset_handoff_preserves_ownership_and_retries and
+test_all_selector_modes_preserve_existing_scope_and_pause_decisions methods.
+No private preparer or device is needed. Full-suite and final build/preservation
+results are maintained in the public progress ledger.
+
+Broader software-reset state, standby/ECC/retry, tray/scan/session, all selector
+output-reset modes and routing-wide pause decisions remain separate. The
+original source/host work was not installed or hardware-qualified; neither is
+this public port. No audio or named-game defect is claimed resolved.

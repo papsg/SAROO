@@ -1228,12 +1228,8 @@ int reset_filter(void)
     if (((mode & 0x04) || (mode == 0 && fid == cdb.cddev_filter)) &&
         cdb.cddev_filter < MAX_SELECTORS && cdb.play_type != 0 &&
         cdb.play_track && cdb.play_track->mode != 3) {
-		cdb.pause_request = 1;
-		cdb.play_wait = 0;
 		SSLOG(_CDRV, "reset_filter: Send PAUSE request!\n");
-		do{
-			wait_pause_ok();
-		}while(cdb.pause_request);
+        if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
 	}
 
 	if(mode==0){

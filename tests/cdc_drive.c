@@ -40,6 +40,7 @@ static void wait_pause_ok(void)
 }
 #include "drive.inc"
 #include "file-start.inc"
+#include "reset.inc"
 #include "phase.inc"
 #include "background.inc"
 
@@ -536,6 +537,72 @@ static void init_late_ack(void)
         assert(buf_fad_start==123 && buf_fad_end==456);check_owners();
     }
 }
+static void selector_handoff(void)
+{
+    const unsigned modes[]={0,4,0xfc};
+    for(unsigned type=1;type<=3;type++)for(unsigned branch=0;branch<2;branch++)
+    for(unsigned m=0;m<3;m++) {
+        init_request(2,type,branch);cdb.cddev_filter=0;
+        cdb.cr1=0x4800|modes[m];cdb.cr3=0;st_control=STIRQ_DAT;
+        CDBLOCK before;expect_pause_state(&before);acknowledge_after=-1;
+        assert(!reset_filter() && waits==500 && wakeups==1);
+        assert(reply[0]==(((STAT_WAIT|STAT_PLAY)<<8)|0xa5));
+        assert(reply[1]==0xb2c3 && reply[2]==0xd4e5 && reply[3]==0xf678);
+        assert(!memcmp(&before,&cdb,sizeof cdb) && st_control==STIRQ_DAT);
+        assert(hirq==0x55 && hirq_clear==0x66 && copy_move_error==1);
+        assert(buf_fad_start==123 && buf_fad_end==456);check_owners();
+        waits=wakeups=0;acknowledge_after=2;
+        assert(reset_filter()==HIRQ_ESEL && waits==2 && wakeups==1);
+        pause_state=NULL;
+        assert(!cdb.play_type && !cdb.pause_request && pause_signals==1);
+        assert(!cdb.part[0].numblocks && cdb.block_free==200);
+        assert(cdb.trans_part_index==0xff && cdb.trans_finish && !(st_control&STIRQ_DAT));
+        assert(hirq==HIRQ_EHST && hirq_clear==0x66 && copy_move_error==1);
+        assert(cdb.iflag==0x14 && cdb.fad==180 && cdb.play_fad_start==150 && cdb.play_fad_end==700);
+        assert(cdb.play_pos_types==5 && cdb.max_repeat==9 && cdb.repcnt==4);
+        if(type==PLAYTYPE_DIR)assert(!cdb.rdir_state && !cdb.cdir_pfnum);
+        assert(buf_fad_start==123 && buf_fad_end==456);check_owners();
+    }
+}
+static void selector_scope(void)
+{
+    /* Explicit own/other/disconnected input and audio/data/idle cases retain
+     * the public pause predicate, rather than inventing routing-wide policy. */
+    for(unsigned mode=0;mode<256;mode++)for(unsigned kind=0;kind<5;kind++) {
+        ready();cdb.cr1=0x4800|mode;cdb.cr3=0;
+        cdb.cddev_filter=kind==2?1:kind==3?0xff:0;
+        cdb.play_type=kind==4?0:PLAYTYPE_SECTOR;
+        if(kind==1)media[0].mode=3;
+        for(unsigned i=0;i<MAX_SELECTORS;i++) {
+            FILTER *f=&cdb.filter[i];f->c_true=(i+2)%24;f->c_false=(i+1)%24;
+            f->mode=0x4f;f->fad=150;f->range=100;f->fid=8;f->chan=3;
+            f->smmask=9;f->smval=8;f->cimask=5;f->cival=4;
+        }
+        unsigned pause=((mode&4) || (!mode && kind==0)) && (kind==0 || kind==2);
+        assert(reset_filter()==HIRQ_ESEL && waits==pause && wakeups==pause);
+        assert(cdb.play_type==(pause || kind==4?0:PLAYTYPE_SECTOR));
+        assert(cdb.cddev_filter==((mode&0x20) || kind==3?0xff:kind==2?1:0));
+        unsigned cleared=(mode&4) || !mode;
+        assert(cdb.part[0].numblocks==(cleared?0:2) && cdb.block_free==(cleared?200:198));
+        for(unsigned i=0;i<MAX_SELECTORS;i++) {
+            FILTER *f=&cdb.filter[i];int zero=!!(mode&0x10);
+            assert(f->c_true==(mode&0x40?i:(i+2)%24));
+            assert(f->c_false==(mode&(0x80|0x20)?0xff:(i+1)%24));
+            assert(f->mode==(zero?0:0x4f) && f->fad==(zero?0:150) && f->range==(zero?0:100));
+            assert(f->fid==(zero?0:8) && f->chan==(zero?0:3));
+            assert(f->smmask==(zero?0:9) && f->smval==(zero?0:8));
+            assert(f->cimask==(zero?0:5) && f->cival==(zero?0:4));
+        }
+        assert(buf_fad_start==123 && buf_fad_end==456 && !irq_depth);check_owners();
+    }
+}
+static void selector_logs(void)
+{
+    ready();cdb.play_type=PLAYTYPE_SECTOR;cdb.cddev_filter=0;cdb.cr1=4;cdb.cr3=0;
+    fixture_log_mask=_FILTER|_CDRV;
+    assert(reset_filter()==HIRQ_ESEL && waits==1 && wakeups==1);
+    assert(!strcmp(fixture_log_text,"reset_filter: mode=04 fid=0\nreset_filter: Send PAUSE request!\n"));
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -551,6 +618,7 @@ int main(int argc,char **argv)
     case 16:retained_forms();break;case 17:retained_form_failure();break;case 18:replacement_types();break;
     case 19:init_handoff();break;case 20:init_late_ack();break;
     case 21:init_flags();break;case 22:init_no_media();break;
+    case 23:selector_handoff();break;case 24:selector_scope();break;case 25:selector_logs();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }
