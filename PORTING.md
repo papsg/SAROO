@@ -665,3 +665,22 @@ Broader003 asynchronous/cancellation/erase/output contracts and later008
 GET/delete/size/ownership/initialization remain separate. Unspecified absent-
 header fill and inversion-only ambiguity are not claimed as physical behavior;
 this series is not blanket CD-command or Saturn/game qualification.
+
+## CD read safety and ownership
+
+Starts at public `f9ed8fe`. Four separately verified source contributions from
+paps-g `89e644f6`/`3d2c405e`, including `ac0aeac1`'s corrected producer-count
+semantics. Direct source commits to main, no PRs, USB, added runtime diagnostics,
+private writes or Saturn operations. Raw evidence remains ignored; full files,
+messages/identities and actual commits receive secret/private-PII review.
+
+| Contribution / original | Public checkpoint | Verification, dependencies and limits |
+| --- | --- | --- |
+| MCU-CDC-008; selected paps-g `89e644f6` | [6b184ee](https://github.com/papsg/SAROO/commit/6b184ee); [codex/cd-command-bounds](https://github.com/papsg/SAROO/tree/codex/cd-command-bounds) | Eight actual-source methods pass ASan/UBSan/O2:3,480 invalid selectors across15 commands/14 guards,65,536 position words, last/empty/short-list queries,8 transfer-type busy precedence,408 valid read/delete tails and24 valid filter/file/directory/size controls. Baseline fails three groups and passes five;18 behavioral mutants rejected, one redundant extent-guard removal survives consistent-list controls and is retained uncounted. Actual status-helper dependency added to earlier subheader fixture, preserving all oracles; its three methods also pass preceding source. All68 CD methods pass both profiles. Full MCU adds240 load bytes to58,468, margin7,068; static DTCM60,296 unchanged, cached SDK inputs identical. Get-range/connection frames0→8; IRQ/dispatch24/16, sector-info8, common GET48, size24, file32 and FIFO24 unchanged. Original logs/masks retained; no buffer/copy/allocation/I/O/wait added. [Sega ST-162 §8.2.6 functions6.1/6.2 printed92 and6.5 printed93, filter/filesystem contracts; attribution/reproduction/costs/policy/limits](https://github.com/papsg/SAROO/blob/main/doc/CD-READ-SAFETY.md#mcu-cdc-008-command-selectors-and-sector-information-positions). Exact malformed-command replies/hardware timing/game/original-MDK behavior remain unqualified. |
+| MCU-CDC-009; selected paps-g `89e644f6` | Queued | Valid size ranges, selected read lengths/Form2, complete/error calculations and reset lifetime; preserve preceding result on refusal. |
+| MCU-CDC-010; selected paps-g `3d2c405e` | Queued | Stable GET output/private GETDEL ownership, conflicting cancellation, safe detach/release and proven nonblocking/scheduling prerequisites. |
+| MCU-CDC-012; selected paps-g `3d2c405e` plus corrected `ac0aeac1` | Queued | Queued-window and CD-produced read counts; preserve distinct PUT-consumed semantics and errors. Superseded host-consumed read policy is excluded. |
+
+One source checkpoint is published. Three ports and final integrated/build/
+privacy/preservation audit remain. Directory/ISO/XA filesystem011/013 and broader
+async copy/move/MPEG ownership remain separate; no hardware/game qualification.
