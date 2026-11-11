@@ -1766,3 +1766,10 @@ was left untouched.
    the disc fixture's configuration slice. The slice now ends at
    the actual parser. All 13 disc and save session methods pass
    after the correction. This commit changes the host fixture.
+
+   **Shared configuration fixture boundary**
+   [`dc5e079`](https://github.com/papsg/SAROO/commit/dc5e0798b4992b4afb59641581da2daf5ebda615).
+   The standalone loader and disc fixtures now extract the same matcher
+   and parser through the end of parse_config. All 28 combined methods
+   pass ASan/UBSan and O2. The preceding parser also passes all 15
+   standalone loader methods through the shared fixture.
