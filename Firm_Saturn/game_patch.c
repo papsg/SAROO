@@ -196,6 +196,44 @@ void Metal_Slug_A_patch(void)
 // ULTRAMAN
 // 2MB ROM cart
 
+/* The existing file transfer workspace leaves live artwork untouched. */
+#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x100)
+#define ROM_IMAGE_SIZE 0x200000
+_Static_assert((ROM_IMAGE_ADDR & 3) == 0 && ROM_IMAGE_ADDR + ROM_IMAGE_SIZE <= 0x22400000,
+               "Companion ROM must fit before the artwork workspace");
+
+enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
+static enum rom_kind rom_ready;
+
+int prepare_game_rom(const char *id)
+{
+    rom_ready = ROM_NONE;
+    if (skip_patch)
+        return 0;
+
+    /* Use the same stock IP predicates as the late game callbacks. */
+    const char *name;
+    enum rom_kind kind;
+    if ((!strncmp(id, "MK-81088", 8) || !strncmp(id, "T-3101G", 7)) &&
+        REG32(0x06002e28) == 0x0607cd80) {
+        name = "/SAROO/ISO/KOF95.BIN";
+        kind = ROM_KOF95;
+    } else if (!strncmp(id, "T-13308G", 8) && REG32(0x06002fb4) == 0x06004000) {
+        name = "/SAROO/ISO/ULTRAMAN.BIN";
+        kind = ROM_ULTRAMAN;
+    } else {
+        return 0;
+    }
+
+    int count = read_file((char *)name, 0, ROM_IMAGE_SIZE, (void *)ROM_IMAGE_ADDR);
+    if (count != ROM_IMAGE_SIZE)
+        return count < 0 ? count : -1;
+    rom_ready = kind;
+    return 0;
+}
+
+
+__attribute__((aligned(4)))
 void jump_06b0(void)
 {
 	void (*go)(void) = (void*)(0x04c8);
@@ -213,12 +251,14 @@ void jump_06b0(void)
 }
 
 
-void jump_copy_code(int type) 
-{	
-	for(int i=0; i<0x200000; i+=4)
-		(REG32(0x22000000+i)) = (REG32(0x22400000+i));
-	void (*go)(void) = (void*)type;
-	go();		
+__attribute__((aligned(4)))
+void jump_copy_code(int type)
+{
+    /* The destination starts below the overlapping source. */
+    for (int i = 0; i < ROM_IMAGE_SIZE; i += 4)
+        REG32(0x22000000 + i) = REG32(ROM_IMAGE_ADDR + i);
+    void (*go)(void) = (void*)type;
+    go();
 }
 
 
@@ -236,8 +276,7 @@ void ULTRAMAN_patch(void)
 {
 	need_bup = 0;
 
-	if(*(u32*)(0x6002fb4)==0x06004000){
-		read_file("/SAROO/ISO/ULTRAMAN.BIN", 0, 0x200000, (void*)0x22400000);
+	if (*(u32*)(0x6002fb4) == 0x06004000 && rom_ready == ROM_ULTRAMAN) {
 		card_init();
 		void (*go)(int);
 		go = (void*)0x200000;
@@ -271,11 +310,12 @@ void kof95_yzb_hack_handle(void)
 
 void kof95_handle(void)
 {
+	if (rom_ready != ROM_KOF95) return;
+
 	*(u16*)(0x60020c2) = 0x0009;
 	*(u16*)(0x600217E) = 0x0009;
 	*(u16*)(0x6002180) = 0x0009;
 
-	read_file("/SAROO/ISO/KOF95.BIN", 0, 0x200000, (void*)0x22400000);
 	card_init();
 
 	void (*go)(int);

@@ -441,6 +441,7 @@ char *TT(char *str);
 extern int skip_patch;
 extern int need_bup;
 
+int prepare_game_rom(const char *id);
 void patch_game(char *id);
 
 

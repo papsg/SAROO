@@ -109,6 +109,8 @@ fn resources(elf: &[u8], image: &[u8], font: &[u8]) -> Result<Value> {
         Ok(&elf[offset + index * stride..offset + (index + 1) * stride])
     };
     let mut symbols = BTreeMap::new();
+    let mut rom_helpers = BTreeMap::new();
+    let relocated = ["_jump_copy_code", "_jump_06b0"];
     let required = [
         "__ip_start",
         "__ip_end",
@@ -157,8 +159,21 @@ fn resources(elf: &[u8], image: &[u8], font: &[u8]) -> Result<Value> {
                 {
                     return fail("Ambiguous menu resource symbol");
                 }
+                if relocated.contains(&name) {
+                    let address = word(entry, 4, 4)?;
+                    let size = word(entry, 8, 4)?;
+                    if entry[12] & 0x0f != 2 || address & 3 != 0 || size == 0 || size > 0x60 {
+                        return fail(&format!("Invalid ROM handoff helper {name}"));
+                    }
+                    if rom_helpers.insert(name.to_owned(), size).is_some() {
+                        return fail(&format!("Ambiguous ROM handoff helper {name}"));
+                    }
+                }
             }
         }
+    }
+    if rom_helpers.len() != relocated.len() {
+        return fail("Missing ROM handoff helper");
     }
     let get = |name: &str| {
         symbols
@@ -189,6 +204,7 @@ fn resources(elf: &[u8], image: &[u8], font: &[u8]) -> Result<Value> {
         json!({"code_data_bytes": loaded_end-base, "bss_bytes": stack_start-bss_start,
         "reserved_stack_bytes": stack_end-stack_start, "body_margin_bytes": base+131072-stack_end,
         "entry": entry, "symbols": symbols, "image_bytes": image.len(), "font_bytes": font.len(),
+        "rom_handoff_helper_bytes": rom_helpers,
         "elf_sha256": sha(elf), "image_sha256": sha(image), "font_sha256": sha(font)}),
     )
 }

@@ -66,6 +66,13 @@ static void cdc_trans_data(u8 *buf, int length) {
 }
 static int my_bios_loadcd_init(void) { return 0; }
 static void my_cdplayer(void) { players++; player_mode=use_sys_load; }
+static int rom_result, rom_checks;
+static __attribute__((unused)) int prepare_game_rom(const char *id)
+{
+    assert(id == (const char *)(ip_buffer + 0x20) && transfers == 1);
+    rom_checks++;
+    return rom_result;
+}
 #include "actual.inc"
 
 int main(int argc, char **argv) {
@@ -138,8 +145,16 @@ int main(int argc, char **argv) {
         result=my_bios_loadcd_read();
         assert(result == (n==27 ? -2 : n==28 ? 0 : -1));
         assert(transfers == (n==28));
+    } else if (n >= 33) {
+        static const int types[] = {0, 2, 4, 0x80, 0x84};
+        static const int results[] = {0, -1, -4};
+        assert(n < 48);
+        int type = types[(n - 33) / 3];
+        rom_result = results[(n - 33) % 3];
+        assert(bios_cd_cmd(type) == rom_result);
+        assert(rom_checks == 1 && transfers == 1 && !players);
+        assert(use_sys_bup == ((type & 0x80) != 0) && disc_type == (type & 0x7f));
     } else {
-        assert(n<=32);
         int count=-99;
         HIRQ=HIRQ_DRDY;
         if(n!=31) command_result=-3;

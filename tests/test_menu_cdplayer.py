@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def function(source, name):
-    match = re.search(rb'^int ' + name.encode() + rb'\([^;\n]*\)\s*\n\{', source, re.M)
+    match = re.search(rb'^(?:int|void) ' + name.encode() + rb'\([^;\n]*\)\s*\n\{', source, re.M)
     assert match, name
     return source[match.start():source.index(b'\n}', match.end()) + 3]
 
@@ -42,6 +42,7 @@ class MenuCDPlayerTests(unittest.TestCase):
             ip = ip.replace(before, after)
         code += ip
         launch = function(load, 'bios_cd_cmd')
+        launch = launch.replace(b'(const char *)0x06002020', b'(const char *)(ip_buffer+0x20)')
         code += launch[:launch.index(b'\t\t// emulate bios_loadcd_boot')] + b'\t}\n\treturn 0;\n}\n'
         inputs = {'cdblock.c': block, 'game_load.c': load, 'actual.inc': code,
                   'menu_cdplayer.c': (ROOT / 'tests/menu_cdplayer.c').read_bytes(),
@@ -93,6 +94,9 @@ class MenuCDPlayerTests(unittest.TestCase):
 
     def test_player_preserves_virtual_and_optical_callbacks(self):
         self.cases(24, 25, 26)
+
+    def test_rom_read_error_returns_before_bios_entry_for_every_launch_type(self):
+        self.cases(*range(33, 48))
 
     def test_failed_data_end_does_not_publish_unread_response(self):
         self.cases(30, 31, 32)

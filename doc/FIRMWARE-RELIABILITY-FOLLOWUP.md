@@ -80,3 +80,33 @@ The identity checks cover the file reopened after a successful close.
 The host cases exercise retry behavior and preservation of neighboring
 files. Physical SD recovery, writes interrupted by power loss and external
 changes to a still-mounted volume remain unqualified.
+
+## Check companion ROMs before BIOS handoff
+
+Stock European and Japanese KOF ’95 and Ultraman need a 2 MiB companion ROM.
+The original callbacks installed cartridge hooks and entered the ROM even
+after a failed or short read. The menu now requires the complete read before
+BIOS handoff. The existing product numbers and IP predicates still select the
+ROM. ROM-free variants and unrelated titles follow their existing paths.
+[Sega Disc Format Standards, ST-040-R4, §§4.1–4.2, printed pp. 25–26](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf#page=29) ·
+[Upstream KOF ’95 reports #261](https://github.com/tpunix/SAROO/issues/261)
+and [#276](https://github.com/tpunix/SAROO/issues/276).
+
+The preflight stages the ROM in the existing file transfer workspace before
+the artwork region. The relocated SH-2 helper copies forward from that
+workspace into the lower, overlapping destination. The standard menu
+verifier checks alignment and the two 96-byte relocation slots. The
+linked copy and boot helpers occupy 36 and 80 bytes.
+
+Adapted from paps-g's `198a079f` on top of the public file transfer and
+CD player safety ports. The menu links 79,684 code/data bytes (+176) and
+9,236 BSS bytes (+4). Its complete image remains 488,770 bytes.
+
+Run `make -C tests check-menu-safety check-cover-display` and repeat with
+`SAROO_MENU_SAFETY_PROFILE=release SAROO_MENU_CD_PROFILE=release`.
+All 29 methods pass in both profiles, including 39 ROM scenarios and 15
+preflight cases across the ordinary and CD player launch paths. Set
+`SAROO_MENU_ROM_SOURCE` to the baseline `Firm_Saturn/game_patch.c` and
+run `python3 -m unittest discover -s tests -p test_menu_rom.py -v` to
+reproduce 21 unsafe baseline handoffs and three valid full reads.
+Actual game launch and the individual upstream reports remain unqualified.

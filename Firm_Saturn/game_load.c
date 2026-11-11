@@ -536,6 +536,10 @@ int bios_cd_cmd(int type)
 			return retv;
 		}
 
+        retv = prepare_game_rom((const char *)0x06002020);
+        if (retv)
+            return retv;
+
 		// emulate bios_loadcd_boot
 		*(u32*)(0x06000290) = 3;
 		ip_size = bios_loadcd_read();//1912读取ip文件
