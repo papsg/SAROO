@@ -1319,5 +1319,12 @@ the original CD+G utility. Original tpu and Linux Reed–Solomon credit remain.
    decoder/encoder prefix is byte-identical. Native and x86/x64 MinGW builds
    pass at the original warning policy. The legacy raw path's existing x86
    size warning remains for the next checkpoint.
-2. **HOST-CDG-003 raw subchannel and endpoint preservation — in progress.**
-3. **HOST-CDG-001/002 checked file input and replacement — pending.**
+2. **HOST-CDG-003 raw subchannel and endpoint preservation — published**
+   [`898c8b9`](https://github.com/papsg/SAROO/commit/898c8b9d9ab0580dbe116abf3d815de5bbe2dbc5).
+   Use the original interleave directly. Repair the last complete packet
+   and preserve all untouched bits across the eight subchannels. The previous
+   source fails ten raw cases and passes the incomplete single-frame control.
+   Six focused methods pass with ASan/UBSan and O2, including eleven raw sizes
+   and a clean raw file. Both MinGW architectures now pass strict compilation.
+   A Win64 Wine packet smoke test also passed at the preceding checkpoint.
+3. **HOST-CDG-001/002 checked file input and replacement — in progress.**
