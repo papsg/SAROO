@@ -1926,3 +1926,12 @@ The Saturn was left untouched.
    menu safety group passes. The menu links 80,836 code/data and 9,244
    BSS bytes. Physical disc loading remains unqualified.
    [Upstream report, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-signed-disc-launch-errors)
+
+6. **File completion across a full CD buffer — published**
+   [`21d9187`](https://github.com/papsg/SAROO/commit/21d918794c04cc854cb2981cce9b4b2d1c8b5a8e).
+   Adapted from paps-g `a506699c`. The parent signals EFLS during
+   three pressure scenarios and passes normal completion. The port
+   passes all 168 CD methods and all 13 XA methods at O2, including
+   38,208 full-buffer pauses. The GNU MCU App loads 63,196 bytes,
+   with 2,340 bytes of ITCM space. Physical scheduling remains unqualified.
+   [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#keep-a-file-read-pending-while-the-cd-buffer-is-full)
