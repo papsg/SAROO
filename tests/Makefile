@@ -43,6 +43,7 @@ check-file-transfer:
 	$(PYTHON) -B -m unittest discover -s . -p test_file_transfer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_word_access.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_file_transfer.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_file_ram.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_file_cache.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_file_ack.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_save_owner_protocol.py -v

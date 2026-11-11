@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from menu_command_source import load_case
+from file_buffer_source import file_buffer_source
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'tests/build/mcu-save'
@@ -50,16 +51,18 @@ class MCUSaveTest(unittest.TestCase):
         begin = module.index(b'#define SSAVE_FILE')
         marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'reopen', 'api', 'disc', 'owner') else b'int load_savefile(char *gameid)'
         end = module.index(marker, begin)
-        (cls.target / 'save-startup.inc').write_bytes(
-            module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR')
-                             .replace(b'SYSINFO_ADDR', b'TEST_SAVE_SYSINFO_ADDR'))
+        save = (module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR')
+                .replace(b'SYSINFO_ADDR', b'TEST_SAVE_SYSINFO_ADDR')
+                .replace(b'(0x02000000u | (SMEMS_HDR & 0xffffffu))', b'TEST_SATURN_SMEMS_HDR'))
+        (cls.target / 'save-startup.inc').write_bytes(file_buffer_source(module) + save)
         main = (source / 'saturn_main.c').read_bytes()
         call = main.index(b'open_savefile();')
         begin = main.rfind(b'\n', 0, call) + 1
         end = main.index(b'\t*(u32*)(SYSINFO_ADDR+0x00)', call)
         (cls.target / 'save-startup-gate.inc').write_bytes(main[begin:end])
         inputs = {'Saturn/saturn_utils.c': module, 'Saturn/saturn_main.c': main}
-        harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py']
+        harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py',
+                     'file_buffer_source.py']
         if cls.fixture in ('runtime', 'extents', 'reopen', 'disc', 'cue', 'header', 'owner'):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
@@ -203,7 +206,8 @@ class MCUSaveTest(unittest.TestCase):
                 code += b'\nvoid cover_reset(void) {}\n'
             start = module.index(b'static int save_io(')
             helper = module[start:module.index(b'\n}', start) + 2] + b'\n'
-            (cls.target / 'cover.inc').write_bytes(layout + b'\n' + adler + helper + code)
+            cover_io = (file_buffer_source(module) + helper).replace(b'file_buffer_io', b'cover_buffer_io')
+            (cls.target / 'cover.inc').write_bytes(layout + b'\n' + adler + cover_io + code)
             path = Path(os.environ.get('SAROO_COVER_MENU_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
             begin = data.index(b'static int last_w, last_h, last_f;')

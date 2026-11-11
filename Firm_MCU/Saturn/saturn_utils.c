@@ -2,6 +2,7 @@
 #include "main.h"
 #include "ff.h"
 #include <stdlib.h>
+#include <stdint.h>
 #include "cdc.h"
 
 
@@ -434,6 +435,43 @@ failed:
 }
 
 /******************************************************************************/
+/* Use the Saturn-visible address until the FPGA mapping is applied.
+ * The caller checks the extent, owns the buffer and keeps the RAM mode
+ * stable. Native MCU addresses already name the physical storage. */
+int file_buffer_io(FIL *fp, void *buffer, u32 size, int writing, u32 *count)
+{
+    uintptr_t address = (uintptr_t)buffer;
+    int mirrored = 0;
+    if (address >= 0x02000000u && address < 0x03000000u) {
+        mirrored = address < 0x02800000u && address + size > 0x02400000u &&
+                   (SS_CTRL & 0x3000u) == 0x2000u;
+        address += 0x5f000000u;
+    }
+
+    u32 remaining = size;
+    int result;
+    do {
+        uintptr_t physical = address;
+        u32 span = remaining;
+        if (mirrored && address < 0x61800000u) {
+            uintptr_t boundary = 0x61400000u;
+            if (address >= boundary) {
+                /* The FPGA clears bits 20:19 in this address window. */
+                physical &= ~(uintptr_t)0x180000u;
+                boundary = (address | 0x7ffffu) + 1;
+            }
+            if (span > boundary - address) span = boundary - address;
+        }
+        result = writing ? f_write(fp, (void *)physical, span, count) :
+                           f_read(fp, (void *)physical, span, count);
+        remaining -= *count;
+        if (result || *count != span) break;
+        address += span;
+    } while (remaining);
+    *count = size - remaining;
+    return result;
+}
+
 #define SSAVE_FILE "/SAROO/SS_SAVE.BIN"
 #define SSAVE_ADDR (SAVINFO_ADDR+0x00000)
 
@@ -545,8 +583,7 @@ static int save_io(FIL *fp, u32 offset, void *buffer, u32 size, int write)
         return result;
     if (f_tell(fp) != offset)
         return FR_INT_ERR;
-    result = write ? f_write(fp, buffer, size, &count) :
-                     f_read(fp, buffer, size, &count);
+    result = file_buffer_io(fp, buffer, size, write, &count);
     return result ? result : count == size ? FR_OK : FR_INT_ERR;
 }
 
@@ -628,7 +665,9 @@ int save_archive_io(unsigned device, u32 offset, void *buffer, int length)
         goto done;
     }
 
-    int root = device && offset == 0 && length == 8192 && buffer == (void *)SMEMS_HDR;
+    int root = device && offset == 0 && length == 8192 &&
+               (buffer == (void *)SMEMS_HDR ||
+                (uintptr_t)buffer == (0x02000000u | (SMEMS_HDR & 0xffffffu)));
     /* A transfer can change a prefix before it fails. Revoke stale ownership
        before any write or direct reload of the resident MEMS root. */
     if (device && (writing || root)) {

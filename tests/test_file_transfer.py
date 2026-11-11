@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from mcu_save_support import make_fat32
+from file_buffer_source import transfer_buffer_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,7 +42,7 @@ def extract_command_source(raw):
     code = (helper + b'\nstatic void command(void) { ' + locals_
             + command_dispatch(raw) + b'\n' + cases + b'\n} }\n')
     code,replacements=re.subn(rb'\(u8\s*\*\)\s*\(\(baddr\s*&\s*0x00ffffff\)\s*\|\s*0x61000000\)',b'(test_shared+(baddr & 0x00ffffff))',code)
-    assert replacements==(1 if helper else 2)
+    assert replacements==(0 if b'file_buffer_io(' in helper else 1 if helper else 2)
     return code
 
 
@@ -64,11 +65,14 @@ class FileTransferTests(unittest.TestCase):
             if line.startswith((b'#define _INFO ', b'#define SSLOG('))) + b'\n'
             + protocol_definitions(header))
         cls.tags = (0, 32) if b'= FILE_ACK_VERSION;' in raw else (0,)
-        inputs={'Saturn/saturn_main.c':raw,'Saturn/cdc.h':header}
+        module = (ROOT/'Firm_MCU/Saturn/saturn_utils.c').read_bytes()
+        (cls.target/'file-buffer.inc').write_bytes(transfer_buffer_source(raw, module))
+        inputs={'Saturn/saturn_main.c':raw,'Saturn/cdc.h':header,'Saturn/saturn_utils.c':module}
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
             blob=(ROOT/'Firm_MCU/FatFS'/name).read_bytes();(fatfs/name).write_bytes(blob);inputs['FatFS/'+name]=blob
-        fixture_sources = ['file_transfer.c', 'test_file_transfer.py', 'mcu_save_support.py']
+        fixture_sources = ['file_transfer.c', 'test_file_transfer.py', 'mcu_save_support.py',
+                           'file_buffer_source.py']
         if c_source != 'file_transfer.c':
             fixture_sources += [c_source, 'test_save_owner_protocol.py']
         for name in fixture_sources:

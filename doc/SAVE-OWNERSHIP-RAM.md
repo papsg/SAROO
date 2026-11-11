@@ -147,3 +147,44 @@ and repeat with `SAROO_FILE_PROFILE=release`. The fixture can select
 the parent through `SAROO_MENU_CACHE_SOURCE`. The linked menu
 adds 64 bytes to 80,308, with 9,240 bytes of BSS and the same
 488,770-byte image size. Physical purge and bus timing remain unmeasured.
+
+## Map MCU transfers to the Saturn-visible RAM
+
+The FPGA forwards the MCU's low 24 SDRAM address bits directly.
+The Saturn-side decoder folds bits 20:19 in the expansion window
+when 1 MiB mode is selected. The MCU now keeps the Saturn address
+until it chooses the physical span. It splits a read or write at
+the actual decoder boundaries, preserves the total completed
+count, and stops on a short transfer or error. Named requests
+still open, seek and close once. Archive requests still validate
+the whole extent before starting I/O. Native MCU addresses retain
+their physical meaning, and an exact mapped MEMS root read can
+restore ownership. [Original linear MCU address, line 674](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L670-L675) ·
+[Original Saturn decoder, lines 694–706](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L694-L706) ·
+[FatFs f_read, Description](https://elm-chan.org/fsw/ff/doc/read.html) ·
+[FatFs f_write, Description](https://elm-chan.org/fsw/ff/doc/write.html).
+
+Adapted from the MCU transfer work in paps-g's `855d0092` and
+`d1079400`. The public port shares one adapter and retains explicit
+size and direction parameters. The exact parent transfers wrong
+bytes in 12 mirror cases and fails all four paired archive runs.
+Its other-mode controls pass. The port passes 39 named-file cases
+and four mirrored archive runs across both devices and filesystems.
+The suite covers all eight mirror addresses, boundary crossings,
+native MCU pointers, short reads, and errors in a later span.
+A request across the entire expansion window plus both linear edges
+takes ten FatFs data calls, with a single command and file position.
+Ordinary file, archive, save and cover controls also pass. All 58
+focused methods pass with ASan/UBSan and O2.
+
+Run `python3 -m unittest discover -s tests -p test_menu_file_ram.py -v`
+and `python3 -m unittest discover -s tests -p test_mcu_save_menu_owner.py -v`.
+Use `SAROO_FILE_PROFILE=release` and
+`SAROO_FIRMWARE_SAVE_PROFILE=release` for the optimized fixtures.
+The named-file fixture accepts `SAROO_MENU_MCU_SOURCE` for comparison
+with the parent. The caller must keep the FPGA RAM mode stable during
+I/O. Physical transfers and game behavior remain unqualified.
+
+With the original FatFs case table, the GNU App rises from 63,232
+to 63,424 bytes. It fits the 65,536-byte limit with 2,112 bytes to
+spare. Static DTCM stays at 60,216 bytes.

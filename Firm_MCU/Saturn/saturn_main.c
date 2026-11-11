@@ -664,7 +664,7 @@ static __attribute__((noinline)) int ss_file_transfer(int mode)
     u32 size = *(u32 *)(TMPBUFF_ADDR + 0x04);
     u32 baddr = *(u32 *)(TMPBUFF_ADDR + 0x08);
     char *name = (char *)(TMPBUFF_ADDR + 0x10);
-    u8 *buffer = (u8 *)((baddr & 0x00ffffff) | 0x61000000);
+    u8 *buffer = (u8 *)(uintptr_t)((baddr & 0x00ffffffu) | 0x02000000u);
     /* FPGA 05 exposes 24 SDRAM address bits. Never cross the window or
        the live request/name area; the legacy bounce payload starts at +0x100. */
     u32 position = baddr & 0x00ffffff;
@@ -699,7 +699,7 @@ static __attribute__((noinline)) int ss_file_transfer(int mode)
                 else size = (u32)remaining;
             }
             if (!retv)
-                retv = writing ? f_write(&fp, buffer, size, &count) : f_read(&fp, buffer, size, &count);
+                retv = file_buffer_io(&fp, buffer, size, writing, &count);
         }
         int closed = f_close(&fp);
         if (!retv) retv = closed;

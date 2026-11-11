@@ -1,6 +1,11 @@
 /* Adapted from paps-g 3f6e0121. Paired host transport on FatFs images. */
 /* Preserve actual primary owners and faulting FatFs; translate bus addresses
  * and CPU cache-register access only. This is not cartridge timing evidence. */
+#include <stdint.h>
+static uint16_t ram_control = 0xb000u;
+#define SS_CTRL ram_control
+static void *owner_file_pointer(uintptr_t address);
+#define FILE_TEST_POINTER(address) owner_file_pointer(address)
 #define SAVE_OWNER_TEST_ENTRY existing_owner_main
 #include "mcu_save_owner.c"
 #undef SAVE_OWNER_TEST_ENTRY
@@ -12,6 +17,12 @@ static void *bus_pointer(u32 offset)
     if (offset >= 0xa4000 && offset < 0xc7000)
         return test_shared + (offset - 0xa4000);
     return protocol_shared + offset;
+}
+static __attribute__((unused)) void *owner_file_pointer(uintptr_t address)
+{
+    if (address >= 0x61000000u && address < 0x62000000u)
+        return bus_pointer(address - 0x61000000u);
+    return (void *)address;
 }
 static u32 host_bus_address(void *p)
 {
@@ -59,7 +70,6 @@ static volatile u32 *purge_register(u32 address)
 #define cache_sr_read() 0u
 #define cache_sr_write(value) ((void)(value))
 #define cache_control_read(address) ((void)(address), ++purges, 0u)
-#define SS_CTRL 0xb000u
 #include "menu-owner.inc"
 #define SYSINFO_ADDR TEST_SAVE_SYSINFO_ADDR
 static void latch(void)
@@ -208,6 +218,63 @@ static void check_lookup(u8 *buffer, int failed)
     assert(!requests);
 }
 
+static unsigned cpu_offset(unsigned address)
+{
+    unsigned offset = address & 0xffffffu;
+    if ((offset >> 22) == 1) offset &= ~0x180000u;
+    return offset;
+}
+static void check_owner_ram(unsigned device)
+{
+    static const unsigned addresses[] = {
+        0x02400003,0x02480003,0x02500003,0x02580003,
+        0x02600003,0x02680003,0x02700003,0x02780003,
+        0x023ffff0,0x0247fff0,0x025ffff0,0x027ffff0
+    };
+    u8 *expected = device ? mems_before : slot_before;
+    u8 *memory = malloc(0x1000000); assert(memory);
+    const unsigned offset = 65536 + 13, size = 39;
+    ownership(); ram_control = 0xa000;
+    for (unsigned a = 0; a < sizeof addresses / sizeof *addresses; a++) {
+        unsigned address = addresses[a];
+        void *buffer = protocol_shared + (address & 0xffffffu);
+        for (unsigned writing = 0; writing < 2; writing++) {
+            for (unsigned i = 0; i < 0x1000000; i++)
+                protocol_shared[i] = (u8)(i * 11u + (i >> 19) * 79u);
+            memcpy(memory, protocol_shared, 0x1000000); reset_peer(); clear_io();
+            unsigned opens = api_opens;
+            assert(archive_command(device, offset, buffer, writing ? -(int)size : (int)size) == (int)size);
+            assert(requests == 1 && api_opens == opens && api_seeks == 1);
+            for (unsigned i = 0; i < size; i++) {
+                unsigned at = cpu_offset(address + i);
+                if (writing) expected[offset + i] = memory[at];
+                else memory[at] = expected[offset + i];
+            }
+            memcpy(memory + 0xc7000, protocol_shared + 0xc7000, 256);
+            assert(!memcmp(memory, protocol_shared, 0x1000000));
+            assert(!archive_command(device, 0, NULL, 0));
+            assert_archives(slot_before, slot_size, mems_before);
+        }
+    }
+    /* Existing owner rules require an exact root reload after MEMS writes. */
+    if (device) assert(archive_command(1, 0, (void *)SMEMS_HDR, 8192) == 8192);
+    /* A bad whole extent must be refused before a first split write occurs. */
+    ownership(); reset_peer(); clear_io();
+    unsigned end = device ? 0x800000 : slot_size;
+    assert(archive_command(device, end - 8, protocol_shared + 0x47fff0, -39) == -FR_INVALID_PARAMETER);
+    assert(requests == 1 && !api_reads && !api_writes && !api_seeks);
+    /* The second physical span can fail after modifying half of its 23 bytes. */
+    memset(protocol_shared, 0xa5, 0x1000000); memcpy(memory, protocol_shared, 0x1000000);
+    reset_peer(); arm("read-partial-error", device); fault_nth = 2;
+    assert(archive_command(device, offset, protocol_shared + 0x47fff0, 39) == -FR_DISK_ERR);
+    assert(hits == 1 && requests == 1 && api_reads == 2 && api_seeks == 1);
+    for (unsigned i = 0; i < 27; i++) memory[cpu_offset(0x0247fff0 + i)] = expected[offset + i];
+    memcpy(memory + 0xc7000, protocol_shared + 0xc7000, 256);
+    assert(!memcmp(memory, protocol_shared, 0x1000000)); armed = 0;
+    assert_archives(slot_before, slot_size, mems_before);
+    free(memory);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==5); unsigned device=atoi(argv[4]); assert(device<2);
@@ -223,6 +290,7 @@ int main(int argc,char **argv)
     if(!strcmp(argv[3],"transport")) check_transport(device,buffer);
     else if(!strcmp(argv[3],"errors")) check_errors(device,buffer);
     else if(!strcmp(argv[3],"bounds")) check_bounds(device,buffer);
+    else if(!strcmp(argv[3],"ram")) check_owner_ram(device);
     else check_lookup(buffer,!strcmp(argv[3],"lookup-fault"));
     assert_archives(slot_before,slot_size,mems_before);
     require_lock=0;

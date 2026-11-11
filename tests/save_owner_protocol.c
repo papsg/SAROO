@@ -69,7 +69,11 @@ int main(int argc, char **argv)
                 for (unsigned i = 0; i < sizeof valid / sizeof *valid; i++) {
                     request(writing, 65537, valid[i].size, valid[i].address, device);
                     assert(owner_calls == 1 && owner_device == device && owner_offset == 65537);
-                    assert(owner_buffer == test_shared + (valid[i].address & 0xffffff));
+#ifdef HAS_MAPPED_FILE_BUFFER
+                    assert((uintptr_t)owner_buffer == (0x02000000u | (valid[i].address & 0xffffffu)));
+#else
+                    assert(owner_buffer == test_shared + (valid[i].address & 0xffffffu));
+#endif
                     assert(owner_length == (writing ? -(int)valid[i].size : (int)valid[i].size));
                     assert(words[1] == valid[i].size && SS_ARG == SSCMD_SAVE_ACK); checks++;
                 }

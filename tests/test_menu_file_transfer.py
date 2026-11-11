@@ -12,6 +12,7 @@ import unittest
 from mcu_save_support import make_fat32
 from test_file_transfer import extract_command_source, protocol_definitions
 from test_menu_file_cache import host_cache_operations
+from file_buffer_source import transfer_buffer_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -51,18 +52,26 @@ class MenuFileTransferTests(unittest.TestCase):
         peer=Path(os.environ.get('SAROO_MENU_MCU_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_main.c')).read_bytes()
         (cls.target/'mcu-file.inc').write_bytes(extract_command_source(peer))
         cls.tags = (0, 32) if has_file_ack and b'= FILE_ACK_VERSION;' in peer else (0,)
-        inputs={'Firm_Saturn/main.c':raw,'Firm_Saturn/main.h':header,'Firm_MCU/Saturn/saturn_main.c':peer,'Firm_MCU/Saturn/cdc.h':mcu_header}
+        module = (ROOT/'Firm_MCU/Saturn/saturn_utils.c').read_bytes()
+        (cls.target/'file-buffer.inc').write_bytes(transfer_buffer_source(peer, module))
+        inputs={'Firm_Saturn/main.c':raw,'Firm_Saturn/main.h':header,'Firm_MCU/Saturn/saturn_main.c':peer,
+                'Firm_MCU/Saturn/cdc.h':mcu_header,'Firm_MCU/Saturn/saturn_utils.c':module}
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
             blob=(ROOT/'Firm_MCU/FatFS'/name).read_bytes();(fatfs/name).write_bytes(blob);inputs['FatFS/'+name]=blob
-        for name in ('menu_file_transfer.c','test_menu_file_transfer.py','test_file_transfer.py','test_menu_file_cache.py','mcu_save_support.py'):
+        c_source = getattr(cls, 'c_source', 'menu_file_transfer.c')
+        fixture_sources = ['menu_file_transfer.c', 'test_menu_file_transfer.py', 'test_file_transfer.py',
+                           'test_menu_file_cache.py', 'mcu_save_support.py', 'file_buffer_source.py']
+        if c_source != 'menu_file_transfer.c':
+            fixture_sources += [c_source, 'test_menu_file_ram.py']
+        for name in fixture_sources:
             blob=(ROOT/'tests'/name).read_bytes();(cls.target/name).write_bytes(blob);inputs['tests/'+name]=blob
         for name,blob in inputs.items():
             path=cls.target/'inputs'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(blob)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_FILE_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'menu-file-transfer'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/'menu_file_transfer.c'),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/c_source),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60);(cls.target/'compile.log').write_bytes(result.stdout+result.stderr);(cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
 
     @classmethod

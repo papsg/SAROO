@@ -408,6 +408,7 @@ int pause_drive(void);
 int pause_disc(void);
 int get_disc_ip(int index, u8 *ipbuf);
 
+int file_buffer_io(FIL *fp, void *buffer, u32 size, int writing, u32 *count);
 int open_savefile(void);
 int load_savefile(char *gameid);
 int save_archive_io(unsigned device, u32 offset, void *buffer, int length);

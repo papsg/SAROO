@@ -43,6 +43,17 @@ static __attribute__((unused)) int save_archive_io(unsigned device, u32 offset,
     abort(); /* This fixture sends only ordinary file commands. */
 }
 #endif
+#ifndef SS_CTRL
+#define SS_CTRL 0xb000u
+#endif
+static __attribute__((unused)) void *file_test_pointer(uintptr_t address)
+{
+    assert(address >= 0x61000000u && address < 0x62000000u);
+    return test_shared + (address - 0x61000000u);
+}
+#define FILE_TEST_POINTER(address) file_test_pointer(address)
+#include "file-buffer.inc"
+#undef FILE_TEST_POINTER
 #include "file-transfer.inc"
 #undef f_open
 #undef f_lseek

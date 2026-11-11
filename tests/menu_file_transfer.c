@@ -26,6 +26,17 @@ static __attribute__((unused)) int save_archive_io(unsigned device, u32 offset,
     (void)device; (void)offset; (void)buffer; (void)length;
     abort(); /* This fixture sends only ordinary file commands. */
 }
+#ifndef SS_CTRL
+#define SS_CTRL 0xb000u
+#endif
+static __attribute__((unused)) void *file_test_pointer(uintptr_t address)
+{
+    assert(address >= 0x61000000u && address < 0x62000000u);
+    return test_shared + (address - 0x61000000u);
+}
+#define FILE_TEST_POINTER(address) file_test_pointer(address)
+#include "file-buffer.inc"
+#undef FILE_TEST_POINTER
 #include "mcu-file.inc"
 #undef SS_CMD
 #undef SS_ARG
@@ -72,7 +83,6 @@ static volatile u8 ccr_dummy __attribute__((unused));
 #define cache_sr_read() 0u
 #define cache_sr_write(value) ((void)(value))
 #define cache_control_read(address) ((void)(address), 0u)
-#define SS_CTRL 0xb000u
 #include "menu-file.inc"
 
 static FILE *disk;

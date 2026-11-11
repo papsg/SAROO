@@ -37,8 +37,10 @@ class MenuSaveOwnerTests(MCUSaveTest):
         mcu = (source / 'saturn_main.c').read_bytes()
         peer = extract_command_source(mcu)
         buffer = b'(test_shared+(baddr & 0x00ffffff))'
-        assert peer.count(buffer) == 1
-        (target / 'mcu-owner.inc').write_bytes(peer.replace(buffer, b'bus_pointer(baddr & 0x00ffffff)'))
+        if b'file_buffer_io(' not in mcu:
+            assert peer.count(buffer) == 1
+            peer = peer.replace(buffer, b'bus_pointer(baddr & 0x00ffffff)')
+        (target / 'mcu-owner.inc').write_bytes(peer)
         return {'Firm_Saturn/main.c': raw, 'Firm_Saturn/main.h': menu_header}
 
     def cases(self, mode, devices):
@@ -59,6 +61,9 @@ class MenuSaveOwnerTests(MCUSaveTest):
 
     def test_full_keys_holes_duplicate_missing_and_final_slot(self):
         self.cases('lookup', (0,))
+
+    def test_mirrored_io_keeps_whole_archive_admission_and_partial_failure_rules(self):
+        self.cases('ram', (0, 1))
 
     def test_slot_lookup_preserves_bounds_when_either_read_fails(self):
         self.cases('lookup-fault', (0,))

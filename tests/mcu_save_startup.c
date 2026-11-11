@@ -19,6 +19,13 @@ static u8 test_scratch[65536], test_shared[0x23000];
 #define SAVINFO_ADDR ((uintptr_t)test_shared)
 static u32 test_save_sysinfo[1024] __attribute__((unused));
 #define TEST_SAVE_SYSINFO_ADDR ((uintptr_t)test_save_sysinfo)
+#define TEST_SATURN_SMEMS_HDR 0x020b4000u
+#ifndef SS_CTRL
+#define SS_CTRL 0xb000u
+#endif
+#ifndef FILE_TEST_POINTER
+#define FILE_TEST_POINTER(address) ((void *)(address))
+#endif
 #define printk(...) ((void)0)
 static void (*before_open)(FIL *, const TCHAR *, BYTE);
 static unsigned media_checks, media_restarts;
