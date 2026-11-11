@@ -1890,3 +1890,12 @@ The Saturn was left untouched.
    The menu links 80,820 code/data and 9,244 BSS bytes. Physical wait time
    and drive recovery remain unqualified.
    [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#exit-cd-waits-on-terminal-drive-states)
+
+2. **VDP1 game patch order — published**
+   [`9cd3b4b`](https://github.com/papsg/SAROO/commit/9cd3b4b87f73f1f605898c07fda1fd194719e7db).
+   Adapted from paps-g `74bee684`. The parent erases Croc and configured
+   writes and passes five controls. Seven whole-VRAM methods pass both
+   profiles, including Ultraman takeover and KOF95. Ten adjacent ROM and
+   BIOS handoff methods pass. The menu links 80,852 code/data and 9,244 BSS
+   bytes. Physical game rendering remains unqualified.
+   [Sega and upstream citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-vdp1-writes-during-game-launch)
