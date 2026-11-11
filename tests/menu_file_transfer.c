@@ -47,6 +47,14 @@ static u32 host_bus_address(void *p)
 }
 #define SS_CMD (*command_register())
 #define SS_ARG mcu_arg
+/* Cache behavior has its own fixture. This one checks the FatFs transfer. */
+static volatile u32 purge_dummy __attribute__((unused));
+static volatile u8 ccr_dummy __attribute__((unused));
+#define REG32(address) (*((void)(address), &purge_dummy))
+#define REG8(address) (*((void)(address), &ccr_dummy))
+#define cache_sr_read() 0u
+#define cache_sr_write(value) ((void)(value))
+#define cache_control_read(address) ((void)(address), 0u)
 #include "menu-file.inc"
 
 static FILE *disk;

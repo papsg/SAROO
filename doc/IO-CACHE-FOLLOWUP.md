@@ -23,3 +23,30 @@ header fixtures. Repeat with `SAROO_FIRMWARE_SAVE_PROFILE=release` for
 O2. Set `SAROO_MCU_SAVE_DIR` to the older checkout's
 `Firm_MCU/Saturn` directory to rerun the baseline. These are host
 parser and firmware link checks.
+
+## Invalidate direct file-read cache lines
+
+The MCU writes cartridge RAM directly. The calling SH-2 can keep old data
+or instructions for those addresses in its write-through cache. The menu
+now purges the returned range after a successful direct read. On a read
+error or an invalid reply count it purges the bounded request because the
+MCU may already have changed part of it. Both cartridge address aliases
+purge the same physical lines. The existing file APIs and bounce copies
+retain their behavior. [Hitachi SH7604 Hardware Manual, §§8.4.6–8.4.7,
+printed p. 224](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=240) ·
+[§§8.5.2–8.5.5, printed pp. 227–229](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=243).
+
+Reads covering at most 256 lines use aligned associative purges. Larger
+reads disable the cache before purging and restore its control and the
+CPU's interrupt state afterward. Compiler barriers keep the shared request
+and data accesses on the intended sides of the command boundary.
+
+Adapted from paps-g's `8078e501`. The baseline fails 48 stale-line cases.
+The port passes all 415 cache cases plus the coupled FatFs and BIN checks.
+Run `make -C tests check-file-transfer check-menu-binary`. Set
+`SAROO_FILE_PROFILE=release` for the O2 transfer checks. Set
+`SAROO_MENU_CACHE_SOURCE` to the preceding `Firm_Saturn/main.c` to
+repeat the baseline completion controls. The menu links 79,668 code/data
+bytes (+80) with the same BSS and 488,770-byte image size. The host model
+covers the calling CPU. Physical instruction fetch, interrupt timing,
+and ownership on the other SH-2 remain unqualified.

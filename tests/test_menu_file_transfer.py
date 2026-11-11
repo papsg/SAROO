@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from mcu_save_support import make_fat32
 from test_file_transfer import extract_command_source
+from test_menu_file_cache import host_cache_operations
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,7 @@ class MenuFileTransferTests(unittest.TestCase):
         start=raw.index(b'static u32 file_capacity(') if b'static u32 file_capacity(' in raw else raw.index(b'int read_file (')
         end=raw.index(b'/**********************************************************/',start);words=raw.index(b'u32 BE32(')
         code=raw[words:raw.index(b'/**********************************************************/',words)]+raw[start:end]
+        code=host_cache_operations(code)
         for mask in (b'0x1fffffff',b'0x0fffffff'):
             code=code.replace(b'(u32)buf & '+mask,b'host_bus_address(buf)')
         code=code.replace(b'file_capacity((u32)buf, 0)',b'file_capacity(host_bus_address(buf), 0)')
@@ -50,7 +52,7 @@ class MenuFileTransferTests(unittest.TestCase):
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
             blob=(ROOT/'Firm_MCU/FatFS'/name).read_bytes();(fatfs/name).write_bytes(blob);inputs['FatFS/'+name]=blob
-        for name in ('menu_file_transfer.c','test_menu_file_transfer.py','test_file_transfer.py','mcu_save_support.py'):
+        for name in ('menu_file_transfer.c','test_menu_file_transfer.py','test_file_transfer.py','test_menu_file_cache.py','mcu_save_support.py'):
             blob=(ROOT/'tests'/name).read_bytes();(cls.target/name).write_bytes(blob);inputs['tests/'+name]=blob
         for name,blob in inputs.items():
             path=cls.target/'inputs'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(blob)

@@ -556,6 +556,31 @@ static u32 file_capacity(u32 address, int binary)
     return 0;
 }
 
+/* The SH7604 has no external-write snooping. Invalidate after the MCU
+   finishes, including a possibly modified prefix on an error reply. */
+static void file_cache_purge(u32 address, u32 size)
+{
+    u32 end = address + size;
+    if (!size) return;
+    address &= ~15u;
+    if (end - address > 4096) {
+        /* Bound large reads by the 4 KiB cache, not by the file size.
+           Disable before CP; preserve all mode bits and the caller's SR. */
+        u32 sr;
+        __asm__ volatile ("stc sr,%0" : "=r" (sr) :: "memory");
+        __asm__ volatile ("ldc %0,sr" :: "r" (sr | 0xf0u) : "memory", "t");
+        u8 mode = REG8(0xfffffe92u);
+        REG8(0xfffffe92u) = mode & ~1u;
+        REG8(0xfffffe92u) = (mode & ~1u) | 0x10u;
+        REG8(0xfffffe92u) = mode;
+        __asm__ volatile ("ldc %0,sr" :: "r" (sr) : "memory", "t");
+    } else {
+        for (; address < end; address += 16)
+            REG32(address | 0x40000000u) = 0;
+    }
+    __asm__ volatile ("" ::: "memory");
+}
+
 /* The caller owns size bytes at buf; this helper also bounds the shared hop. */
 static int file_command(char *name, int offset, u32 size, void *buf, int writing)
 {
@@ -576,15 +601,21 @@ static int file_command(char *name, int offset, u32 size, void *buf, int writing
     LE32W((void*)(TMPBUFF_ADDR+0x08), address);
     memcpy((void*)(TMPBUFF_ADDR+0x10), name, length+1);
     if (writing && !direct && size) memcpy((void*)(TMPBUFF_ADDR+0x100), buf, size);
+    /* Publish ordinary request/payload stores before the MMIO command. */
+    __asm__ volatile ("" ::: "memory");
     SS_ARG = 0;
     SS_CMD = writing ? SSCMD_FILEWR : SSCMD_FILERD;
     while (SS_CMD);
+    /* Consume shared response/data only after external completion. */
+    __asm__ volatile ("" ::: "memory");
     int result = (signed short)SS_ARG;
-    if (result < 0) return result;
     u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
-    if (count > size) return -19;
-    if (!writing && !direct && count) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), count);
-    return count;
+    if (result >= 0) result = count > size ? -19 : (int)count;
+    if (!writing) {
+        if (direct) file_cache_purge(address, result < 0 ? size : (u32)result);
+        else if (result > 0) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), result);
+    }
+    return result;
 }
 
 int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity)
