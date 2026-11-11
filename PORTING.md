@@ -1393,3 +1393,18 @@ ELF and 488,770-byte image match the baseline. Physical SD throughput,
 menu pacing and hardware playback remain unqualified. The private
 HEAD, status, refs and stashes match the initial snapshot. The Saturn
 was left untouched.
+
+## FatFs write safety and SD initialization
+
+1. **MCU-FS-002 pending file sync — published**
+   [`669edd8`](https://github.com/papsg/SAROO/commit/669edd85ccdfa44806be1bc96f2141f69a85b401).
+   Adapted from paps-g `1816d52c`. Baseline `3f02379` drops pending sync
+   in eight FAT32/exFAT cases; two clean controls pass. A failed sync or
+   close now retains the handle and pending changes. All ten scenarios
+   and the prior FatFs geometry/seek checks pass with ASan/UBSan and O2,
+   including complete files after remount. The rejected directory write
+   exercises the current production path. The injected CTRL_SYNC error
+   exercises the FatFs disk contract.
+   The GNU MCU link binds 56 public and 85 dependency inputs, with 62,156
+   load bytes, 3,380 bytes of ITCM margin, 60,176 bytes of static DTCM and
+   a 112-byte direct sync frame. [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-fs-002--keep-a-failed-sync-pending)
