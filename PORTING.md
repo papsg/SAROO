@@ -1506,3 +1506,15 @@ snapshot. The Saturn was left untouched.
    methods pass. The GNU App remains 62,412 bytes and the direct write
    frame remains 56 bytes. Physical SD durability remains unqualified.
    [FatFs references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-fs-004--keep-completed-writes-pending-after-an-abort)
+5. **MCU-SD-005/006 SD identity and completed initialization — published**
+   [`9b68a9a`](https://github.com/papsg/SAROO/commit/9b68a9a1f14e9605f6b79c05c002d3fc931a4719).
+   Adapted from paps-g `613efd17` on the transfer-recovery checkpoint.
+   The address remains local until all required commands succeed. The
+   existing filesystem mutex and the disk I/O semaphore now cover automatic
+   reidentification. Baseline fails 35 identity, three startup and two
+   handoff cases. All 40 identity, 25 transfer, seven new disk-lock cases
+   and 13 disc/save methods pass both profiles. Both ownership omissions
+   fail their compiled controls. The GNU App adds 208 bytes to 62,620,
+   with 2,916 bytes of ITCM margin and 60,184 bytes of static DTCM.
+   Physical card replacement and fault recovery remain unqualified.
+   [Source, CMSIS reference and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-sd-005-and-mcu-sd-006--bind-sector-access-to-an-initialized-card)
