@@ -1838,3 +1838,13 @@ left untouched.
    links 80,756 code/data and 9,244 BSS bytes. Physical transfers and
    Kaitei Daisensou music remain unqualified.
    [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#bound-cd-transfers-and-preserve-failures)
+
+5. **CD startup admission — published**
+   [`23be646`](https://github.com/papsg/SAROO/commit/23be646fe08246381743da35a908462f0f7f9e73).
+   Adapted from the production loader portion of paps-g `56980390`.
+   The parent fails four of six startup methods and passes both
+   healthy controls. All 28 CD methods pass ASan/UBSan and O2,
+   covering 90 failed boot combinations and 36 observed media
+   transitions. The menu links 80,772 code/data and 9,244 BSS bytes.
+   Physical BIOS and drive transitions remain unqualified.
+   [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#stop-cd-startup-after-failed-initialization)
