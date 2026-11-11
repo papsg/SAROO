@@ -1899,3 +1899,12 @@ The Saturn was left untouched.
    BIOS handoff methods pass. The menu links 80,852 code/data and 9,244 BSS
    bytes. Physical game rendering remains unqualified.
    [Sega and upstream citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-vdp1-writes-during-game-launch)
+
+3. **DataEnd readiness ownership — published**
+   [`51fa0c1`](https://github.com/papsg/SAROO/commit/51fa0c12bfb355c51309f811b7d527485cc99ecb).
+   Adapted from paps-g `3d10ea73`. The parent fails three methods,
+   including late DRDY during a timed-out cleanup. The successful-count
+   control passes on both. All 38 CD methods pass ASan/UBSan and O2.
+   The menu retains 80,852 code/data and 9,244 BSS bytes. Physical CD
+   interrupt timing remains unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-readiness-when-dataend-fails)
