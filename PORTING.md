@@ -1593,3 +1593,21 @@ The Saturn was left untouched.
    load is unchanged and BSS grows four bytes. Both legacy modes work
    in the host model. Physical reset and session recovery remain open.
    [Original FPGA logic, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#acknowledge-completed-saves-explicitly)
+
+### Firmware reliability final verification
+
+All five checkpoints are on public main as six commits ending at `fa89104`.
+The standard suite passed 601 Python methods across 53 groups, 18 Rust
+checks and the native language check. The Windows-only CD+G fixture was
+skipped on macOS. The menu and GNU App rebuilt from the committed source
+match the verified menu image and both ELFs byte for byte.
+
+The GNU App load is 62,940 bytes with 2,596 bytes of ITCM margin and
+60,232 bytes of static DTCM. The menu links 79,588 code/data and 9,236 BSS
+bytes and retains the 488,770-byte image. The public FPGA 05 timer and
+save register simulations pass. Physical SD recovery, game launch, and
+timing and reset behavior across hardware variants remain unqualified.
+
+Publication review covered the source, fixtures, attribution, commit
+metadata and ledger. The private HEAD, refs, stashes and status match the
+initial read-only snapshot. The Saturn was left untouched.
