@@ -1808,3 +1808,13 @@ left untouched.
    to 63,212 bytes, with 2,324 bytes of ITCM margin. Physical report timing
    and multisession behavior remain unqualified.
    [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#read-subcode-safely-after-a-drive-stop)
+
+2. **CD query and authentication failures — published**
+   [`e411cc4`](https://github.com/papsg/SAROO/commit/e411cc44342373228a0e2ac73926f43a0f191fe6).
+   Adapted from paps-g `544f2b10`. The parent fails four new methods
+   and passes the successful decoding control. All 13 query and CD
+   player methods pass ASan/UBSan and O2, including 3,072 successful
+   decodes and first-error cleanup precedence. The linked menu is
+   80,452 bytes with unchanged BSS and padded image size. Physical
+   authentication and wait timing remain unqualified.
+   [Sega reference, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#propagate-cd-query-and-authentication-failures)
