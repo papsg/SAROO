@@ -18,6 +18,17 @@ static volatile uint16_t command_value, argument;
 #include "protocol.inc"
 static uint16_t file_ack;
 static uint16_t archive_ack __attribute__((unused));
+static uint16_t ram_control = 0xb000u, initial_ram_control;
+#define SS_CTRL ram_control
+
+/* Independent model of the Saturn-side FPGA address decoder. */
+static u32 memory_offset(u32 address)
+{
+    u32 offset = address & 0xffffffu;
+    if ((ram_control & 0x3000u) == 0x2000u && (offset >> 22) == 1)
+        offset &= ~0x180000u;
+    return offset;
+}
 
 static void flush_ccr(void)
 {
@@ -78,14 +89,16 @@ static volatile uint16_t *command_register(void)
         /* Outcome 10 leaves the request count, while 11 writes a short prefix. */
         changed=outcome==10 || outcome==2 ? 0 : outcome==1 ? 17 :
                 outcome==11 || (outcome>=3 && outcome<=6) ? 13 : requested;
+        if(changed>requested)changed=requested;
         if((command_value & ~SSCMD_SAVE_ACK)==SSCMD_FILERD)
-            for(u32 i=0;i<changed;i++)memory[physical-0x02000000+i]=pattern(physical+i);
+            for(u32 i=0;i<changed;i++)memory[memory_offset(physical+i)]=pattern(physical+i);
         else { assert(outcome==7);changed=0; }
         store_le((void*)(TMPBUFF_ADDR+4),outcome==3 ? 0 : outcome==4 ? requested+1 :
                  outcome==5 ? 0x80000000u : outcome==6 ? 0xffffffffu :
                  outcome==7 || outcome==10 ? requested : changed);
         argument=outcome==3 ? (uint16_t)-1 :
                  outcome>=10 ? 0 : command_value & SSCMD_SAVE_ACK;
+        if(outcome==12)ram_control=0x0100; /* Reset changes the FPGA mode before reply. */
         command_value=0;finished=1;
     }
     return &command_value;
@@ -103,15 +116,17 @@ static u8 cache_read(u32 address, int instruction)
         if(!(control & (instruction?2:4))) {
             unsigned w=3;
             lines[w][e].address=address&~15u;lines[w][e].valid=1;
-            memcpy(lines[w][e].bytes,memory+((address&~15u)-0x02000000),16);
+            memcpy(lines[w][e].bytes,memory+memory_offset(address&~15u),16);
         }
     }
-    return memory[address-0x02000000];
+    return memory[memory_offset(address)];
 }
 
 int main(int argc,char **argv)
 {
-    assert(argc==7);int mode=atoi(argv[1]);cpu_address=strtoul(argv[2],NULL,0);
+    assert(argc==8);
+    initial_ram_control=ram_control=(uint16_t)strtoul(argv[7],NULL,0);
+    int mode=atoi(argv[1]);cpu_address=strtoul(argv[2],NULL,0);
     file_ack=atoi(argv[6]);assert(!file_ack || file_ack==SSCMD_SAVE_ACK);
     physical=cpu_address & 0x1fffffff;requested=strtoul(argv[3],NULL,0);
     initial_control=control=(u8)strtoul(argv[4],NULL,0);outcome=atoi(argv[5]);
@@ -120,23 +135,25 @@ int main(int argc,char **argv)
     memset(memory,0x55,sizeof(memory));
     for(unsigned w=0;w<4;w++)for(unsigned e=0;e<64;e++) {
         u32 tag=(w==0 ? physical : w==1 ? physical+requested : w==2 ? 0x02200000u : 0x02c00000u);
+        if((ram_control&0x3000)==0x2000 && physical>=0x02400000 && physical<0x02800000)
+            tag=(physical&~0x180000u)+w*0x80000u;
         tag=(tag&~1023u)+16*e;if(tag>=0x03000000)tag-=1024;
         lines[w][e].address=tag;lines[w][e].valid=1;
-        memcpy(lines[w][e].bytes,memory+(tag-0x02000000),16);
+        memcpy(lines[w][e].bytes,memory+memory_offset(tag),16);
     }
     if(mode==1) {
         expected_commands=outcome<8 || outcome>=10;
         int result=file_command(outcome==8?NULL:"/cache.bin",0,
                                 outcome==9 ? 0x1000000u : requested,
                                 memory+(physical-0x02000000),outcome==7);
-        int expected=outcome==1 ? 17 : outcome==2 ? 0 : outcome==3 || outcome>=10 ? -1 :
+        int expected=outcome==1 ? (int)changed : outcome==2 ? 0 : outcome==3 || outcome>=10 ? -1 :
                      outcome>=4 && outcome<=6 ? -19 : outcome>=8 ? -19 : (int)requested;
         if(result!=expected)
             fprintf(stderr,"cache outcome %d returned %d, expected %d\n",outcome,result,expected);
         assert(result==expected && commands==(unsigned)expected_commands);
     } else {
         changed=requested;
-        for(u32 i=0;i<changed;i++)memory[physical-0x02000000+i]=pattern(physical+i);
+        for(u32 i=0;i<changed;i++)memory[memory_offset(physical+i)]=pattern(physical+i);
         test_cache_purge(physical,requested);
     }
     flush_ccr();
@@ -154,8 +171,20 @@ int main(int argc,char **argv)
     if(mode==2)assert(line_writes<=256 && ccr_writes<=3);
     if(!invalidated)assert(!line_writes && !whole_purges);
     for(u32 i=0;i<changed && i<8192;i++) {
-        assert(cache_read(physical+i,0)==memory[physical-0x02000000+i]);
-        assert(cache_read(physical+i,1)==memory[physical-0x02000000+i]);
+        assert(cache_read(physical+i,0)==memory[memory_offset(physical+i)]);
+        assert(cache_read(physical+i,1)==memory[memory_offset(physical+i)]);
+    }
+    if((ram_control&0x3000)==0x2000 && physical>=0x02400000 && physical<0x02800000 &&
+       changed<=0x80000u-(physical&0x7ffffu))
+        for(unsigned alias=0;alias<4;alias++)for(u32 i=0;i<changed && i<8192;i++) {
+            u32 address=(physical&~0x180000u)+alias*0x80000u+i;
+            assert(cache_read(address,0)==memory[memory_offset(address)]);
+            assert(cache_read(address,1)==memory[memory_offset(address)]);
+        }
+    if(mode==1 && invalidated && invalidated+(physical&15u)<=4096) {
+        int mirrored=(initial_ram_control&0x3000)==0x2000 && physical<0x02800000 &&
+                     physical+invalidated>0x02400000;
+        assert(whole_purges==(unsigned)mirrored);
     }
     puts("Actual file completion and cache invalidation checks pass.");
     return 0;

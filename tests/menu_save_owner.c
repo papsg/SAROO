@@ -59,6 +59,7 @@ static volatile u32 *purge_register(u32 address)
 #define cache_sr_read() 0u
 #define cache_sr_write(value) ((void)(value))
 #define cache_control_read(address) ((void)(address), ++purges, 0u)
+#define SS_CTRL 0xb000u
 #include "menu-owner.inc"
 #define SYSINFO_ADDR TEST_SAVE_SYSINFO_ADDR
 static void latch(void)

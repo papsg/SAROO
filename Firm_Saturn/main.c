@@ -560,13 +560,13 @@ static u32 file_capacity(u32 address, int binary)
 
 /* The SH7604 has no external-write snooping. Invalidate after the MCU
    finishes, including a possibly modified prefix on an error reply. */
-static void file_cache_purge(u32 address, u32 size)
+static void file_cache_purge(u32 address, u32 size, int mirrored)
 {
     u32 end = address + size;
     if (!size) return;
     address &= ~15u;
-    if (end - address > 4096) {
-        /* Bound large reads by the 4 KiB cache, not by the file size.
+    if (mirrored || end - address > 4096) {
+        /* One purge covers RAM mirrors and bounds work on large reads.
            Disable before CP; preserve all mode bits and the caller's SR. */
         u32 sr;
         __asm__ volatile ("stc sr,%0" : "=r" (sr) :: "memory");
@@ -603,6 +603,10 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
     u32 end = direct ? (address < 0x020c7000 ? 0x020c7000 : 0x03000000) : 0x02400000;
     if ((address >= 0x020c7000 && address < 0x020c7100) || size > end - address)
         return -19;
+    /* Capture the mapping before the command. Reset can change SS_CTRL. */
+    if (!writing && direct && address < 0x02800000u &&
+        address + size > 0x02400000u && (SS_CTRL & 0x3000u) == 0x2000u)
+        direct = 2; /* Direct read that may write FPGA RAM mirrors. */
     LE32W((void*)(TMPBUFF_ADDR+0x00), offset);
     LE32W((void*)(TMPBUFF_ADDR+0x04), size);
     LE32W((void*)(TMPBUFF_ADDR+0x08), address);
@@ -625,8 +629,13 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
         else result = (count > size || (archive && count != size)) ? -19 : (int)count;
     }
     if (!writing) {
-        if (direct) file_cache_purge(address, result < 0 ? size : (u32)result);
-        else if (result > 0) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), result);
+        if (direct) {
+            u32 affected = result < 0 ? size : (u32)result;
+            int mirrored = direct == 2 && address + affected > 0x02400000u;
+            file_cache_purge(address, affected, mirrored);
+        } else if (result > 0) {
+            memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), result);
+        }
     }
     return result;
 }

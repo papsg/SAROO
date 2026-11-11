@@ -120,3 +120,30 @@ checks pass in a 37-method ASan/UBSan run and a 47-method O2 run.
 The GNU App load adds 48 bytes to 63,232. Static DTCM stays at
 60,216 bytes. The protocol is an MCU capability for callers that
 negotiate it. Physical command timing remains unmeasured.
+
+## Invalidate every expansion RAM cache mirror
+
+In 1 MiB mode the FPGA clears Saturn address bits 20:19 in the
+0x02400000–0x027fffff window. The SH-2 can hold separate cache tags
+for addresses that reach the same bytes. The menu captures the
+mapping before publishing a direct read because reset can change
+the control register before the reply. A successful read uses
+the returned extent. A failed or unconfirmed read uses the
+bounded requested extent. If the extent touches the mirrored
+window, one existing whole-cache purge invalidates the aliases
+and restores the caller's cache controls and interrupt mask.
+Short reads that stop before the window keep their range purge.
+[Original FPGA mode selection, lines 490–494](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L490-L494) ·
+[Original address folding, lines 694–706](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L694-L706) ·
+[Hitachi SH7604 Hardware Manual, §§8.4.6–8.4.7, printed p. 224](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=240) ·
+[§§8.5.2–8.5.5, printed pp. 227–229](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=243).
+
+Adapted from the menu correction in paps-g's `855d0092`. The exact
+parent fails 75 mirrored success, failure and reset cases. A
+post-completion mode check fails all 15 reset cases. The port passes
+583 cache scenarios and 24 focused methods under ASan/UBSan and O2.
+Run `python3 -m unittest discover -s tests -p test_menu_file_cache.py -v`
+and repeat with `SAROO_FILE_PROFILE=release`. The fixture can select
+the parent through `SAROO_MENU_CACHE_SOURCE`. The linked menu
+adds 64 bytes to 80,308, with 9,240 bytes of BSS and the same
+488,770-byte image size. Physical purge and bus timing remain unmeasured.

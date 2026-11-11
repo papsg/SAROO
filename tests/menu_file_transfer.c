@@ -72,6 +72,7 @@ static volatile u8 ccr_dummy __attribute__((unused));
 #define cache_sr_read() 0u
 #define cache_sr_write(value) ((void)(value))
 #define cache_control_read(address) ((void)(address), 0u)
+#define SS_CTRL 0xb000u
 #include "menu-file.inc"
 
 static FILE *disk;
