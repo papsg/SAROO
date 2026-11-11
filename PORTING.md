@@ -1536,3 +1536,13 @@ The public changes add no runtime log formats. Source, fixtures, commit
 metadata and ledger additions passed secret and private-data review.
 The private HEAD, status, refs and stashes match the starting snapshot.
 The Saturn was left untouched.
+
+## Firmware reliability follow-up
+
+1. **Shared CD command filter lookup — published**
+   [`87e3a83`](https://github.com/papsg/SAROO/commit/87e3a8375402f05549aaf3fb8d624ee39b489fa9).
+   Adapted from paps-g `31326563`. All 156 CD command and buffer methods
+   pass on the public baseline and the port. The port passes ASan/UBSan
+   and O2. The GNU App load falls 80 bytes to 62,540 and static DTCM is
+   unchanged. Physical command timing remains unmeasured.
+   [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#shared-cd-command-filter-lookup)
