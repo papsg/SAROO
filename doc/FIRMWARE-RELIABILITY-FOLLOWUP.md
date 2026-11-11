@@ -110,3 +110,35 @@ preflight cases across the ordinary and CD player launch paths. Set
 run `python3 -m unittest discover -s tests -p test_menu_rom.py -v` to
 reproduce 21 unsafe baseline handoffs and three valid full reads.
 Actual game launch and the individual upstream reports remain unqualified.
+
+## Use the FPGA counter for menu timing
+
+The old SH-2 free-running timer reports only one pending overflow. After
+two unobserved wraps, the original getter reports 65,569 instead of
+131,105 ticks in the host control. Sleep helpers also reset the shared
+epoch. The menu now uses the cartridge's existing 32-bit, nominal 1 MHz
+counter. It initializes the epoch on menu entry and retains it during
+ordinary navigation. Long sleeps advance one cumulative deadline in
+bounded steps. The controller path converts the previous nominal
+90-tick admission delay to 432 microseconds and keeps its late-field
+and timeout checks. [Sega SMPC User's Manual, ST-169-R1, Command Issue
+Timing, printed p. 17](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=27).
+
+Adapted from paps-g's `fb67ac50` together with its correction in
+`86e2af4e`. The high/low/high read retries on a carry. The low word must
+use the CS2 two-transfer alias `0x2581700e`. The earlier
+`0x2589700e` access returned the high word on the tested Saturn.
+Historical testing with the corrected normal menu restored controller
+navigation after Reset. The port uses the original FPGA registers.
+[Sega SCU final specifications, ST-210, precaution 32, printed p. 9](https://antime.kapsi.fi/sega/files/ST-210-110194.pdf#page=13) ·
+[CS2 transfer measurements](https://segaxtreme.net/threads/a-bus-cs2.24940/).
+
+Run `make -C tests check-menu-safety check-peripherals`. The host runs
+cover the corrected access, rollover, full-width sleeps, and controller
+and menu deadlines. With Icarus Verilog they also verify the existing
+FPGA 05 divider and register decode. Changing only `SS_TIMER_LO` back
+to `0x2589700e` in a test copy of `Firm_Saturn` fails four counter cases.
+Use `SAROO_MENU_TIMER_DIR` to select that copy for `test_menu_timer.py`.
+The standard menu links 79,588 code/data bytes (-96) and 9,232 BSS bytes
+(-4). The image remains 488,770 bytes. Physical timing across regions
+and cartridge revisions remains unqualified.

@@ -10,13 +10,13 @@ static u32 controller_sample(u32 observed, int held)
 {
     const Packet pressed = {{0xf1, 2, 0xfb, 0xff, 0xf0}, 5, 0x0400};
     const Packet released = {{0xf1, 2, 0xff, 0xff, 0xf0}, 5, 0};
-    clock_now = observed - 190u;
+    clock_now = observed - EXPECTED_PAD_ADMISSION - 100u;
     TVSTAT = 0;
     assert(conio_getc() == 0);
     TVSTAT = 8;
     SF = 0;
     unsigned before = reads;
-    begin();                         /* 90 ticks of admission */
+    begin();
     page(held ? &pressed : &released, 0, 0xc0); /* another 100 ticks */
     assert(clock_now == observed);
     u32 result = conio_getc();
@@ -29,7 +29,7 @@ static u32 controller_sample(u32 observed, int held)
 
 static u32 reference_ticks(unsigned ms)
 {
-    return (uint64_t)ms * 208496 / 1000;
+    return (uint64_t)ms * HZ / 1000;
 }
 
 int main(int argc, char **argv)
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
     unsigned late = (unsigned)strtoul(argv[2], NULL, 10);
     assert(index < 5 && late < 2);
     u32 start = origins[index] + 1000;
-    reset(start - 190u);
+    reset(start - EXPECTED_PAD_ADMISSION - 100u);
     for (unsigned i = 0; i < 3; ++i)
         assert(controller_sample(start + i * 1000, 1) == 0);
     start += 3000;

@@ -10,6 +10,17 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def pad_timing(main):
+    if b"const int HZ = 1000000;" in main and b"SS_TIMER_LO" in main:
+        rate, admission, timeout = 1000000, 432, 100000
+    elif b"const int HZ = 208496;" in main:
+        rate, admission, timeout = 208496, 90, 20849
+    else:
+        raise AssertionError("Unknown menu clock")
+    return (f"#define HZ {rate}\n#define EXPECTED_PAD_ADMISSION {admission}\n"
+            f"#define EXPECTED_PAD_TIMEOUT {timeout}\n").encode()
+
+
 class MenuPeripheralTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -24,16 +35,15 @@ class MenuPeripheralTests(unittest.TestCase):
         body = main[start:end]
         cls.legacy = b"(u8*)0x20100021" in body
         body = body.replace(b"(u8*)0x20100021", b"(u8*)test_oreg")
-        header = (ROOT / "Firm_Saturn/main.h").read_bytes()
+        paired_header = Path(override).with_name("main.h") if override else None
+        header = (paired_header if paired_header and paired_header.is_file()
+                  else ROOT / "Firm_Saturn/main.h").read_bytes()
         helper = re.search(rb"static inline int timer_reached[^\n]*\n\{.*?\n\}", header, re.S)
         macros = b"\n".join(line for line in header.splitlines() if line.startswith(b"#define MS2TICK"))
-        prefix = (b"#define PAD_TEST_LEGACY " + str(int(cls.legacy)).encode() +
-                  b"\n#define EXPECTED_PAD_TIMEOUT 20849\n#define EXPECTED_PAD_ADMISSION 90\n#define HZ 208496\n")
-        code = prefix+macros+b"\n"+(helper[0] if helper else b"")+b"\n"+body
+        prefix = f"#define PAD_TEST_LEGACY {int(cls.legacy)}\n".encode() + pad_timing(main)
+        code = prefix + macros + b"\n" + (helper[0] if helper else b"") + b"\n" + body
         (directory / "pad.inc").write_bytes(code)
         compiler = os.environ.get("CC", "cc")
-        if not re.search(rb"const int HZ = 208496;", main):
-            raise AssertionError("reassess the fixture's inherited FRT clock model")
         flags = ["-std=c99", "-O2", "-g", "-Wall", "-Wextra", "-fno-strict-aliasing",
                  "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", str(directory)]
         cls.binary = directory / "peripherals"
@@ -47,20 +57,6 @@ class MenuPeripheralTests(unittest.TestCase):
             cls.writeonly = directory / "peripherals-writeonly"
             subprocess.run([compiler, *flags, "-Werror", str(ROOT / "tests/test_menu_peripherals_writeonly.c"),
                             "-o", str(cls.writeonly)], check=True, timeout=30)
-        declaration = re.search(rb"static (?:u32|int) timer_base;", main)
-        clock = re.search(rb"u32 get_timer\(void\)\n\{.*?\n\}", main[declaration.start():], re.S)
-        timer = (b"#include <assert.h>\n#include <stdint.h>\n#include <stdio.h>\n"
-                 b"typedef uint32_t u32; static volatile unsigned char FTCSR,FRCH,FRCL;\n"+
-                 declaration[0]+b"\n"+clock[0]+b"\nint main(void) {\n"
-                 b"timer_base=0x7fff0000u; FTCSR=2; FRCH=0x12; FRCL=0x34;\n"
-                 b"assert(get_timer()==0x80001234u && FTCSR==0);\n"
-                 b"timer_base=0xffff0000u; FTCSR=2;\n"
-                 b"assert(get_timer()==0x1234u && FTCSR==0);\n"
-                 b"puts(\"counter: pass\"); return 0; }\n")
-        (directory / "timer.c").write_bytes(timer)
-        cls.counter = directory / "counter"
-        subprocess.run([compiler, *flags, "-Werror", str(directory / "timer.c"),
-                        "-o", str(cls.counter)], check=True, timeout=30)
 
     def invoke(self, case):
         result = subprocess.run([str(self.binary), case], capture_output=True, text=True,
@@ -79,12 +75,6 @@ class MenuPeripheralTests(unittest.TestCase):
     def test_vblank_admission_and_stale_field(self): self.invoke("timing")
     def test_interrupt_lifecycle(self): self.invoke("lifecycle")
     def test_existing_export_after_binary_handoff(self): self.invoke("guest")
-
-    def test_actual_counter_signed_boundary_and_wrap(self):
-        result = subprocess.run([str(self.counter)], capture_output=True, text=True,
-                                env=dict(os.environ, UBSAN_OPTIONS="halt_on_error=1"), timeout=5)
-        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        self.assertIn("counter: pass", result.stdout)
 
     def test_write_only_cont_break_and_handoffs(self):
         if self.legacy:

@@ -277,10 +277,10 @@ int pad_read(void)
 			return -1;
 		}
 		if(!pad_vblank_seen){
-			/* The inherited FRT counts system_clock/128. Ninety ticks
-			 * exceed 300 us at both documented 26.8/28.6 MHz CPU modes. */
-			pad_vblank_seen = 1;
-			pad_vblank_ready = get_timer() + 90;
+            /* Preserve the previous nominal 90-tick delay in microseconds.
+             * Sega ST-169-R1 requires at least 300 us after VBlank-in. */
+            pad_vblank_seen = 1;
+            pad_vblank_ready = get_timer() + 432;
 			return -1;
 		}
 		u32 now = get_timer();
@@ -385,89 +385,52 @@ void stm32_puts(char *str)
 
 /**********************************************************/
 
-#if 0
+/* The FPGA divides its 100 MHz clock by 100. Read both halves without
+ * combining words from opposite sides of a carry. */
 const int HZ = 1000000;
 
 void reset_timer(void)
 {
-	SS_TIMER = 0;
+    /* A write to either half clears the counter. Do this only at entry. */
+    SS_TIMER_HI = 0;
 }
 
 u32 get_timer(void)
 {
-	return SS_TIMER;
+    u32 high, low;
+    do {
+        high = SS_TIMER_HI;
+        low = SS_TIMER_LO;
+    } while (high != SS_TIMER_HI);
+    return (high << 16) | low;
 }
 
-#else
-
-const int HZ = 208496; /* for NTSC: 320 lines mode */
-static u32 timer_base;
-
-void reset_timer(void)
+static void sleep_units(u32 count, u32 scale)
 {
-	timer_base = 0;
-	TCR = 0x02;
-	FRCH = 0;
-	FRCL = 0;
-	/* A prior overflow does not belong to the new timer epoch. */
-	FTCSR &= (u8)~0x02;
+    u32 now = get_timer();
+    u32 deadline = now;
+    if (!count)
+        count = 1;
+    do {
+        /* Each deadline advances by at most one billion ticks. */
+        u32 chunk = count > 1000000 ? 1000000 : count;
+        count -= chunk;
+        deadline += chunk * scale;
+        while (!timer_reached(now, deadline))
+            now = get_timer();
+    } while (count);
 }
-
-u32 get_timer(void)
-{
-	int s1, s2, th, tl;
-	while(1){
-		s1 = FTCSR&0x02;
-		th = FRCH;
-		tl = FRCL;
-		s2 = FTCSR&0x02;
-		if(s1==s2)
-			break;
-	}
-
-	th = (th<<8) | tl;
-	if(s2&0x02){
-		timer_base += 65536;
-		FTCSR = 0;
-	}
-
-	return timer_base+th;
-}
-
-#endif
-
 
 void usleep(u32 us)
 {
-	u32 now, end;
-
-	if(us==0)
-		us = 1;
-	end = (us*HZ)/1000000;
-
-	reset_timer();
-	while(1){
-		now = get_timer();
-		if(now>=end)
-			break;
-	}
+    sleep_units(us, 1);
 }
 
 void msleep(u32 ms)
 {
-	u32 now, end;
-
-	if(ms==0)
-		ms = 1;
-	end = (ms*HZ)/1000;
-
-	reset_timer();
-	while(1){
-		now = get_timer();
-		if(now>=end)
-			break;
-	}
+    sleep_units(ms, 1000);
 }
+
 
 /**********************************************************/
 
@@ -1299,7 +1262,6 @@ void menu_init(void)
 	sprintf(ver_buf, "MCU:%06x        SS:%06x        FPGA:%02x", mcu_ver&0xffffff, get_build_date()&0xffffff, SS_VER&0xff);
 	main_menu.version = ver_buf;
 
-	reset_timer();
 	menu_run(&main_menu);
 }
 
@@ -1356,6 +1318,7 @@ void detect_bios_type(void)
 
 int _main(void)
 {
+	reset_timer();
 	// EFSDL/EFPAN for CDDA
 	*(u8* )(0x25b00217) =  0xc0;
 	*(u8* )(0x25b00237) =  0xc0;

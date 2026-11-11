@@ -19,17 +19,18 @@ class MenuTimerTests(unittest.TestCase):
         main, header, conio = (inputs[name] for name in ('main.c', 'main.h', 'conio.c'))
         build = ROOT / 'tests/build/menu-timer'; build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
-        start = main.index(b'const int HZ = 208496;')
-        clock = main[start:main.index(b'\n#endif', start)]
+        start = main.index(b'const int HZ = 1000000;')
+        clock = main[start:main.index(b'\n/********', start)]
         start = header.index(b'static inline int timer_reached')
         helper = header[start:header.index(b'\n}', start)+2]
         macros = b'\n'.join(line for line in header.splitlines()
-                            if line.startswith(b'#define MS2TICK'))
+                            if line.startswith((b'#define MS2TICK', b'#define TICK2',
+                                                b'#define SS_TIMER_HI', b'#define SS_TIMER_LO')))
         pad = conio.index(b'#define PAD_REPEAT_TIME')
         pad_end = conio.index(b'/******************************************************************************/', pad)
         scroll = conio.index(b'#define SEL_IDLE_TIME')
         scroll_end = conio.index(b'static void sel_init', scroll)
-        (cls.target / 'timer.inc').write_bytes(macros+b'\n'+clock+b'\n'+helper+b'\n'+conio[pad:pad_end]+conio[scroll:scroll_end])
+        (cls.target / 'timer.inc').write_bytes(macros+b'\n'+helper+b'\n'+clock+b'\n'+conio[pad:pad_end]+conio[scroll:scroll_end])
         for name in ('menu_timer.c', 'test_menu_timer.py'): inputs[name] = (ROOT / 'tests' / name).read_bytes()
         for name, data in inputs.items(): (cls.target / name).write_bytes(data)
         (cls.target / 'inputs.json').write_text(json.dumps({name: hashlib.sha256(data).hexdigest()
@@ -62,12 +63,19 @@ class MenuTimerTests(unittest.TestCase):
         for value in range(3):
             with self.subTest(value=value): self.invoke('clock', value)
 
-    def test_reset_discards_stale_overflow_without_clearing_other_flags(self):
+    def test_startup_clears_counter_via_the_high_word(self):
         self.invoke('reset')
 
-    def test_register_reference_order_and_mid_read_rollover_retry(self): self.invoke('order')
+    def test_split_read_retries_after_a_low_word_carry(self):
+        self.invoke('order')
 
-    def test_reset_without_overflow_preserves_unrelated_status(self): self.invoke('reset-clear')
+    def test_zero_and_full_width_sleeps_preserve_elapsed_time(self):
+        for value in range(5):
+            with self.subTest(value=value):
+                self.invoke('sleep', value)
+
+    def test_conversions_handle_full_width_and_evaluate_once(self):
+        self.invoke('conversion')
 
     def test_repeat_delay_rate_release_and_missing_samples(self):
         for value in range(5):

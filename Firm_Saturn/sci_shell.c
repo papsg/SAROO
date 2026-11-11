@@ -311,12 +311,12 @@ void sci_shell(void)
 			// 测试延时计数. 大概9000000是1秒.
 			// Historical approximate loop count; this is not a calibrated timer.
 			int cnt = arg[0];
-			reset_timer();
+			u32 start = get_timer();
 			while(cnt){
 				cnt -= 1;
 			}
-			int tm = get_timer();
-			printk("counter: %d  timer: %d\n", arg[0], tm);
+			u32 tm = get_timer() - start;
+			printk("counter: %d  timer: %u\n", arg[0], tm);
 		}
 		CMD(mmt) {
 			int mem_test(int size);

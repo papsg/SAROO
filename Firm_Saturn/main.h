@@ -24,7 +24,10 @@ typedef unsigned long long u64;
 #define SS_VER   REG16(0x25807002)
 #define SS_CTRL  REG16(0x25897004)
 #define SS_STAT  REG16(0x25897008)
-#define SS_TIMER REG32(0x2589700c)
+/* CS2's two-transfer alias is required to reach the low half. */
+#define SS_TIMER    REG32(0x2581700c)
+#define SS_TIMER_HI REG16(0x2589700c)
+#define SS_TIMER_LO REG16(0x2581700e)
 #define SS_CMD   REG16(0x25897010)
 #define SS_ARG   REG16(0x25897014)
 
@@ -220,9 +223,9 @@ extern int bios_type;
 
 extern const int HZ;
 
-#define MS2TICK(ms)  ( (ms) * HZ / 1000)
-#define TICK2MS(tk)  ( (tk) * 1000 / HZ)
-#define TICK2US(tk)  ( (tk) * 1000*1000 / HZ)
+#define MS2TICK(ms)  ((ms) * 1000u)
+#define TICK2MS(tk)  ((tk) / 1000u)
+#define TICK2US(tk)  (tk)
 
 void reset_timer(void);
 u32 get_timer(void);

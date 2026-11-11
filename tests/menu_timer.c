@@ -7,24 +7,40 @@
 
 typedef uint8_t u8;
 typedef uint32_t u32;
-enum { STATUS, HIGH, LOW, CONTROL };
-static volatile u8 timer_storage[4];
-static unsigned trace_enabled, trace_count, rollover_injected;
-static unsigned trace[32];
-static int inject_rollover;
-static volatile u8 *timer_register(unsigned reg)
+/* CPU-side model of the measured CS2 aliases. The single-transfer
+ * low address repeats the high half. Each production REG16 is retained. */
+enum { TIMER_HIGH = 0x2589700c, TIMER_LOW = 0x2581700e, TIMER_WRONG_LOW = 0x2589700e };
+static u32 counter, step;
+static unsigned reads, inject_carry, trace_count;
+static u32 trace[6];
+static int trace_enabled, reset_write;
+static volatile uint16_t sampled_word, reset_value;
+
+static volatile uint16_t *timer_register(u32 address)
 {
-    if (trace_enabled) { assert(trace_count<32);trace[trace_count++]=reg; }
-    if (inject_rollover && !rollover_injected && reg==LOW) {
-        timer_storage[HIGH]=0;timer_storage[LOW]=0x21;timer_storage[STATUS]=2;
-        rollover_injected=1;
+    if (reset_write) {
+        assert(address == TIMER_HIGH);
+        return &reset_value;
     }
-    return timer_storage+reg;
+    if (trace_enabled) {
+        assert(trace_count < sizeof trace / sizeof(*trace));
+        trace[trace_count++] = address;
+    }
+    assert(address == TIMER_HIGH || address == TIMER_LOW || address == TIMER_WRONG_LOW);
+    sampled_word = address == TIMER_LOW ? (uint16_t)counter : (uint16_t)(counter >> 16);
+    if (inject_carry && (address & 2)) {
+        counter++;
+        inject_carry = 0;
+    }
+    if (step) {
+        assert((reads % 3 == 1) == ((address & 2) != 0));
+        if (++reads % 3 == 0)
+            counter += step;
+    }
+    return &sampled_word;
 }
-#define FTCSR (*timer_register(STATUS))
-#define FRCH (*timer_register(HIGH))
-#define FRCL (*timer_register(LOW))
-#define TCR (*timer_register(CONTROL))
+
+#define REG16(address) (*timer_register(address))
 static volatile uint16_t TVSTAT;
 static int pad_value;
 static int pad_read(void) { return pad_value; }
@@ -40,63 +56,67 @@ static void put_select_item(int index) { assert(index == 1); ++uploads; }
 #include "timer.inc"
 
 static const u32 origins[] = {0, 0x7fff0000u, 0xffff0000u, 0x80010000u, 0x12345678u};
-static u32 ticks(unsigned ms) { return (uint64_t)ms * 208496 / 1000; }
+static u32 ticks(unsigned ms) { return ms * 1000u; }
 
-/* Set hardware state to an independently chosen 32-bit observation. */
-static void at(u32 time)
-{
-    timer_base = time & 0xffff0000u;
-    FRCH = (time >> 8) & 255;
-    FRCL = time & 255;
-    FTCSR = 0;
-}
+static void at(u32 time) { counter = time; }
 
 static void clock_case(unsigned which)
 {
-    const u32 base[] = {0x7fff0000u, 0xffff0000u, 0x00010000u};
-    const u32 expected[] = {0x80000021u, 0x00000021u, 0x00020021u};
-    timer_base = base[which];
-    FRCH = 0; FRCL = 0x21; FTCSR = 2;
-    assert(get_timer() == expected[which]);
-    assert((FTCSR & 2) == 0);
-    assert(get_timer() == expected[which]);
-    FRCL = 0x22;
-    assert(get_timer() == expected[which] + 1);
+    static const u32 times[] = {0x80000021u, 0xfffffffdu, 0x00020021u};
+    at(times[which]);
+    assert(get_timer() == times[which]);
+    at(times[which] + 3);
+    assert(get_timer() == times[which] + 3);
 }
 
 static void reset_case(void)
 {
-    timer_base = 0x120000;
-    FRCH = 0xff; FRCL = 0xfe; FTCSR = 0x8e;
+    reset_value = 0xffff;
+    reset_write = 1;
     reset_timer();
-    assert(FTCSR == 0x8c);
-    assert(TCR == 2 && FRCH == 0 && FRCL == 0);
-    assert(get_timer() == 0);
-    FRCL = 4;
-    assert(get_timer() == 4);
+    assert(reset_value == 0);
 }
 
 static void reference_order_case(void)
 {
-    timer_base=0x10000;timer_storage[HIGH]=0xff;timer_storage[LOW]=0xfe;
-    timer_storage[STATUS]=0;trace_count=0;trace_enabled=1;inject_rollover=1;
-    assert(get_timer()==0x20021 && rollover_injected);
-    trace_enabled=0;inject_rollover=0;
-    const unsigned expected[]={STATUS,HIGH,LOW,STATUS,STATUS,HIGH,LOW,STATUS,STATUS};
-    assert(trace_count==sizeof(expected)/sizeof(expected[0]));
-    assert(!memcmp(trace,expected,sizeof expected) && !timer_storage[STATUS]);
-    timer_base=0x120000;timer_storage[HIGH]=0xff;timer_storage[LOW]=0xfe;
-    timer_storage[STATUS]=0x8e;trace_count=0;trace_enabled=1;
-    reset_timer();trace_enabled=0;
-    const unsigned reset_order[]={CONTROL,HIGH,LOW,STATUS};
-    assert(trace_count==4 && !memcmp(trace,reset_order,sizeof reset_order));
-    assert(timer_storage[STATUS]==0x8c && !get_timer());
+    at(0x1234ffff);
+    trace_enabled = 1;
+    inject_carry = 1;
+    assert(get_timer() == 0x12350000 && !inject_carry);
+    const u32 expected[] = {TIMER_HIGH, TIMER_LOW, TIMER_HIGH,
+                            TIMER_HIGH, TIMER_LOW, TIMER_HIGH};
+    assert(trace_count == sizeof expected / sizeof(*expected));
+    assert(!memcmp(trace, expected, sizeof expected));
 }
-static void no_overflow_reset_case(void)
+
+static void sleep_case(unsigned which)
 {
-    timer_base=0x120000;timer_storage[HIGH]=0xff;timer_storage[LOW]=0xfe;
-    timer_storage[STATUS]=0x8d;reset_timer();
-    assert(timer_storage[STATUS]==0x8d && !get_timer());
+    static const struct { u32 origin, count, scale, advance; } cases[] = {
+        {0x7ffffffc, 0, 1, 7},
+        {0xfffffff0, 0, 1000, 17},
+        {0xffffffff, 100, 1, 19},
+        {0xfffffffe, UINT32_MAX, 1, 1000017},
+        {0x80000100, UINT32_MAX, 1000, 900000019},
+    };
+    at(cases[which].origin);
+    step = cases[which].advance;
+    if (cases[which].scale == 1)
+        usleep(cases[which].count);
+    else
+        msleep(cases[which].count);
+    assert(reads >= 6 && reads % 3 == 0);
+    uint64_t elapsed = ((uint64_t)reads / 3 - 1) * step;
+    uint64_t duration = (uint64_t)(cases[which].count ? cases[which].count : 1)
+                        * cases[which].scale;
+    assert(elapsed >= duration && elapsed < duration + step);
+}
+
+static void conversion_case(void)
+{
+    u32 value = UINT32_MAX;
+    assert(TICK2MS(value) == 4294967u);
+    assert(TICK2US(value++) == UINT32_MAX && value == 0);
+    assert(MS2TICK(value++) == 0 && value == 1);
 }
 
 static u32 sample(u32 time, int buttons)
@@ -168,7 +188,8 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "clock")) { assert(value < 3); clock_case(value); }
     else if (!strcmp(argv[1], "reset")) reset_case();
     else if (!strcmp(argv[1], "order")) reference_order_case();
-    else if (!strcmp(argv[1], "reset-clear")) no_overflow_reset_case();
+    else if (!strcmp(argv[1], "sleep")) sleep_case(value);
+    else if (!strcmp(argv[1], "conversion")) conversion_case();
     else if (!strcmp(argv[1], "repeat")) repeat_case(origins[value], 0);
     else if (!strcmp(argv[1], "late")) repeat_case(origins[value], 1);
     else if (!strcmp(argv[1], "scroll")) scroll_case(origins[value]);

@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
+from test_menu_peripherals import pad_timing
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -18,16 +20,13 @@ class MenuRepeatTransportTests(unittest.TestCase):
         inputs = {name: (source / name).read_bytes()
                   for name in ('main.c', 'main.h', 'conio.c')}
         main, header, conio = (inputs[name] for name in ('main.c', 'main.h', 'conio.c'))
-        if b'const int HZ = 208496;' not in main:
-            raise AssertionError('reassess the inherited FRT tick model')
         start = main.index(b'static volatile int pad_state;')
         end = main.index(b'\n}', main.index(b'void pad_init(', start)) + 3
         helper = header.index(b'static inline int timer_reached')
         helper_end = header.index(b'\n}', helper) + 2
         macros = b'\n'.join(line for line in header.splitlines()
                             if line.startswith(b'#define MS2TICK'))
-        prefix = (b'#define PAD_TEST_LEGACY 0\n#define EXPECTED_PAD_TIMEOUT 20849\n'
-                  b'#define EXPECTED_PAD_ADMISSION 90\n#define HZ 208496\n')
+        prefix = b'#define PAD_TEST_LEGACY 0\n' + pad_timing(main)
         build = ROOT / 'tests/build/menu-repeat-transport'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
@@ -38,7 +37,7 @@ class MenuRepeatTransportTests(unittest.TestCase):
         end = conio.index(b'/******************************************************************************/', start)
         (cls.target / 'repeat.inc').write_bytes(conio[start:end])
         for name in ('menu_repeat_transport.c', 'test_menu_repeat_transport.py',
-                     'test_menu_peripherals.c'):
+                     'test_menu_peripherals.c', 'test_menu_peripherals.py'):
             inputs[name] = (ROOT / 'tests' / name).read_bytes()
         for name, data in inputs.items():
             (cls.target / name).write_bytes(data)

@@ -1004,7 +1004,7 @@ void cdc_read_test(void)
 	cdc_play_fad(0, 0xd5, 0x40);
 
 	printk("\n\nwait play end ...\n");
-	reset_timer();
+	u32 start = get_timer();
 	while(1){
 		hirq = HIRQ;
 		cr1 = CR1;
@@ -1013,9 +1013,9 @@ void cdc_read_test(void)
 		cr4 = CR4;
 		if(old_hirq!=hirq || old_cr1!=cr1 || old_cr4!=cr4){
 			cdc_get_buffer_size(&total, &npart, &free);
-			printk("%08x: HIRQ=%04x CR1=%04x CR4=%04x free=%d\n", get_timer(), hirq, cr1, cr4, free);
+			printk("%08x: HIRQ=%04x CR1=%04x CR4=%04x free=%d\n", get_timer() - start, hirq, cr1, cr4, free);
 			log_p += sprintf(logbuf+log_p, "%08x: HIRQ=%04x CR1=%04x CR4=%04x free=%d\n",
-							get_timer(), hirq, cr1, cr4, free);
+							get_timer() - start, hirq, cr1, cr4, free);
 		}
 		old_hirq = hirq;
 		old_cr1 = cr1;
@@ -1076,18 +1076,20 @@ void cd_cmd(void)
 
 void cd_speed_test(void)
 {
-	int cmd_cnt, tm;
+	int cmd_cnt;
+	u32 tm;
 	//int status;
 
 	cmd_cnt = 0;
 
-	reset_timer();
+	u32 start = get_timer();
 
 	while(1){
 		//cdc_get_status(&status);
-		cdc_get_numsector(0, &tm);
+		int nsec;
+		cdc_get_numsector(0, &nsec);
 		cmd_cnt += 1;
-		tm = get_timer();
+		tm = get_timer() - start;
 		if(tm>=HZ)
 			break;
 	}
