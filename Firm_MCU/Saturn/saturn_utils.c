@@ -213,24 +213,41 @@ char *get_category(int id)
     return (char*)(SYSINFO_ADDR + 0x0e80 + id * 32);
 }
 
-static const struct {
-    const char *name;
-    void *value;
-    unsigned char type;
-} config_args[] = {
-    {"lang_id", &lang_id, CFG_GLOBAL | CFG_DEC},
-    {"debug", &debug_flags, CFG_GLOBAL | CFG_HEX},
-    {"log_mask", &log_mask, CFG_GLOBAL | CFG_HEX},
-    {"auto_update", &auto_update, CFG_GLOBAL | CFG_DEC},
-    {"category", NULL, CFG_GLOBAL | CFG_CATEGORY},
-    {"sector_delay", &sector_delay, CFG_DEC},
-    {"play_delay", &play_delay, CFG_DEC},
-    {"pend_delay", &pend_delay, CFG_DEC},
-    {"exmem_", NULL, 0},
-    {"M_", NULL, 0},
-    {"multi_disc", &mdisc_str, CFG_MULTI},
-    {"sort_mode", &sort_mode, CFG_GLOBAL | CFG_DEC},
+/* One definition supplies exact names, lengths and offsets at compile time.
+ * The byte-only name pool needs no runtime construction or pointer table. */
+#define CONFIG_ARGS(X) \
+    X(lang_id, &lang_id, CFG_GLOBAL | CFG_DEC) \
+    X(debug, &debug_flags, CFG_GLOBAL | CFG_HEX) \
+    X(log_mask, &log_mask, CFG_GLOBAL | CFG_HEX) \
+    X(auto_update, &auto_update, CFG_GLOBAL | CFG_DEC) \
+    X(category, NULL, CFG_GLOBAL | CFG_CATEGORY) \
+    X(sector_delay, &sector_delay, CFG_DEC) \
+    X(play_delay, &play_delay, CFG_DEC) \
+    X(pend_delay, &pend_delay, CFG_DEC) \
+    X(exmem_, NULL, 0) \
+    X(M_, NULL, 0) \
+    X(multi_disc, &mdisc_str, CFG_MULTI) \
+    X(sort_mode, &sort_mode, CFG_GLOBAL | CFG_DEC)
+#define CONFIG_NAME(name, value, type) char name[sizeof(#name)];
+static const struct ConfigNames {
+    CONFIG_ARGS(CONFIG_NAME)
+} config_names = {
+#undef CONFIG_NAME
+#define CONFIG_NAME(name, value, type) #name,
+    CONFIG_ARGS(CONFIG_NAME)
 };
+#undef CONFIG_NAME
+_Static_assert(sizeof(config_names) <= 256, "Configuration name offsets must fit");
+#define CONFIG_ARG(name, value, type) \
+    {value, __builtin_offsetof(struct ConfigNames, name), sizeof(#name) - 1, type},
+static const struct {
+    void *value;
+    unsigned char name, length, type;
+} config_args[] = {
+    CONFIG_ARGS(CONFIG_ARG)
+};
+#undef CONFIG_ARG
+#undef CONFIG_ARGS
 
 static char *config_space(char *p)
 {
@@ -256,8 +273,11 @@ static int config_number(char **text, u32 *value, unsigned base)
         unsigned digit = (unsigned char)*p - '0';
         if (digit > 9) digit = ((unsigned char)*p | 32) - 'a' + 10;
         if (digit >= base) break;
-        if (result > (0xffffffffu - digit) / base) return 0;
-        result = result * base + digit;
+        /* Retain the carry before narrowing; the MCU can use UMLAL instead
+         * of dividing on every digit. The accepted value is still 32 bits. */
+        unsigned long long next = (unsigned long long)result * base + digit;
+        if (next > 0xffffffffu) return 0;
+        result = next;
         count++;
         p++;
     }
@@ -291,10 +311,10 @@ static int config_walk(char *buffer, unsigned size, char *gameid, int apply)
         } else if (section) {
             for (unsigned i = 0; i < sizeof(config_args) / sizeof(config_args[0]); i++) {
                 unsigned type = config_args[i].type;
-                unsigned len = strlen(config_args[i].name);
+                unsigned len = config_args[i].length;
                 if ((type & CFG_GLOBAL) && (gameid || section != 1)) continue;
                 type &= ~CFG_GLOBAL;
-                if (strncmp(line, config_args[i].name, len)) continue;
+                if (strncmp(line, (const char*)&config_names + config_args[i].name, len)) continue;
                 p = line + len;
                 if (type && *p && *p != '=' && *p != ' ' && *p != '\t') continue;
                 p = config_space(p);

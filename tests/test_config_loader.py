@@ -299,5 +299,51 @@ class ConfigLoaderTests(unittest.TestCase):
                         self.assertEqual(out['values'][index], value)
 
 
+    def test_setting_names_require_complete_case_sensitive_tokens(self):
+        names = ('lang_id', 'debug', 'log_mask', 'auto_update', 'category',
+                 'sector_delay', 'play_delay', 'pend_delay', 'multi_disc', 'sort_mode')
+        for name in names:
+            # Truncated names and longer near-matches remain unknown options;
+            # none may alias a setting or validate its deliberately bad value.
+            variants = [name[:n] for n in range(1, len(name))]
+            variants += [name.upper(), name + '_extra', name + '\u00e9']
+            for variant in variants:
+                with self.subTest(key=variant):
+                    out = self.invoke('[global]\n' + variant + '=invalid')
+                    self.assertEqual(out['result'], 0)
+                    self.assertEqual(out['values'], [41, 42, 43, 44, 0, 0, 0, 48])
+                    self.assertEqual(out['multi'], b'')
+                    self.assertEqual(out['category_num'], 0)
+                    self.assertEqual(out['system'][256:260], b'\0' * 4)
+                    self.assertEqual(out['system'][0xe80:], b'\xa5' * 384)
+
+    def test_scalar_last_assignment_wins_without_cross_setting_aliases(self):
+        names = ('lang_id', 'debug', 'log_mask', 'auto_update',
+                 'sector_delay', 'play_delay', 'pend_delay', 'sort_mode')
+        values = [101, 102, 103, 104, 105, 106, 107, 108]
+        lines = ['[global]'] + [name + '=0' for name in names]
+        for index in reversed(range(len(names))):
+            value = format(values[index], 'x') if names[index] in ('debug', 'log_mask') else str(values[index])
+            lines.append(names[index] + '\t= ' + value + ' ; retained')
+        out = self.invoke('\n'.join(lines))
+        self.assertEqual(out['result'], 0)
+        self.assertEqual(out['values'], values)
+
+    def test_leading_zeroes_preserve_numeric_limits_and_overflow_rejection(self):
+        for key, base, limit, index in (('debug', 16, 0xffffffff, 1),
+                                         ('play_delay', 10, 0x7fffffff, 5)):
+            for value in (0, limit - 1, limit, limit + 1, 0x100000001):
+                for zeroes in (0, 1, 32, 1000):
+                    with self.subTest(key=key, value=value, zeroes=zeroes):
+                        digits = format(value, 'x') if base == 16 else str(value)
+                        prefix = '+0X' if base == 16 else '+'
+                        text = '[global]\nsector_delay=12\n' + key + '=' + prefix + '0' * zeroes + digits
+                        if value > limit:
+                            self.rejected(text)
+                        else:
+                            out = self.invoke(text)
+                            self.assertEqual(out['result'], 0)
+                            self.assertEqual(out['values'][index], value)
+
 if __name__ == '__main__':
     unittest.main()
