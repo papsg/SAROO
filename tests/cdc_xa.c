@@ -1,6 +1,20 @@
 /* Selected MCU-CDC-013: paps-g 05852d90; independent iterative/64-bit oracles. */
+static void file_hirq(unsigned mask);
 #include "directory-harness.inc"
 #include "advance.inc"
+
+static unsigned file_events, efls_writes, pend_writes, bful_writes;
+static int pend_delay;
+static void hw_delay(int delay) { (void)delay; }
+static void file_hirq(unsigned mask)
+{
+    hirq = mask;
+    file_events |= mask;
+    efls_writes += !!(mask & HIRQ_EFLS);
+    pend_writes += !!(mask & HIRQ_PEND);
+    bful_writes += !!(mask & HIRQ_BFUL);
+}
+#include "file-end.inc"
 
 static unsigned xa_record(u8 *p,unsigned name,unsigned su,unsigned flags,unsigned xa_flags,unsigned fn)
 {
@@ -182,12 +196,94 @@ static void stale_setup(void)
     cdb.cr3=255;cdb.cr4=65535;assert(!change_dir());
     assert(cdb.play_type==PLAYTYPE_DIR && !cdb.max_repeat && !cdb.file_gap);
 }
+
+/* File completion controls adapted from paps-g a506699c. */
+static void run_file(unsigned sel, unsigned unit, unsigned gap, int pressure, int aborting)
+{
+    const unsigned total = 7;
+    const unsigned occupied = (sel + 1) % MAX_SELECTORS;
+    assert(start_file(unit, gap, total * 2048, 0, 100, sel, 37));
+    if (pressure) {
+        for (unsigned i = 0; i < MAX_BLOCKS; ++i) {
+            BLOCK *b = alloc_block();
+            assert(b);
+            b->size = 2048;
+            append_block(&cdb.part[occupied], b);
+        }
+    }
+    file_events = efls_writes = pend_writes = bful_writes = 0;
+    for (unsigned i = 0; i < total; ++i) {
+        unsigned fad = 250 + i + (unit ? i / unit * gap : 0);
+        memset(sector, 0x30 + i, sizeof sector);
+        BLOCK w = {.data = sector, .size = 2048, .fad = fad, .fn = 37};
+        cdb.play_track = &directory_track;
+        assert(cdb.fad == fad && cdb.play_type == PLAYTYPE_FILE);
+        if (pressure) {
+            for (unsigned retry = 0; retry < 3; ++retry) {
+                u32 boundary = cdb.file_next_unit, old_fad = cdb.old_fad;
+                cdb.status = STAT_PLAY;
+                cdb.play_wait = 0;
+                assert(dispatch(w) == 0);
+                assert((file_events & (HIRQ_EFLS | HIRQ_PEND)) == 0);
+                assert(bful_writes == i * 3 + retry + 1);
+                assert(cdb.status == STAT_PAUSE && cdb.play_wait);
+                assert(cdb.fad == fad && cdb.old_fad == old_fad);
+                assert(cdb.file_next_unit == boundary && cdb.play_type == PLAYTYPE_FILE);
+                assert(!cdb.part[sel].numblocks && cdb.part[occupied].numblocks == MAX_BLOCKS);
+                check_owners();
+            }
+            if (aborting) {
+                unsigned before = cdb.block_free;
+                file_pause_hook = complete_pause;
+                assert(abort_file() == HIRQ_EFLS && !cdb.play_type);
+                assert(cdb.block_free == before && cdb.part[occupied].numblocks == MAX_BLOCKS);
+                check_owners();
+                return;
+            }
+            remove_block(&cdb.part[occupied], 0);
+        }
+        cdb.status = STAT_PLAY;
+        cdb.play_wait = 0;
+        assert(dispatch(w) == 1 && !(file_events & (HIRQ_EFLS | HIRQ_PEND)));
+        BLOCK *b = cdb.part[sel].tail;
+        assert(b && b->fad == fad && !memcmp(b->data + 24, sector, sizeof sector));
+        advance();
+        if (pressure) {
+            unlink_block(&cdb.part[sel], NULL, b);
+            append_block(&cdb.part[occupied], b);
+        }
+        check_owners();
+        assert(finish_step() == 0);
+        if (i + 1 < total) assert(!efls_writes && !pend_writes && cdb.play_type == PLAYTYPE_FILE);
+    }
+    assert(efls_writes == 1 && pend_writes == 1);
+    assert(!cdb.play_type && cdb.status == STAT_PAUSE && !cdb.play_track);
+    assert(cdb.fad == cdb.play_fad_end);
+    assert(finish_step() == 0 && efls_writes == 1);
+    check_owners();
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);switch(atoi(argv[1])){
     case 0:metadata_bounds();break;case 1:attributes();break;case 2:directory_flags();break;case 3:geometry();break;
     case 4:wide_extents();break;case 5:file_number();break;case 6:full_pool();break;case 7:pause_snapshot();break;
     case 8:stale_setup();break;
+    case 9:
+        for (unsigned sel = 0; sel < MAX_SELECTORS; ++sel) run_file(sel, 0, 0, 1, 0);
+        break;
+    case 10:
+        for (unsigned unit = 1; unit <= 7; ++unit) {
+            for (unsigned gap = 0; gap < 256; ++gap)
+                run_file((unit + gap) % MAX_SELECTORS, unit, gap, 1, 0);
+        }
+        break;
+    case 11:
+        for (unsigned sel = 0; sel < MAX_SELECTORS; ++sel) run_file(sel, 2, 3, 1, 1);
+        break;
+    case 12:
+        for (unsigned sel = 0; sel < MAX_SELECTORS; ++sel) run_file(sel, 0, 0, 0, 0);
+        break;
     default:abort();}
     puts("pass: actual XA metadata, routing and worker geometry");return 0;
 }

@@ -121,3 +121,27 @@ launch admission, player state and BIOS error propagation. Both methods
 pass under ASan/UBSan and O2. The SH-2 menu links 80,836 code/data bytes
 (−16) and 9,244 BSS bytes. Physical disc loading and the causes of the
 reported launch failures remain unqualified.
+
+## Keep a file read pending while the CD buffer is full
+
+Adapted from paps-g `a506699c` (MCU-CDC-020). A full CD buffer pauses
+the file reader with the current sector and interleave position still
+pending. The pause now signals buffer full through BFUL. The reader can
+resume when capacity returns, and EFLS still reports completion and
+explicit abort. Sega distinguishes a buffer-full pause from the end of
+file access.
+[CD Communication Interface User's Manual, §§6.2.2(4–5) and 6.2.3(4)](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p06_10.htm).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_cdc_xa.py -k file_end -v
+SAROO_CDC_PROFILE=release python3 -B -m unittest discover -s tests -p test_cdc_xa.py -v
+```
+
+Set `SAROO_CDC_XA_MAIN` to the parent's `saturn_main.c` to reproduce
+the early EFLS in three methods. The no-pressure control passes on both
+versions. The port checks 1,864 scenarios with 38,208 full-buffer pauses
+across all selectors, interleaved files, normal completion and abort.
+The harness records each worker event write and models the retry boundary.
+The 168-method CD group and all 13 XA methods at O2 pass.
+The GNU MCU App loads 63,196 bytes (−16), with 2,340 bytes of ITCM space.
+Physical scheduling and game behavior remain unqualified.

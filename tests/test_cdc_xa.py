@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -28,6 +29,18 @@ class CDXATests(unittest.TestCase):
         raw=source.read_bytes();main=main_source.read_bytes()
         data=(ROOT/'tests/cdc_directory.c').read_bytes()
         (cls.target/'directory-harness.inc').write_bytes(data[:data.index(b'int main(')])
+        # A host word only holds the last write. Record each event issued by
+        # the worker so an EFLS write followed by PEND is still observable.
+        def observe_hirq(code):
+            return re.sub(rb'\bHIRQ\s*=\s*(HIRQ_\w+);', rb'file_hirq(\1);', code)
+
+        dispatch = cls.target / 'dispatch.inc'
+        dispatch.write_bytes(observe_hirq(dispatch.read_bytes()))
+        start = main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!')
+        end = main.index(b'\n\t\tset_peri_report();', start)
+        (cls.target / 'file-end.inc').write_bytes(
+            b'static int finish_step(void) {\n' + observe_hirq(main[start:end]) +
+            b'\nreturn 0;\n_restart_nowait: return 2;\n}\n')
         start=main.index(b'\t\t\tcdb.old_fad = cdb.fad;\n\t\t\tcdb.fad++;')
         end=main.index(b'\n\t\t}',start)
         (cls.target/'advance.inc').write_bytes(b'static void advance(void) {\n'+main[start:end]+b'\n}\n')
@@ -64,6 +77,10 @@ class CDXATests(unittest.TestCase):
     def test_full_pool_retries_preserve_unit_position(self):self.run_case(6)
     def test_full_metadata_snapshot_and_sector_playback_control(self):self.run_case(7)
     def test_contiguous_and_directory_setup_retire_old_repeat_and_cursor(self):self.run_case(8)
+    def test_file_end_follows_full_buffer_retries(self):self.run_case(9)
+    def test_file_end_preserves_interleaved_payload(self):self.run_case(10)
+    def test_file_end_on_abort_preserves_buffered_sectors(self):self.run_case(11)
+    def test_file_end_still_signals_without_buffer_pressure(self):self.run_case(12)
 
 
 if __name__=='__main__':unittest.main()

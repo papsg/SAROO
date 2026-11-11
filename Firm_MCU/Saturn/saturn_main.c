@@ -521,10 +521,8 @@ _restart_nowait:
 				}else if(retv==2){
 					SSLOG(_DTASK, "buffer full! wait ...\n");
 					// block缓存已满, 需要等待某个事件再继续
+					/* A buffer-full pause leaves file completion pending. */
 					HIRQ = HIRQ_BFUL;
-					if(cdb.play_type==PLAYTYPE_FILE){
-						HIRQ = HIRQ_EFLS;
-					}
 					cdb.status = STAT_PAUSE;
 					cdb.play_wait = 1;
 					goto _restart_wait;
