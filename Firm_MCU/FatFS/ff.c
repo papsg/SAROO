@@ -4176,10 +4176,7 @@ FRESULT f_sync (
 						fs->dirbuf[XDIR_ModTime10] = 0;
 						st_dword(fs->dirbuf + XDIR_AccTime, 0);
 						res = store_xdir(&dj);	/* Restore it to the directory */
-						if (res == FR_OK) {
-							res = sync_fs(fs);
-							fp->flag &= (BYTE)~FA_MODIFIED;
-						}
+						if (res == FR_OK) res = sync_fs(fs);
 					}
 					FREE_NAMBUF();
 				}
@@ -4196,9 +4193,10 @@ FRESULT f_sync (
 					st_word(dir + DIR_LstAccDate, 0);
 					fs->wflag = 1;
 					res = sync_fs(fs);					/* Restore it to the directory */
-					fp->flag &= (BYTE)~FA_MODIFIED;
 				}
 			}
+			/* Retain pending changes until synchronization succeeds. */
+			if (res == FR_OK) fp->flag &= (BYTE)~FA_MODIFIED;
 		}
 	}
 

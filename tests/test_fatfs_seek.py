@@ -1,4 +1,4 @@
-"""Actual FatFs geometry and wide/fragmented seek tests; never physical devices."""
+"""Actual FatFs geometry, seek and sync tests on generated host media."""
 # Adapted from paps-g 60d5df01; all compilation and media stay in public tests/build.
 import hashlib
 import json
@@ -68,6 +68,27 @@ class FatFsSeekTests(unittest.TestCase):
     def test_exfat_mount_rejects_unsafe_geometry_shifts(self):
         for value in (512, 8, 9, 16, 31, 32, 63, 127, 255, 272, 287, 288, 319, 383, 511):
             with self.subTest(value=value): self.invoke('mount', value)
+
+    def test_failed_directory_write_keeps_pending_sync(self):
+        for filesystem in ('fat32', 'exfat'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'sync-{filesystem}', 0)
+
+    def test_failed_device_sync_can_be_retried(self):
+        for filesystem in ('fat32', 'exfat'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'sync-{filesystem}', 1)
+
+    def test_failed_close_keeps_the_file_open_for_retry(self):
+        for filesystem in ('fat32', 'exfat'):
+            for value in (2, 3):
+                with self.subTest(filesystem=filesystem, value=value):
+                    self.invoke(f'sync-{filesystem}', value)
+
+    def test_clean_sync_issues_no_new_device_io(self):
+        for filesystem in ('fat32', 'exfat'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'sync-{filesystem}', 4)
 
 
 if __name__ == '__main__': unittest.main()

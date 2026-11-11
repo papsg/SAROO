@@ -9,7 +9,9 @@
 #include <pthread.h>
 static FILE *disk;
 static LBA_t sectors;
-static unsigned reads,writes;
+static unsigned reads,writes,syncs,failures;
+static LBA_t fault_sector;
+static int fail_write,fail_sync;
 static pthread_mutex_t mutex;
 int ff_mutex_create(int vol) { assert(!vol);return pthread_mutex_init(&mutex,NULL)==0; }
 void ff_mutex_delete(int vol) { assert(!vol);assert(!pthread_mutex_destroy(&mutex)); }
@@ -25,12 +27,23 @@ DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 {
     assert(!drive && count && sector+count<=sectors);writes++;
+    if (fail_write && fault_sector >= sector && fault_sector - sector < count) {
+        failures++;
+        return RES_ERROR;
+    }
     assert(!fseeko(disk,(off_t)sector*512,SEEK_SET));return fwrite(data,512,count,disk)==count?RES_OK:RES_ERROR;
 }
 DRESULT disk_ioctl(BYTE drive,BYTE cmd,void *out)
 {
     assert(!drive);
-    if(cmd==CTRL_SYNC)return fflush(disk)?RES_ERROR:RES_OK;
+    if (cmd == CTRL_SYNC) {
+        syncs++;
+        if (fail_sync) {
+            failures++;
+            return RES_ERROR;
+        }
+        return fflush(disk) ? RES_ERROR : RES_OK;
+    }
     if(cmd==GET_SECTOR_COUNT){*(LBA_t*)out=sectors;return RES_OK;}
     if(cmd==GET_BLOCK_SIZE){*(DWORD*)out=1;return RES_OK;}
     assert(0);return RES_PARERR;
@@ -62,9 +75,10 @@ static void comparison(void)
     }
     printf("64-bit cluster comparisons=%u\n",cases);
 }
-static void format(int fat32)
+static void format_volume(BYTE type, BYTE copies, DWORD cluster_bytes)
 {
-    BYTE work[32768];MKFS_PARM options={.fmt=(fat32?FM_FAT32:FM_EXFAT)|FM_SFD,.n_fat=1,.au_size=fat32?512:65536};
+    BYTE work[32768];
+    MKFS_PARM options = {.fmt = type | FM_SFD, .n_fat = copies, .au_size = cluster_bytes};
     assert(f_mkfs("0:",&options,work,sizeof(work))==FR_OK);
 }
 static BYTE pattern(unsigned offset) { return (offset*19u + (offset>>16)*71u)&255; }
@@ -150,14 +164,104 @@ static void mount_geometry(int value)
     assert(f_mount(NULL,"0:",0)==0);
     printf("mount geometry=%d result=%d\n",value,result);
 }
+
+static void check_clean_sync(FIL *file)
+{
+    unsigned old_writes = writes, old_syncs = syncs;
+    assert(f_sync(file) == FR_OK);
+    assert(writes == old_writes && syncs == old_syncs);
+}
+
+static void create_neighbor(const BYTE *data, UINT size)
+{
+    FIL file;
+    UINT count;
+    assert(f_open(&file, "/neighbor.bin", FA_CREATE_NEW | FA_WRITE) == FR_OK);
+    assert(f_write(&file, data, size, &count) == FR_OK && count == size);
+    assert(f_close(&file) == FR_OK);
+}
+
+static void verify_file(const char *name, const BYTE *expected, UINT size)
+{
+    FIL file;
+    BYTE data[1024];
+    UINT count;
+    assert(f_open(&file, name, FA_READ) == FR_OK && f_size(&file) == size);
+    for (UINT offset = 0; offset < size; offset += count) {
+        assert(f_read(&file, data, sizeof(data), &count) == FR_OK && count);
+        assert(count <= size - offset && !memcmp(data, expected + offset, count));
+    }
+    assert(f_close(&file) == FR_OK);
+}
+
+/* Adapted from paps-g 1816d52c. Exercise the public f_sync/f_close paths. */
+static void sync_file(int fat32, int value)
+{
+    enum { DIRECTORY, DEVICE, CLOSE_DIRECTORY, CLOSE_DEVICE, CLEAN };
+    assert(value >= DIRECTORY && value <= CLEAN);
+    format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+    FATFS fs;
+    FIL file;
+    UINT count;
+    BYTE payload[8192 + 1025], neighbor[2048];
+    for (unsigned i = 0; i < sizeof(payload); i++)
+        payload[i] = pattern(i + 7 * (i / 512));
+    memset(neighbor, 0xc9, sizeof(neighbor));
+    assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == (fat32 ? FS_FAT32 : FS_EXFAT));
+    create_neighbor(neighbor, sizeof(neighbor));
+    assert(f_open(&file, "/save.bin", FA_CREATE_NEW | FA_READ | FA_WRITE) == FR_OK);
+    assert(f_write(&file, payload, 8192, &count) == FR_OK && count == 8192);
+    assert(f_sync(&file) == FR_OK);
+    check_clean_sync(&file);
+    if (fat32) {
+        fault_sector = file.dir_sect;
+    } else {
+        DWORD cluster = file.obj.c_scl ? file.obj.c_scl : (DWORD)fs.dirbase;
+        fault_sector = fs.database + (cluster - 2) * fs.csize + file.obj.c_ofs / 512;
+    }
+    assert(f_write(&file, payload + 8192, 1025, &count) == FR_OK && count == 1025);
+    if (value != CLEAN) {
+        fail_write = value == DIRECTORY || value == CLOSE_DIRECTORY;
+        fail_sync = value == DEVICE || value == CLOSE_DEVICE;
+        int close = value == CLOSE_DIRECTORY || value == CLOSE_DEVICE;
+        assert(f_sync(&file) == FR_DISK_ERR && failures == 1 && file.obj.fs == &fs);
+        FRESULT result = close ? f_close(&file) : f_sync(&file);
+        if (result != FR_DISK_ERR || failures != 2 || file.obj.fs != &fs) {
+            fprintf(stderr, "Lost pending sync: result=%u, failures=%u, open=%d\n",
+                    (unsigned)result, failures, file.obj.fs == &fs);
+            abort();
+        }
+        fail_write = fail_sync = 0;
+    }
+    if (value == CLOSE_DIRECTORY || value == CLOSE_DEVICE) {
+        assert(f_close(&file) == FR_OK && !file.obj.fs);
+    } else {
+        assert(f_sync(&file) == FR_OK);
+        check_clean_sync(&file);
+        assert(f_close(&file) == FR_OK);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+    verify_file("/save.bin", payload, sizeof(payload));
+    verify_file("/neighbor.bin", neighbor, sizeof(neighbor));
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+    printf("sync fs=%u case=%d writes=%u syncs=%u failures=%u\n",
+           fs.fs_type, value, writes, syncs, failures);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
-    format(!strcmp(argv[2],"fragmented") && atoi(argv[3]));
-    if(!strcmp(argv[2],"seek"))seek_file();
-    else if(!strcmp(argv[2],"fragmented"))fragmented();
-    else {assert(!strcmp(argv[2],"mount"));mount_geometry(atoi(argv[3]));}
+    int value = atoi(argv[3]);
+    if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
+        sync_file(!strcmp(argv[2], "sync-fat32"), value);
+    } else {
+        int fat32 = !strcmp(argv[2], "fragmented") && value;
+        format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+        if (!strcmp(argv[2], "seek")) seek_file();
+        else if (!strcmp(argv[2], "fragmented")) fragmented();
+        else { assert(!strcmp(argv[2], "mount")); mount_geometry(value); }
+    }
     assert(!fclose(disk));return 0;
 }
