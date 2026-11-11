@@ -1,9 +1,11 @@
 /* Adapted from paps-g 1f90bc28; actual post-command caller gates only. */
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-static int result_arg, started, statuses, use_sys_load;
+static uint16_t result_arg;
+static int started, statuses, use_sys_load;
 #define SS_ARG result_arg
 #define SSCMD_LSAVE 10
 static int save_command(int command, int arg)
@@ -14,7 +16,11 @@ static int save_command(int command, int arg)
 #define TT(text) (text)
 static void my_cdplayer(void) { started++; }
 static void menu_error(void *menu, const char *text, int result)
-{ assert(!menu && text[0] && result == result_arg); statuses++; }
+{
+    int expected = result_arg < 0x8000 ? (int)result_arg : (int)result_arg - 0x10000;
+    assert(!menu && text[0] && result == expected);
+    statuses++;
+}
 static int optical_gate(void)
 {
 #include "optical-gate.inc"
