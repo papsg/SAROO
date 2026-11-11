@@ -1430,3 +1430,17 @@ was left untouched.
    3,364 ITCM bytes free, 60,176 bytes of static DTCM and a 16-byte
    command frame. Physical IRQ/DMA completion remains unqualified.
    [CMSIS, STM32, source and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-sd-003--reject-all-failed-command-waits)
+4. **MCU-SD-004 card-ready retry budget — published**
+   [`946ca0c`](https://github.com/papsg/SAROO/commit/946ca0ccead42ef8071c23e957fbfc5fdba742fb).
+   Adapted from paps-g `96c9dd85` after the command-wait guard. Measure two
+   seconds from the first ACMD41, counting later command latency with
+   wrap-safe arithmetic. Four baseline scenarios exhaust the fixture
+   guard; 21 initialization controls and the 43 command cases pass there.
+   All 68 pass under ASan/UBSan and O2, and under the 37 Hz model. The
+   wrong tick comparison, first-prefix charge, and fixed 200-tick budget
+   controls each fail two assertions. The GNU MCU loads 62,220 bytes
+   (+48), with 3,316 ITCM bytes free and 60,176 bytes of static DTCM.
+   The 40-byte direct identify frame and the menu ELF/image are unchanged.
+   The retry budget applies when commands return. Physical timing,
+   controller abort, and SD session recovery remain outside this checkpoint.
+   [SD/CMSIS/STM32 references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-sd-004--bound-card-ready-polling)
