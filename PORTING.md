@@ -1879,3 +1879,14 @@ count before reading those outputs. Physical CD timing, game music,
 media recovery and BIOS execution remain unqualified. The private
 HEAD, worktree, refs and stash match the initial read-only snapshot.
 The Saturn was left untouched.
+
+## CD events and game launch
+
+1. **Terminal CD waits — published**
+   [`6be7daa`](https://github.com/papsg/SAROO/commit/6be7daa428eb0664c365fb0a1bbb3d2bbbef8fb5).
+   Adapted from the production paths of paps-g `80364f8f`. Two parent
+   fixtures observe extra polls. All 35 CD methods pass ASan/UBSan and O2,
+   including partial output, buffered sectors and authentication cleanup.
+   The menu links 80,820 code/data and 9,244 BSS bytes. Physical wait time
+   and drive recovery remain unqualified.
+   [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#exit-cd-waits-on-terminal-drive-states)
