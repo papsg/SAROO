@@ -86,6 +86,9 @@ class MenuCDTransferTests(unittest.TestCase):
     def test_music_hook_requires_complete_preload(self):
         self.scenario('hooks')
 
+    def test_empty_sector_wait_exits_terminal_states_and_preserves_partial_output(self):
+        self.scenario('terminal')
+
     def test_accepted_data_ready_timeout_ends_once(self):
         self.scenario('cleanup', 'commands')
 

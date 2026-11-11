@@ -6,7 +6,7 @@
 typedef uint8_t u8;
 typedef struct { uint16_t cr1, cr2, cr3, cr4; } CDCMD;
 enum { HIRQ_ESEL=0x40, HIRQ_EFLS=0x200, STATUS_PAUSE=1, STATUS_SEEK=4, STATUS_OPEN=6, STATUS_NODISC=7,
-       STATUS_FATAL=10 };
+       STATUS_RETRY=8, STATUS_ERROR=9, STATUS_FATAL=10 };
 static unsigned CR1;
 static u8 cdc_auth_hram[0x400], auth_copy[0x400];
 struct step { unsigned command; int result; CDCMD reply; };
@@ -189,6 +189,30 @@ static void test_device(void)
     assert(cdc_auth_device()==4 && print_count==1 && wait_count==1);
 }
 
+static void test_terminal_auth(void)
+{
+    for (unsigned flags = 0; flags < 0x80; flags += 0x10) {
+        for (unsigned cleanup = 0; cleanup < 4; ++cleanup) {
+            int cleanup_error = cleanup ? errors[cleanup - 1] : 0;
+            reset();
+            expect(0x6003, 0, 0, 0, 0, 0);
+            expect(0, 0, (flags | STATUS_ERROR) << 8, 0, 0, 0);
+            expect(0x6000, cleanup_error, 0, 0, 0, 0);
+            assert(jhl_auth_hack(100000) == -1);
+            assert(position == step_count && go_count == 1);
+
+            reset();
+            expect(0x6003, 0, 0, 0, 0, 0);
+            expect(0, 0, (flags | STATUS_RETRY) << 8, 0, 0, 0);
+            expect(0, 0, (flags | STATUS_FATAL) << 8, 0, 0, 0);
+            expect(0xe100, 0, 0, 2, 0, 0);
+            expect(0x6000, cleanup_error, 0, 0, 0, 0);
+            assert(jhl_auth_hack(100000) == (cleanup_error ? cleanup_error : 2));
+            assert(position == step_count && go_count == 1);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc==2);
@@ -197,6 +221,7 @@ int main(int argc, char **argv)
     else if(!strcmp(argv[1],"auth")) test_auth();
     else if(!strcmp(argv[1],"restore")) test_restore();
     else if(!strcmp(argv[1],"device")) test_device();
+    else if(!strcmp(argv[1],"terminal-auth")) test_terminal_auth();
     else assert(0);
     return 0;
 }

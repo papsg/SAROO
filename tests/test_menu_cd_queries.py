@@ -68,6 +68,9 @@ class MenuCDQueryTests(unittest.TestCase):
     def test_device_authentication_propagates_errors(self):
         self.scenario('device')
 
+    def test_terminal_authentication_error_restores_sector_size(self):
+        self.scenario('terminal-auth')
+
 
 if __name__ == '__main__':
     unittest.main()

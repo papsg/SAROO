@@ -9,7 +9,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef struct { u16 cr1, cr2, cr3, cr4; } CDCMD;
 typedef struct { int fad, size; u8 unit, gap, fn, attr; } CdcFile;
-enum { HIRQ_CMOK=1, HIRQ_DRDY=2, HIRQ_ESEL=0x40 };
+enum { HIRQ_CMOK=1, HIRQ_DRDY=2, HIRQ_ESEL=0x40,
+       STATUS_OPEN=6, STATUS_NODISC=7, STATUS_RETRY=8, STATUS_ERROR=9, STATUS_FATAL=10 };
 int cdc_end_trans(int *words);
 
 #ifdef TEST_COMMAND
@@ -78,20 +79,22 @@ int main(int argc, char **argv)
 static _Alignas(8) u8 stream[0x80000], hook_ram[0x54f00], hook_game[0x54f00];
 static u32 hook_install[2];
 static unsigned fifo_pos, fifo_limit, read_words, long_reads;
-static struct step { unsigned cmd; int result; u32 words; unsigned offset, extent; } steps[4096];
+static struct step { unsigned cmd; int result; u32 words; unsigned offset, extent, status; } steps[4096];
 static unsigned used, next;
 static unsigned play_fad=2612, play_sectors;
+static unsigned CR1;
 
 static void reset(void)
 {
     used=next=fifo_pos=read_words=long_reads=0;
+    CR1=0;
     fifo_limit=sizeof stream;
     for(unsigned i=0;i<sizeof stream;++i) stream[i]=(i*73+19)%251;
 }
 static void expect(unsigned cmd, int result, unsigned words)
 {
     assert(used < sizeof steps / sizeof *steps);
-    steps[used++]=(struct step){cmd,result,words,0,0};
+    steps[used++]=(struct step){cmd,result,words,0,0,0};
 }
 static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name)
 {
@@ -109,7 +112,8 @@ static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name)
         assert(!cmd->cr2 && !cmd->cr3 && cmd->cr4 == 1);
         fifo_pos=step->offset; fifo_limit=step->offset+step->extent;
     }
-    *resp=(CDCMD){0,step->words,0,0};
+    CR1=step->status<<8;
+    *resp=(CDCMD){CR1,step->words,0,0};
     if(cmd->cr1 == 0x5100) resp->cr4=step->words;
     if(cmd->cr1 == 0x0600) resp->cr1=(step->words>>16)&0xff;
     return step->result;
@@ -280,6 +284,45 @@ static void test_hooks(void)
         for(unsigned i=0;i<sizeof hook_game;++i) assert(hook_game[i]==0xcc);
     }
 }
+static void test_terminal_read(void)
+{
+    _Alignas(8) u8 buffer[2049 + 32];
+    for (unsigned flags = 0; flags < 0x80; flags += 0x10) {
+        for (unsigned status = 0; status < 16; ++status) {
+            int terminal = status == STATUS_OPEN || status == STATUS_NODISC ||
+                           status == STATUS_ERROR || status == STATUS_FATAL;
+            for (unsigned prefix = 0; prefix < 2; ++prefix) {
+                unsigned length = prefix * 2048 + 1;
+                reset();
+                memset(buffer, 0xcc, sizeof buffer);
+                setup(length, -1, 0);
+                if (prefix) sector(0, 2048, -1, 0, 1024);
+                expect(0x5100, 0, 0);
+                steps[used - 1].status = flags | status;
+                if (!terminal) sector(prefix, 2048, -1, 0, 1024);
+                assert(cdc_read_sector(play_fad, length, buffer) == (terminal ? -1 : (int)length));
+                unsigned copied = terminal ? prefix * 2048 : length;
+                assert(next == used && read_words == (copied + 1) / 2);
+                assert(!memcmp(buffer, stream, copied));
+                for (unsigned i = copied; i < sizeof buffer; ++i)
+                    assert(buffer[i] == 0xcc);
+            }
+        }
+    }
+
+    for (unsigned status = STATUS_OPEN; status <= STATUS_FATAL; ++status) {
+        if (status == STATUS_RETRY) continue;
+        reset();
+        memset(buffer, 0xcc, sizeof buffer);
+        setup(1, -1, 0);
+        unsigned query = used;
+        sector(0, 2048, -1, 0, 1024);
+        steps[query].status = status;
+        assert(cdc_read_sector(play_fad, 1, buffer) == 1 && next == used);
+        assert(read_words == 1 && buffer[0] == stream[0] && buffer[1] == 0xcc);
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);reset();
@@ -290,6 +333,7 @@ int main(int argc,char **argv)
     else if(!strcmp(argv[1],"admission")) test_admission();
     else if(!strcmp(argv[1],"files")) test_files();
     else if(!strcmp(argv[1],"hooks")) test_hooks();
+    else if(!strcmp(argv[1],"terminal")) test_terminal_read();
     else assert(0);
     return 0;
 }

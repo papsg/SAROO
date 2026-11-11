@@ -809,7 +809,7 @@ int jhl_auth_hack(int delay)
 			break;
 		if(status==STATUS_PAUSE)
 			break;
-		if(status==STATUS_OPEN || status==STATUS_NODISC){
+		if(status==STATUS_OPEN || status==STATUS_NODISC || status==STATUS_ERROR){
 			retv = -1;
 			goto restore_size;
 		}
@@ -872,7 +872,12 @@ int cdc_read_sector(int fad, int size, u8 *buf)
         int available, words;
         result = cdc_get_numsector(0, &available);
         if (result) return result;
-        if (!available) continue;
+        if (!available) {
+            int status = (CR1 >> 8) & 0x0f;
+            if (status >= STATUS_OPEN && status <= STATUS_FATAL && status != STATUS_RETRY)
+                return -1;
+            continue;
+        }
         int bytes = remaining >= 2048 ? 2048 : remaining;
         result = cdc_get_del_data(0, 0, 1);
         if (result) return result;
