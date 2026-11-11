@@ -1652,3 +1652,10 @@ initial read-only snapshot. The Saturn was left untouched.
    command/buffer methods pass ASan/UBSan and O2. The public GNU App
    load falls 72 bytes to 62,796 and static DTCM falls 16 bytes.
    [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-filter-condition-resets-and-sector-lengths)
+6. **Fixed-length artwork checksum — published**
+   [`f0c2398`](https://github.com/papsg/SAROO/commit/f0c239852e926631fa06af977b992a2618549cff).
+   Adapted from paps-g `11836b8c`. The old and new implementations
+   match zlib for 20,760 title fields at eight alignments. All 20 cover
+   methods pass ASan/UBSan and O2. The GNU App and static DTCM sizes
+   remain 62,796 and 60,216 bytes. Hardware timing remains unmeasured.
+   [Adler-32 reference, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#simplify-the-fixed-length-cover-checksum)
