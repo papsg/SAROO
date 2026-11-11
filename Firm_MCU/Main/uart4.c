@@ -64,6 +64,8 @@ volatile void *show_log_ptr = showlog;
 
 static void uart4_dma_send(void *buf, int len)
 {
+	/* RM0433 requires bufferable DMA transfers for UART. */
+	const u32 config = 0x00000441 | DMA_SxCR_TRBUFF;
 	// CPU的write buffer机制, 会导致数据没有及时写入RAM. DMA将发送一个错误的数据.
 	// 为避免这种情况, 必须加入__DMB/__DSB指令做同步.
 	__DMB();
@@ -72,12 +74,12 @@ static void uart4_dma_send(void *buf, int len)
 	DMA1_Stream0->NDTR = len;
 	DMA1_Stream0->PAR = (u32)&UART4->TDR;
 	DMA1_Stream0->M0AR = (u32)buf;
-	DMA1_Stream0->CR = 0x00000441;
+	DMA1_Stream0->CR = config;
 	while((DMA1_Stream0->CR&1)==0){
 		char tmp[64];
 		sprintk(tmp, "\n-- Restart DMA1S1! CR=%08x LIFCR=%08x --\n", DMA1_Stream0->CR, DMA1->LIFCR);
 		_puts(tmp);
-		DMA1_Stream0->CR = 0x00000441;
+		DMA1_Stream0->CR = config;
 	}
 
 	UART4->ICR = USART_ICR_TCCF;

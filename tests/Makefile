@@ -6,11 +6,15 @@ BUILD_DIR = build
 
 .PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-cdc-command-buffer check-audio check-config check-fatfs check-save-endian check-web-save check-web-cover
+check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-cdc-command-buffer check-audio check-uart check-config check-fatfs check-save-endian check-web-save check-web-cover
 
 .PHONY: check-audio
 check-audio:
 	$(PYTHON) -B -m unittest discover -s . -p 'test_audio_*.py' -v
+
+.PHONY: check-uart
+check-uart:
+	$(PYTHON) -B -m unittest discover -s . -p test_uart_tx.py -v
 
 .PHONY: check-menu-safety
 check-menu-safety:
