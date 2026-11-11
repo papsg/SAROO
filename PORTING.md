@@ -1917,3 +1917,12 @@ The Saturn was left untouched.
    load and 2,324-byte ITCM margin. Physical game event timing remains
    unqualified.
    [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#signal-sector-read-completion-at-dataend)
+
+5. **Signed disc-launch errors — published**
+   [`850065c`](https://github.com/papsg/SAROO/commit/850065c24f6567589b765b85d3350f06b557d674).
+   Adapted from the menu portion of paps-g `218abca2`. Both parent
+   launch paths display 65530 for MCU error −6. Each corrected path
+   passes all 65,536 reply words under ASan/UBSan and O2. The 66-method
+   menu safety group passes. The menu links 80,836 code/data and 9,244
+   BSS bytes. Physical disc loading remains unqualified.
+   [Upstream report, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-signed-disc-launch-errors)
