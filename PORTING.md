@@ -1052,3 +1052,46 @@ stashes match its starting snapshot. Research branches and other paused work
 remain untouched. No subagents were used. This final ledger checkpoint records
 completion of the scoped port, not physical qualification or broader reset
 conformance.
+
+
+## Audio safety series
+
+Active series starts at public `c890af9`, selected paps-g `e019e57c`, `104b25fb`,
+`e8a47c86`, `247c1dbd`, MCU-AUDIO-001–005. Direct original-layout changes;
+no PRs, USB reload/handoff work, runtime diagnostics or private platform hooks.
+Original source/evidence and later frame/cancellation/continuity corrections are
+reviewed before adapting recovery. Private intermediate warning/replay bugs
+must not be published as independent improvements. Necessary prerequisites
+travel with their introducing behavior; unrelated session/clock policy remains
+separately dispositioned. [Citations, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/AUDIO-SAFETY.md).
+
+1. **MCU-AUDIO-001 retained startup status — published**
+   [`7984fe2`](https://github.com/papsg/SAROO/commit/7984fe2980a5c991bb13685bb96fd212826d1c25),
+   topic `codex/audio-startup`, included on main. Adapted from paps-g e019e57c.
+   Clear only valid I2S flags with SPE zero before enabling initialization and
+   DMA playback. Preserve ordinary format/rate/capacity/payload behavior.
+   Five actual-source methods pass ASan/UBSan and O2: all16 flag combinations
+   at both startup sites,50 restarts,32 sectors/backpressure and ordinary
+   preservation control. Preceding source fails four new checks and passes the
+   valid control; six compiled behavioral controls detected. A fixture address-
+   cast-count setup error is preserved and excluded from defect reproduction.
+   The separate automatic-DMA-bank counterexample still fails after001 and
+   remains an open source-proven002 defect, not a passing startup result.
+   GNU App/RTX/166-vector load remains60,888, ITCM free4,648; static DTCM60,312,
+   stack/heap address gap70,760. Direct init/start/producer/IRQ0/12/24/0 unchanged.
+   All56 public source inputs bind to their checkpoint;85 SDK inputs match
+   baseline. Two cold-path register stores; no added state/buffer/allocation/
+   task/poll/wait/copy/SD I/O. No hardware speed/stack peak is measured.
+   RM0433 Rev8 §50.9.3/Table417 p.2194, §50.9.7 p.2203, §50.11.1 p.2218 and
+   §50.11.7 p.2227 distinguish status acknowledgment from peripheral enable.
+2. **MCU-AUDIO-002/003 ownership, FIFO and underrun recovery — pending.**
+3. **MCU-AUDIO-004 warning and005 residual corrections — dependency review.**
+
+Full-file/diff/message/identity and actual-blob secret/private-PII scans pass;
+public papsg/noreply identities and original paps-g credit retained. No secrets,
+private PII, personal paths/accounts/private URLs or raw receipts published.
+Fork remains default main, issues disabled, zero open issues/PRs; no applicable
+closures, upstream unchanged. Host/GNU evidence does not qualify Saturn/game/
+receiver timing or original-MDK output. Private repo and Saturn remain untouched;
+no USB/SSH/power/capture operations or subagents. Final full suite/build/privacy/
+publication/preservation audits follow the remaining coherent recovery port.
