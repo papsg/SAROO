@@ -1339,5 +1339,26 @@ the original CD+G utility. Original tpu and Linux Reed–Solomon credit remain.
    macOS and Linux focused suites pass; Windows x86/x64 Wine checks cover
    early and late logical repair, raw carry, clean and invalid inputs, and
    the two modeled recovery outcomes. The committed standalone macOS build
-   and both MinGW builds pass. Full repository checks are running.
-   Native Windows filesystems, physical media and power loss remain unqualified.
+   and both MinGW builds pass.
+
+### CD+G repair safety final verification
+
+All four findings are addressed by three verified commits on public main at
+`a8f2961`. The standard suite passed 527 Python methods in 46 groups, 18 Rust
+checks in four groups, and the native language check. The Windows-only
+rollback fixture was skipped on macOS and exercised separately under Wine.
+macOS focused checks pass under ASan/UBSan at 1, 16 and 64 raw frames per
+batch and under O2. Linux arm64 strict compilation and 16 focused methods
+pass. Both original-layout MinGW builds and both release Wine smoke runs pass.
+The Wine tests run on the container filesystem. A preliminary Wine
+host-volume run returned a permissions failure during staging.
+Native Windows metadata, physical media and power-loss durability remain
+unqualified.
+
+The original 7,806-byte Reed–Solomon prefix is byte-identical. The port's
+source, generated test recipes and documentation stay within the desktop
+utility. Public-safe attribution and POSIX/Win32 references are in
+[CDG-REPAIR-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/CDG-REPAIR-SAFETY.md).
+Source and progress commits passed secret and private-data review. The
+private HEAD, status, refs and stashes match the initial snapshot, and the
+Saturn was left untouched.
