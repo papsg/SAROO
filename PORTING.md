@@ -1518,3 +1518,21 @@ snapshot. The Saturn was left untouched.
    with 2,916 bytes of ITCM margin and 60,184 bytes of static DTCM.
    Physical card replacement and fault recovery remain unqualified.
    [Source, CMSIS reference and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-sd-005-and-mcu-sd-006--bind-sector-access-to-an-initialized-card)
+
+### SD transfer, media launch and storage final verification
+
+All five source checkpoints are on public main at `9b68a9a`. The standard
+suite passed 578 Python methods in 50 groups, 18 Rust checks in four groups,
+and the native language check. The Windows-only CD+G fixture was skipped
+on macOS. The committed GNU MCU and menu builds match the verified
+candidates. The final MCU load is 62,620 bytes with 2,916 bytes of ITCM
+margin and 60,184 bytes of static DTCM. The menu links 79,508 code/data
+bytes and retains the 488,770-byte image size. SDIO, diskio and FatFs
+also compile as objects with the original BootLoader RTE configuration
+and BOOT define. Full MDK linkage, physical SD fault recovery, SD
+durability and CD playback remain unqualified.
+
+The public changes add no runtime log formats. Source, fixtures, commit
+metadata and ledger additions passed secret and private-data review.
+The private HEAD, status, refs and stashes match the starting snapshot.
+The Saturn was left untouched.
