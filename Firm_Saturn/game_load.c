@@ -469,14 +469,6 @@ static void read_1st(void)
 		*(u32*)(0x0600026c) = (u32)my_cdplayer;
 	}
 
-	// 有些游戏没有正确初始化VDP1。这里特殊处理一下。
-	// Some games don't properly initialize VDP1. Special handling here.
-	memset((u8*)0x25c00200, 0x00, 0x80000-0x200);
-	for(int i=0; i<0x80000; i+=0x20){
-		*(u16*)(0x25c00000+i) = 0x8000;
-	}
-
-
 	// 0x06000320: 0x060006b0  bios_set_clock_speed
 	memcpy((u8*)0x060006b8, code_06b8, sizeof(code_06b8));
 	*(u32*)(0x060006cc) = (u32)my_06b0;

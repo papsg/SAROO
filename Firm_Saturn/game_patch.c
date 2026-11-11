@@ -1238,26 +1238,38 @@ GAME_DB game_dbs[] = {
 
 void patch_game(char *id)
 {
-	GAME_DB *gdb = &game_dbs[0];
+	void (*patch_func)(void) = NULL;
 
 	CHEAT_ADDRES = 0;
 	need_bup = 1;
 
+	if(!skip_patch){
+		for(GAME_DB *gdb = game_dbs; gdb->id; ++gdb){
+			int slen = strlen(gdb->id);
+			if(strncmp(gdb->id, id, slen)==0){
+				printk("Patch game %s ...\n", gdb->name);
+				patch_func = gdb->patch_func;
+				break;
+			}
+		}
+	}
+
+	/* Ultraman can transfer control to its ROM without returning. */
+	if(patch_func == ULTRAMAN_patch){
+		patch_func();
+		patch_func = NULL;
+	}
+
+	/* Initialize VDP1 before built-in and configured memory writes. */
+	memset((u8*)0x25c00200, 0x00, 0x80000-0x200);
+	for(int i=0; i<0x80000; i+=0x20){
+		*(u16*)(0x25c00000+i) = 0x8000;
+	}
+
 	if(skip_patch)
 		return;
-
-	while(gdb->id)
-	{
-		int slen = strlen(gdb->id);
-		if(strncmp(gdb->id, id, slen)==0)
-		{
-			printk("Patch game %s ...\n", gdb->name);
-			gdb->patch_func();
-			break;
-		}
-
-		gdb += 1;
-	}
+	if(patch_func)
+		patch_func();
 
 	u32 *cfgword = (u32*)(SYSINFO_ADDR+0x0100);
 	while(1){
