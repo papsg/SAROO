@@ -1554,3 +1554,13 @@ The Saturn was left untouched.
    to 62,476. Static DTCM and the 4,096-byte bounce buffer remain
    unchanged. Physical SD timing and fault recovery remain unmeasured.
    [STM32 citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#shared-sd-sector-transfers)
+3. **Retry aborted save file handles — published**
+   [`0b65442`](https://github.com/papsg/SAROO/commit/0b65442a153eeb22031e46c9e9dbf0f8e2b83d11).
+   Adapted from paps-g `d5cb72ea` with the public extent and SD ownership
+   fixes. The baseline fails 56 of 60 generated FAT32/exFAT recovery
+   cases. All pass on the port, including pending writes, failed close
+   and open, replacement and structural controls. All 115 save and SD
+   methods pass ASan/UBSan and O2. The GNU App load rises 400 bytes to
+   62,876 and SDIO and diskio compile with the BootLoader configuration.
+   Physical SD recovery and power loss durability remain unqualified.
+   [FatFs citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#recover-aborted-save-handles-through-ordinary-requests)
