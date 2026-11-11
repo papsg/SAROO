@@ -130,6 +130,8 @@ module memhub(
 		if(reset==0) begin
 			state <= C_IDLE;
 			cmd_req <= 0;
+			cmd_ack_a <= 0;
+			cmd_ack_b <= 0;
 		end else begin
 			case(state)
 			C_IDLE: begin

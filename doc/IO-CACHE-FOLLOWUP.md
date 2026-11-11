@@ -70,3 +70,31 @@ The baseline and port pass 1,179,648 ordered replies across 18 layouts.
 The fixture rejects a control with the two tail writes reversed. Set
 `SAROO_CDC_REPLY_SOURCE` to select a baseline or control source for
 `test_cdc_replies.py`. Physical command timing remains unmeasured.
+
+## Clear FPGA memory acknowledgments on reset
+
+Reset can interrupt the arbiter after it sets an acknowledgment and before
+its normal completion state clears that bit. A new write on the same port
+can consume the old acknowledgment before its own SDRAM command issues.
+Reset now clears both existing acknowledgment bits. Arbitration and byte
+masks retain their existing behavior. [Original FPGA memory
+arbiter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/memhub.v#L126-L169) ·
+[Original write consumer](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/cachebus.v#L116-L124).
+
+Adapted from paps-g's `e345a327`. Run
+`python3 -m unittest discover -s tests -p test_fpga_memory.py -v` with
+Icarus Verilog. Set `SAROO_FPGA_MEMORY_BASELINE` to the preceding
+checkout's `FPGA` directory to use the exact baseline. The actual memory
+modules reproduce premature completion on both old ports and pass six
+other old reset cases. The corrected source passes all 32 reset phase,
+port and byte mask combinations. Removing either reset assignment
+reproduces the failure on that port while the other port still passes.
+
+The [original Quartus project comparison](../tools/README.md#original-fpga-project-comparison)
+binds all 18 FPGA inputs and changes only `memhub.v`. Quartus 25.1 Lite
+maps, fits, assembles, checks constrained timing and converts the result.
+The fit uses 1,479 logic elements (+15), 816 registers and 32,768 memory
+bits. Minimum reported setup slack is 0.361 ns versus 0.843 ns before the
+change. Minimum hold slack is 0.179 ns versus 0.167 ns. MCU and menu
+sources are unaffected. External bus timing and physical reset behavior
+remain unqualified.

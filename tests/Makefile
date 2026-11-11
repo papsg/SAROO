@@ -140,6 +140,7 @@ check-host-tools:
 	cargo fmt --manifest-path ../tools/Cargo.toml --all --check
 	cargo clippy --locked --manifest-path ../tools/Cargo.toml --workspace --all-targets -- -D warnings
 	cargo test --locked --manifest-path ../tools/Cargo.toml --workspace
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_memory.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v
