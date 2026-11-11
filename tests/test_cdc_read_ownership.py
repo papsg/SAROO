@@ -63,6 +63,7 @@ class CDReadOwnershipTests(unittest.TestCase):
     def test_serviced_mixed_and_completed_windows_count_once(self):self.run_case(11)
     def test_fixed_reply_production_and_fifo_counter_full_flags(self):self.run_case(12)
     def test_valid_zero_and_idle_error_with_retained_write_controls(self):self.run_case(13)
+    def test_sector_read_completion_follows_data_end(self):self.run_case(14)
 
 
 if __name__=='__main__':unittest.main()

@@ -76,3 +76,25 @@ methods pass ASan/UBSan and O2 on the port. The fixture checks the event
 bits and optional output on failure, success, and arrival of DRDY during
 cleanup. The SH-2 menu retains 80,852 code/data and 9,244 BSS bytes.
 Physical interrupt timing and recovery remain unqualified.
+
+## Signal sector-read completion at DataEnd
+
+Adapted from paps-g `35cf0b88` (MCU-CDC-019). The MCU used to return
+EHST while GET or GETDEL still owned the transfer. Both commands now
+publish DRDY at FIFO setup. DataEnd and cancellation retain their
+completion events. Sega places EHST after DataEnd for these two commands.
+[CD Communication Interface User's Manual, §8.2.7, functions 7.2 and 7.4](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p08_17.htm).
+
+```sh
+make -C tests check-cdc-command-buffer
+SAROO_CDC_PROFILE=release make -C tests check-cdc-command-buffer
+```
+
+Run `test_cdc_read_ownership.py` with `-k completion_follows` and set
+`SAROO_CDC_READ_SOURCE` to the parent's `saturn_cdc.c` to observe
+the extra EHST bit. The focused case checks 12 early and full transfers
+for GET and GETDEL, including overlapping requests, FIFO service, the
+public firmware's produced-word counts, and buffer ownership. Both runs
+of the full CD group pass 164 methods. The GNU MCU App loads 63,212
+bytes with 2,324 bytes of ITCM space. Physical
+event timing and game behavior remain unqualified.

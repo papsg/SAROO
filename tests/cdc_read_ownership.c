@@ -8,7 +8,7 @@ static void memcpy32(void *out,const void *in,unsigned bytes) { memcpy(out,in,by
 static void start_read(unsigned type,unsigned part,unsigned start,unsigned count)
 {
     cdb.cr3=part<<8;cdb.cr2=start;cdb.cr4=count;fifo_words=0;fifo_status=0;
-    assert((type==TRANS_DATA?get_sector_data():get_del_sector_data())==(HIRQ_DRDY|HIRQ_EHST));
+    assert((type==TRANS_DATA?get_sector_data():get_del_sector_data())==HIRQ_DRDY);
 }
 static unsigned result_words(void) { return ((unsigned)(reply[0]&255)<<16)|reply[1]; }
 static void read_owners(unsigned count)
@@ -151,7 +151,7 @@ static void admission_ranges(void)
             int count=positions[b]==65535?(int)n-start:(int)positions[b];
             int valid=start>=0 && start<(int)n && count>0 && count<=(int)n-start;
             CDBLOCK before=cdb;int result=type==1?get_sector_data():get_del_sector_data();
-            if(valid){assert(result==(HIRQ_DRDY|HIRQ_EHST));read_owners(type==2?count:0);
+            if(valid){assert(result==HIRQ_DRDY);read_owners(type==2?count:0);
                 /* Ownership-only checkpoint: early read counts are separate012. */
                 assert(end_trans()==HIRQ_EHST);}
             else {assert(!result && !fifo_words && !memcmp(&before,&cdb,sizeof cdb));
@@ -273,14 +273,52 @@ static void zero_idle_and_retained_put_controls(void)
     setup(0,200);cdb.cdwnum=1234;
     assert(end_trans()==HIRQ_EHST && result_words()==0xffffff && !cdb.cdwnum);check_owners();
 }
+
+static void completion_events(void)
+{
+    const unsigned counts[] = {1, 2, MAX_BLOCKS};
+    for (unsigned type = TRANS_DATA; type <= TRANS_DATA_DEL; ++type) {
+        for (unsigned i = 0; i < sizeof counts / sizeof *counts; ++i) {
+            for (unsigned early = 0; early < 2; ++early) {
+                unsigned count = counts[i];
+                setup(count, MAX_BLOCKS - count);
+                hirq = HIRQ_ESEL;
+                start_read(type, 0, 0, count);
+                assert(cdb.trans_type == type && hirq == HIRQ_ESEL);
+                read_owners(type == TRANS_DATA_DEL ? count : 0);
+
+                assert(!get_sector_data() && (reply[0] >> 8) == (STAT_WAIT | cdb.status));
+                assert(!get_del_sector_data() && (reply[0] >> 8) == (STAT_WAIT | cdb.status));
+                if (early) {
+                    fifo_status = cdb.trans_size / 2;
+                } else {
+                    unsigned services = 0;
+                    while (!cdb.trans_finish) {
+                        assert(++services <= count);
+                        trans_handle();
+                        assert(!(hirq & HIRQ_EHST) && cdb.trans_type == type);
+                    }
+                }
+
+                assert(!(hirq & HIRQ_EHST));
+                assert(end_trans() == HIRQ_EHST && !cdb.trans_type);
+                assert(result_words() == (early ? 1176 : count * 1176));
+                assert(cdb.block_free == (type == TRANS_DATA_DEL ? MAX_BLOCKS : MAX_BLOCKS - count));
+                check_owners();
+            }
+        }
+    }
+}
+
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<14);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<15);
     if(test==0)detached_ranges();else if(test==1)cancellation();else if(test==2)preserved_connections();
     else if(test==3)incoming_append();else if(test==4)freeing_preemptions();else if(test==5)logging_boundary();
     else if(test==6)admission_ranges();else if(test==7)software_resets();else if(test==8)valid_log_controls();
     else if(test==9)incomplete_getdel();else if(test==10)first_window_counts();
     else if(test==11)serviced_and_mixed_windows();else if(test==12)fixed_replies_and_fifo_flags();
-    else zero_idle_and_retained_put_controls();
+    else if(test==13)zero_idle_and_retained_put_controls();
+    else completion_events();
     puts("pass: actual read ownership, production counts, release and log boundaries");return 0;
 }

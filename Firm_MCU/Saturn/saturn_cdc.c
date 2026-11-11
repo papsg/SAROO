@@ -1445,7 +1445,8 @@ static __attribute__((noinline)) int get_sector_data_common(int type)
     restore_irq(irqs);
     trans_start();
     set_status(STAT_TRNS | cdb.status);
-    return HIRQ_DRDY | HIRQ_EHST;
+    /* DataEnd or cancellation signals completion of the host transfer. */
+    return HIRQ_DRDY;
 }
 int get_sector_data(void)
 {

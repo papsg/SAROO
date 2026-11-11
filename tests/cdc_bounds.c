@@ -123,7 +123,7 @@ static void read_delete_controls(void)
         check_owners();cdb.cr2=0xffff;cdb.cr4=1;
         if(count==17){CDBLOCK before=cdb;assert(!get_sector_data());assert(!memcmp(&before,&cdb,sizeof cdb));}
         else {
-            assert(get_sector_data()==(HIRQ_DRDY|HIRQ_EHST));
+            assert(get_sector_data()==HIRQ_DRDY);
             trans_handle();assert(cdb.trans_finish && fifo_words==1176);
             assert(end_trans()==HIRQ_EHST);check_owners();
         }
@@ -199,7 +199,7 @@ static void calculation_matches_fifo(void)
             sum+=mode==0 && format==2?2324:lengths[mode];
         }
         cdb.cr2=0;cdb.cr4=0xffff;assert(cal_actual_size()==HIRQ_ESEL);size_reply(sum/2);
-        assert(get_sector_data()==(HIRQ_DRDY|HIRQ_EHST));
+        assert(get_sector_data()==HIRQ_DRDY);
         unsigned services=0;
         while(!cdb.trans_finish){assert(++services<=n);trans_handle();}
         assert(fifo_words==sum/2 && cdb.cdwnum==(int)sum && !irq_depth);
