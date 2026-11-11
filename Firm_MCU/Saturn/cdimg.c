@@ -45,13 +45,20 @@ static int read_track_ip(TRACK_INFO *tk, u8 *out)
     return read_ip(tk->fp, (FSIZE_t)tk->file_offset + prefix, out);
 }
 
+/* Zero identifies a Saturn game, one is other media, and negative is an I/O error. */
 int get_gameid(char *gameid)
 {
     u8 *ip = (u8*)0x24002000;
-    if (read_track_ip(&cdb.tracks[0], ip)) return -1;
-    memcpy(gameid, ip + 0x20, 16);
-    gameid[16] = 0;
-    return 0;
+    if (cdb.tracks[0].mode != 3) {
+        if (read_track_ip(&cdb.tracks[0], ip)) return -1;
+        if (!memcmp(ip, "SEGA SEGASATURN ", 16)) {
+            memcpy(gameid, ip + 0x20, 16);
+            gameid[16] = 0;
+            return 0;
+        }
+    }
+    gameid[0] = 0;
+    return 1;
 }
 
 
@@ -545,10 +552,11 @@ int load_disc(int index, int start_save)
 	}else{
 		char gameid[20];
 		retv = get_gameid(gameid);
-		if(retv){
+		if(retv < 0){
 			unload_disc();
 			goto _exit;
 		}
+		if (retv) start_save = 0;
 		
 		char *p = strrchr(fname, '.');
 		p[1] = 's';

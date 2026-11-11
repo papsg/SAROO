@@ -273,7 +273,7 @@ static int config_walk(char *buffer, unsigned size, char *gameid, int apply)
         char *line = config_space(buffer + pos), *p;
         unsigned next = pos + strlen(buffer + pos) + 1;
         if (*line == '[') {
-            if (section == 2 || (section && !gameid)) break;
+            if (section == 2 || (section && (!gameid || !*gameid))) break;
             p = strchr(line, ']');
             if (!p || !config_end(p + 1)) goto invalid;
             *p = 0;

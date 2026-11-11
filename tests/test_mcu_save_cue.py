@@ -50,4 +50,12 @@ class CueParserTests(MCUSaveTest):
         for value in range(3):
             with self.subTest(value=value):self.invoke('dispatch',value)
 
+    def test_non_game_cue_and_iso_never_request_a_save(self):
+        for value in range(5):
+            with self.subTest(value=value): self.invoke('media',value)
+
+    def test_game_first_mixed_disc_and_signed_empty_identity(self):
+        for value in (5,6):
+            with self.subTest(value=value): self.invoke('media',value)
+
 if __name__ == '__main__': unittest.main()

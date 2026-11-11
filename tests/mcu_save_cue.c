@@ -87,13 +87,29 @@ static int total_disc=1,disc_path[1]={1},category_num,category_current,next_disc
 static char path_str[]="\0D",mdisc_str[16];
 static int sector_delay_force=-1,play_delay_force=-1,pend_delay_force=-1;
 static int play_delay,pend_delay,selected_format=1;
+static int media_case,media_pauses,media_config_calls,media_save_calls;
+static char media_id[17];
 static char *get_category(int index) { (void)index;assert(0);return NULL; }
 static int find_cue_iso(char *dir,char *out)
 { assert(!strcmp(dir,"/SAROO/ISO/D"));strcpy(out,selected_format==1?"/D/Game.cue":"/D/raw.iso");return selected_format; }
-static int parse_config(char *path,char *id) { (void)path;(void)id;return 0; }
+static int parse_config(char *path,char *id)
+{
+    assert(!strcmp(path,"/SAROO/saroocfg.txt"));
+    if (media_case) {
+        media_config_calls++;
+        assert(id);
+        snprintf(media_id,sizeof(media_id),"%s",id);
+    }
+    return 0;
+}
 static int find_disc(char *name) { (void)name;assert(0);return -1; }
-static int select_save(char *id) { (void)id;assert(0);return -1; }
-static int pause_disc(void) { assert(0);return -1; }
+static int select_save(char *id)
+{
+    assert(media_case && !strcmp(id,media_id));
+    media_save_calls++;
+    return *id ? FR_OK : FR_INVALID_PARAMETER;
+}
+static int pause_disc(void) { assert(media_case);media_pauses++;return 0; }
 #define load_savefile select_save
 #define f_open cue_open
 #define malloc cue_alloc
@@ -311,6 +327,46 @@ static void dispatch(int value)
     } else assert(opens==old_opens && r==-FR_DISK_ERR);
     retry();
 }
+
+/* Adapted from paps-g ec0c0e93. Load generated CUE/ISO through actual FatFs. */
+static void classify_media(int value)
+{
+    u8 bytes[4*2352];
+    memset(bytes,value==0 ? 0 : 0x59,sizeof(bytes));
+    if (value==2 || value>=5) {
+        memcpy(bytes+16,"SEGA SEGASATURN ",16);
+        memcpy(bytes+48,"MEDIAGAME0000001",16);
+    }
+    if (value==6) bytes[48]=0;
+    create("/D/a.bin",bytes,sizeof(bytes));
+    char cue[256];
+    snprintf(cue,sizeof(cue),"FILE \"a.bin\" BINARY\nTRACK 01 %s\nINDEX 01 00:00:00\n",
+             value<4 ? "AUDIO" : "MODE1/2352");
+    if (value==3 || value==5) {
+        strcat(cue,value==3 ? "TRACK 02 MODE1/2352\nINDEX 01 00:00:02\n" :
+                              "TRACK 02 AUDIO\nINDEX 01 00:00:02\n");
+    }
+    create(cue_name,cue,strlen(cue));
+    if (value==4) {
+        memcpy(bytes+32,"FAKEGAME00000001",16);
+        create("/D/raw.iso",bytes,2048);
+        selected_format=2;
+    }
+    media_case=1;
+    int result=load_disc(0,1);
+    assert(media_pauses==1 && media_config_calls==1);
+    assert(cdb.track_num==(value==3 || value==5 ? 2 : 1));
+    if (value<5) {
+        assert(!result && !media_id[0] && !media_save_calls);
+        assert(reads==1); /* Only CUE text or the foreign data header. */
+    } else {
+        assert(media_save_calls==1 && reads==2);
+        if (value==5) assert(!result && !strcmp(media_id,"MEDIAGAME0000001"));
+        else assert(result==FR_INVALID_PARAMETER && !media_id[0]);
+    }
+    assert(!unload_disc() && !handles_count);
+    guards();
+}
 #ifndef MCU_CUE_TEST_ENTRY
 #define MCU_CUE_TEST_ENTRY main
 #endif
@@ -331,6 +387,7 @@ int MCU_CUE_TEST_ENTRY(int argc,char **argv)
     else if(!strcmp(argv[2],"track-extent"))track_extent(value);
     else if(!strcmp(argv[2],"cleanup"))cleanup(value);
     else if(!strcmp(argv[2],"dispatch"))dispatch(value);
+    else if(!strcmp(argv[2],"media"))classify_media(value);
     else {assert(!strcmp(argv[2],"preview"));preview(value);}
     printf("cue %s %d reads=%u opens=%u closes=%u handles=%u\n",argv[2],value,reads,opens,closes,handles_count);
     assert(!fclose(disk));return 0;

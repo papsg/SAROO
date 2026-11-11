@@ -273,6 +273,7 @@ static void disc_id_case(int sector_size)
 {
     u8 header[256]; memset(header,0,256);
     int offset = sector_size == 2048 ? 32 : 48;
+    memcpy(header+offset-32,"SEGA SEGASATURN ",16);
     memcpy(header+offset,key_a,16);
     raw_write(&ss_fp,65536,header,256);
     cdb.tracks[0].fp = &ss_fp; cdb.tracks[0].sector_size = sector_size;

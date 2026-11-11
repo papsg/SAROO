@@ -79,6 +79,39 @@ remains 488,770 bytes. The model checks command admission and menu
 handoffs. Physical disc playback and BIOS timing remain unqualified.
 [Menu build instructions][menu-build]
 
+## MCU-DISC-005 — Classify images before selecting a game save
+
+The MCU used the first track's bytes at offset 0x20 as a save identity
+even for audio and foreign data. The port adapts paps-g
+`ec0c0e930f145296e5b0f0d07c29a813c528e195`. Audio bypasses the IP read.
+A data track must supply a complete normalized header and the Saturn
+hardware identifier before its product/version bytes identify a game.
+Read errors still fail the load. A signed game with an empty product
+identity still reaches save validation. [Public image loader][image-loader] ·
+[Sega ST-040-R4 section 4.3, printed pp. 26–27][sega-ip] · [Related issue #175][issue175]
+
+Non-game media uses an empty runtime identity. This applies global
+playback settings through the existing locked parser and ends the
+config scan before per-game sections. The existing save slot, window
+owners and pending writes remain available. [Public configuration][config-source]
+
+Five CUE/ISO and two coupled save cases reproduce the old behavior on
+`8bebab7`. Two signed-game controls pass there. The public cases cover
+audio-first and game-first mixed mode, a coincidental PCM signature,
+foreign data, locked global settings, zero archive I/O and successful
+retry of a save retained across media selection. Both 12-method image
+and save suites pass with ASan/UBSan and O2. Header, runtime save and
+configuration regressions pass. Run
+`python3 -B tests/test_mcu_save_cue.py -v` and
+`python3 -B tests/test_mcu_save_disc.py -v`.
+[CUE fixture][cue-fixture] · [Save-session fixture][session-fixture]
+
+The GNU App adds 48 load bytes for a total of 62,412, with 3,124 bytes
+of ITCM margin and 60,176 bytes of static DTCM. The direct loader and
+identity frames remain 312 and 24 bytes. Physical player entry and
+save survival across a console reset remain unqualified.
+[Build instructions][build]
+
 [original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
 [sd-initialization]: FATFS-SD-SAFETY.md
 [driver]: ../Firm_MCU/Main/sdio_h7.c
@@ -93,5 +126,10 @@ handoffs. Physical disc playback and BIOS timing remain unqualified.
 [menu-fixture]: ../tests/menu_cdplayer.c
 [sega-hirq]: https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16
 [sega-toc]: https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=65
+[sega-ip]: https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf#page=30
+[image-loader]: ../Firm_MCU/Saturn/cdimg.c
+[config-source]: ../Firm_MCU/Saturn/saturn_utils.c
+[cue-fixture]: ../tests/mcu_save_cue.c
+[session-fixture]: ../tests/mcu_save_disc.c
 [menu-build]: ../tools/README.md#isolated-firmware-qualification
 [build]: ../tools/README.md#original-mcu-app-compilelink-check

@@ -147,7 +147,7 @@ static void make_iso(const char *dir,const char *id,unsigned size)
 {
     assert(strlen(id)==16 && f_mkdir(dir)==0);
     char name[80];snprintf(name,sizeof(name),"%s/disc.iso",dir);
-    u8 header[2048]={0};memcpy(header+32,id,16);
+    u8 header[2048]={0};memcpy(header,"SEGA SEGASATURN ",16);memcpy(header+32,id,16);
     FIL fp;UINT count;assert(f_open(&fp,name,FA_CREATE_NEW|FA_WRITE)==0);
     assert(f_write(&fp,header,size,&count)==0 && count==size);assert(f_close(&fp)==0);
 }
@@ -227,6 +227,7 @@ static void swap_failure(int value)
         assert(f_unlink("/SAROO/ISO/DISC2/disc.iso")==0);
         /* Directory already exists; write a complete replacement fixture. */
         FIL fp;UINT count;u8 bytes[2048]={0};memcpy(bytes+32,"OTHERID000000002",16);
+        memcpy(bytes,"SEGA SEGASATURN ",16);
         assert(f_open(&fp,"/SAROO/ISO/DISC2/disc.iso",FA_CREATE_NEW|FA_WRITE)==0);
         assert(f_write(&fp,bytes,sizeof bytes,&count)==0 && count==sizeof bytes && f_close(&fp)==0);
     }
@@ -333,6 +334,48 @@ static void configuration_defaults(void)
     write_config("[global]\n",9);assert(!menu_step(1));
     assert(!sector_delay && !play_delay && !pend_delay && !mdisc_str[0]);
 }
+
+static void nongame_session(int pending)
+{
+    fixture(0,32);
+    BUPDIR request=target;
+    u8 *retry=NULL;
+    if (pending) {
+        request.date++;
+        retry=data_bytes(32,81);
+        fault="write-error";fault_target=0;fault_nth=1;armed=1;
+        assert(sro_bup_write(0,&request,retry,0)==BUP_BROKEN && phase(0)==2);
+        armed=0;
+    }
+    FIL image;
+    UINT count;
+    const u8 signature[16]={0};
+    assert(f_open(&image,"/SAROO/ISO/DISC2/disc.iso",FA_WRITE)==FR_OK);
+    assert(f_write(&image,signature,sizeof(signature),&count)==FR_OK && count==sizeof(signature));
+    assert(f_close(&image)==FR_OK);
+    const char config[]="[global]\nplay_delay=7\n[]\nplay_delay=42\n"
+                        "[OTHERID000000002]\nplay_delay=93\n";
+    write_config(config,sizeof(config)-1);
+    int slot=ss_index,header=sm_index0,window=sm_index1;
+    FSIZE_t archive_size=f_size(&ss_fp);
+    u8 snapshot[sizeof(test_shared)];
+    memcpy(snapshot,test_shared,sizeof(snapshot));
+    PendingSave saved[2];
+    memcpy(saved,pending_save,sizeof(saved));
+    config_reads=config_locked_reads=0;
+    reset_counts();
+    assert(!menu_step(1) && cdb.track_num==1 && play_delay==7);
+    assert(config_reads==1 && config_locked_reads==1);
+    assert(ss_index==slot && sm_index0==header && sm_index1==window);
+    assert(!memcmp(snapshot,test_shared,sizeof(snapshot)) && !memcmp(saved,pending_save,sizeof(saved)));
+    assert(!api_reads && !api_writes && !api_syncs && f_size(&ss_fp)==archive_size);
+    if (retry) {
+        assert(sro_bup_write(0,&request,retry,0)==0);
+        check_record(0,&request,retry);
+        check_record(0,&neighbor,keep);
+        free(retry);
+    }
+}
 int main(int argc,char **argv)
 {
     assert(argc==4);const char *mode=argv[2];int value=atoi(argv[3]);
@@ -340,6 +383,7 @@ int main(int argc,char **argv)
     fault="none";fault_nth=1;initialize_disc();
     if(!strcmp(mode,"configuration"))configuration_failure(value);
     else if(!strcmp(mode,"configuration-defaults"))configuration_defaults();
+    else if(!strcmp(mode,"nongame"))nongame_session(value);
     else if(!strcmp(mode,"session")) live_session(value);
     else if(!strcmp(mode,"menu")) {
         assert(menu_step(value)==0 && ss_index==(value?2:1));

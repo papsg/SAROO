@@ -28,6 +28,10 @@ class DiscSaveSessionTests(MCUSaveTest):
     def test_real_configuration_loads_reset_previous_game_defaults(self):
         self.invoke('configuration-defaults')
 
+    def test_non_game_uses_runtime_global_configuration_and_preserves_saves(self):
+        for pending in (0,1):
+            with self.subTest(pending=pending): self.invoke('nongame',pending)
+
     def test_load_and_preview_validate_index_and_allocation(self):
         for mode in ('index','preview-index'):
             for index in (-2,-1,2,65534,65535,2147483647):
