@@ -1797,3 +1797,14 @@ behavior remain unqualified. Publication review covered the source,
 fixtures, provenance, commit metadata and ledger. The private HEAD,
 worktree, refs and stash match the initial snapshot. The Saturn was
 left untouched.
+
+## CD startup, transfer and save metadata follow-up
+
+1. **Stopped-drive subcode — published**
+   [`36e82b0`](https://github.com/papsg/SAROO/commit/36e82b0f65411f632837f9b873e1857196c26424).
+   Adapted from paps-g `555eb231`. The parent fails three new checks and
+   passes the valid-payload control. The port passes all four under
+   ASan/UBSan and O2 and all 163 CD group checks. The GNU MCU App falls
+   to 63,212 bytes, with 2,324 bytes of ITCM margin. Physical report timing
+   and multisession behavior remain unqualified.
+   [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#read-subcode-safely-after-a-drive-stop)
