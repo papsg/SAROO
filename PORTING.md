@@ -1712,3 +1712,12 @@ was left untouched.
    O2 run. The GNU App grows to 63,184 bytes and keeps 60,216 bytes of
    static DTCM. Physical recovery remains unqualified.
    [Protocol, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#access-the-existing-save-archive-handles)
+3. **Menu archive transport and full-key slot lookup — published**
+   [`1b78410`](https://github.com/papsg/SAROO/commit/1b784102cae97fb0f544eda062698c1685dc50e1).
+   Adapted from paps-g `3f6e0121` on the bounded MCU owner and public
+   file/cache paths. Sixteen paired FAT32 and exFAT cases pass under
+   ASan/UBSan and O2. Omitting the exact count accepts four short replies.
+   All 32 focused O2 methods pass. The linked menu adds 528 bytes to
+   80,244, with unchanged BSS and padded image size. The existing BIOS
+   save path and four-argument file ABI are covered by ordinary controls.
+   [Protocol, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#pair-the-menu-with-the-primary-save-owners)
