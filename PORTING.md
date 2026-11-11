@@ -1636,3 +1636,12 @@ initial read-only snapshot. The Saturn was left untouched.
    pass ASan/UBSan and O2. A reversed tail-write control fails. The GNU App
    load falls 64 bytes to 62,868. Physical command timing remains unmeasured.
    [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-complete-cd-command-replies)
+4. **FPGA memory reset acknowledgment — published**
+   [`24f1c39`](https://github.com/papsg/SAROO/commit/24f1c39799dd6ea18176e375878608a1ffc254a1).
+   Adapted from paps-g `e345a327`. The exact baseline reproduces early
+   write completion on both ports and passes six other reset controls.
+   All 32 corrected reset/port/mask cases pass. Each omitted assignment
+   fails on its own port. Quartus binds all 18 project inputs, fits 1,479
+   logic elements and reports positive constrained setup/hold slack.
+   External bus timing and physical reset remain unqualified.
+   [Original source, reproduction and fit](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#clear-fpga-memory-acknowledgments-on-reset)
