@@ -1475,3 +1475,13 @@ snapshot. The Saturn was left untouched.
    ITCM bytes. Static DTCM remains 60,176 bytes. Historical hardware
    evidence reaches startup. Physical SD fault recovery remains unqualified.
    [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-sd-004--recover-transfer-ownership)
+2. **SATURN-CD-001 menu CD transfer and player admission — published**
+   [`8bebab7`](https://github.com/papsg/SAROO/commit/8bebab790be64736a2d1f90468807f03e37de700).
+   Adapted from paps-g `0b9dc270` and related to upstream issue #175.
+   Baseline fails 20 of 33 cases. All 33 pass ASan/UBSan and O2, including
+   TOC and DataEnd failures, fast PEND, valid game headers, audio and both
+   player callback modes. Existing menu and cover display tests pass.
+   The menu build binds 36 public inputs and adds 128 linked bytes to
+   79,508. BSS and the 488,770-byte image size stay the same. Physical
+   BIOS, drive and player behavior remain unqualified.
+   [Sega references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#saturn-cd-001--check-menu-cd-transfers-and-identify-audio-first)
