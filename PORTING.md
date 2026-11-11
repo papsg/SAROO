@@ -1496,3 +1496,13 @@ snapshot. The Saturn was left untouched.
    pass. The GNU App adds 48 bytes to 62,412 with 3,124 bytes of ITCM
    margin. Physical player and reset behavior remain unqualified.
    [Sega IP layout, attribution and tests](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-disc-005--classify-images-before-selecting-a-game-save)
+4. **MCU-FS-004 write-abort pending state — published**
+   [`4e4bdf0`](https://github.com/papsg/SAROO/commit/4e4bdf03c117897795adaf17b9d1856c3126800f).
+   Adapted from paps-g `0e259a3a` after the prior file-sync retry fix.
+   Six of 12 FAT32/exFAT scenarios fail on baseline. All pass in both
+   profiles after the port, including cached prefix and close retry,
+   contiguous and fragmented growth, and complete remounted file and
+   neighbor comparisons. The 16-method FatFs suite and 12 save-runtime
+   methods pass. The GNU App remains 62,412 bytes and the direct write
+   frame remains 56 bytes. Physical SD durability remains unqualified.
+   [FatFs references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-fs-004--keep-completed-writes-pending-after-an-abort)
