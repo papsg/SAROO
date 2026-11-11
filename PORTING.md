@@ -1420,3 +1420,13 @@ was left untouched.
    margin and 60,176 bytes of static DTCM. The direct sync_fs frame falls
    to 16 bytes. Physical SD durability remains unqualified.
    [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-fs-003--retry-failed-fat-mirrors-and-fsinfo-writes)
+3. **MCU-SD-003 command wait result — published**
+   [`12093f0`](https://github.com/papsg/SAROO/commit/12093f0941d4ac7614c8cf08089da3de895753cc).
+   Adapted from paps-g `dc3468de` with the existing log text retained.
+   Only osOK allows status interpretation and response copying.
+   Baseline accepts 26 failed waits, including the null-semaphore case.
+   All 43 modeled command cases and the four outer diskio methods pass
+   with ASan/UBSan and O2. The GNU MCU still loads 62,172 bytes with
+   3,364 ITCM bytes free, 60,176 bytes of static DTCM and a 16-byte
+   command frame. Physical IRQ/DMA completion remains unqualified.
+   [CMSIS, STM32, source and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-sd-003--reject-all-failed-command-waits)
