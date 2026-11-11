@@ -1573,3 +1573,13 @@ The Saturn was left untouched.
    The menu adds 176 code/data and 4 BSS bytes. Both relocated helpers
    fit their aligned 96-byte slots. Physical launch remains unqualified.
    [Sega citation, upstream issues and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#check-companion-roms-before-bios-handoff)
+5. **FPGA menu timing with corrected CS2 access — published**
+   [`03f68cf`](https://github.com/papsg/SAROO/commit/03f68cf78126f2f9079d6f5f31924188b2bcd0ae).
+   Adapted from paps-g `fb67ac50` and `86e2af4e` together. The old
+   getter loses one full FRT period in the two-wrap control. The old
+   CS2 alias fails four read cases. All 38 menu and peripheral methods
+   pass with sanitizers and 27 menu methods pass at O2, including the
+   public FPGA 05 register simulation. The menu shrinks 96 linked
+   bytes and the image size is unchanged. Historical controller
+   recovery covers one Saturn. Wider physical timing remains open.
+   [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#use-the-fpga-counter-for-menu-timing)
