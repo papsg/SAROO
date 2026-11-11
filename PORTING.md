@@ -1848,3 +1848,13 @@ left untouched.
    transitions. The menu links 80,772 code/data and 9,244 BSS bytes.
    Physical BIOS and drive transitions remain unqualified.
    [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#stop-cd-startup-after-failed-initialization)
+
+6. **BIOS executable request admission — published**
+   [`e8f6830`](https://github.com/papsg/SAROO/commit/e8f6830b073ce497c6104f40a138b1e2818b9fd2).
+   Adapted from paps-g `d3d124d3`. The parent fails three of five
+   handoff methods and passes the healthy and early-failure controls.
+   The port passes all 33 CD methods under ASan/UBSan and O2 and five
+   companion-ROM methods. The menu links 80,788 code/data and 9,244
+   BSS bytes. BIOS execution and asynchronous read completion remain
+   unqualified on hardware.
+   [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#gate-bios-handoff-on-executable-request-admission)
