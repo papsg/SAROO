@@ -11,6 +11,7 @@ static FILE *disk;
 static LBA_t sectors;
 static unsigned reads,writes,syncs,failures;
 static LBA_t fault_sector;
+static UINT fault_prefix;
 static int fail_write,fail_sync;
 static pthread_mutex_t mutex;
 int ff_mutex_create(int vol) { assert(!vol);return pthread_mutex_init(&mutex,NULL)==0; }
@@ -28,6 +29,11 @@ DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 {
     assert(!drive && count && sector+count<=sectors);writes++;
     if (fail_write && fault_sector >= sector && fault_sector - sector < count) {
+        if (fault_prefix) {
+            const BYTE *source = data + (fault_sector - sector) * 512;
+            assert(fault_prefix < 512 && !fseeko(disk, (off_t)fault_sector * 512, SEEK_SET));
+            assert(fwrite(source, 1, fault_prefix, disk) == fault_prefix && !fflush(disk));
+        }
         failures++;
         return RES_ERROR;
     }
@@ -244,8 +250,110 @@ static void sync_file(int fat32, int value)
     verify_file("/save.bin", payload, sizeof(payload));
     verify_file("/neighbor.bin", neighbor, sizeof(neighbor));
     assert(f_mount(NULL, "0:", 0) == FR_OK);
-    printf("sync fs=%u case=%d writes=%u syncs=%u failures=%u\n",
-           fs.fs_type, value, writes, syncs, failures);
+    printf("sync fs=%s case=%d writes=%u syncs=%u failures=%u\n",
+           fat32 ? "fat32" : "exfat", value, writes, syncs, failures);
+}
+
+static void compare_fats(const FATFS *fs)
+{
+    BYTE primary[512], mirror[512];
+    assert(fs->n_fats == 2);
+    for (LBA_t i = 0; i < fs->fsize; i++) {
+        assert(disk_read(0, primary, fs->fatbase + i, 1) == RES_OK);
+        assert(disk_read(0, mirror, fs->fatbase + fs->fsize + i, 1) == RES_OK);
+        assert(!memcmp(primary, mirror, sizeof(primary)));
+    }
+}
+
+static DWORD little_word(const BYTE *data)
+{
+    return (DWORD)data[0] | (DWORD)data[1] << 8 | (DWORD)data[2] << 16 | (DWORD)data[3] << 24;
+}
+
+/* Adapted from paps-g a81828e4. Normal allocation supplies the pending FAT sector. */
+static void sync_metadata(BYTE type, int value)
+{
+    enum { MIRROR, PRIMARY, SINGLE, FSINFO, PARTIAL_MIRROR, PARTIAL_PRIMARY, PARTIAL_FSINFO };
+    assert(value >= MIRROR && value <= PARTIAL_FSINFO);
+    int fat32 = type == FS_FAT32;
+    int single = value == SINGLE;
+    int fsinfo = value == FSINFO || value == PARTIAL_FSINFO;
+    int mirror = value == MIRROR || value == PARTIAL_MIRROR;
+    assert(!fsinfo || fat32);
+    format_volume(fat32 ? FM_FAT32 : FM_FAT, single ? 1 : 2, 512);
+    FATFS fs;
+    FIL file;
+    FILINFO info;
+    UINT count;
+    BYTE payload[8192], neighbor[2048];
+    for (unsigned i = 0; i < sizeof(payload); i++)
+        payload[i] = pattern(i + 7 * (i / 512));
+    memset(neighbor, 0xc9, sizeof(neighbor));
+    assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == type);
+    assert(fs.n_fats == (single ? 1 : 2));
+    create_neighbor(neighbor, sizeof(neighbor));
+    assert(f_open(&file, "/save.bin", FA_CREATE_NEW | FA_READ | FA_WRITE) == FR_OK);
+    assert(f_lseek(&file, sizeof(payload)) == FR_OK && f_tell(&file) == sizeof(payload));
+    assert(fs.wflag && fs.winsect - fs.fatbase < fs.fsize);
+    LBA_t pending_sector = fs.winsect;
+    BYTE pending[512];
+    memcpy(pending, fs.win, sizeof(pending));
+
+    fault_sector = fsinfo ? fs.volbase + 1 : pending_sector + (mirror ? fs.fsize : 0);
+    fault_prefix = value >= PARTIAL_MIRROR ? (fsinfo ? 490 : 17) : 0;
+    fail_write = !single;
+    unsigned before_writes = writes, before_syncs = syncs;
+    FRESULT result = f_sync(&file);
+    if (single) {
+        assert(result == FR_OK && !failures && syncs == before_syncs + 1);
+        assert(writes - before_writes == (fat32 ? 3u : 2u));
+    } else {
+        if (result != FR_DISK_ERR || failures != 1) {
+            fprintf(stderr, "Lost metadata error: type=%u, case=%d, result=%u, failures=%u\n",
+                    (unsigned)type, value, (unsigned)result, failures);
+            abort();
+        }
+        assert(syncs == before_syncs && file.obj.fs == &fs);
+        if (fsinfo) {
+            /* FSInfo hints can be regenerated after another sector uses the cache. */
+            assert(fs.fsi_flag == 1 && !fs.wflag);
+            assert(f_stat("/neighbor.bin", &info) == FR_OK && info.fsize == sizeof(neighbor));
+            assert(failures == 1 && fs.winsect != fault_sector);
+            assert(f_sync(&file) == FR_DISK_ERR && failures == 2);
+        } else {
+            unsigned attempts = mirror ? 2 : 1;
+            assert(writes - before_writes == attempts);
+            assert(fs.wflag && fs.winsect == pending_sector && !memcmp(fs.win, pending, sizeof(pending)));
+            before_writes = writes;
+            assert(f_stat("/neighbor.bin", &info) == FR_DISK_ERR && failures == 2);
+            assert(writes - before_writes == attempts);
+            assert(fs.wflag && fs.winsect == pending_sector && !memcmp(fs.win, pending, sizeof(pending)));
+        }
+        assert(f_close(&file) == FR_DISK_ERR && failures == 3 && file.obj.fs == &fs);
+        assert(syncs == before_syncs);
+        fail_write = 0;
+        assert(f_sync(&file) == FR_OK && syncs == before_syncs + 1);
+    }
+    check_clean_sync(&file);
+    assert(f_lseek(&file, 0) == FR_OK);
+    assert(f_write(&file, payload, sizeof(payload), &count) == FR_OK && count == sizeof(payload));
+    assert(f_close(&file) == FR_OK);
+    DWORD free_clusters = fs.free_clst, last_cluster = fs.last_clst;
+    if (fat32) {
+        BYTE sector[512];
+        assert(disk_read(0, sector, fs.volbase + 1, 1) == RES_OK);
+        assert(little_word(sector) == 0x41615252 && little_word(sector + 484) == 0x61417272);
+        assert(little_word(sector + 488) == free_clusters && little_word(sector + 492) == last_cluster);
+        assert(sector[510] == 0x55 && sector[511] == 0xaa);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+    verify_file("/save.bin", payload, sizeof(payload));
+    verify_file("/neighbor.bin", neighbor, sizeof(neighbor));
+    if (fat32) assert(fs.free_clst == free_clusters && fs.last_clst == last_cluster);
+    if (!single) compare_fats(&fs);
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+    printf("metadata type=%u case=%d writes=%u syncs=%u failures=%u\n",
+           (unsigned)type, value, writes, syncs, failures);
 }
 
 int main(int argc,char **argv)
@@ -256,6 +364,11 @@ int main(int argc,char **argv)
     int value = atoi(argv[3]);
     if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
+    } else if (!strncmp(argv[2], "metadata-", 9)) {
+        const char *name = argv[2] + 9;
+        if (!strcmp(name, "fat12")) sync_metadata(FS_FAT12, value);
+        else if (!strcmp(name, "fat16")) sync_metadata(FS_FAT16, value);
+        else { assert(!strcmp(name, "fat32")); sync_metadata(FS_FAT32, value); }
     } else {
         int fat32 = !strcmp(argv[2], "fragmented") && value;
         format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);

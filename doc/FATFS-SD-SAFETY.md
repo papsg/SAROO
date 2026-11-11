@@ -35,6 +35,36 @@ static DTCM. The direct `f_sync` frame is 112 bytes. Those values match
 the preceding checkpoint. The host tests and GNU link checks leave
 physical SD durability and the MDK build unqualified. [Build instructions][build]
 
+## MCU-FS-003 — Retry failed FAT mirrors and FSInfo writes
+
+FatFs reports success when a write to the second FAT or the FAT32 FSInfo
+sector fails. It also clears the corresponding pending state. A failed
+mirror can leave the backup allocation table stale. FSInfo holds the
+free-cluster count and allocation hint. A failure there leaves those hints
+stale. [Original FatFs source][original-fatfs] · [FatFs f_sync][sync]
+
+The port adapts paps-g `a81828e45f480a803e8fa41d41c934c9eed2f69f`.
+The shared sector stays dirty until every required FAT copy succeeds.
+A primary error stops the write before the mirror. Retrying a mirror
+error can write both copies again. The FSInfo update remains pending on
+error, and the shared sector cache remains available to readers because
+the counters can rebuild the FSInfo sector. [Public FatFs source][current-fatfs]
+
+Generated FAT12, FAT16 and FAT32 volumes reach the production allocation
+and sync paths. The 14 scenarios cover rejected and partial writes,
+repeated failures, successful retry, exact copy counts, clean syncs, and
+byte comparisons of the files, mirrored tables and FAT32 hints after
+remount. The preceding `669edd8` baseline ignores the failure in seven
+mirror and FSInfo scenarios. Seven primary-error and single-FAT controls
+pass on that baseline. All 14 pass with ASan/UBSan and O2 on this port.
+[Actual FatFs fixture][fatfs-fixture]
+
+The GNU App build adds 16 load bytes for a total of 62,172, with 3,364 bytes
+of ITCM margin and 60,176 bytes of static DTCM. The direct `sync_fs` frame
+falls from 24 to 16 bytes. The tests establish retry behavior after a
+reported device error. Physical SD durability remains unqualified.
+[Build instructions][build]
+
 [original-fatfs]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c
 [current-fatfs]: ../Firm_MCU/FatFS/ff.c
 [sync]: https://elm-chan.org/fsw/ff/doc/sync.html

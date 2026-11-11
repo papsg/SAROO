@@ -1056,20 +1056,15 @@ static FRESULT sync_window (	/* Returns FR_OK or FR_DISK_ERR */
 	FATFS* fs			/* Filesystem object */
 )
 {
-	FRESULT res = FR_OK;
-
-
 	if (fs->wflag) {	/* Is the disk access window dirty? */
-		if (disk_write(fs->pdrv, fs->win, fs->winsect, 1) == RES_OK) {	/* Write it back into the volume */
-			fs->wflag = 0;	/* Clear window dirty flag */
-			if (fs->winsect - fs->fatbase < fs->fsize) {	/* Is it in the 1st FAT? */
-				if (fs->n_fats == 2) disk_write(fs->pdrv, fs->win, fs->winsect + fs->fsize, 1);	/* Reflect it to 2nd FAT if needed */
-			}
-		} else {
-			res = FR_DISK_ERR;
+		if (disk_write(fs->pdrv, fs->win, fs->winsect, 1) != RES_OK) return FR_DISK_ERR;
+		if (fs->n_fats == 2 && fs->winsect - fs->fatbase < fs->fsize) {
+			if (disk_write(fs->pdrv, fs->win, fs->winsect + fs->fsize, 1) != RES_OK)
+				return FR_DISK_ERR;	/* Keep the FAT sector until both copies succeed */
 		}
+		fs->wflag = 0;
 	}
-	return res;
+	return FR_OK;
 }
 #endif
 
@@ -1123,7 +1118,8 @@ static FRESULT sync_fs (	/* Returns FR_OK or FR_DISK_ERR */
 			st_dword(fs->win + FSI_Free_Count, fs->free_clst);	/* Number of free clusters */
 			st_dword(fs->win + FSI_Nxt_Free, fs->last_clst);	/* Last allocated culuster */
 			fs->winsect = fs->volbase + 1;						/* Write it into the FSInfo sector (Next to VBR) */
-			disk_write(fs->pdrv, fs->win, fs->winsect, 1);
+			/* The counters can rebuild FSInfo for a later retry. */
+			if (disk_write(fs->pdrv, fs->win, fs->winsect, 1) != RES_OK) return FR_DISK_ERR;
 			fs->fsi_flag = 0;
 		}
 		/* Make sure that no pending write process in the lower layer */

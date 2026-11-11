@@ -1,4 +1,4 @@
-"""Actual FatFs geometry, seek and sync tests on generated host media."""
+"""Actual FatFs geometry, seek, sync and metadata tests on generated host media."""
 # Adapted from paps-g 60d5df01; all compilation and media stay in public tests/build.
 import hashlib
 import json
@@ -47,9 +47,10 @@ class FatFsSeekTests(unittest.TestCase):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2)+'\n')
 
     def invoke(self, mode, value=0):
+        size_mib = {'seek': 8192, 'metadata-fat12': 1, 'metadata-fat16': 16}.get(mode, 64)
         with tempfile.TemporaryDirectory(dir=self.target) as tmp:
             card = Path(tmp) / 'card.img'
-            with card.open('wb') as file: file.truncate(8*1024**3 if mode == 'seek' else 64*1024**2)
+            with card.open('wb') as file: file.truncate(size_mib * 1024**2)
             if mode == 'seek': self.assertLess(card.stat().st_blocks*512, 1024**2, 'Wide fixture requires sparse host files')
             result = subprocess.run([str(self.binary), str(card), mode, str(value)], capture_output=True,
                 timeout=90, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1', 'ASAN_OPTIONS': 'detect_leaks=0'})
@@ -89,6 +90,29 @@ class FatFsSeekTests(unittest.TestCase):
         for filesystem in ('fat32', 'exfat'):
             with self.subTest(filesystem=filesystem):
                 self.invoke(f'sync-{filesystem}', 4)
+
+    def test_failed_fat_mirror_retains_the_pending_window(self):
+        for filesystem in ('fat12', 'fat16', 'fat32'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'metadata-{filesystem}', 0)
+
+    def test_failed_primary_fat_write_stops_before_the_mirror(self):
+        for filesystem in ('fat12', 'fat16', 'fat32'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'metadata-{filesystem}', 1)
+
+    def test_single_fat_writes_only_its_own_table(self):
+        for filesystem in ('fat12', 'fat16', 'fat32'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'metadata-{filesystem}', 2)
+
+    def test_fsinfo_failure_remains_retryable_without_blocking_reads(self):
+        self.invoke('metadata-fat32', 3)
+
+    def test_partial_metadata_writes_recover(self):
+        for filesystem, value in (('fat12', 4), ('fat16', 5), ('fat32', 4), ('fat32', 6)):
+            with self.subTest(filesystem=filesystem, value=value):
+                self.invoke(f'metadata-{filesystem}', value)
 
 
 if __name__ == '__main__': unittest.main()
