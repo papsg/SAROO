@@ -1739,3 +1739,13 @@ was left untouched.
    under ASan/UBSan and O2. The linked menu adds 64 bytes to 80,308.
    Physical cache and bus timing remain unmeasured.
    [FPGA and SH7604 references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#invalidate-every-expansion-ram-cache-mirror)
+6. **MCU expansion RAM address correction — published**
+   [`f1ac464`](https://github.com/papsg/SAROO/commit/f1ac4641589fc8390c4f3986b0a54fdd89d8f5f2).
+   Adapted from paps-g `d1079400` and the MCU candidate in `855d0092`.
+   The exact parent fails 12 named-file mirror cases and all four
+   paired archive runs. The port passes 39 named-file cases and all
+   four mirrored archive runs. All 58 focused methods pass ASan/UBSan
+   and O2, including native buffers and later-span failures. The GNU
+   App is 63,424 bytes with the original case table, leaving 2,112
+   bytes of ITCM. Physical behavior remains unqualified.
+   [Decoder sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#map-mcu-transfers-to-the-saturn-visible-ram)
