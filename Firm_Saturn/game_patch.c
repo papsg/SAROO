@@ -62,20 +62,24 @@ void CHEAT_patch(void)
 // KAITEI_DAISENSOU (Japan) 海底大战争日版 第一关后半部分会有音乐丢失情况
 // Original note: music can disappear in the latter half of the first stage.
 
+static u8 kaitei_music_ready;
+
 void KAITEI_DAISENSOU_handle1(void)
 {
-	cdc_read_sector(2462+150, 0x54f00, (void*)0x22400000);
+	kaitei_music_ready = cdc_read_sector(2462+150, 0x54f00, (void*)0x22400000) == 0x54f00;
 }
 
 
 void KAITEI_DAISENSOU_handle2(void)
 {
-	memcpy((u8*)0x2AA000, (u8*)0x22400000, 0x54f00);
+	if(kaitei_music_ready)
+		memcpy((u8*)0x2AA000, (u8*)0x22400000, 0x54f00);
 }
 
 
 void KAITEI_DAISENSOU_patch(void)
 {	
+	kaitei_music_ready = 0;
 	*(u32*)(0x6007324) = (u32)KAITEI_DAISENSOU_handle1;
 	*(u32*)(0x60044E0) = (u32)KAITEI_DAISENSOU_handle2;
 }

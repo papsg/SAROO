@@ -114,3 +114,50 @@ existing pending-write path.
 The SH-2 build retains 80,452 code/data bytes, 9,240 BSS bytes, and
 a 44-byte direct `write_pending` frame. Physical backup timing,
 power-loss recovery and the reported game transition remain unqualified.
+
+## Bound CD transfers and preserve failures
+
+Adapted from paps-g `4f7cd16b` (SATURN-CD-003). The preceding reader
+rounded 405 bytes to 408 and could store a longword at an unaligned
+address. It also returned the requested size after failed setup,
+Get/Delete or DataEnd commands. The port copies the exact requested
+extent, retaining the aligned bulk path and using the 16-bit FIFO for
+tails or unaligned destinations. It propagates the first failed command.
+If a reply requests a transfer and DRDY times out, the command layer
+attempts DataEnd once and returns the original timeout. [Sega CD
+Communication Interface, ST-162-062094, DATATRNS, printed p. 27](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=15),
+[§3.4, printed p. 32](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=20).
+
+Size mode zero can yield 2,048-byte or 2,324-byte sectors. The reader
+keeps the existing 2,048-byte slice per sector and checks the full word
+count produced by the public SAROO CD block, including after a partial
+final copy. File information accepts one complete 12-byte record for a
+single file or at most 254 complete records for an all-files request.
+The public function still returns zero on success, and an all-files
+caller supplies storage for 254 records. The existing enumeration path
+uses the received count. [Sega §8.2.1 No. 1.10, printed p. 81](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=69),
+[§8.2.7 Nos. 7.1 and 7.4, printed pp. 95–96](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83),
+[§8.2.8 No. 8.4, printed p. 100](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=88).
+
+The existing Kaitei Daisensou music hook copies data only after the
+entire preload succeeds. A failed preload or a new hook installation
+clears validity. [Original byte reader](https://github.com/tpunix/SAROO/commit/e39289ae99472913891384786e535d121e301ae1),
+[original music hooks](https://github.com/tpunix/SAROO/commit/8928b7da7311edb65b7b2d0e9fd1989cc25c4202).
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+```
+
+The preceding source fails eight of nine transfer methods, including
+the end sentinel in the 405-byte case. The ordinary command control
+passes. Use `SAROO_MENU_CD_SOURCE` to reproduce against that source.
+The port passes all 22 transfer, query and player methods under
+ASan/UBSan and O2. The transfer fixture covers four alignments, both
+sector layouts, every 16-bit file-info word count, error precedence
+and the music preload lifetime.
+
+The SH-2 menu links 80,756 code/data bytes (+304) and 9,244 BSS
+bytes (+4). The padded image stays at 488,770 bytes. Failed reads can
+already have written some destination bytes. Physical FIFO behavior,
+disc timing and game music remain unqualified.

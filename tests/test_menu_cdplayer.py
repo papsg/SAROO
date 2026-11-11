@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def function(source, name):
-    match = re.search(rb'^(?:int|void) ' + name.encode() + rb'\([^;\n]*\)\s*\n\{', source, re.M)
+    match = re.search(rb'^(?:static )?(?:int|void) ' + name.encode() + rb'\([^;\n]*\)\s*\n\{', source, re.M)
     assert match, name
     return source[match.start():source.index(b'\n}', match.end()) + 3]
 

@@ -95,6 +95,9 @@ int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 	if(wait){
 		if(wait_hirq(wait)){
 			printk("HIRQ TIMEOUT! HIRQ=%04x wait=%04x %s\n", HIRQ, wait, cmdname);
+			/* End an accepted transfer even when its FIFO never becomes ready. */
+			if(wait == HIRQ_DRDY && (resp->cr1 & 0x4000))
+				cdc_end_trans(NULL);
 			return -3;
 		}
 	}
@@ -510,12 +513,25 @@ int cdc_put_data(int bufnum, int snum)
 
 void cdc_trans_data(u8 *buf, int length)
 {
-	int i;
-
-	for(i=0; i<length; i+=4){
-		*(u32*)(buf+i) = REG(0x25818000);
-	}
-
+    if (length <= 0) return;
+    /* Preserve aligned longword reads and use the word FIFO for tails. */
+    if (((u32)buf & 3) == 0) {
+        unsigned count = (unsigned)length >> 2;
+        length &= 3;
+        while (count--) {
+            *(u32*)buf = REG(0x25818000);
+            buf += 4;
+        }
+    }
+    unsigned count = (unsigned)length >> 1;
+    while (count--) {
+        u16 word = REG16(0x25898000);
+        buf[0] = word >> 8;
+        buf[1] = word;
+        buf += 2;
+    }
+    if (length & 1)
+        *buf = REG16(0x25898000) >> 8;
 }
 
 /**********************************************************/
@@ -613,26 +629,33 @@ int cdc_get_file_scope(int *fid, int *fnum, int *drend)
 	return retv;
 }
 
+/* Return the admitted record count for callers that enumerate the results. */
+static int cdc_file_info(int fid, CdcFile *buf)
+{
+    CDCMD cmd, resp;
+    if (!buf) return -1;
+    cmd.cr1 = 0x7300;
+    cmd.cr2 = 0;
+    cmd.cr3 = (fid >> 16) & 0xff;
+    cmd.cr4 = fid & 0xffff;
+    int result = cdc_cmd(HIRQ_DRDY, &cmd, &resp, "cdc_get_file_info");
+    if (result) return result;
+
+    int count = resp.cr2 / 6;
+    int all = (fid & 0xffffff) == 0xffffff;
+    if (count * 6 != resp.cr2 || count > 254 || (!all && count != 1))
+        count = -1;
+    else
+        cdc_trans_data((u8*)buf, resp.cr2 * 2);
+    result = cdc_end_trans(NULL);
+    if (count < 0) return count;
+    return result ? result : count;
+}
+
 int cdc_get_file_info(int fid, CdcFile *buf)
 {
-	CDCMD cmd, resp;
-	int retv;
-
-	cmd.cr1 = 0x7300;
-	cmd.cr2 = 0x0000;
-	cmd.cr3 = ((fid>>16)&0xff);
-	cmd.cr4 = fid&0xffff;
-
-	retv = cdc_cmd(HIRQ_DRDY, &cmd, &resp, "cdc_get_file_info");
-
-	if(retv==0){
-		//int len = ((resp.cr3&0xff)<<16) | resp.cr4;
-		int len = (resp.cr2)*2;
-		cdc_trans_data((u8*)buf, len);
-		cdc_end_trans(NULL);
-	}
-
-	return retv;
+    int count = cdc_file_info(fid, buf);
+    return count < 0 ? count : 0;
 }
 
 int cdc_read_file(int selnum, int fid, int offset)
@@ -833,35 +856,36 @@ void cdc_init(void)
 
 int cdc_read_sector(int fad, int size, u8 *buf)
 {
-	int nsec, retv, status, num;
-	num = (size+3)&0xfffffffc;
+    if (size < 0 || (size && !buf)) return -1;
+    if (!size) return 0;
+    int result = cdc_set_size(0);
+    if (result) return result;
+    result = cdc_reset_selector(0, 0);
+    if (result) return result;
+    result = cdc_cddev_connect(0);
+    if (result) return result;
+    result = cdc_play_fad(0, fad, ((size - 1) >> 11) + 1);
+    if (result) return result;
 
-	cdc_set_size(0);
-	cdc_reset_selector(0, 0);
-	cdc_cddev_connect(0);
-
-	cdc_play_fad(0, fad, (size+0x7ff)>>11);
-	while(num>0){
-		retv = cdc_get_numsector(0, &nsec);
-		if(retv<0)
-			return retv;
-		if(nsec==0)
-			continue;
-		
-		if(num>=2048)
-			nsec=2048;
-		else
-			nsec=num;	
-		cdc_get_del_data(0, 0, 1);
-		cdc_trans_data(buf, nsec);
-		
-		cdc_end_trans(&status);
-
-		buf += nsec;
-		num -= nsec;
-	}
-
-	return size;
+    int remaining = size;
+    while (remaining > 0) {
+        int available, words;
+        result = cdc_get_numsector(0, &available);
+        if (result) return result;
+        if (!available) continue;
+        int bytes = remaining >= 2048 ? 2048 : remaining;
+        result = cdc_get_del_data(0, 0, 1);
+        if (result) return result;
+        cdc_trans_data(buf, bytes);
+        result = cdc_end_trans(&words);
+        if (result) return result;
+        /* SAROO reports the entire sector in size mode zero, including
+         * the remainder of a partially consumed final sector. */
+        if (words != 1024 && words != 1162) return -1;
+        buf += bytes;
+        remaining -= bytes;
+    }
+    return size;
 }
 
 
@@ -961,10 +985,8 @@ void cdc_file_test(void)
 	fnum = 0;
 	if(cdc_get_file_scope(&fid, &fnum, &drend)) return;
 	printk("file scope: fid=%d fnum=%d drend=%d\n", fid, fnum, drend);
-	cdc_get_file_info(0xffffff, finfo);
-	if(fnum>254){
-		fnum = 254;
-	}
+	fnum = cdc_file_info(0xffffff, finfo);
+	if(fnum < 0) return;
 	for(i=0; i<fnum; i++){
 		printk("file %4d: fad=%08x size=%08x %02x %02x %02x %02x\n", i,
 				finfo[i].fad, finfo[i].size,
