@@ -38,6 +38,16 @@ def make_fat32(path, sectors=131072):
             f.seek(sector * 512); f.write(struct.pack('<III', 0x0ffffff8, 0x0fffffff, 0x0fffffff))
 
 
+def config_loader_source(module):
+    """Keep the matcher and loader through the end of parse_config."""
+    start = module.index(b'static char *gameid_split(')
+    matcher = module[start:module.index(b'/******************************************************************************/', start)]
+    start = module.index(b'char *get_line(')
+    parse = module.index(b' parse_config(', start)
+    end = module.index(b'\n}', parse) + 2
+    return (matcher + module[start:end] + b'\n').replace(b'0x24002000', b'TEST_SCRATCH_ADDR')
+
+
 class MCUSaveTest(unittest.TestCase):
     fixture = 'startup'
 
@@ -101,13 +111,7 @@ class MCUSaveTest(unittest.TestCase):
                 (cls.target / name).write_bytes(data); inputs['tests/firmware-save-stubs/' + name] = data
         if cls.fixture == 'disc':
             harnesses += ['mcu_save_disc.c', 'test_mcu_save_disc.py', 'menu_command_source.py']
-            start = module.index(b'static char *gameid_split(')
-            config = module[start:module.index(b'/******************************************************************************/', start)]
-            start = module.index(b'char *get_line(')
-            parse = module.index(b' parse_config(', start)
-            end = module.index(b'\n}', parse) + 2
-            config += module[start:end] + b'\n'
-            (cls.target / 'config-disc.inc').write_bytes(config.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
+            (cls.target / 'config-disc.inc').write_bytes(config_loader_source(module))
             coupled = (ROOT / 'tests/mcu_save_api.c').read_bytes()
             (cls.target / 'coupled-harness.inc').write_bytes(coupled[:coupled.index(b'int main(')])
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc

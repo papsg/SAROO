@@ -8,6 +8,7 @@ import hashlib
 import shlex
 import tempfile
 import unittest
+from mcu_save_support import config_loader_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,17 +21,13 @@ class ConfigLoaderTests(unittest.TestCase):
         main = (source / 'saturn_main.c').read_bytes()
         build = ROOT / 'tests/build/config-loader'; build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
-        start = module.index(b'static char *gameid_split(')
-        match = module[start:module.index(b'/******************************************************************************/', start)]
-        start = module.index(b'char *get_line(')
-        code = match + module[start:module.index(b'#define SSAVE_FILE', start)]
-        (cls.target / 'config-loader.inc').write_bytes(code.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
+        (cls.target / 'config-loader.inc').write_bytes(config_loader_source(module))
         call = main.index(b'parse_config("/SAROO/saroocfg.txt", NULL)')
         gate = main[main.rfind(b'\n', 0, call)+1:main.index(b'\n', call)]
         (cls.target / 'config-startup-gate.inc').write_bytes(gate)
         inputs = {'saturn_utils.c': module, 'saturn_main.c': main,
                   'example.cfg': (ROOT / 'doc/saroocfg.txt').read_bytes()}
-        for name in ('config_loader.c', 'test_config_loader.py'):
+        for name in ('config_loader.c', 'test_config_loader.py', 'mcu_save_support.py'):
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs[name] = data
         for name,data in inputs.items(): (cls.target / name).write_bytes(data)
