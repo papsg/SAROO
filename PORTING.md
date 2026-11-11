@@ -1583,3 +1583,13 @@ The Saturn was left untouched.
    bytes and the image size is unchanged. Historical controller
    recovery covers one Saturn. Wider physical timing remains open.
    [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#use-the-fpga-counter-for-menu-timing)
+6. **Explicit save acknowledgment — published**
+   [`fa89104`](https://github.com/papsg/SAROO/commit/fa89104e9440e0e50aafb3414e267397108d4577).
+   Adapted from paps-g `74999ab0` as a paired menu and MCU change.
+   The baseline accepts cleared registers as success. The new
+   protocol passes five host and RTL methods, including every 16-bit
+   opcode and full-width MEMS arguments. All 59 save and file transfer
+   methods pass at O2. The GNU App adds 64 bytes to 62,940. The menu
+   load is unchanged and BSS grows four bytes. Both legacy modes work
+   in the host model. Physical reset and session recovery remain open.
+   [Original FPGA logic, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#acknowledge-completed-saves-explicitly)
