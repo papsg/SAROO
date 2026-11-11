@@ -97,6 +97,48 @@ for the optimized command tests. The GNU App remains at 62,172 load bytes,
 direct `sd_cmd` frame. Physical IRQ/DMA completion remains unqualified.
 [Build instructions][build]
 
+## MCU-SD-004 — Bound card-ready polling
+
+A card can answer ACMD41 successfully while keeping OCR bit 31 clear.
+The command wait returns, but the old identification loop tries again
+indefinitely. The port adapts paps-g
+`96c9dd85a9e0f56b5c052103a8a2ba6920ad0efb` and starts a two-second
+retry budget at the first ACMD41, after its initial CMD55 prefix.
+Later command time counts toward the budget. Unsigned elapsed ticks
+handle wraparound. The driver accepts a ready response from a command
+already in progress and reports timeout when a response remains
+unready at or beyond the budget. [Original SD driver][original-sd] ·
+[Public driver][current-sd] · [RTX tick configuration][rtx-config]
+
+The retained SD Association excerpt identifies the Physical Layer
+Simplified Specification v5.00, p. 27. It calls for at least one second
+of ready polling and recommends a longer host timeout. The reference
+URL is labeled v5.10. The two-second policy preserves that minimum.
+It bounds repeat polling when commands return. An in-progress command
+pair can finish after the deadline. Controller abort and DMA ownership
+have separate requirements. [SD Association reference][sd-spec] ·
+[STM32 RM0433, pp. 2398–2403 and section 55.10.16 (p. 2454)][rm0433]
+
+The public model runs actual `sdcard_identify`, `sd_cmd`, command-prefix,
+and clock/bus setup code. It checks both legacy and high-capacity cards,
+ready responses at the boundary and from a command finishing after it,
+tick wrap, command latency, and CMD55/ACMD41 errors before card selection.
+All 25 initialization scenarios pass with ASan/UBSan and O2, including
+a bounded exit for a card that keeps returning an unready response.
+Four scenarios hit the fixture's command-count guard on baseline
+`12093f0`. The other 21 pass there. All 43 command scenarios still pass.
+The same suite passes at a modeled 37 Hz, exercising the configured
+tick rate alongside the production 100 Hz. Compiled controls fail when
+they compare absolute ticks, charge the first CMD55 against the budget,
+or fix the budget at 200 ticks. [Initialization fixture][sd-fixture]
+
+The GNU App build adds 48 load bytes at this checkpoint, for a total of
+62,220 bytes and 3,316 bytes of ITCM margin. Static DTCM stays at 60,176
+bytes and the direct `sdcard_identify` frame is 40 bytes. The menu ELF and
+488,770-byte image match the starting baseline. Physical initialization
+timing, SD-card compatibility and hardware recovery remain unqualified.
+[Build instructions][build]
+
 [original-fatfs]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c
 [original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
 [current-sd]: ../Firm_MCU/Main/sdio_h7.c
@@ -109,5 +151,7 @@ direct `sd_cmd` frame. Physical IRQ/DMA completion remains unqualified.
 [sd-fixture]: ../tests/sd_safety.c
 [semaphore]: https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html
 [rtx-semaphore]: https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_semaphore.c
+[rtx-config]: ../Firm_MCU/RTE/CMSIS/RTX_Config.h
 [rm0433]: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+[sd-spec]: https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf
 [build]: ../tools/README.md#original-mcu-app-compilelink-check

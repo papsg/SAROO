@@ -1,4 +1,4 @@
-"""Compile actual SAROO SD command paths with deterministic register/RTOS models."""
+"""Compile actual SAROO SD command and initialization paths at a modeled boundary."""
 import hashlib
 import json
 import os
@@ -22,12 +22,21 @@ class SDSafetyTests(unittest.TestCase):
         data = source.read_bytes()
         definitions = data.index(b'#define SDCLK_LOW ')
         last_define = data.index(b'\n', data.index(b'#define DATA_ERROR '))
-        start = data.index(b'static int sd_cmd(')
-        end = data.index(b'\n}', start) + 2
+        config = Path(os.environ.get('SAROO_SD_RTX_CONFIG', ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h'))
+
+        def function(signature):
+            start = data.index(signature)
+            end = data.index(b'\n}', start) + 2
+            return data[start:end] + b'\n'
+
         inputs = {
             'sdio_h7.c': data,
             'command-defines.inc': data[definitions:last_define] + b'\n',
-            'command.inc': data[start:end] + b'\n',
+            'command.inc': function(b'static int sd_cmd('),
+            'identify.inc': b'\n'.join(function(signature) for signature in (
+                b'static void sd_clk_set(', b'static void sd_bus_width(',
+                b'static int sd_acmd(', b'int sdcard_identify(')),
+            'RTX_Config.h': config.read_bytes(),
             'sd_safety.c': (ROOT / 'tests/sd_safety.c').read_bytes(),
             'test_sd_safety.py': Path(__file__).read_bytes(),
         }
@@ -78,6 +87,31 @@ class SDSafetyTests(unittest.TestCase):
         for shape, bits in ((1, 1), (1, 4), (2, 4), (3, 2), (3, 1 << 27), (4, 4)):
             with self.subTest(shape=shape, bits=bits):
                 self.invoke('hardware', shape, bits)
+
+    def test_ready_cards_follow_normal_legacy_and_high_capacity_startup(self):
+        for legacy in (0, 1):
+            for position in range(7):
+                with self.subTest(legacy=legacy, position=position):
+                    self.invoke('ready', legacy, position)
+
+    def test_not_ready_retries_are_bounded_including_tick_wrap(self):
+        for wrap in (0, 1):
+            with self.subTest(wrap=wrap):
+                self.invoke('not-ready', wrap)
+
+    def test_ready_at_the_deadline_survives_tick_wrap(self):
+        self.invoke('wrap-ready', 1)
+
+    def test_card_ready_budget_accounts_for_command_latency(self):
+        for latency in range(4):
+            with self.subTest(latency=latency):
+                self.invoke('latency', latency)
+
+    def test_failed_prefix_or_request_exits_before_card_selection(self):
+        for request in (0, 1):
+            for attempt in (1, 2):
+                with self.subTest(request=request, attempt=attempt):
+                    self.invoke('identify-error', request, attempt)
 
 
 if __name__ == '__main__':

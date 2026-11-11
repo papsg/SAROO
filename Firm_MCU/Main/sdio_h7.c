@@ -9,6 +9,7 @@
 
 
 #include "main.h"
+#include "RTX_Config.h"
 
 
 /******************************************************************************/
@@ -367,14 +368,23 @@ int sdcard_identify(void)
 	else
 		hcs = 1<<30;
 
-	while(1){
+	/* Measure the retry budget from the first ACMD41, after its CMD55 prefix. */
+	retv = sd_cmd(CMD_55, sd_rca<<16);
+	const u32 start = osKernelGetTickCount();
+	const u32 ready_ticks = 2u * OS_TICK_FREQ;
+	while(!retv){
 		cmd_resp[0] = 0;
-		retv = sd_acmd(CMD_41, 0x00f00000|hcs);
+		retv = sd_cmd(CMD_41, 0x00f00000|hcs);
 		if(retv)
 			break;
 		if(cmd_resp[0]&0x80000000)
 			break;
+		if ((u32)(osKernelGetTickCount() - start) >= ready_ticks) {
+			retv = osErrorTimeout;
+			break;
+		}
 		osDelay(1);
+		retv = sd_cmd(CMD_55, sd_rca<<16);
 	}
 	if(retv){
 		printk("ACMD41 error! %08x\n", retv);
