@@ -42,6 +42,14 @@ class CueParserTests(MCUSaveTest):
         for value in range(5):
             with self.subTest(value=value):self.invoke('track-extent',value)
 
+    def test_index_requires_a_complete_sector_including_preview(self):
+        for value in range(42):
+            with self.subTest(value=value):
+                self.invoke('indexed-sector', value)
+
+    def test_invalid_mode_prefixes_do_not_publish_tracks(self):
+        self.invoke('mode-prefix')
+
     def test_partial_handle_cleanup_and_subcode_unload(self):
         for value in range(7):
             with self.subTest(value=value):self.invoke('cleanup',value)

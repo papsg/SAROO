@@ -314,6 +314,48 @@ static void track_extent(int value)
     if(!r)assert(!unload_disc());
     virtual_track_size=0;create("/D/a.bin",data,sizeof(data));retry();
 }
+static void indexed_sector(int value)
+{
+    const char *modes[]={"MODE1/2048","MODE1/2352","MODE2/2048",
+                         "MODE2/2336","MODE2/2324","MODE2/2352","AUDIO"};
+    const unsigned widths[]={2048,2352,2048,2336,2324,2352,2352};
+    unsigned mode=value/6,width=widths[mode],previewing=value%2;
+    int tail=value/2%3-1;
+    u8 data[4705],output[256];
+    for(unsigned i=0;i<sizeof(data);i++)data[i]=(u8)(i*29+i/256);
+    create("/D/a.bin",data,2*width+tail);
+    char cue[128];snprintf(cue,sizeof(cue),
+        "FILE \"a.bin\" BINARY\nTRACK 01 %s\nINDEX 01 00:00:01\n",modes[mode]);
+    create(cue_name,cue,strlen(cue));
+    memset(output,0xd3,sizeof(output));
+    int result=parse_cue((char*)cue_name,previewing?output:NULL);
+    assert((result==0)==(tail>=0));
+    if(!result && previewing) {
+        unsigned prefix=width==2352?(mode==5?24:16):width==2336?8:0;
+        assert(!memcmp(output,data+width+prefix,sizeof(output)));
+    } else if(!result) {
+        assert(cdb.tracks[0].file_offset==width && cdb.tracks[0].fad_start==150);
+        assert(cdb.tracks[0].fad_end==150 && !unload_disc());
+    } else {
+        for(unsigned i=0;i<sizeof(output);i++)assert(output[i]==0xd3);
+    }
+    assert(!handles_count && !cdb.track_num && !current_index);guards();
+}
+static void mode_prefix(void)
+{
+    const char *invalid[]={"", "M", "MO", "MOD", "MODE", "MODE1", "MODE2",
+        "MODE1/", "MODE2/", "MODE0/2048", "MODE3/2048", "MODE11/2048",
+        "MODE12/2048", "MODE1:2048", "MODE2:2352", "MODE/2048", "MODE /2048",
+        "mode1/2048", "MODE1/2324", "MODE1/2336", "MODE2/2353", "MODE2/-2048",
+        "MODE2/2048x", "MODE2/2048/", "MODE2/4294967296"};
+    for(unsigned i=0;i<sizeof(invalid)/sizeof(*invalid);i++) {
+        char cue[160];snprintf(cue,sizeof(cue),
+            "FILE \"a.bin\" BINARY\nTRACK 01 %s\nINDEX 01 00:00:00\n",invalid[i]);
+        create(cue_name,cue,strlen(cue));
+        assert(parse_cue((char*)cue_name,NULL)!=0);
+        assert(!handles_count && !cdb.track_num && !current_index);guards();
+    }
+}
 static void dispatch(int value)
 {
     create(cue_name,single,strlen(single));u8 data[2048]={0};create("/D/raw.iso",data,sizeof(data));
@@ -385,6 +427,8 @@ int MCU_CUE_TEST_ENTRY(int argc,char **argv)
     else if(!strcmp(argv[2],"path"))path_test(value);
     else if(!strcmp(argv[2],"raw"))raw(value);
     else if(!strcmp(argv[2],"track-extent"))track_extent(value);
+    else if(!strcmp(argv[2],"indexed-sector"))indexed_sector(value);
+    else if(!strcmp(argv[2],"mode-prefix"))mode_prefix();
     else if(!strcmp(argv[2],"cleanup"))cleanup(value);
     else if(!strcmp(argv[2],"dispatch"))dispatch(value);
     else if(!strcmp(argv[2],"media"))classify_media(value);

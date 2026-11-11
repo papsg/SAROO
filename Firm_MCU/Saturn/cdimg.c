@@ -138,11 +138,15 @@ static int cue_number(char **text, char delimiter, unsigned limit)
     return value;
 }
 
+enum { CUE_MAX_MINUTES = 3728 };
+_Static_assert(CUE_MAX_MINUTES < (1u << 25) / 4500,
+               "CUE indexed-sector endpoint must fit below 2^25");
+
 static int cue_time(char *text)
 {
     int fad = 0;
     for (int i = 0; i < 3; i++) {
-        int value = cue_number(&text, i < 2 ? ':' : 0, i == 0 ? 3728 : i == 1 ? 59 : 74);
+        int value = cue_number(&text, i < 2 ? ':' : 0, i == 0 ? CUE_MAX_MINUTES : i == 1 ? 59 : 74);
         if (value < 0) return -1;
         fad = fad * (i == 1 ? 60 : 75) + value;
     }
@@ -235,9 +239,9 @@ int parse_cue(char *fname, u8 *ipbuf)
             int kind, size;
             if (!strcmp(mode, "AUDIO")) { kind = 3; size = 2352; }
             else {
-                if (!strncmp(mode, "MODE1/", 6)) kind = 1;
-                else if (!strncmp(mode, "MODE2/", 6)) kind = 2;
-                else goto failed;
+                if (strncmp(mode, "MODE", 4) ||
+                    (mode[4] != '1' && mode[4] != '2') || mode[5] != '/') goto failed;
+                kind = mode[4] - '0';
                 mode += 6;
                 size = cue_number(&mode, 0, 2352);
                 if (size != 2048 && size != 2352 && !(kind == 2 && (size == 2336 || size == 2324))) goto failed;
@@ -286,8 +290,10 @@ int parse_cue(char *fname, u8 *ipbuf)
             } else if (index == 0) goto failed;
             if (relative < track_relative) goto failed;
             u32 delta = relative - track_relative, offset;
-            if (cue_offset(tk, delta, &offset) ||
-                (FSIZE_t)offset + TRACK_SIZE(tk) > f_size(tk->fp)) goto failed;
+            /* Validate the complete indexed sector in the shared byte check.
+             * cue_time bounds delta below 2^25, so delta+1 cannot wrap. */
+            if (cue_offset(tk, delta + 1, &offset)) goto failed;
+            offset -= TRACK_SIZE(tk);
             if (index == 1) {
                 if (tk->max_index || delta > 0xffffffu - tk->fad_start) goto failed;
                 tk->fad_start += delta;
