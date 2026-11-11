@@ -917,48 +917,38 @@ int seek_cd(void)
 // 0x20 [S-]
 int get_subcode(void)
 {
-	int type, rel_fad;
+    unsigned type = cdb.cr1 & 0xff;
+    if (cdb.trans_type || (type == 1 && cdb.subrw_rp == cdb.subrw_wp)) {
+        set_status(STAT_WAIT | cdb.status);
+        return 0;
+    }
+    if (type > 1) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
 
-	if(cdb.trans_type){
-		set_status(STAT_WAIT | cdb.status);
-		return 0;
-	}
-
-	type = cdb.cr1&0xff;
-	//SSLOG(_INFO, "get_subcode: type=%d\n", type);
-
-	if(type==0){
-		// Get Q Channel
-		command_reply(0x4000 | (cdb.status<<8), 5, reply_pair(0, 0));
-
-		rel_fad = cdb.fad-cdb.tracks[cdb.track-1].fad_start;
-
-		cdb.SUBH[0] = cdb.ctrladdr;
-		cdb.SUBH[1] = cdb.track;
-		cdb.SUBH[2] = cdb.index;
-		cdb.SUBH[3] = rel_fad>>16;
-		cdb.SUBH[4] = rel_fad>>8;
-		cdb.SUBH[5] = rel_fad>>0;
-		cdb.SUBH[6] = 0;
-		cdb.SUBH[7] = cdb.fad>>16;
-		cdb.SUBH[8] = cdb.fad>>8;
-		cdb.SUBH[9] = cdb.fad>>0;
-
-		cdb.trans_type = TRANS_SUBQ;
-		trans_start();
-	}else if(type==1){
-		// Get RW Channel
-		if(cdb.subrw_rp == cdb.subrw_wp){
-			set_status(STAT_WAIT | cdb.status);
-			return 0;
-		}
-		command_reply(0x4000 | (cdb.status<<8), 12, reply_pair(0, 0));
-
-		cdb.trans_type = TRANS_SUBRW;
-		trans_start();
-	}
-
-	return HIRQ_DRDY;
+    if (type == 0) {
+        /* Q is readable in all drive states (Sega CD I/F, §4.3).
+         * A home/stop report has no track or relative position. */
+        TRACK_INFO *track = get_track_info(cdb.track << 8);
+        u32 fad = cdb.fad;
+        u32 relative = track ? fad - track->fad_start : 0xffffffffu;
+        u8 *out = cdb.SUBH;
+        out[0] = cdb.ctrladdr;
+        out[1] = cdb.track;
+        out[2] = cdb.index;
+        out[3] = relative >> 16;
+        out[4] = relative >> 8;
+        out[5] = relative;
+        out[6] = 0;
+        out[7] = fad >> 16;
+        out[8] = fad >> 8;
+        out[9] = fad;
+    }
+    command_reply(0x4000 | (cdb.status << 8), type ? 12 : 5, reply_pair(0, 0));
+    cdb.trans_type = type ? TRANS_SUBRW : TRANS_SUBQ;
+    trans_start();
+    return HIRQ_DRDY;
 }
 
 

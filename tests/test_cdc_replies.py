@@ -23,9 +23,9 @@ class CDReplyTests(unittest.TestCase):
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
 
-        def function(signature):
-            start = raw.index(signature)
-            return raw[start:raw.index(b'\n}', start) + 2] + b'\n'
+        def function(signature, data=raw):
+            start = data.index(signature)
+            return data[start:data.index(b'\n}', start) + 2] + b'\n'
 
         code = b'static u8 copy_move_error;\nstatic int old_numblocks, old_block_free;\n'
         code += command_reply_source(raw)
@@ -33,6 +33,8 @@ class CDReplyTests(unittest.TestCase):
         if selector in raw:
             code += function(selector)
         code += function(b'void set_status(') + function(b'BLOCK *find_block(')
+        main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
+        code += function(b'TRACK_INFO *get_track_info(', main)
         names = ('get_hw_info', 'get_toc_info', 'open_tray', 'get_subcode',
                  'get_cdev_connect', 'get_last_buffer', 'get_filter_range',
                  'get_filter_subheader', 'get_filter_mode', 'get_filter_connection',

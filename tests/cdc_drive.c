@@ -38,6 +38,8 @@ static void wait_pause_ok(void)
         worker_pause_step();
     }
 }
+static unsigned subcode_starts;
+static void trans_start(void) { subcode_starts++; }
 #include "drive.inc"
 #include "file-start.inc"
 #include "reset.inc"
@@ -603,6 +605,161 @@ static void selector_logs(void)
     assert(reset_filter()==HIRQ_ESEL && waits==1 && wakeups==1);
     assert(!strcmp(fixture_log_text,"reset_filter: mode=04 fid=0\nreset_filter: Send PAUSE request!\n"));
 }
+
+/* Subcode cases adapted from paps-g 555eb231. Only FIFO start is modeled. */
+static u8 subcode_payload[10];
+
+static void prepare_subcode(void)
+{
+    ready();
+    memset(subcode_payload, 0xa5, sizeof subcode_payload);
+    cdb.SUBH = subcode_payload;
+    subcode_starts = 0;
+}
+
+static u32 read_be24(const u8 *bytes)
+{
+    return (u32)bytes[0] << 16 | (u32)bytes[1] << 8 | bytes[2];
+}
+
+static void check_subcode_q(u32 relative_fad)
+{
+    CDBLOCK before;
+    memcpy(&before, &cdb, sizeof before);
+    unsigned starts = subcode_starts;
+    assert(get_subcode() == HIRQ_DRDY);
+    assert(subcode_starts == starts + 1 && cdb.trans_type == TRANS_SUBQ);
+    assert(reply[0] == (0x4000 | (cdb.status << 8)) && reply[1] == 5);
+    assert(!reply[2] && !reply[3]);
+    assert(subcode_payload[0] == cdb.ctrladdr && subcode_payload[1] == cdb.track);
+    assert(subcode_payload[2] == cdb.index && !subcode_payload[6]);
+    assert(read_be24(subcode_payload + 3) == (relative_fad & 0xffffff));
+    assert(read_be24(subcode_payload + 7) == (cdb.fad & 0xffffff));
+    before.trans_type = TRANS_SUBQ;
+    assert(!memcmp(&before, &cdb, sizeof cdb));
+    cdb.trans_type = 0;
+}
+
+static void subcode_transitions(void)
+{
+    prepare_subcode();
+    request(0, 0, 0);
+    assert(!seek_cd() && cdb.status == STAT_STANDBY);
+    assert(cdb.track == 255 && cdb.fad == 0xffffffffu);
+    cdb.cr1 = 0;
+    check_subcode_q(0xffffff);
+    for (unsigned i = 0; i < sizeof subcode_payload; i++)
+        assert(subcode_payload[i] == (i == 6 ? 0 : 255));
+
+    request(0xffffff, 0, 0);
+    assert(!seek_cd());
+    cdb.cr1 = 0;
+    check_subcode_q(0);
+    request(0x800180, 0, 0);
+    assert(!seek_cd());
+    cdb.cr1 = 0;
+    check_subcode_q(0x180 - 350);
+
+    cdb.tracks = NULL;
+    cdb.track_num = 0;
+    cdb.track = cdb.index = cdb.ctrladdr = 255;
+    cdb.fad = 0xffffffffu;
+    cdb.status = STAT_NODISC;
+    check_subcode_q(0xffffff);
+    cdb.status = STAT_OPEN;
+    check_subcode_q(0xffffff);
+}
+
+static void subcode_track_bounds(void)
+{
+    prepare_subcode();
+    for (int count = 1; count <= MAX_TRACKS; count++) {
+        free(media);
+        media = calloc(count, sizeof *media);
+        assert(media);
+        for (int i = 0; i < count; i++)
+            media[i].fad_start = 150 + i * 100;
+        cdb.tracks = media;
+        cdb.track_num = count;
+        cdb.fad = 0x800123;
+        for (unsigned track = 0; track < 256; track++) {
+            cdb.track = track;
+            u32 expected = track && track <= (unsigned)count ?
+                cdb.fad - (150 + (track - 1) * 100) : 0xffffff;
+            check_subcode_q(expected);
+        }
+    }
+
+    cdb.track = 1;
+    cdb.track_num = MAX_TRACKS + 1;
+    check_subcode_q(0xffffff);
+    cdb.track_num = 0;
+    check_subcode_q(0xffffff);
+    cdb.track_num = -1;
+    check_subcode_q(0xffffff);
+    cdb.track_num = 1;
+    cdb.tracks = NULL;
+    check_subcode_q(0xffffff);
+}
+
+static void subcode_admission(void)
+{
+    prepare_subcode();
+    for (unsigned type = 0; type < 256; type++) {
+        for (unsigned state = 0; state < 4; state++) {
+            int busy = state & 1;
+            int empty = state & 2;
+            cdb.cr1 = 0x2000 | type;
+            cdb.trans_type = busy ? TRANS_DATA : 0;
+            cdb.subrw_rp = 7;
+            cdb.subrw_wp = empty ? 7 : 8;
+            memset(subcode_payload, 0xa5, sizeof subcode_payload);
+            subcode_starts = 0;
+            CDBLOCK before;
+            memcpy(&before, &cdb, sizeof before);
+            int waiting = busy || (type == 1 && empty);
+            int result = get_subcode();
+            if (waiting || type > 1) {
+                assert(!result && !subcode_starts && !memcmp(&before, &cdb, sizeof cdb));
+                assert(reply[0] >> 8 == (waiting ? STAT_WAIT | cdb.status : STAT_REJECT));
+                for (unsigned i = 0; i < sizeof subcode_payload; i++)
+                    assert(subcode_payload[i] == 0xa5);
+            } else {
+                assert(result == HIRQ_DRDY && subcode_starts == 1);
+                assert(cdb.trans_type == (type ? TRANS_SUBRW : TRANS_SUBQ));
+                assert(reply[1] == (type ? 12 : 5));
+            }
+        }
+    }
+}
+
+static void subcode_valid_payloads(void)
+{
+    prepare_subcode();
+    const u32 frames[] = {0, 149, 150, 151, 0xffff, 0x10000, 0x7fffff, 0xffffff};
+    for (unsigned track = 1; track <= 3; track++) {
+        for (unsigned index = 0; index < 256; index++) {
+            cdb.track = track;
+            cdb.index = index;
+            cdb.ctrladdr = index ^ 0x5a;
+            for (unsigned i = 0; i < sizeof frames / sizeof *frames; i++) {
+                cdb.fad = frames[i];
+                check_subcode_q(cdb.fad - media[track - 1].fad_start);
+            }
+        }
+    }
+
+    cdb.cr1 = 0x2001;
+    cdb.subrw_rp = 63;
+    cdb.subrw_wp = 0;
+    memset(subcode_payload, 0xa5, sizeof subcode_payload);
+    subcode_starts = 0;
+    assert(get_subcode() == HIRQ_DRDY && subcode_starts == 1);
+    assert(cdb.trans_type == TRANS_SUBRW && reply[1] == 12 && !reply[2] && !reply[3]);
+    for (unsigned i = 0; i < sizeof subcode_payload; i++)
+        assert(subcode_payload[i] == 0xa5);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -619,6 +776,10 @@ int main(int argc,char **argv)
     case 19:init_handoff();break;case 20:init_late_ack();break;
     case 21:init_flags();break;case 22:init_no_media();break;
     case 23:selector_handoff();break;case 24:selector_scope();break;case 25:selector_logs();break;
+    case 26:subcode_transitions();break;
+    case 27:subcode_track_bounds();break;
+    case 28:subcode_admission();break;
+    case 29:subcode_valid_payloads();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

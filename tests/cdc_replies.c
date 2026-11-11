@@ -84,7 +84,7 @@ int main(void)
         check(get_toc_info,status|0x4000,204,0,0,HIRQ_DRDY,TRANS_TOC);
         check(open_tray,status,0,0,0,0,0);
         cdb.cr1=0; cdb.track=1; cdb.tracks=&track; cdb.SUBH=subheader;
-        cdb.fad=150; track.fad_start=150;
+        cdb.fad=150; cdb.track_num=1; track.fad_start=150;
         check(get_subcode,status|0x4000,5,0,0,HIRQ_DRDY,TRANS_SUBQ);
         cdb.cr1=1; cdb.subrw_rp=0; cdb.subrw_wp=1;
         check(get_subcode,status|0x4000,12,0,0,HIRQ_DRDY,TRANS_SUBRW);

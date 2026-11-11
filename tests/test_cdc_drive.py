@@ -32,6 +32,7 @@ class CDDriveTests(unittest.TestCase):
             if sig in raw:code+=function(raw,sig)
         code+=function(raw,b'int init_cdblock(')
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
+        code+=function(raw,b'int get_subcode(')
         (cls.target/'drive.inc').write_bytes(code)
         start=main.index(b'_restart_nowait:')
         start=main.index(b'\t\tif(cdb.pause_request)',start)
@@ -104,6 +105,10 @@ class CDDriveTests(unittest.TestCase):
     def test_selector_reset_handoff_preserves_ownership_and_retries(self):self.run_case(23)
     def test_all_selector_modes_preserve_existing_scope_and_pause_decisions(self):self.run_case(24)
     def test_selector_reset_preserves_exact_log_formats_and_masks(self):self.run_case(25)
+    def test_stopped_drive_subcode_and_media_transitions(self):self.run_case(26)
+    def test_subcode_track_bounds(self):self.run_case(27)
+    def test_subcode_type_and_transfer_ownership(self):self.run_case(28)
+    def test_subcode_valid_payloads(self):self.run_case(29)
 
 
 if __name__=='__main__':unittest.main()
