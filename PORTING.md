@@ -1242,3 +1242,23 @@ The production diff is confined to the UART transmit driver. The two direct
 main commits and the progress entries passed private-data and secret review.
 The private HEAD, clean status, all refs and four stashes match the preceding
 preservation audit. The Saturn was left untouched.
+
+## Menu status and font safety series
+
+Series starts at public `9a9910a`. The bounded formatter, language additions,
+and PR #203 coverage are already public. [Citations, font notices and
+verification](https://github.com/papsg/SAROO/blob/main/doc/MENU-STATUS-FONT.md).
+
+1. **SATURN-FONT-002 Romanian s with comma below — published**
+   [`de0699b`](https://github.com/papsg/SAROO/commit/de0699b286eb18be9eef294c610c77b43994da91).
+   Adapted from paps-g `f9e04ef9` and the retained Adobe/DEC Helvetica BDF.
+   Public baseline is missing U+0219. The actual C lookup and raster fixture
+   checks its two-byte UTF-8 path. The source-row oracle retains the existing
+   base s, a gap and a two-row comma. Complete asset regeneration matches;
+   removing U+0219 recovers all 10,795 preceding records, including the
+   separate CJK and Arabic contributions, exactly. Twelve focused methods
+   pass. The complete pinned menu build adds 19 appended bytes for a
+   488,770-byte image and preserves the ELF, body, stack and BSS. Its
+   36 built inputs bind to the committed source.
+2. **SATURN-FONT-003/004 legacy glyph height and row overhang — in progress.**
+3. **SATURN-MENU-008 status drawing bounds and wording — pending.**
