@@ -1188,3 +1188,26 @@ snapshot; research branches and other paused work remain untouched. Fork audit:
 issues disabled, zero open issues/PRs, no applicable closure, upstream unchanged.
 The final source/progress publication and preservation audit records completion
 of this offline port, not hardware or game qualification.
+
+## UART transmit safety series
+
+Series starts at public `bd498fd`. Port only the existing MCU UART transmit
+driver. The private references are paps-g `acb824af` (MCU-SCHED-002 and
+MCU-UART-001) and `c8335e2f` (STM32-DMA-001). [Primary citations and public
+verification](https://github.com/papsg/SAROO/blob/main/doc/UART-TX-SAFETY.md).
+
+1. **STM32-DMA-001 required transfer mode — published**
+   [`d24d860`](https://github.com/papsg/SAROO/commit/d24d860c50eca2973fcc08a8c1a1f9e9a35f7d3f).
+   Port the independently applicable mode bit first so it is already present
+   when changing the queue. Credit paps-g `c8335e2f`. ST RM0433 Rev 8 §15.5.5,
+   printed p. 659 specifies TRBUFF for UART. The preceding source writes
+   `0x00000441` and fails both actual-source checks. The corrected source writes
+   `0x00100441` on the first enable and on a simulated retry. Both checks pass
+   ASan/UBSan, and omitting the bit from either write independently is detected.
+   The committed GNU App ELF matches the verified candidate ELF. Load 61,960
+   bytes, ITCM free 3,576, static DTCM 60,184 and 166 vectors are unchanged.
+   The sender's direct frame grows from 72 to 80 bytes. No physical UART, audio
+   contention, hardware, game or MDK qualification is claimed.
+2. **MCU-SCHED-002 and MCU-UART-001 queue and recovery — in progress**
+   Verify the current public queue's wrap, preemption, DMA completion and
+   bounded failure behavior before replacing the queue and recovery together.
