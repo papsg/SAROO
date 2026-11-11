@@ -1749,3 +1749,13 @@ was left untouched.
    App is 63,424 bytes with the original case table, leaving 2,112
    bytes of ITCM. Physical behavior remains unqualified.
    [Decoder sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#map-mcu-transfers-to-the-saturn-visible-ram)
+
+   **Separate FatFs case table commit within checkpoint 6 — published**
+   [`2fd9f3a`](https://github.com/papsg/SAROO/commit/2fd9f3ad530b12f157e54682f61e5fe2362259e2).
+   Adapted from the table portion of paps-g `d1079400`. All 1,114,112
+   Unicode values and five out-of-range controls match the compiled
+   pinned routine byte for byte. All 874 changed mappings are retained.
+   Three methods pass under ASan/UBSan and O2. The mapping-only image
+   fits with 2,112 bytes to spare. The table saves another 180 bytes
+   for a 63,244-byte GNU App and 2,292 bytes of ITCM margin.
+   [Pinned source, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#compact-the-pinned-fatfs-case-table)
