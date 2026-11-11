@@ -22,7 +22,10 @@ class FirmwareSaveBootTests(unittest.TestCase):
             ('main.c', b'}else if(BUTTON_DOWN(ctrl, PAD_Z))', b'\n\t\t}else{', 'cdplayer-gate.inc'),
         ):
             data = (source / name).read_bytes(); inputs[name] = data
-            start = data.index(b'\n', data.index(b'while(SS_CMD);', data.index(command))) + 1
+            if name == 'game_load.c' and b'save_command(SSCMD_LSAVE,' in data:
+                start = data.rfind(b'\n', 0, data.index(b'save_command(SSCMD_LSAVE,')) + 1
+            else:
+                start = data.index(b'\n', data.index(b'while(SS_CMD);', data.index(command))) + 1
             end = data.index(end_marker, start - 1)
             (cls.target / fragment).write_bytes(data[start:end])
         for name in ('firmware_save_boot.c', 'test_firmware_save_boot.py'):

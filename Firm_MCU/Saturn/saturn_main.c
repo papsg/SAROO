@@ -698,6 +698,16 @@ static __attribute__((noinline)) int ss_file_transfer(int writing)
     return retv;
 }
 
+/* Save replies carry a FatFs result below the negotiated tag bit. */
+_Static_assert(FR_INVALID_PARAMETER < SSCMD_SAVE_ACK, "save result overlaps acknowledgment");
+_Static_assert(SSCMD_SAVE_ACK > 0 && SSCMD_SAVE_ACK <= 0x8000 &&
+               !(SSCMD_SAVE_ACK & (SSCMD_SAVE_ACK - 1)),
+               "save acknowledgment must be one transported bit");
+_Static_assert(SSCMD_SELECT < SSCMD_SAVE_ACK && SSCMD_SMEMS < SSCMD_SAVE_ACK &&
+               SSCMD_LSAVE == SSCMD_SSAVE + 1 && SSCMD_LMEMS == SSCMD_SSAVE + 2 &&
+               SSCMD_SMEMS == SSCMD_SSAVE + 3,
+               "save aliases must remain separate from existing commands");
+
 void ss_cmd_handle(void)
 {
 	int retv;
@@ -705,7 +715,12 @@ void ss_cmd_handle(void)
 
 	//SSLOG(_INFO, "scmd_task: %04x\n", SS_CMD);
 
-	switch(cmd){
+    /* Normalize only the four save aliases. The original tag stays available
+     * for the reply, and unrelated commands keep their existing values. */
+    u32 save_cmd = cmd;
+    if (cmd >= (SSCMD_SSAVE | SSCMD_SAVE_ACK) && cmd <= (SSCMD_SMEMS | SSCMD_SAVE_ACK))
+        save_cmd ^= SSCMD_SAVE_ACK;
+    switch(save_cmd){
 	case SSCMD_PRINTF:
 		// 输出信息
 		printk("%s", (char*)(TMPBUFF_ADDR+0x10));
@@ -760,29 +775,20 @@ void ss_cmd_handle(void)
         SS_CMD = 0;
         break;
 	case SSCMD_SSAVE:
-		// 保存当前SAVE
-		retv = flush_savefile();
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        retv = flush_savefile();
+        goto save_reply;
 	case SSCMD_LSAVE:
-		// 加载指定SAVE
-		retv = load_savefile((char*)(TMPBUFF_ADDR+0x10));
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        retv = load_savefile((char *)(TMPBUFF_ADDR + 0x10));
+        goto save_reply;
 	case SSCMD_SMEMS:
-		// 保存当前SMEMS
-		retv = flush_smems(SS_ARG);
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        retv = flush_smems(SS_ARG);
+        goto save_reply;
 	case SSCMD_LMEMS:
-		// 加载指定SMEMS块
-		retv = load_smems(SS_ARG);
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        retv = load_smems(SS_ARG);
+    save_reply:
+        SS_ARG = retv | (cmd & SSCMD_SAVE_ACK);
+        SS_CMD = 0;
+        break;
 	case SSCMD_STARTUP: {
 		// 土星端启动!
 
@@ -1100,6 +1106,7 @@ void saturn_config(void)
 	*(u32*)(SYSINFO_ADDR+0x00) = get_build_date(); // 编译日期
 	*(u32*)(SYSINFO_ADDR+0x04) = lang_id;          // 菜单语言
 	*(u32*)(SYSINFO_ADDR+0x08) = debug_flags;      // 调试选项
+    *(u32*)(SYSINFO_ADDR+0x10) = SAVE_ACK_VERSION;
 
 	// I2S
 	spi2_init();

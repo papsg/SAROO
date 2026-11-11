@@ -52,6 +52,8 @@ typedef unsigned long long u64;
 #define SSCMD_LSAVE    0x000a
 #define SSCMD_LMEMS    0x000b
 #define SSCMD_SMEMS    0x000c
+#define SSCMD_SAVE_ACK 0x0020
+#define SAVE_ACK_VERSION 0x53415631u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -196,6 +198,9 @@ int cdblock_check(void);
 int bios_cd_cmd(int type);
 int cdc_read_sector(int fad, int size, u8 *buf);
 void my_cdplayer(void);
+
+extern u16 save_ack;
+int save_command(int cmd, int arg);
 
 void bup_init(u8 *lib_addr, u8 *work_addr, void *cfg);
 extern void (*sys_bup_init)(u8*, u8*, void*);

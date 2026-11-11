@@ -92,6 +92,7 @@ check-menu-binary:
 
 check-firmware-save:
 	$(PYTHON) -B -m unittest discover -s . -p 'test_firmware_save*.py' -v
+	$(PYTHON) -B -m unittest discover -s . -p test_save_ack.py -v
 
 check-mcu-save:
 	$(PYTHON) -B -m unittest discover -s . -p 'test_mcu_save*.py' -v

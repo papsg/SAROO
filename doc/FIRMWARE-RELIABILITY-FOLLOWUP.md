@@ -142,3 +142,35 @@ Use `SAROO_MENU_TIMER_DIR` to select that copy for `test_menu_timer.py`.
 The standard menu links 79,588 code/data bytes (-96) and 9,232 BSS bytes
 (-4). The image remains 488,770 bytes. Physical timing across regions
 and cartridge revisions remains unqualified.
+
+## Acknowledge completed saves explicitly
+
+The original FPGA clears both command and result registers on reset. A
+Saturn caller that survives the reset could interpret the two zeroes as a
+successful save or load. The host control reproduces this with the original
+menu. [Original SAROO FPGA register logic](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L526-L548).
+
+The MCU advertises a capability in the existing system information area.
+The menu latches it once at entry. The four negotiated save and load
+commands carry a tag. The MCU writes the tagged FatFs result before
+clearing the command, and the menu accepts only the tagged success value.
+A cleared result leaves the dirty bitmap and the pending continuation
+available for retry. The argument remains 16 bits, including the MEMS
+header flag. Either firmware component can still pair with an older
+component using the original command and result values.
+
+Adapted from paps-g's `74999ab0`. The GNU App load is 62,940 bytes (+64),
+with 2,596 bytes of ITCM margin and 60,232 bytes of static DTCM. The menu
+retains 79,588 code/data bytes and adds 4 BSS bytes to 9,236. No new FPGA
+image is needed.
+
+Run `make -C tests check-firmware-save check-file-transfer` and repeat
+with `SAROO_FIRMWARE_SAVE_PROFILE=release`. The protocol tests exercise
+all 65,536 dispatch values, the complete result range, full-width MEMS
+arguments, optical save-load status and reset at the register boundary.
+Icarus Verilog checks the public FPGA 05 register transport. To reproduce
+the baseline reset failure, point `SAROO_ACK_MENU_DIR` and
+`SAROO_ACK_MCU_DIR` at the corresponding directories of the preceding
+checkout and run the reset case in `test_save_ack.py`.
+Physical reset propagation, durability and recovery of a full running
+session remain unqualified.

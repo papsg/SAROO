@@ -13,6 +13,7 @@ static u16 *test_command(void);
 #define SSCMD_SSAVE 9
 #define SSCMD_LMEMS 11
 #define SSCMD_SMEMS 12
+static u16 save_ack __attribute__((unused));
 #define printk(...) ((void)0)
 static u32 debug_flag;
 static void sci_init(void) {}

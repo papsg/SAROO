@@ -5,6 +5,12 @@
 #include <string.h>
 static int result_arg, started, statuses, use_sys_load;
 #define SS_ARG result_arg
+#define SSCMD_LSAVE 10
+static int save_command(int command, int arg)
+{
+    assert(command == SSCMD_LSAVE && arg == 0);
+    return result_arg;
+}
 #define TT(text) (text)
 static void my_cdplayer(void) { started++; }
 static void menu_error(void *menu, const char *text, int result)

@@ -118,12 +118,21 @@ typedef struct {
 } PendingSave;
 static PendingSave pending_save[2];
 
+/* The capability is latched at menu entry. A cleared pair of registers
+ * cannot acknowledge a tagged request. */
+int save_command(int cmd, int arg)
+{
+    int ack = save_ack;
+    SS_ARG = arg;
+    SS_CMD = cmd | ack;
+    while (SS_CMD);
+    return SS_ARG ^ ack;
+}
+
 static int bup_update(int flag)
 {
-    SS_ARG = flag == BUPSAVE ? 0 : flag;
-    SS_CMD = flag == BUPSAVE ? SSCMD_SSAVE : SSCMD_SMEMS;
-    while (SS_CMD);
-    if (SS_ARG)
+    if (save_command(flag == BUPSAVE ? SSCMD_SSAVE : SSCMD_SMEMS,
+                     flag == BUPSAVE ? 0 : flag))
         return BUP_BROKEN;
     if (flag & MEMS_BUF)
         mblk_bmp[0] = mblk_bmp[1] = 0;
@@ -152,10 +161,7 @@ static int commit_save(int dev, int flags)
 
 static int mems_load(int blk)
 {
-    SS_ARG = blk;
-    SS_CMD = SSCMD_LMEMS;
-    while (SS_CMD);
-    return SS_ARG ? BUP_BROKEN : 0;
+    return save_command(SSCMD_LMEMS, blk) ? BUP_BROKEN : 0;
 }
 
 

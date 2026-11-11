@@ -14,6 +14,7 @@
 
 /**********************************************************/
 
+u16 save_ack;
 u32 mcu_ver;
 u32 debug_flag;
 int bios_type;
@@ -1336,6 +1337,7 @@ int _main(void)
 
 	printk("    SRAOOO start!\n");
 
+    save_ack = LE32((void *)(SYSINFO_ADDR + 0x10)) == SAVE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
 	mcu_ver = LE32((void*)(SYSINFO_ADDR+0x00));
 	lang_id = LE32((void*)(SYSINFO_ADDR+0x04));
 	debug_flag = LE32((void*)(SYSINFO_ADDR+0x08));

@@ -551,10 +551,7 @@ int bios_cd_cmd(int type)
 		memcpy((void*)(TMPBUFF_ADDR+0x10), (u8*)0x06002020, 16);
 		*(u8*)(TMPBUFF_ADDR+0x20) = 0;
 
-		SS_ARG = 0;
-		SS_CMD = SSCMD_LSAVE;
-		while(SS_CMD);
-        if (SS_ARG) return -1;
+        if (save_command(SSCMD_LSAVE, 0)) return -1;
 	}
 
 	// 模拟执行1A3c()
