@@ -13,6 +13,13 @@ static unsigned reads,writes,syncs,failures;
 static LBA_t fault_sector;
 static UINT fault_prefix;
 static int fail_write,fail_sync;
+static struct {
+    const BYTE *payload,*cache;
+    UINT bytes;
+    unsigned calls,fail_at;
+    LBA_t first_sector;
+    int persistent;
+} abort_fault;
 static pthread_mutex_t mutex;
 int ff_mutex_create(int vol) { assert(!vol);return pthread_mutex_init(&mutex,NULL)==0; }
 void ff_mutex_delete(int vol) { assert(!vol);assert(!pthread_mutex_destroy(&mutex)); }
@@ -28,6 +35,19 @@ DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 {
     assert(!drive && count && sector+count<=sectors);writes++;
+    if (abort_fault.payload) {
+        uintptr_t ptr=(uintptr_t)data, start=(uintptr_t)abort_fault.payload;
+        int matches=abort_fault.cache ? data==abort_fault.cache :
+                    ptr>=start && ptr-start<abort_fault.bytes;
+        if (matches) {
+            if (!abort_fault.calls++) abort_fault.first_sector=sector;
+            if (abort_fault.calls==abort_fault.fail_at ||
+                (abort_fault.persistent && abort_fault.calls>abort_fault.fail_at)) {
+                failures++;
+                return RES_ERROR;
+            }
+        }
+    }
     if (fail_write && fault_sector >= sector && fault_sector - sector < count) {
         if (fault_prefix) {
             const BYTE *source = data + (fault_sector - sector) * 512;
@@ -178,11 +198,11 @@ static void check_clean_sync(FIL *file)
     assert(writes == old_writes && syncs == old_syncs);
 }
 
-static void create_neighbor(const BYTE *data, UINT size)
+static void create_file(const char *name, const BYTE *data, UINT size)
 {
     FIL file;
     UINT count;
-    assert(f_open(&file, "/neighbor.bin", FA_CREATE_NEW | FA_WRITE) == FR_OK);
+    assert(f_open(&file, name, FA_CREATE_NEW | FA_WRITE) == FR_OK);
     assert(f_write(&file, data, size, &count) == FR_OK && count == size);
     assert(f_close(&file) == FR_OK);
 }
@@ -214,7 +234,7 @@ static void sync_file(int fat32, int value)
         payload[i] = pattern(i + 7 * (i / 512));
     memset(neighbor, 0xc9, sizeof(neighbor));
     assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == (fat32 ? FS_FAT32 : FS_EXFAT));
-    create_neighbor(neighbor, sizeof(neighbor));
+    create_file("/neighbor.bin", neighbor, sizeof(neighbor));
     assert(f_open(&file, "/save.bin", FA_CREATE_NEW | FA_READ | FA_WRITE) == FR_OK);
     assert(f_write(&file, payload, 8192, &count) == FR_OK && count == 8192);
     assert(f_sync(&file) == FR_OK);
@@ -291,7 +311,7 @@ static void sync_metadata(BYTE type, int value)
     memset(neighbor, 0xc9, sizeof(neighbor));
     assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == type);
     assert(fs.n_fats == (single ? 1 : 2));
-    create_neighbor(neighbor, sizeof(neighbor));
+    create_file("/neighbor.bin", neighbor, sizeof(neighbor));
     assert(f_open(&file, "/save.bin", FA_CREATE_NEW | FA_READ | FA_WRITE) == FR_OK);
     assert(f_lseek(&file, sizeof(payload)) == FR_OK && f_tell(&file) == sizeof(payload));
     assert(fs.wflag && fs.winsect - fs.fatbase < fs.fsize);
@@ -356,6 +376,66 @@ static void sync_metadata(BYTE type, int value)
            (unsigned)type, value, writes, syncs, failures);
 }
 
+/* Adapted from paps-g 0e259a3a. Fail after real allocation or cached writes. */
+static void aborted_write(int fat32, int value)
+{
+    enum { CACHED, EXTEND, FRAGMENTED, FIRST, DENIED, EMPTY };
+    assert(value>=CACHED && value<=EMPTY);
+    int cached=value==CACHED, fragmented=value==FRAGMENTED;
+    format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+    FATFS fs;
+    FIL file;
+    UINT count;
+    assert(f_mount(&fs,"0:",1)==FR_OK && fs.fs_type==(fat32 ? FS_FAT32 : FS_EXFAT));
+    unsigned cluster_bytes=fs.csize*512, old_size=2*cluster_bytes;
+    unsigned payload_bytes=2*cluster_bytes, position=cached ? 1 : old_size;
+    BYTE *expected=malloc(old_size+payload_bytes), *payload=malloc(payload_bytes);
+    assert(expected && payload);
+    memset(expected,0xc9,old_size+payload_bytes);
+    BYTE neighbor[2048];
+    memset(neighbor,0x5e,sizeof(neighbor));
+    create_file("/neighbor.bin",neighbor,sizeof(neighbor));
+    create_file("/save.bin",expected,old_size);
+    if (fragmented) create_file("/between.bin",expected,cluster_bytes);
+    for (unsigned i=0;i<payload_bytes;i++) payload[i]=pattern(i+7*(i/512));
+    assert(f_open(&file,"/save.bin",FA_READ | (value==DENIED ? 0 : FA_WRITE))==FR_OK);
+    assert(f_lseek(&file,position)==FR_OK);
+    LBA_t next_contiguous=fs.database+(LBA_t)(file.clust-1)*fs.csize;
+    abort_fault.payload=payload;
+    abort_fault.cache=cached ? fs.win : NULL;
+    abort_fault.bytes=payload_bytes;
+    abort_fault.fail_at=cached || value==FIRST ? 1 : 2;
+    abort_fault.persistent=cached;
+    FRESULT result=f_write(&file,payload,value==EMPTY ? 0 : payload_bytes,&count);
+    unsigned completed=count;
+    if (value==DENIED || value==EMPTY) {
+        assert(result==(value==DENIED ? FR_DENIED : FR_OK));
+        assert(!completed && !abort_fault.calls);
+    } else {
+        assert(result==FR_DISK_ERR && failures==1 && file.err==FR_DISK_ERR);
+        assert(completed==(cached ? 511 : value==FIRST ? 0 : cluster_bytes));
+        if (!cached) {
+            assert(fragmented ? abort_fault.first_sector>next_contiguous :
+                                abort_fault.first_sector==next_contiguous);
+        }
+        assert(f_write(&file,payload,1,&count)==FR_DISK_ERR && !count);
+        if (cached) {
+            assert(f_close(&file)==FR_DISK_ERR && failures==2 && file.obj.fs==&fs);
+        }
+    }
+    abort_fault.payload=NULL;
+    assert(f_close(&file)==FR_OK);
+    assert(f_mount(NULL,"0:",0)==FR_OK && f_mount(&fs,"0:",1)==FR_OK);
+    memcpy(expected+position,payload,completed);
+    verify_file("/save.bin",expected,cached ? old_size : old_size+completed);
+    verify_file("/neighbor.bin",neighbor,sizeof(neighbor));
+    if (fragmented) verify_file("/between.bin",expected,cluster_bytes);
+    assert(f_mount(NULL,"0:",0)==FR_OK);
+    free(expected);
+    free(payload);
+    printf("write abort case=%d prefix=%u failures=%u\n",value,completed,failures);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);
@@ -364,6 +444,8 @@ int main(int argc,char **argv)
     int value = atoi(argv[3]);
     if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
+    } else if (!strcmp(argv[2], "write-abort-fat32") || !strcmp(argv[2], "write-abort-exfat")) {
+        aborted_write(!strcmp(argv[2], "write-abort-fat32"), value);
     } else if (!strncmp(argv[2], "metadata-", 9)) {
         const char *name = argv[2] + 9;
         if (!strcmp(name, "fat12")) sync_metadata(FS_FAT12, value);

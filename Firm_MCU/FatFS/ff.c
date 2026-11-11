@@ -4033,6 +4033,10 @@ FRESULT f_write (
 		btw = (UINT)(0xFFFFFFFF - (DWORD)fp->fptr);
 	}
 
+	/* A partial write can abort after changing data, allocation or size.
+	 * Keep close/sync responsible for those changes on every exit. */
+	fp->flag |= FA_MODIFIED;
+
 	for ( ; btw > 0; btw -= wcnt, *bw += wcnt, wbuff += wcnt, fp->fptr += wcnt, fp->obj.objsize = (fp->fptr > fp->obj.objsize) ? fp->fptr : fp->obj.objsize) {	/* Repeat until all data written */
 		if (fp->fptr % SS(fs) == 0) {		/* On the sector boundary? */
 			csect = (UINT)(fp->fptr / SS(fs)) & (fs->csize - 1);	/* Sector offset in the cluster */
@@ -4116,8 +4120,6 @@ FRESULT f_write (
 		fp->flag |= FA_DIRTY;
 #endif
 	}
-
-	fp->flag |= FA_MODIFIED;				/* Set file change flag */
 
 	LEAVE_FF(fs, FR_OK);
 }

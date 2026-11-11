@@ -114,5 +114,22 @@ class FatFsSeekTests(unittest.TestCase):
             with self.subTest(filesystem=filesystem, value=value):
                 self.invoke(f'metadata-{filesystem}', value)
 
+    def test_cached_write_abort_keeps_the_completed_prefix_and_close_retry(self):
+        for filesystem in ('fat32', 'exfat'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'write-abort-{filesystem}', 0)
+
+    def test_file_growth_retains_reported_prefix_after_abort(self):
+        for filesystem in ('fat32', 'exfat'):
+            for value in (1,2):
+                with self.subTest(filesystem=filesystem, value=value):
+                    self.invoke(f'write-abort-{filesystem}', value)
+
+    def test_failed_first_transfer_read_only_and_zero_length_controls(self):
+        for filesystem in ('fat32', 'exfat'):
+            for value in (3,4,5):
+                with self.subTest(filesystem=filesystem, value=value):
+                    self.invoke(f'write-abort-{filesystem}', value)
+
 
 if __name__ == '__main__': unittest.main()

@@ -112,6 +112,35 @@ identity frames remain 312 and 24 bytes. Physical player entry and
 save survival across a console reset remain unqualified.
 [Build instructions][build]
 
+## MCU-FS-004 — Keep completed writes pending after an abort
+
+FatFs can write a prefix of the requested bytes or change the cluster
+chain before a device error aborts the file. The old `f_write` reached
+`FA_MODIFIED` only on normal exit. A subsequent close could skip the
+pending work and lose cached data or the new file length.
+[Original FatFs source][original-fatfs] · [FatFs f_write][fatfs-write]
+
+The port adapts paps-g `0e259a3a75c8dd77c79aa6eb0e3da6fc5aabf5a0`.
+It marks the file modified after input and access checks, before the
+write loop can change data or allocation. The previously published
+sync retry remains responsible for the pending work. The existing
+error latch still rejects another write to the aborted handle.
+[FatFs disk error and close contracts][fatfs-error] ·
+[FatFs f_close][fatfs-close] · [Public FatFs source][fatfs-source]
+
+Six of 12 generated FAT32 and exFAT cases fail on `8e23954`. The port
+retains the completed bytes after contiguous and fragmented growth,
+retries a persistently failing cache write through close, and preserves
+neighboring files after remount. The first-transfer failure, read-only
+and zero-length controls still pass. Run `make -C tests check-fatfs`.
+All 16 methods pass with ASan/UBSan and O2. Twelve MCU save-runtime
+methods also pass. [Generated-media fixture][fatfs-fixture]
+
+The GNU App stays at 62,412 load bytes, with 3,124 bytes of ITCM margin
+and 60,176 bytes of static DTCM. The direct `f_write` frame stays at
+56 bytes. Physical SD durability remains unqualified.
+[Build instructions][build]
+
 [original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
 [sd-initialization]: FATFS-SD-SAFETY.md
 [driver]: ../Firm_MCU/Main/sdio_h7.c
@@ -131,5 +160,11 @@ save survival across a console reset remain unqualified.
 [config-source]: ../Firm_MCU/Saturn/saturn_utils.c
 [cue-fixture]: ../tests/mcu_save_cue.c
 [session-fixture]: ../tests/mcu_save_disc.c
+[original-fatfs]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c
+[fatfs-source]: ../Firm_MCU/FatFS/ff.c
+[fatfs-write]: https://elm-chan.org/fsw/ff/doc/write.html
+[fatfs-error]: https://elm-chan.org/fsw/ff/doc/rc.html#de
+[fatfs-close]: https://elm-chan.org/fsw/ff/doc/close.html
+[fatfs-fixture]: ../tests/fatfs_seek.c
 [menu-build]: ../tools/README.md#isolated-firmware-qualification
 [build]: ../tools/README.md#original-mcu-app-compilelink-check
