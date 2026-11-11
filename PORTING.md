@@ -1273,4 +1273,16 @@ verification](https://github.com/papsg/SAROO/blob/main/doc/MENU-STATUS-FONT.md).
    as expected. The 36-input committed menu build links 79,556 code/data
    bytes (−16), with the same 40-byte raster frame, 9,232-byte BSS, 16 KiB
    stack reservation, and 488,770-byte image.
-3. **SATURN-MENU-008 status drawing bounds and wording — in progress.**
+3. **SATURN-MENU-008 status drawing bounds and wording — published**
+   [`fb8084d`](https://github.com/papsg/SAROO/commit/fb8084d8aeeb582fcaedbc74e92cfca05cf13459).
+   Adapted from paps-g `4c2cccb4` after the font checkpoints. Clear and draw
+   use the same 288-pixel area. Twelve shorter messages preserve signed
+   error codes and the update/restart instructions. Baseline fails the
+   twelve width subcases and both actual framebuffer regressions. Short
+   and empty controls pass on both revisions. The candidate passes all
+   418 status variants across 19 languages and the existing formatter
+   and raster controls, including the independent Arabic oracle.
+   The 36-input committed build links 79,380 code/data bytes (−176), with
+   a 20-byte status frame and 488,770-byte image. The standard host suite
+   is running. Hardware appearance/timing and native-speaker editorial
+   review remain unqualified.
