@@ -1690,3 +1690,15 @@ Publication review covers the seven commits, tests, citations,
 attribution and ledger. The private repository's HEAD, worktree,
 refs and stash match the initial read-only snapshot. The Saturn
 was left untouched.
+
+## Save ownership and expansion RAM follow-up
+
+1. **Compact configuration parser — published**
+   [`b769aa6`](https://github.com/papsg/SAROO/commit/b769aa64c70aea414e0dd246d694e2b057752e59).
+   Adapted from paps-g `3ec942a4` after the public configuration safety
+   series. The exact parent and the port pass 20 methods, including 328
+   loader cases. The port passes ASan/UBSan and O2. Linked Arm code uses
+   UMLAL in place of UDIV in the digit loop. The GNU App falls 60 bytes
+   to 62,752, and static DTCM remains 60,216 bytes. Hardware load latency
+   remains unmeasured.
+   [Source contract, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#compact-the-configuration-parser)
