@@ -1485,3 +1485,14 @@ snapshot. The Saturn was left untouched.
    79,508. BSS and the 488,770-byte image size stay the same. Physical
    BIOS, drive and player behavior remain unqualified.
    [Sega references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#saturn-cd-001--check-menu-cd-transfers-and-identify-audio-first)
+3. **MCU-DISC-005 non-game image and save admission — published**
+   [`8e23954`](https://github.com/papsg/SAROO/commit/8e2395467d8c81017f7b3ab87d7fb5104aa5853f).
+   Adapted from paps-g `ec0c0e93` after the menu part of upstream #175.
+   Five generated CUE/ISO cases and two actual save-session cases fail
+   on baseline. Both signed-game controls pass there. All new cases
+   pass with ASan/UBSan and O2. The actual parser keeps only global
+   runtime settings, and the active save and pending retry survive with
+   zero archive I/O. Existing header, runtime and configuration checks
+   pass. The GNU App adds 48 bytes to 62,412 with 3,124 bytes of ITCM
+   margin. Physical player and reset behavior remain unqualified.
+   [Sega IP layout, attribution and tests](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-disc-005--classify-images-before-selecting-a-game-save)
