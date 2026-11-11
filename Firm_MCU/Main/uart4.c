@@ -1,237 +1,170 @@
 
 #include "main.h"
 
+static void uart4_configure(void)
+{
+    UART4->CR1 = 0;
+    UART4->CR1 = 0x2000000c; /* FIFO, transmitter and receiver. */
+    UART4->CR2 = 0;
+    UART4->CR3 = 0x64000000;
+    UART4->BRR = 0x0064; /* 1 Mbit/s with the existing 100 MHz clock. */
+    UART4->RQR = 0x0018;
+    UART4->CR1 |= 1u;
+    DMAMUX1_Channel0->CCR = 64; /* UART4 TX. */
+}
 
-/******************************************************************************/
-
-
+#ifndef BOOT
 #define BUF_SIZE 4096
+#define TX_DMA_EVENTS (DMA_LISR_TCIF0 | DMA_LISR_TEIF0)
+#define TX_DMA_FLAGS (TX_DMA_EVENTS | DMA_LISR_HTIF0 | DMA_LISR_DMEIF0 | DMA_LISR_FEIF0)
 
-static osMutexId_t umtx;
-static u8 *qbuf = (u8*)0x30000000;
-static u32 rp, wp, new_rp;
+_Static_assert((BUF_SIZE & (BUF_SIZE - 1)) == 0 && BUF_SIZE < 65536,
+               "UART queue positions and the initial sentinel fit in 16 bits");
 
+static u8 *const tx_buffer = (u8*)0x30000000;
+static u16 read_pos, published_pos, reserved_pos, writers;
+static u16 transfer_end; /* BUF_SIZE until the startup DMA stop is acknowledged. */
 
-#if 0 
-
-#define LOGSIZE 128
-
-typedef struct {
-	u16 rp;
-	u16 wp;
-	u16 ts;
-	u8  rbuf[10];
-}LOGBUF;
-
-static LOGBUF logbuf[LOGSIZE];
-static int logptr = 0;
-
-static void dolog(u32 rp, u32 wp, char *str, int tsize)
+static int uart4_retry_pending(void)
 {
-	logbuf[logptr].rp = rp;
-	logbuf[logptr].wp = wp;
-	logbuf[logptr].ts = tsize;
-
-	memcpy(logbuf[logptr].rbuf, str, 9);
-	logbuf[logptr].rbuf[9] = 0;
-
-	logptr = (logptr+1)&(LOGSIZE-1);
+    return (TIM4->CR1 & TIM_CR1_CEN) || (TIM4->SR & TIM_SR_UIF);
 }
 
-
-void showlog(void)
+static void uart4_retry(void)
 {
-	int i, j, n;
-	char tmp[64];
-	
-	n = (logptr-1)&(LOGSIZE-1);
-	for(i=0; i<LOGSIZE; i++){
-		sprintk(tmp, "%3d: rp=%4d  wp=%4d  ts=%4d  ", n, logbuf[n].rp, logbuf[n].wp, logbuf[n].ts);
-		_puts(tmp);
-		for(j=0; j<10; j++){
-			_putc(logbuf[n].rbuf[j]);
-		}
-		_puts("\n");
-		n = (n-1)&(LOGSIZE-1);
-	}
-
-	logptr = 0;
+    /* Keep an existing deadline, including an expiry awaiting its IRQ. */
+    if (uart4_retry_pending())
+        return;
+    TIM4->CNT = 0;
+    TIM4->CR1 = TIM_CR1_OPM | TIM_CR1_URS | TIM_CR1_CEN;
 }
 
-volatile void *show_log_ptr = showlog;
-
-#endif
-
-static void uart4_dma_send(void *buf, int len)
+/* DMA and timer IRQs have equal priority. Other callers mask interrupts. */
+static void uart4_service(void)
 {
-	/* RM0433 requires bufferable DMA transfers for UART. */
-	const u32 config = 0x00000441 | DMA_SxCR_TRBUFF;
-	// CPU的write buffer机制, 会导致数据没有及时写入RAM. DMA将发送一个错误的数据.
-	// 为避免这种情况, 必须加入__DMB/__DSB指令做同步.
-	__DMB();
+    if (DMA1_Stream0->CR & DMA_SxCR_EN) {
+        uart4_retry();
+        return;
+    }
 
-	DMA1_Stream0->CR = 0;
-	DMA1_Stream0->NDTR = len;
-	DMA1_Stream0->PAR = (u32)&UART4->TDR;
-	DMA1_Stream0->M0AR = (u32)buf;
-	DMA1_Stream0->CR = config;
-	while((DMA1_Stream0->CR&1)==0){
-		char tmp[64];
-		sprintk(tmp, "\n-- Restart DMA1S1! CR=%08x LIFCR=%08x --\n", DMA1_Stream0->CR, DMA1->LIFCR);
-		_puts(tmp);
-		DMA1_Stream0->CR = config;
-	}
+    if (transfer_end == BUF_SIZE) {
+        uart4_configure();
+        DMA1_Stream0->FCR = 0; /* Direct mode, no IRQ for FIFO backpressure. */
+        DMA1_Stream0->PAR = (u32)&UART4->TDR;
+        UART4->CR3 |= USART_CR3_DMAT;
+    } else if (transfer_end != read_pos) {
+        /* EN is clear. NDTR counts writes still owed to the UART FIFO. */
+        read_pos = (transfer_end - DMA1_Stream0->NDTR) & (BUF_SIZE - 1);
+    }
+    transfer_end = read_pos;
 
-	UART4->ICR = USART_ICR_TCCF;
-	UART4->CR1 |= USART_CR1_TCIE;
-	UART4->CR3 |= USART_CR3_DMAT;
+    /* The stopped stream cannot add events while its old flags are cleared. */
+    DMA1->LIFCR = TX_DMA_FLAGS;
+    if (read_pos == published_pos)
+        return;
+
+    u32 count = (published_pos - read_pos) & (BUF_SIZE - 1);
+    u32 tail = BUF_SIZE - read_pos;
+    if (count > tail)
+        count = tail;
+    transfer_end = (read_pos + count) & (BUF_SIZE - 1);
+    DMA1_Stream0->NDTR = count;
+    DMA1_Stream0->M0AR = (u32)(tx_buffer + read_pos);
+    UART4->ICR = USART_ICR_TCCF;
+    __DMB();
+    DMA1_Stream0->CR = DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_TRBUFF |
+                      DMA_SxCR_TCIE | DMA_SxCR_TEIE | DMA_SxCR_EN;
+    /* A short transfer can finish before EN is read. Leave that event to its IRQ. */
+    if (!(DMA1_Stream0->CR & DMA_SxCR_EN) && !(DMA1->LISR & TX_DMA_EVENTS))
+        uart4_retry();
 }
 
-
-static void uart4_send_start(void)
+void DMA1_Stream0_IRQHandler(void)
 {
-	int key = disable_irq();
+    u32 events = DMA1->LISR & TX_DMA_EVENTS;
+    if (!events)
+        return;
 
-	if(!(UART4->CR3&USART_CR3_DMAT)){
-		// TODO: 每次只发送不大于BUF_SIZE/2的内容
-		if(rp>wp){
-			new_rp = 0;
-			uart4_dma_send(qbuf+rp, BUF_SIZE-rp);
-		}else if(rp<wp){
-			new_rp = wp;
-			uart4_dma_send(qbuf+rp, wp-rp);
-		}
-	}
-
-	restore_irq(key);
+    /* W1C only the observed events. A stop can complete after this snapshot. */
+    DMA1->LIFCR = events;
+    if (events & DMA_LISR_TEIF0)
+        uart4_retry();
+    else if (!uart4_retry_pending())
+        uart4_service();
 }
 
-
-void UART4_IRQHandler(void)
+void TIM4_IRQHandler(void)
 {
-	// clear Stream0 TCIF
-	DMA1->LIFCR = 0x0000003d;
-	DMA1_Stream0->CR = 0;
-	while(DMA1_Stream0->CR&1);
-	DMA1_Stream0->CR = 0;
-	DMA1->LIFCR = 0x0000003d;
-
-
-	UART4->CR1 &= ~USART_CR1_TCIE;
-	UART4->ICR = USART_ICR_TCCF;
-	UART4->CR3 &= ~USART_CR3_DMAT;
-
-	rp = new_rp;
-	uart4_send_start();
+    if (!(TIM4->SR & TIM_SR_UIF))
+        return;
+    TIM4->SR = 0;
+    uart4_service();
 }
-
-
-static int get_free(void)
-{
-	int free;
-	int key = disable_irq();
-
-	if(wp>=rp){
-		free = rp+BUF_SIZE-wp-1;
-	}else{
-		free = rp-wp-1;
-	}
-
-	restore_irq(key);
-	
-	return free;
-}
-
-/******************************************************************************/
-
-
-static int uart4_put_buf(void *data, int length)
-{
-	int free, tail, retv;
-	u8 *dptr = (u8*)data;
-
-	if(!in_isr())
-		osMutexAcquire(umtx, osWaitForever);
-
-#ifdef LOGSIZE
-	dolog(rp, wp, data, length);
-#endif
-
-	free = get_free();
-	if(length>free){
-		retv = -1;
-		goto _exit;
-	}
-
-	if(wp>=rp){
-		tail = BUF_SIZE-wp;
-		if(length>tail){
-			memcpy(qbuf+wp, dptr, tail);
-			wp = length-tail;
-			memcpy(qbuf, dptr+tail, wp);
-		}else{
-			memcpy(qbuf+wp, dptr, length);
-			wp += length;
-			if(wp==BUF_SIZE)
-				wp = 0;
-		}
-	}else{
-		memcpy(qbuf+wp, dptr, length);
-		wp += length;
-	}
-
-	uart4_send_start();
-	retv = 0;
-
-_exit:
-	if(!in_isr())
-		osMutexRelease(umtx);
-	return retv;
-}
-
 
 void uart4_puts(char *str)
 {
-	int retv;
-	int len = strlen(str);
+    size_t length = strlen(str);
+    if (!length)
+        return;
 
-	do{
-		retv = uart4_put_buf(str, len);
-		if(in_isr())
-			break;
-		if(retv){
-			while(get_free()<(len)){
-				osDelay(1);
-			};
-		}
-	}while(retv);
+    int key = disable_irq();
+    u32 free = (read_pos - reserved_pos - 1u) & (BUF_SIZE - 1);
+    if (length > free) {
+        restore_irq(key);
+        return; /* Preserve admitted output and keep the caller moving. */
+    }
+
+    u32 start = reserved_pos;
+    reserved_pos = (start + length) & (BUF_SIZE - 1);
+    ++writers;
+    restore_irq(key);
+
+    size_t tail = BUF_SIZE - start;
+    if (tail > length)
+        tail = length;
+    memcpy(tx_buffer + start, str, tail);
+    if (length > tail)
+        memcpy(tx_buffer, str + tail, length - tail);
+
+    key = disable_irq();
+    /* The last writer publishes the complete prefix even when copies finish
+     * out of order. Every armed span ends at a published position. */
+    if (--writers == 0) {
+        published_pos = reserved_pos;
+        if (transfer_end == read_pos && !uart4_retry_pending())
+            uart4_service();
+    }
+    restore_irq(key);
 }
-
-
-/******************************************************************************/
-
+#endif
 
 void uart4_init(void)
 {
-	rp = 0;
-	wp = 0;
+#ifdef BOOT
+    uart4_configure(); /* BOOT uses polling I/O. */
+#else
+    int key = disable_irq();
+    read_pos = published_pos = reserved_pos = writers = 0;
+    transfer_end = BUF_SIZE;
+    NVIC_DisableIRQ(UART4_IRQn);
+    DMA1_Stream0->CR &= ~DMA_SxCR_EN;
 
-	umtx = osMutexNew(NULL);
+    RCC->APB1LENR |= RCC_APB1LENR_TIM4EN;
+    (void)RCC->APB1LENR;
+    TIM4->CR1 = TIM_CR1_URS;
+    TIM4->PSC = 1999; /* 200 MHz timer clock. */
+    TIM4->ARR = 999; /* 10 ms on failure. */
+    TIM4->EGR = TIM_EGR_UG; /* Load the prescaler before the first retry. */
+    TIM4->SR = 0;
+    TIM4->DIER = TIM_DIER_UIE;
 
-	UART4->CR1  = 0x0;          // Reset USART1
-	UART4->CR1  = 0x2000000c;   // FIFO TX RX
-	UART4->CR2  = 0;
-	UART4->CR3  = 0x64000000;
-	UART4->BRR  = 0x0;          // Reset
-//	UART4->BRR  = 0x0364;       // 设置波特比率寄存器为115200(100M/115200)
-	UART4->BRR  = 0x0064;       // 设置波特比率寄存器为1M(100M/1M)
-//	UART4->BRR  = 0x0032;       // 设置波特比率寄存器为2M(100M/2M)
-	UART4->RQR  = 0x0018;
-	UART4->CR1 |= 0x0001;       // Enable UART4
-
-	DMAMUX1_Channel0->CCR = 64; // 63=UART4_RX  64=UART4_TX
-
-	NVIC_EnableIRQ(UART4_IRQn);
+    NVIC_SetPriority(DMA1_Stream0_IRQn, 0);
+    NVIC_SetPriority(TIM4_IRQn, 0);
+    NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+    NVIC_EnableIRQ(TIM4_IRQn);
+    uart4_service();
+    restore_irq(key);
+#endif
 }
 
 
