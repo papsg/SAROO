@@ -171,6 +171,9 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'binary.inc').write_bytes(binary)
         if cls.fixture == 'cover':
             harnesses += ['mcu_save_cover.c', 'test_mcu_save_cover.py']
+            header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
+            layout = b'\n'.join(line for line in header.splitlines() if line.startswith(
+                (b'#define COVER_INDEX_OFFSET ', b'#define COVER_CACHE_OFFSET ')))
             begin = module.index(b'u32 adler32(')
             adler = module[begin:module.index(b'/******************************************************************************/', begin)]
             code = module[module.index(b'static FIL cover_fp;'):]
@@ -185,7 +188,7 @@ class MCUSaveTest(unittest.TestCase):
             if b'void cover_reset(void)' not in code:
                 code += b'\nvoid cover_reset(void) {}\n'
             helper = module[module.index(b'static int save_io('):module.index(b'int load_savefile(')]
-            (cls.target / 'cover.inc').write_bytes(adler + helper + code)
+            (cls.target / 'cover.inc').write_bytes(layout + b'\n' + adler + helper + code)
             path = Path(os.environ.get('SAROO_COVER_MENU_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
             begin = data.index(b'static int last_w, last_h, last_f;')

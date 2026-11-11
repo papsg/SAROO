@@ -16,6 +16,10 @@
 #define TMPBUFF_ADDR 0x610c7000
 
 
+/* Offsets in the shared graphics SDRAM window at 0x61400000. */
+#define COVER_INDEX_OFFSET 0x60000u
+#define COVER_CACHE_OFFSET 0xe0000u
+
 #define STIRQ_CDC  0x0001
 #define STIRQ_CMD  0x0002
 #define STIRQ_DAT  0x0004

@@ -6,10 +6,16 @@
 typedef uint16_t u16;
 _Alignas(8) static struct { u8 before[32],data[0x100000],after[32]; } gfx;
 #define TEST_GFX_BASE ((uintptr_t)gfx.data)
+#define INDEX_PAGE_BYTES 65536u
+#define FULL_INDEX_RECORDS 16384u
+#define INDEX_RECORD_BYTES 32u
 static unsigned c_reads,c_seeks,c_opens,c_closes,c_ip,c_delays,c_barriers;
+static unsigned c_index_reads,c_index_bytes;
 static int c_fault,c_release,c_version,c_bad_ip;
+static FSIZE_t c_fault_start;
 static FIL *c_live;
 static u8 c_busy[0x20000];
+static size_t cover_index_offset(void);
 static FRESULT cover_open(FIL *fp,const TCHAR *name,BYTE mode)
 {
     c_opens++;
@@ -31,19 +37,31 @@ static FRESULT cover_read(FIL *fp,void *out,UINT size,UINT *count)
 {
     c_reads++;assert(c_live==fp);
     uintptr_t offset=(u8*)out-gfx.data;
-    assert((offset==0xf0000 && size<=0x10000) ||
-           (offset==0xc00 && size<=512*240+0x400));
-    if(offset==0xc00)assert(!gfx.data[0] && !gfx.data[2]);
-    if(c_fault==3){*count=0;return FR_DISK_ERR;}
-    if(c_fault==4)size--;
-    if(c_fault==5){assert(!f_read(fp,out,size/2,count));return FR_DISK_ERR;}
+    if(offset==0xc00) {
+        assert(size<=512*240+0x400 && !gfx.data[0] && !gfx.data[2]);
+    } else {
+        size_t start=cover_index_offset(),end=start==0xf0000 ? 0x100000 : 0xe0000;
+        assert(offset>=start && offset<end && size<=end-offset && size<=INDEX_PAGE_BYTES);
+        assert(f_tell(fp)==offset-start);
+        c_index_reads++;
+        c_index_bytes+=size;
+    }
+    if(f_tell(fp)>=c_fault_start) {
+        if(c_fault==3){*count=0;return FR_DISK_ERR;}
+        if(c_fault==4)size--;
+        if(c_fault==5){assert(!f_read(fp,out,size/2,count));return FR_DISK_ERR;}
+        if(c_fault==8)disk_read_fault=1;
+    }
     return f_read(fp,out,size,count);
 }
 static FRESULT cover_seek(FIL *fp,FSIZE_t offset)
 {
     c_seeks++;assert(c_live==fp);
-    if(c_fault==1)return FR_DISK_ERR;
-    return f_lseek(fp,c_fault==2 ? offset+1 : offset);
+    if(offset>=c_fault_start) {
+        if(c_fault==1)return FR_DISK_ERR;
+        if(c_fault==2)offset++;
+    }
+    return f_lseek(fp,offset);
 }
 static void make_ip(u8 *out,int index,int version)
 {
@@ -87,6 +105,7 @@ static void test_barrier(void) { c_barriers++;assert(!gfx.data[0] && !gfx.data[2
 #undef f_close
 #undef f_open
 
+static size_t cover_index_offset(void) { return cover_buf-gfx.data; }
 static void ack(void) { gfx.data[0]=gfx.data[2]=0; }
 static void put16(u8 *p,unsigned v) { p[0]=v;p[1]=v>>8; }
 static void put32(u8 *p,u32 v) { for(int i=0;i<4;i++)p[i]=v>>(i*8); }
@@ -144,18 +163,24 @@ static void rendered(int w,int h,int version)
         ((u32)pixel(i*4,version)<<16 | (u32)pixel(i*4+1,version)<<8 | pixel(i*4+2,version)));
     for(unsigned i=0;i<32;i++)assert(screen.before[i]==0xa5 && screen.after[i]==0xa5);
 }
-static void pack(int w,int h,int header,int index,int two)
+static void pack_index(int w,int h,unsigned index_bytes,unsigned records,
+                       unsigned header,int index,int two)
 {
-    FIL fp;UINT count;u8 *table=calloc(1,65536);assert(table);
-    for(int i=0;i<=header;i++)snprintf((char*)table+i*32,12,"N%05d",i);
-    for(int j=0;j<=two;j++) {
-        u8 *entry=table+(header+j)*32;
-        snprintf((char*)entry,12,"G%04d",index);
-        put32(entry+12,ip_sum(j));put32(entry+16,65536+j*(w*h+1024));
+    assert(records<=index_bytes/INDEX_RECORD_BYTES && header+two<records);
+    FIL fp;UINT count;u8 *table=calloc(1,index_bytes);assert(table);
+    for(unsigned i=0;i<records;i++) {
+        u8 *entry=table+i*INDEX_RECORD_BYTES;
+        snprintf((char*)entry,12,"N%05u",i);
+        put32(entry+12,ip_sum(0));put32(entry+16,index_bytes);
         put16(entry+20,w);put16(entry+22,h);
     }
+    for(int j=0;j<=two;j++) {
+        u8 *entry=table+(header+j)*INDEX_RECORD_BYTES;
+        snprintf((char*)entry,12,"G%04d",index);
+        put32(entry+12,ip_sum(j));put32(entry+16,index_bytes+j*(w*h+1024));
+    }
     assert(!f_open(&fp,"/SAROO/cover.bin",FA_CREATE_ALWAYS|FA_WRITE));
-    assert(!f_write(&fp,table,65536,&count) && count==65536);free(table);
+    assert(!f_write(&fp,table,index_bytes,&count) && count==index_bytes);free(table);
     unsigned size=w*h+1024;u8 *data=malloc(size);assert(data);
     for(int j=0;j<=two;j++) {
         for(unsigned i=0;i<size;i++)data[i]=pixel(i,j);
@@ -163,12 +188,22 @@ static void pack(int w,int h,int header,int index,int two)
     }
     free(data);assert(!f_close(&fp));
 }
+static void pack(int w,int h,int header,int index,int two)
+{
+    pack_index(w,h,INDEX_PAGE_BYTES,header+two+1,header,index,two);
+}
 static void edit_header(int offset,u32 value,int width)
 {
     FIL fp;UINT count;u8 b[4];put32(b,value);
     assert(!f_open(&fp,"/SAROO/cover.bin",FA_WRITE));
     assert(!f_lseek(&fp,offset) && !f_write(&fp,b,width,&count) && count==(unsigned)width);
     assert(!f_close(&fp));
+}
+static void truncate_cover(FSIZE_t size)
+{
+    FIL fp;
+    assert(!f_open(&fp,"/SAROO/cover.bin",FA_WRITE));
+    assert(!f_lseek(&fp,size) && !f_truncate(&fp) && !f_close(&fp));
 }
 static void ready(void)
 {
@@ -192,8 +227,12 @@ static void absent(void)
 static void cover_guards(void)
 {
     for(unsigned i=0;i<32;i++)assert(gfx.before[i]==0xa5 && gfx.after[i]==0xa5);
-    /* Nothing in the frame/cache/header gaps may be used as accidental storage. */
-    for(unsigned i=0x20000;i<0xe0000;i++)assert(gfx.data[i]==0xa5);
+    size_t start=cover_index_offset(),end=start==0xf0000 ? 0x100000 : 0xe0000;
+    for(size_t i=0x20000;i<sizeof(gfx.data);i++) {
+        if(i>=start && i<end)continue;
+        if(i>=0xe0000 && i<0xe0000+2559*sizeof(u16))continue;
+        assert(gfx.data[i]==0xa5);
+    }
     guards();
 }
 static void valid_cover(int value)
@@ -223,10 +262,7 @@ static void header_case(int value)
     if(value==8)edit_header(22,0,2);
     if(value==9)edit_header(16,0xffffffff,4);
     if(value==10)edit_header(16,65536+128*128+1,4);
-    if(value==11) {
-        FIL fp;assert(!f_open(&fp,"/SAROO/cover.bin",FA_WRITE));
-        assert(!f_lseek(&fp,65536+128*128+1023) && !f_truncate(&fp) && !f_close(&fp));
-    }
+    if(value==11)truncate_cover(65536+128*128+1023);
     ready();
     if(value==12)put16(gfx.data+0xe0000,2049);
     load_cover(0);
@@ -288,17 +324,14 @@ static void catalog_case(int value)
         } else assert(!result && total_disc==(int)entries);
         unsigned ips=c_ip;load_cover(entries-1);displayed(128,128,c_version);assert(c_ip==ips+1);
     }
-    assert(!memcmp(gfx.data+0xf0000,"G",1));
+    assert(gfx.data[cover_index_offset()]=='G');
 }
 static void init_case(int value)
 {
     if(value==0){load_cover(0);absent();assert(!c_reads && !c_opens);return;}
     pack(128,128,0,0,0);
     if(value==1)assert(!f_unlink("/SAROO/cover.bin"));
-    if(value==2) {
-        FIL fp;assert(!f_open(&fp,"/SAROO/cover.bin",FA_WRITE));
-        assert(!f_lseek(&fp,65535) && !f_truncate(&fp) && !f_close(&fp));
-    }
+    if(value==2)truncate_cover(65535);
     if(value==3)c_fault=4;
     if(value==4)c_fault=6;
     if(value>=5) {
@@ -346,6 +379,118 @@ static void busy_case(int value)
         ack();load_cover(0);displayed(128,128,0);
     }
 }
+
+static void index_boundary_case(unsigned record)
+{
+    const unsigned index_bytes=FULL_INDEX_RECORDS*INDEX_RECORD_BYTES;
+    int slot=record==FULL_INDEX_RECORDS-1 ? 2558 : 0;
+    total_disc=slot+1;
+    pack_index(128,128,index_bytes,FULL_INDEX_RECORDS,record,slot,0);
+    ready();
+    assert(c_index_reads==1 && c_index_bytes==INDEX_PAGE_BYTES);
+    load_cover(slot);displayed(128,128,0);rendered(128,128,0);
+    unsigned pages=1+record*INDEX_RECORD_BYTES/INDEX_PAGE_BYTES;
+    assert(c_index_reads==pages && c_index_bytes==pages*INDEX_PAGE_BYTES);
+    assert(c_reads==pages+1);
+}
+
+static void index_layout_case(int value)
+{
+    const unsigned full_bytes=FULL_INDEX_RECORDS*INDEX_RECORD_BYTES;
+    const unsigned page_records=INDEX_PAGE_BYTES/INDEX_RECORD_BYTES;
+    total_disc=2;
+    if(value==0) {
+        pack_index(128,128,INDEX_PAGE_BYTES,page_records,page_records-1,1,0);
+        ready();load_cover(0);absent();ack();
+        assert(c_reads==1 && c_seeks==1 && ip_cache[0]==0xffff);
+        load_cover(1);displayed(128,128,0);
+        assert(c_reads==2 && c_index_reads==1);
+    } else if(value==1 || value==2) {
+        unsigned records=page_records+3;
+        unsigned bytes=value==1 ? records*INDEX_RECORD_BYTES : full_bytes;
+        pack_index(128,128,bytes,records,records-1,1,0);
+        ready();load_cover(0);absent();ack();
+        assert(c_reads==2 && c_index_reads==2 && ip_cache[0]==0xffff);
+        assert(c_index_bytes==(value==1 ? bytes : 2*INDEX_PAGE_BYTES));
+        load_cover(1);displayed(128,128,0);
+        assert(c_reads==3 && c_index_reads==2);
+    } else if(value==3 || value==4) {
+        pack_index(128,128,full_bytes,page_records+1,page_records,0,0);
+        truncate_cover(value==3 ? 2*INDEX_PAGE_BYTES-1 : full_bytes+128*128+1023);
+        ready();load_cover(0);absent();ack();
+        if(value==3) {
+            assert(!ip_cache[0] && c_seeks==1 && c_reads==1);
+            load_cover(0);
+            assert(!ip_cache[0] && c_ip==2 && c_reads==1);
+        } else {
+            assert(ip_cache[0]==page_records+1 && c_reads==2 && c_index_reads==2);
+        }
+    } else {
+        assert(value==5);
+        pack_index(128,128,full_bytes,page_records+1,page_records-1,0,1);
+        c_version=1;
+        ready();load_cover(0);displayed(128,128,1);rendered(128,128,1);
+        assert(c_reads==3 && c_index_reads==2);
+    }
+}
+
+static void index_cache_case(void)
+{
+    const unsigned index_bytes=FULL_INDEX_RECORDS*INDEX_RECORD_BYTES;
+    total_disc=2;
+    pack_index(128,128,index_bytes,FULL_INDEX_RECORDS,FULL_INDEX_RECORDS-1,1,0);
+    ready();load_cover(1);displayed(128,128,0);rendered(128,128,0);
+    load_cover(1);assert(!gfx.data[0] && c_reads==9 && c_ip==1);
+    load_cover(0);absent();ack();
+    load_cover(0);assert(!gfx.data[0] && c_reads==9 && c_ip==2);
+    load_cover(0x8001);displayed(128,128,0);ack();
+    assert(c_reads==10 && c_ip==2);
+    cover_reset();load_cover(1);displayed(128,128,0);ack();
+    assert(c_reads==11 && c_ip==3 && c_index_reads==8 && c_index_bytes==index_bytes);
+    cover_init();
+    assert(c_reads==12 && c_index_reads==9 && c_index_bytes==index_bytes+INDEX_PAGE_BYTES);
+    load_cover(1);displayed(128,128,0);
+    assert(c_reads==20 && c_ip==4 && c_index_reads==16 && c_index_bytes==2*index_bytes);
+}
+
+static void index_retry_case(int value)
+{
+    const unsigned index_bytes=FULL_INDEX_RECORDS*INDEX_RECORD_BYTES;
+    pack_index(128,128,index_bytes,FULL_INDEX_RECORDS,4096,0,0);
+    ready();
+    c_fault_start=2*INDEX_PAGE_BYTES;
+    c_fault=value;
+    load_cover(0);absent();ack();
+    assert(!ip_cache[0] && c_ip==1 && c_index_reads==(value<=2 ? 2 : 3));
+    c_fault=0;
+    if(value==8) {
+        assert(cover_fp.err);
+        load_cover(0);
+        assert(!ip_cache[0] && c_index_reads==3);
+        cover_init();
+    }
+    unsigned reads=c_index_reads;
+    load_cover(0);displayed(128,128,0);rendered(128,128,0);
+    assert(c_index_reads==reads+(value==8 ? 2 : 1));
+}
+
+static void index_busy_case(void)
+{
+    const unsigned index_bytes=FULL_INDEX_RECORDS*INDEX_RECORD_BYTES;
+    pack_index(128,128,index_bytes,FULL_INDEX_RECORDS,2048,0,0);
+    ready();
+    memset(gfx.data+0x1000,0x6a,512*512);
+    gfx.data[0]=gfx.data[2]=1;
+    memcpy(c_busy,gfx.data,sizeof(c_busy));
+    load_cover(0);
+    assert(c_delays==10 && c_reads==2 && c_index_reads==2 && !c_barriers);
+    assert(!memcmp(c_busy,gfx.data,sizeof(c_busy)));
+    for(size_t i=0x1000;i<0x41000;i++)assert(gfx.data[i]==0x6a);
+    memset(gfx.data+0x20000,0xa5,0x21000);
+    ack();load_cover(0);displayed(128,128,0);rendered(128,128,0);
+    assert(c_reads==3 && c_index_reads==2 && c_barriers==1);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);const char *mode=argv[2];int value=atoi(argv[3]);
@@ -360,9 +505,15 @@ int main(int argc,char **argv)
     else if(!strcmp(mode,"cover-catalog"))catalog_case(value);
     else if(!strcmp(mode,"cover-init"))init_case(value);
     else if(!strcmp(mode,"cover-fault"))fault_case(value);
+    else if(!strcmp(mode,"cover-index-boundary"))index_boundary_case(value);
+    else if(!strcmp(mode,"cover-index-layout"))index_layout_case(value);
+    else if(!strcmp(mode,"cover-index-cache"))index_cache_case();
+    else if(!strcmp(mode,"cover-index-retry"))index_retry_case(value);
+    else if(!strcmp(mode,"cover-index-busy"))index_busy_case();
     else {assert(!strcmp(mode,"cover-busy"));busy_case(value);}
     cover_guards();assert(!fclose(disk));
-    printf("%s %d: reads=%u seeks=%u opens=%u closes=%u previews=%u waits=%u\n",
-           mode,value,c_reads,c_seeks,c_opens,c_closes,c_ip,c_delays);
+    printf("%s %d: reads=%u seeks=%u opens=%u closes=%u previews=%u waits=%u "
+           "index_requests=%u index_bytes_requested=%u\n",
+           mode,value,c_reads,c_seeks,c_opens,c_closes,c_ip,c_delays,c_index_reads,c_index_bytes);
     return 0;
 }

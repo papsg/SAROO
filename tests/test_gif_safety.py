@@ -85,7 +85,8 @@ class GifSafetyTests(unittest.TestCase):
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         cls.results = []
-        inputs = {'tinygif.c': source_path.read_bytes(), 'saturn_main.c': main_path.read_bytes()}
+        inputs = {'tinygif.c': source_path.read_bytes(), 'saturn_main.c': main_path.read_bytes(),
+                  'cdc.h': (ROOT / 'Firm_MCU/Saturn/cdc.h').read_bytes()}
         for name in ('test_gif_safety.py', 'gif_safety.c'):
             inputs[name] = (ROOT / 'tests' / name).read_bytes()
         for name, data in inputs.items():
@@ -97,7 +98,9 @@ class GifSafetyTests(unittest.TestCase):
                         lambda m: b'(GIF_TEST_AXI + 0x' + m[1] + b')', source)
         source = re.sub(rb'0x614([0-9a-fA-F]{5})',
                         lambda m: b'(GIF_TEST_GFX + 0x' + m[1] + b')', source)
-        (cls.target / 'gif.inc').write_bytes(source)
+        layout = b'\n'.join(line for line in inputs['cdc.h'].splitlines()
+                            if line.startswith(b'#define COVER_INDEX_OFFSET '))
+        (cls.target / 'gif.inc').write_bytes(layout + b'\n' + source)
         main = inputs['saturn_main.c']
         case = main[main.index(b'case SSCMD_LOADDISC:'):main.index(b'case SSCMD_CHECK:')]
         (cls.target / 'handoff.inc').write_bytes(

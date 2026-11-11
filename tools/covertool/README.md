@@ -82,8 +82,9 @@ typedef struct cover_header
 } cover_hdr_t;
 ```
 
-The host index supports a maximum of 16384 entries. Current MCU firmware looks
-up only its first 2048 entries; this host-tool safety change does not expand it.
+The host index and MCU lookup both support up to 16,384 entries. The MCU reads
+the first 2,048 entries at startup and loads later pages as needed.
+[Firmware lookup and compatibility](../../doc/COVER-INDEX-CAPACITY.md)
 
 ### IP.BIN Hash
 

@@ -18,6 +18,24 @@ class CoverSafetyTests(MCUSaveTest):
         for value in range(13):
             with self.subTest(value=value): self.run_case(['cover-header', value])
 
+    def test_canonical_index_lookup_at_page_boundaries(self):
+        for record in (0, 2047, 2048, 4095, 4096, 8192, 16383):
+            with self.subTest(record=record): self.run_case(['cover-index-boundary', record])
+
+    def test_compact_terminator_extent_and_full_key_checks(self):
+        for value in range(6):
+            with self.subTest(value=value): self.run_case(['cover-index-layout', value])
+
+    def test_resident_pages_are_reused_until_file_reopen(self):
+        self.run_case(['cover-index-cache', 0])
+
+    def test_failed_extension_remains_retryable(self):
+        for value in (1, 2, 3, 4, 5, 8):
+            with self.subTest(value=value): self.run_case(['cover-index-retry', value])
+
+    def test_extension_preserves_a_busy_maximum_gif_canvas(self):
+        self.run_case(['cover-index-busy', 0])
+
     def test_invalid_selection_category_and_count_do_not_read_or_index(self):
         for value in range(11):
             with self.subTest(value=value): self.run_case(['cover-index', value])

@@ -7,6 +7,9 @@
 #define GIF_FILE_BYTES (0xa000u + MAX_BLOCKS * 2352u - 0x20000u)
 #define GIF_STRIDE 512u
 #define GIF_HEIGHT 512u
+#define GIF_PIXEL_OFFSET 0x1000u
+_Static_assert(GIF_PIXEL_OFFSET + GIF_STRIDE * GIF_HEIGHT <= COVER_INDEX_OFFSET,
+               "GIF framebuffer must end before the cover index");
 #define SCR_W 320
 #define SCR_H 240
 
@@ -22,7 +25,7 @@ static GIF_DECODER g_gd;
 /* Twelve prefix bits and an eight-bit suffix fit in one aligned entry. */
 static u32 *const gif_dict = (u32 *)0x24011000;
 static u8 *const gif_stack = (u8 *)0x24010000;
-static u8 *const gifbuf = (u8 *)0x61401000;
+static u8 *const gifbuf = (u8 *)(0x61400000 + GIF_PIXEL_OFFSET);
 static u32 *const gif_pal = (u32 *)0x61400100;
 volatile int gd_state = -1;
 static volatile int in_decoding;

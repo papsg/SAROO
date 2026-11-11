@@ -646,13 +646,20 @@ done:
 
 
 static FIL cover_fp;
-/* 0: closed, 1: open but unavailable, 2: complete header table. */
-static int cover_inited;
+/* Zero is closed, one is open but unavailable. Otherwise this counts the
+ * completely read prefix, starting at one full page. */
+static unsigned cover_resident;
+static unsigned cover_limit;
 static int last_chdr;
-#define COVER_COUNT 2048
+#define COVER_COUNT 16384u
+#define COVER_PAGE_RECORDS 2048u
+#define COVER_RECORD_BYTES 32u
 #define COVER_SLOTS ((0x2800 - 4) / 4)
-static u16 * const ip_cache = (u16*)0x614e0000;
-static u8 * const cover_buf = (u8*)0x614f0000;
+static u16 * const ip_cache = (u16*)(0x61400000 + COVER_CACHE_OFFSET);
+static u8 * const cover_buf = (u8*)(0x61400000 + COVER_INDEX_OFFSET);
+_Static_assert(COVER_INDEX_OFFSET + COVER_COUNT * COVER_RECORD_BYTES <= COVER_CACHE_OFFSET,
+               "Cover index must end before the catalog cache");
+_Static_assert(COVER_COUNT < 0xffffu, "Cover record numbers must fit in the catalog cache");
 
 /* A cache entry belongs to one published catalog, including its ordering. */
 void cover_reset(void)
@@ -661,13 +668,29 @@ void cover_reset(void)
     last_chdr = 0;
 }
 
-static int find_cover(char *gid, u32 fsum)
+/* Zero is retryable. 0xffff is a cacheable miss. */
+static int find_cover(const char *gid, u32 fsum)
 {
     if (strnlen(gid, 13) > 12) return 0xffff;
-    for (int i = 0; i < COVER_COUNT; i++) {
-        u8 *hdr = cover_buf + i * 32;
-        if (!hdr[0]) break;
-        if (!strncmp((char*)hdr, gid, 12) && *(u32*)(hdr + 12) == fsum)
+    for (unsigned i = 0; i < cover_limit; i++) {
+        u32 offset = i * COVER_RECORD_BYTES;
+        const u8 *hdr = cover_buf + offset;
+        if (i == cover_resident) {
+            unsigned records = cover_limit - i;
+            if (records > COVER_PAGE_RECORDS) records = COVER_PAGE_RECORDS;
+            if (save_io(&cover_fp, offset, cover_buf + offset, records * COVER_RECORD_BYTES, 0))
+                return 0;
+            cover_resident += records;
+        }
+        if (!hdr[0]) {
+            cover_limit = i;
+            break;
+        }
+        /* Compact tables put payloads earlier than the canonical 512 KiB. */
+        unsigned end = *(const u32*)(hdr + 16) / COVER_RECORD_BYTES;
+        if (end >= COVER_PAGE_RECORDS && end < cover_limit) cover_limit = end;
+        if (i >= cover_limit) break;
+        if (!strncmp((const char*)hdr, gid, 12) && *(const u32*)(hdr + 12) == fsum)
             return i + 1;
     }
     return 0xffff;
@@ -676,15 +699,16 @@ static int find_cover(char *gid, u32 fsum)
 void cover_init(void)
 {
     cover_reset();
-    if (cover_inited && f_close(&cover_fp)) {
-        cover_inited = 1;
+    if (cover_resident && f_close(&cover_fp)) {
+        cover_resident = 1;
         return;
     }
-    cover_inited = 0;
+    cover_resident = 0;
     if (f_open(&cover_fp, "/SAROO/cover.bin", FA_READ)) return;
-    cover_inited = 1;
-    if (!save_io(&cover_fp, 0, cover_buf, COVER_COUNT * 32, 0))
-        cover_inited = 2;
+    cover_resident = 1;
+    cover_limit = COVER_COUNT;
+    if (!save_io(&cover_fp, 0, cover_buf, COVER_PAGE_RECORDS * COVER_RECORD_BYTES, 0))
+        cover_resident = COVER_PAGE_RECORDS;
 }
 
 void load_cover(int index)
@@ -693,7 +717,7 @@ void load_cover(int index)
     if (index & 0x8000) last_chdr = 0;
     if ((unsigned)index > 0xffff) goto unavailable;
     index &= 0x7fff;
-    if (cover_inited != 2 || total_disc < 0 || total_disc > COVER_SLOTS ||
+    if (cover_resident < COVER_PAGE_RECORDS || total_disc < 0 || total_disc > COVER_SLOTS ||
         index >= total_disc || (unsigned)category_current >= 12 ||
         (unsigned)category_current >= (unsigned)(category_num ? category_num : 1))
         goto unavailable;
@@ -714,13 +738,15 @@ void load_cover(int index)
         chdr = find_cover(gid, adler32(ipbuf + 0x30, 64));
         ip_cache[index] = chdr;
     }
-    if (chdr > COVER_COUNT) goto unavailable;
+    if (!chdr || (unsigned)chdr > cover_resident || (unsigned)chdr > cover_limit)
+        goto unavailable;
     if (chdr == last_chdr) return;
-    u8 *hdr = cover_buf + (chdr - 1) * 32;
+    u8 *hdr = cover_buf + (chdr - 1) * COVER_RECORD_BYTES;
     w = *(u16*)(hdr + 0x14);
     h = *(u16*)(hdr + 0x16);
     /* Fit the existing 512 by 240 display staging allocation. */
-    if (!w || w > 512 || !h || h > 240 || *(u32*)(hdr + 0x10) < COVER_COUNT * 32)
+    if (!w || w > 512 || !h || h > 240 ||
+        *(u32*)(hdr + 0x10) < COVER_PAGE_RECORDS * COVER_RECORD_BYTES)
         goto unavailable;
     flag = 3;
     goto display;
@@ -736,7 +762,7 @@ display:
         osDelay(1);
     }
     if (flag == 3) {
-        u8 *hdr = cover_buf + (chdr - 1) * 32;
+        u8 *hdr = cover_buf + (chdr - 1) * COVER_RECORD_BYTES;
         int result = save_io(&cover_fp, *(u32*)(hdr + 0x10), (u8*)0x61400c00, w * h + 0x400, 0);
         if (result) {
             chdr = 0xffff;
