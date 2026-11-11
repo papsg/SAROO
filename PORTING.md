@@ -1702,3 +1702,13 @@ was left untouched.
    to 62,752, and static DTCM remains 60,216 bytes. Hardware load latency
    remains unmeasured.
    [Source contract, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#compact-the-configuration-parser)
+2. **Bounded MCU access through primary save handles — published**
+   [`3d87029`](https://github.com/papsg/SAROO/commit/3d87029b7bbc0f34c9008bf71a5010f7af18a347).
+   Adapted from paps-g `b7720d00` on the public save reopen and tagged
+   file protocol. The prior MCU leaves the new commands pending. Both
+   filesystems detect omitted revocation on a failed MEMS root read.
+   The port passes 44 FatFs image cases and 85 protocol cases. All 20
+   focused methods pass ASan/UBSan and O2, with 46 passing in the broader
+   O2 run. The GNU App grows to 63,184 bytes and keeps 60,216 bytes of
+   static DTCM. Physical recovery remains unqualified.
+   [Protocol, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#access-the-existing-save-archive-handles)
