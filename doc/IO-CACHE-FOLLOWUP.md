@@ -128,7 +128,7 @@ Cover matching still uses the game ID and the Adler-32 of the same
 64 IP.BIN bytes starting at offset 0x30. For that length the first sum
 stays below 65,521 and the second fits in 32 bits. Accumulating both
 sums before reducing the second preserves the exact key and removes
-the two per-byte reductions. The public menu code already copies the
+the two per-byte reductions. The cover loader already copies the
 game ID separately, so its string cleanup leaves the title bytes intact.
 [RFC 1950, §8.2](https://www.rfc-editor.org/rfc/rfc1950#section-8.2) ·
 [Cover tool key format](../tools/covertool/README.md#ipbin-hash).
@@ -143,3 +143,45 @@ All 20 methods pass with ASan/UBSan and with
 when running `test_cover_hash.py` to test a preceding MCU source.
 The linked GNU App stays at 62,796 bytes and static DTCM at 60,216 bytes.
 Hardware timing remains unmeasured.
+
+## Confirm file transfers explicitly
+
+The cartridge FPGA clears both the command and argument registers on
+reset. In the preceding protocol the menu accepted that pair as a
+successful file operation and could consume the count left in shared
+memory. The MCU now advertises FIL1 in its own system-info word and the
+menu latches it at entry. A negotiated read or write succeeds only when
+the MCU acknowledges it. The MCU still publishes the result before it
+clears the command. [Original cartridge command and argument registers,
+lines 526–548](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L526-L548) ·
+[Pinned FatFs result range](../Firm_MCU/FatFS/ff.h#L275-L294) ·
+[Existing save acknowledgment](FIRMWARE-RELIABILITY-FOLLOWUP.md#acknowledge-completed-saves-explicitly).
+
+Adapted from paps-g's `08226bbe`. The file and save capabilities stay
+independent. FILE read/write get two aliases using the existing tag bit.
+LISTBIN keeps its original command, and negative FatFs errors still
+reach the caller unchanged. Confirmed short reads, EOF, writes, and
+zero-length creates retain their original results. If completion is
+unconfirmed, bounced reads leave the destination alone and direct reads
+invalidate the full possible written extent. A reset after I/O can leave
+changes in RAM or on disk even when the caller receives an error. A
+mixed-version pair uses the legacy result, with the original reset
+ambiguity.
+
+Run `make -C tests check-file-transfer` and repeat with
+`SAROO_FILE_PROFILE=release`. The exact parent `f0c2398` reports false
+success in eight reset cases for bounced reads, direct reads, writes
+and empty creates, and in 16 modeled direct-cache cases. The port
+passes all of those cases and all 34 focused methods in both profiles.
+Nine file-transfer methods pass in each mixed-version direction.
+The fixtures can select the parent using `SAROO_MENU_FILE_SOURCE`,
+`SAROO_MENU_MCU_SOURCE` or `SAROO_MENU_CACHE_SOURCE`.
+
+The protocol fixture checks all 65,536 command values, 280 result
+cases and 68 capability cases. The existing save tests also pass
+with ASan/UBSan and O2. Their FPGA simulation confirms full-width
+arguments, ordered replies and reset clearing for the file and save
+opcodes. The linked GNU App is 62,812 bytes (+16), with 60,216 bytes
+of static DTCM. The menu links 79,716 code/data bytes (+48) and 9,240
+BSS bytes (+4) into the same 488,770-byte image size. Physical reset
+and recovery behavior remains unqualified.

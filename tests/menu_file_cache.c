@@ -15,8 +15,8 @@ static u8 control, ccr_value, initial_control;
 static volatile u32 purge_value;
 static volatile uint16_t command_value, argument;
 #define TMPBUFF_ADDR ((uintptr_t)(memory+0xc7000))
-#define SSCMD_FILERD 6
-#define SSCMD_FILEWR 7
+#include "protocol.inc"
+static uint16_t file_ack;
 
 static void flush_ccr(void)
 {
@@ -74,14 +74,17 @@ static volatile uint16_t *command_register(void)
 {
     if(command_value) {
         ++commands;assert(!finished);
-        changed=outcome==1 ? 17 : outcome==2 ? 0 : outcome>=3 && outcome<=6 ? 13 : requested;
-        if(command_value==SSCMD_FILERD)
+        /* Outcome 10 leaves the request count, while 11 writes a short prefix. */
+        changed=outcome==10 || outcome==2 ? 0 : outcome==1 ? 17 :
+                outcome==11 || (outcome>=3 && outcome<=6) ? 13 : requested;
+        if((command_value & ~SSCMD_SAVE_ACK)==SSCMD_FILERD)
             for(u32 i=0;i<changed;i++)memory[physical-0x02000000+i]=pattern(physical+i);
         else { assert(outcome==7);changed=0; }
         store_le((void*)(TMPBUFF_ADDR+4),outcome==3 ? 0 : outcome==4 ? requested+1 :
                  outcome==5 ? 0x80000000u : outcome==6 ? 0xffffffffu :
-                 outcome==7 ? requested : changed);
-        argument=outcome==3 ? (uint16_t)-1 : 0;
+                 outcome==7 || outcome==10 ? requested : changed);
+        argument=outcome==3 ? (uint16_t)-1 :
+                 outcome>=10 ? 0 : command_value & SSCMD_SAVE_ACK;
         command_value=0;finished=1;
     }
     return &command_value;
@@ -107,7 +110,8 @@ static u8 cache_read(u32 address, int instruction)
 
 int main(int argc,char **argv)
 {
-    assert(argc==6);int mode=atoi(argv[1]);cpu_address=strtoul(argv[2],NULL,0);
+    assert(argc==7);int mode=atoi(argv[1]);cpu_address=strtoul(argv[2],NULL,0);
+    file_ack=atoi(argv[6]);assert(!file_ack || file_ack==SSCMD_SAVE_ACK);
     physical=cpu_address & 0x1fffffff;requested=strtoul(argv[3],NULL,0);
     initial_control=control=(u8)strtoul(argv[4],NULL,0);outcome=atoi(argv[5]);
     assert(!(control&0x30) && physical>=0x02000000 && requested<=0x03000000-physical);
@@ -120,12 +124,14 @@ int main(int argc,char **argv)
         memcpy(lines[w][e].bytes,memory+(tag-0x02000000),16);
     }
     if(mode==1) {
-        expected_commands=outcome<8;
+        expected_commands=outcome<8 || outcome>=10;
         int result=file_command(outcome==8?NULL:"/cache.bin",0,
                                 outcome==9 ? 0x1000000u : requested,
                                 memory+(physical-0x02000000),outcome==7);
-        int expected=outcome==1 ? 17 : outcome==2 ? 0 : outcome==3 ? -1 :
+        int expected=outcome==1 ? 17 : outcome==2 ? 0 : outcome==3 || outcome>=10 ? -1 :
                      outcome>=4 && outcome<=6 ? -19 : outcome>=8 ? -19 : (int)requested;
+        if(result!=expected)
+            fprintf(stderr,"cache outcome %d returned %d, expected %d\n",outcome,result,expected);
         assert(result==expected && commands==(unsigned)expected_commands);
     } else {
         changed=requested;
@@ -136,7 +142,7 @@ int main(int argc,char **argv)
     assert(control==initial_control && status==initial_status);
     assert(!whole_purges || (whole_purges==1 && ccr_writes==3 && status_writes==2));
     assert(whole_purges || (!ccr_writes && !status_writes));
-    u32 invalidated=mode==1 ? (outcome>=7 ? 0 : outcome>=3 ? requested : changed) : requested;
+    u32 invalidated=mode==1 ? (outcome>=7 && outcome<=9 ? 0 : outcome>=3 ? requested : changed) : requested;
     for(unsigned w=0;w<4;w++)for(unsigned e=0;e<64;e++) {
         u32 tag=lines[w][e].address;
         int overlaps=invalidated && tag<physical+invalidated && tag+16>physical;

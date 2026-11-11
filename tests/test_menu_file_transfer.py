@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from mcu_save_support import make_fat32
-from test_file_transfer import extract_command_source
+from test_file_transfer import extract_command_source, protocol_definitions
 from test_menu_file_cache import host_cache_operations
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -39,8 +39,10 @@ class MenuFileTransferTests(unittest.TestCase):
         if b'int read_file_bounded(' not in raw:
             code+=b'\nstatic int read_file_bounded(char *n,int o,int s,void *b,u32 c) { (void)c; return read_file(n,o,s,b); }\n'
         (cls.target/'menu-file.inc').write_bytes(code)
-        (cls.target/'mode.h').write_text('#define HAS_BOUNDED_READER %d\n'%(b'int read_file_bounded(' in raw))
-        (cls.target/'protocol.inc').write_bytes(b'\n'.join(line for line in mcu_header.splitlines() if line.startswith((b'#define SSCMD_FILERD ',b'#define SSCMD_FILEWR ')))+b'\n')
+        has_file_ack = b'static u16 file_ack;' in raw
+        (cls.target/'mode.h').write_text('#define HAS_BOUNDED_READER %d\n#define HAS_FILE_ACK %d\n'
+                                      % (b'int read_file_bounded(' in raw, has_file_ack))
+        (cls.target/'protocol.inc').write_bytes(protocol_definitions(mcu_header))
         slots=[line.strip() for line in raw.splitlines() if any(('0x02000f%02x'%x).encode() in line for x in (8,12,16,20)) and b'=' in line and line.lstrip().startswith(b'*(u32*)')]
         for i,slot in enumerate(slots):
             for address in (8,12,16,20):slot=slot.replace(('*(u32*)(0x02000f%02x)'%address).encode(),('abi_slots[%d]'%((address-8)//4)).encode())
@@ -48,6 +50,7 @@ class MenuFileTransferTests(unittest.TestCase):
         (cls.target/'abi.inc').write_bytes(b'\n'.join(slots)+b'\n')
         peer=Path(os.environ.get('SAROO_MENU_MCU_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_main.c')).read_bytes()
         (cls.target/'mcu-file.inc').write_bytes(extract_command_source(peer))
+        cls.tags = (0, 32) if has_file_ack and b'= FILE_ACK_VERSION;' in peer else (0,)
         inputs={'Firm_Saturn/main.c':raw,'Firm_Saturn/main.h':header,'Firm_MCU/Saturn/saturn_main.c':peer,'Firm_MCU/Saturn/cdc.h':mcu_header}
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
@@ -66,12 +69,20 @@ class MenuFileTransferTests(unittest.TestCase):
     def tearDownClass(cls):
         (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
 
-    def run_cases(self,cases):
+    def run_cases(self, cases, tags=None):
         for case in cases:
-            with self.subTest(case=case),tempfile.TemporaryDirectory(dir=self.target) as tmp:
-                path=Path(tmp)/'card.img';make_fat32(path)
-                result=subprocess.run([str(self.binary),str(path),str(case)],capture_output=True,timeout=20,env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
-                self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout.decode(errors='replace'),stderr=result.stderr.decode(errors='replace')));self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn(b'pass',result.stdout)
+            for tag in self.tags if tags is None else tags:
+                with self.subTest(case=case, tag=tag), tempfile.TemporaryDirectory(dir=self.target) as tmp:
+                    path = Path(tmp) / 'card.img'
+                    make_fat32(path)
+                    result = subprocess.run([str(self.binary), str(path), str(case), str(tag)],
+                                            capture_output=True, timeout=20,
+                                            env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
+                    self.results.append(dict(case=case, tag=tag, returncode=result.returncode,
+                                             stdout=result.stdout.decode(errors='replace'),
+                                             stderr=result.stderr.decode(errors='replace')))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(b'pass', result.stdout)
 
     def test_whole_file_eof_capacity_and_tail(self):self.run_cases(range(0,6))
     def test_fixed_capacity_and_invalid_arguments(self):self.run_cases(range(6,12))
@@ -82,6 +93,12 @@ class MenuFileTransferTests(unittest.TestCase):
     def test_direct_buffers_request_overlap_and_window_edges(self):self.run_cases(range(21,24))
     def test_legacy_four_argument_whole_file_calls(self):self.run_cases(range(24,26))
     def test_one_mib_binary_and_two_mib_companion_loads(self):self.run_cases(range(26,28))
+
+    def test_reset_before_or_after_file_io_cannot_report_success(self):
+        self.run_cases(range(30, 38), tags=(32,))
+
+    def test_unexpected_positive_results_cannot_confirm_reads_or_creates(self):
+        self.run_cases(range(38, 40))
 
 
 if __name__=='__main__':unittest.main()

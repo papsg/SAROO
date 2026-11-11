@@ -20,7 +20,7 @@ module tb;
     initial begin
         @(negedge clk); reset_n = 1;
         for (tag = 32; tag <= 32768; tag = tag * 1024)
-        for (opcode = 9; opcode <= 12; opcode = opcode + 1) begin
+        for (opcode = 6; opcode <= 12; opcode = opcode + 1) if (opcode != 8) begin
             swrite(24'h14, 16'ha5c3); swrite(24'h10, opcode | tag);
             if (command !== (opcode | tag) || result !== 16'ha5c3)
                 $fatal(1, "tag or complete argument lost");
@@ -34,7 +34,7 @@ module tb;
             if (command !== 0 || result !== 0) $fatal(1, "unexpected reset state");
             @(negedge clk); reset_n = 1;
         end
-        $display("PASS 8 tagged save opcodes: ordered reply, cleared reset");
+        $display("PASS 12 tagged file/save opcodes: ordered reply, cleared reset");
         $finish;
     end
 endmodule

@@ -14,6 +14,19 @@ from mcu_save_support import make_fat32
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def protocol_definitions(header):
+    return b'\n'.join(re.findall(rb'^#define (?:SSCMD_\w+|(?:SAVE|FILE)_ACK_VERSION)\s+\S+',
+                                 header, re.M)) + b'\n'
+
+
+def command_dispatch(raw):
+    if b'switch(save_cmd){' in raw:
+        start = raw.index(b'u32 save_cmd = ')
+        end = raw.index(b'switch(save_cmd){', start) + len(b'switch(save_cmd){')
+        return raw[start:end]
+    return b'switch(cmd) {'
+
+
 def extract_command_source(raw):
     helper=b''
     if b'int ss_file_transfer(' in raw:
@@ -21,7 +34,12 @@ def extract_command_source(raw):
         helper=raw[start:raw.index(b'\n}',start)+2]+b'\n'
     start=raw.index(b'\tcase SSCMD_FILERD:')
     cases=raw[start:raw.index(b'\tcase SSCMD_SSAVE:',start)]
-    code=helper+b'\nstatic void command(void) { u32 cmd=SS_CMD; '+(b'int retv; ' if helper else b'')+b'switch(cmd) {\n'+cases+b'\n} }\n'
+    if b'goto save_reply;' in cases:
+        reply = raw.index(b'    save_reply:', start)
+        cases += raw[reply:raw.index(b'\tcase SSCMD_STARTUP:', reply)]
+    locals_ = b'u32 cmd = SS_CMD; ' + (b'int retv; ' if helper else b'')
+    code = (helper + b'\nstatic void command(void) { ' + locals_
+            + command_dispatch(raw) + b'\n' + cases + b'\n} }\n')
     code,replacements=re.subn(rb'\(u8\s*\*\)\s*\(\(baddr\s*&\s*0x00ffffff\)\s*\|\s*0x61000000\)',b'(test_shared+(baddr & 0x00ffffff))',code)
     assert replacements==(1 if helper else 2)
     return code
@@ -38,7 +56,10 @@ class FileTransferTests(unittest.TestCase):
         header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         addresses=dict(re.findall(rb'#define\s+(TMPBUFF_ADDR|FIRM_ADDR)\s+(0x[0-9a-fA-F]+)',header))
         assert addresses=={b'TMPBUFF_ADDR':b'0x610c7000',b'FIRM_ADDR':b'0x61000000'}
-        (cls.target/'log.inc').write_bytes(b'\n'.join(line for line in header.splitlines() if line.startswith((b'#define _INFO ',b'#define SSLOG(',b'#define SSCMD_FILERD ',b'#define SSCMD_FILEWR ')))+b'\n')
+        (cls.target/'log.inc').write_bytes(b'\n'.join(line for line in header.splitlines()
+            if line.startswith((b'#define _INFO ', b'#define SSLOG('))) + b'\n'
+            + protocol_definitions(header))
+        cls.tags = (0, 32) if b'= FILE_ACK_VERSION;' in raw else (0,)
         inputs={'Saturn/saturn_main.c':raw,'Saturn/cdc.h':header}
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
@@ -60,12 +81,19 @@ class FileTransferTests(unittest.TestCase):
         (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
 
     def invoke(self, mode, fault='none', logging=True):
-        with tempfile.TemporaryDirectory(dir=self.target) as tmp:
-            card=Path(tmp)/'card.img';make_fat32(card)
-            result=subprocess.run([str(self.binary),str(card),mode,fault,str(int(logging))],capture_output=True,timeout=20,env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
-            row=dict(mode=mode,fault=fault,logging=logging,returncode=result.returncode,stdout=result.stdout.decode(errors='replace'),stderr=result.stderr.decode(errors='replace'));self.results.append(row)
-            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            self.assertIn(b'pass',result.stdout)
+        for tag in self.tags:
+            with self.subTest(tag=tag), tempfile.TemporaryDirectory(dir=self.target) as tmp:
+                card = Path(tmp)/'card.img'
+                make_fat32(card)
+                result = subprocess.run([str(self.binary), str(card), mode, fault,
+                                         str(int(logging)), str(tag)], capture_output=True, timeout=20,
+                                        env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
+                self.results.append(dict(mode=mode, fault=fault, logging=logging, tag=tag,
+                                         returncode=result.returncode,
+                                         stdout=result.stdout.decode(errors='replace'),
+                                         stderr=result.stderr.decode(errors='replace')))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(b'pass', result.stdout)
 
     def test_bounds_reject_before_open_and_preserve_targets(self):
         for mode in ('read-cross-window','write-cross-window','read-wrap-size','write-wrap-size',

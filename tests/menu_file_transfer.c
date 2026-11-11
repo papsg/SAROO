@@ -14,6 +14,7 @@ static u32 target_bus=0x06004000, allocation;
 #define FIRM_ADDR ((uintptr_t)test_shared)
 #define TMPBUFF_ADDR ((uintptr_t)(test_shared+0xc7000))
 #include "protocol.inc"
+static uint16_t file_ack;
 #define SSLOG(...) ((void)0)
 static volatile uint16_t mcu_cmd, mcu_arg;
 #define SS_CMD mcu_cmd
@@ -23,16 +24,25 @@ static volatile uint16_t mcu_cmd, mcu_arg;
 #undef SS_ARG
 static unsigned commands;
 static int peer_fault;
+enum { RESET_BEFORE_IO = 5, RESET_AFTER_IO, INVALID_POSITIVE_REPLY };
 static volatile uint16_t *command_register(void)
 {
     if (mcu_cmd) {
         ++commands;
+        assert((mcu_cmd & SSCMD_SAVE_ACK) == (HAS_FILE_ACK ? file_ack : 0));
         if (peer_fault==1 || peer_fault==3 || peer_fault==4) {
             *(u32*)(TMPBUFF_ADDR+4)=peer_fault==1 ? *(u32*)(TMPBUFF_ADDR+4)+1 : peer_fault==3 ? 0x80000000u : 0xffffffffu;
-            mcu_arg=0; mcu_cmd=0;
+            mcu_arg=mcu_cmd & SSCMD_SAVE_ACK; mcu_cmd=0;
         }
         else if (peer_fault==2 && commands==2) { *(u32*)(TMPBUFF_ADDR+4)=0; mcu_arg=(uint16_t)-FR_DISK_ERR; mcu_cmd=0; }
-        else command();
+        else if (peer_fault==RESET_BEFORE_IO || peer_fault==RESET_AFTER_IO) {
+            if (peer_fault==RESET_AFTER_IO) command();
+            mcu_arg=0;
+            mcu_cmd=0;
+        } else if (peer_fault==INVALID_POSITIVE_REPLY) {
+            mcu_arg=(mcu_cmd & SSCMD_SAVE_ACK) | 1;
+            mcu_cmd=0;
+        } else command();
     }
     return &mcu_cmd;
 }
@@ -78,7 +88,9 @@ DRESULT disk_ioctl(BYTE drive,BYTE cmd,void *buffer)
 
 int main(int argc,char **argv)
 {
-    assert(argc==3);int test=atoi(argv[2]);assert(test>=0 && test<30);
+    assert(argc==4);
+    int test=atoi(argv[2]);assert(test>=0 && test<40);
+    file_ack=atoi(argv[3]);assert(!file_ack || file_ack==SSCMD_SAVE_ACK);
     /* The old table calls keep four arguments; new capacity is opt-in. */
     int (*legacy_read)(char*,int,int,void*)=read_file;
     int (*legacy_write)(char*,int,int,void*)=write_file;
@@ -120,6 +132,14 @@ int main(int argc,char **argv)
     if(test==25){legacy=1;}
     if(test==26){file_size=0xfc000;capacity=file_size;expected=(int)file_size;expected_commands=2;}
     if(test==27){file_size=0x200000;capacity=file_size;size=(int)file_size;expected=(int)file_size;}
+    if (test>=30) {
+        /* Pairs cover bounced read, write, empty create, and direct read. */
+        size=16; capacity=16; expected=-FR_DISK_ERR;
+        writing=test==31 || test==33 || test==34 || test==35;
+        peer_fault=test==32 || test==33 || test==35 || test==37 ? RESET_AFTER_IO : RESET_BEFORE_IO;
+        if (test==34 || test==35 || test==39) { writing=1; offset=-1; size=0; }
+        if (test>=38) peer_fault=INVALID_POSITIVE_REPLY;
+    }
     if(!HAS_BOUNDED_READER) {
         if(test==1 || test==3 || test==26) expected_commands=1;
         if(test==13) { expected=128; expected_commands=1; peer_fault=0; }
@@ -139,12 +159,15 @@ int main(int argc,char **argv)
     if(test==21 || test==22)buffer=test_shared+0xfffff0;
     if(test==23)buffer=test_shared+0xc7000;
     if(test==27)buffer=test_shared+0x400000;
-    if(test==21 || test==22)memset(buffer,0xa5,16);
+    if(test==36 || test==37)buffer=test_shared+0x800000;
+    if(test==21 || test==22 || test==36 || test==37)memset(buffer,0xa5,16);
     if(test==27)memset(buffer,0xa5,file_size);
     memset((void*)TMPBUFF_ADDR,0x55,256);
     u8 request[256];memcpy(request,(void*)TMPBUFF_ADDR,256);
     int result=writing ? legacy_write(name,offset,size,buffer) : legacy ? legacy_read(name,offset,size,buffer) :
         read_file_bounded(test==11?NULL:name,offset,size,buffer,capacity);
+    if (result!=expected)
+        fprintf(stderr,"case %d returned %d, expected %d\n",test,result,expected);
     assert(result==expected && commands==expected_commands && !mcu_cmd);
     /* The legacy unused request word is not a new capacity/protocol field. */
     assert(*(u32*)(TMPBUFF_ADDR+0x0c)==0x55555555u);
@@ -155,13 +178,16 @@ int main(int argc,char **argv)
         if(buffer==target)for(unsigned i=moved;i<allocation;i++)assert(target[i]==0xa5);
     }
     if(test==12 || test==28 || test==29)for(unsigned i=0;i<allocation;i++)assert(target[i]==0xa5);
+    if(test>=30 && !writing)for(unsigned i=0;i<16;i++)
+        assert(((u8*)buffer)[i]==(test==37 ? block[i] : 0xa5));
     assert(f_open(&file,name,FA_READ)==FR_OK);
     unsigned actual_size=f_size(&file);
-    assert(actual_size==(writing && offset==-1 && result>=0 ? (unsigned)size : file_size));
+    int write_applied=writing && (result>=0 || peer_fault==RESET_AFTER_IO);
+    assert(actual_size==(write_applied && offset==-1 ? (unsigned)size : file_size));
     unsigned inspect=actual_size>sizeof block?sizeof block:actual_size;
     u8 verify[4096];assert(f_read(&file,verify,inspect,&count)==FR_OK && count==inspect);
     assert(f_close(&file)==FR_OK);
-    for(unsigned i=0;i<inspect;i++)assert(verify[i]==(writing && result>=0 && i<(unsigned)size ? 0xa5 : block[i]));
+    for(unsigned i=0;i<inspect;i++)assert(verify[i]==(write_applied && i<(unsigned)size ? 0xa5 : block[i]));
     assert(!fclose(disk));free(target);free(test_shared);
     puts("Saturn/MCU bounded transfer, content and ABI-wrapper checks pass.");
     return 0;

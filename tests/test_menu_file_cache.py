@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from test_file_transfer import protocol_definitions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +44,9 @@ class MenuFileCacheTests(unittest.TestCase):
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=output))
         (cls.target / 'cache.inc').write_bytes(code)
         (cls.target / 'main.c').write_bytes(raw)
+        (cls.target / 'protocol.inc').write_bytes(
+            protocol_definitions((ROOT / 'Firm_Saturn/main.h').read_bytes()))
+        cls.tags = (0, 32) if b'static u16 file_ack;' in raw else (0,)
         cls.binary = cls.target / 'menu-cache'
         flags = ['-O2'] if os.environ.get('SAROO_FILE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -55,9 +59,10 @@ class MenuFileCacheTests(unittest.TestCase):
         if result.returncode:
             raise RuntimeError(result.stderr.decode(errors='replace'))
 
-    def case(self, mode, address, size, policy=1, outcome=0):
-        with self.subTest(mode=mode, address=hex(address), size=size, policy=policy, outcome=outcome):
-            result = subprocess.run([str(self.binary), *map(str, (mode,address,size,policy,outcome))],
+    def case(self, mode, address, size, policy=1, outcome=0, tag=0):
+        with self.subTest(mode=mode, address=hex(address), size=size, policy=policy,
+                          outcome=outcome, tag=tag):
+            result = subprocess.run([str(self.binary), *map(str, (mode,address,size,policy,outcome,tag))],
                 capture_output=True, timeout=15, env={**os.environ, 'UBSAN_OPTIONS':'halt_on_error=1'})
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -76,7 +81,14 @@ class MenuFileCacheTests(unittest.TestCase):
         for address in (0x02800003, 0x22800003):
             for size in (32, 4095, 4096, 0x200000):
                 for outcome in range(7):
-                    self.case(1, address, size, outcome=outcome)
+                    for tag in self.tags:
+                        self.case(1, address, size, outcome=outcome, tag=tag)
+
+    def test_unconfirmed_reads_invalidate_the_full_possible_write_extent(self):
+        for address in (0x02800003, 0x22800003):
+            for size in (32, 4095, 4096, 0x200000):
+                for outcome in (10, 11):
+                    self.case(1, address, size, outcome=outcome, tag=32)
 
     def test_rejected_requests_and_writes_leave_cache_untouched(self):
         for outcome in (7, 8, 9): self.case(1, 0x02800003, 32, outcome=outcome)

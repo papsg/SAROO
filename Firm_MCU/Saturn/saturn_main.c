@@ -700,13 +700,15 @@ static __attribute__((noinline)) int ss_file_transfer(int writing)
 
 /* Save replies carry a FatFs result below the negotiated tag bit. */
 _Static_assert(FR_INVALID_PARAMETER < SSCMD_SAVE_ACK, "save result overlaps acknowledgment");
-_Static_assert(SSCMD_SAVE_ACK > 0 && SSCMD_SAVE_ACK <= 0x8000 &&
+_Static_assert(SSCMD_SAVE_ACK > 0 && SSCMD_SAVE_ACK < 0x8000 &&
                !(SSCMD_SAVE_ACK & (SSCMD_SAVE_ACK - 1)),
-               "save acknowledgment must be one transported bit");
+               "file/save acknowledgment must be one positive transported bit");
 _Static_assert(SSCMD_SELECT < SSCMD_SAVE_ACK && SSCMD_SMEMS < SSCMD_SAVE_ACK &&
+               SSCMD_FILEWR == SSCMD_FILERD + 1 && SSCMD_LISTBIN == SSCMD_FILERD + 2 &&
+               SSCMD_SSAVE == SSCMD_FILERD + 3 &&
                SSCMD_LSAVE == SSCMD_SSAVE + 1 && SSCMD_LMEMS == SSCMD_SSAVE + 2 &&
                SSCMD_SMEMS == SSCMD_SSAVE + 3,
-               "save aliases must remain separate from existing commands");
+               "file/save aliases must remain separate from existing commands");
 
 void ss_cmd_handle(void)
 {
@@ -715,11 +717,10 @@ void ss_cmd_handle(void)
 
 	//SSLOG(_INFO, "scmd_task: %04x\n", SS_CMD);
 
-    /* Normalize only the four save aliases. The original tag stays available
-     * for the reply, and unrelated commands keep their existing values. */
-    u32 save_cmd = cmd;
-    if (cmd >= (SSCMD_SSAVE | SSCMD_SAVE_ACK) && cmd <= (SSCMD_SMEMS | SSCMD_SAVE_ACK))
-        save_cmd ^= SSCMD_SAVE_ACK;
+    /* Normalize negotiated file/save aliases, leaving the LISTBIN gap. */
+    u32 save_cmd = cmd ^ SSCMD_SAVE_ACK;
+    if (save_cmd - SSCMD_FILERD > SSCMD_SMEMS - SSCMD_FILERD || save_cmd == SSCMD_LISTBIN)
+        save_cmd = cmd;
     switch(save_cmd){
 	case SSCMD_PRINTF:
 		// 输出信息
@@ -770,10 +771,9 @@ void ss_cmd_handle(void)
 	}
 	case SSCMD_FILERD:
 	case SSCMD_FILEWR:
-        retv = ss_file_transfer(cmd == SSCMD_FILEWR);
-        SS_ARG = -retv;
-        SS_CMD = 0;
-        break;
+        /* Negative FatFs errors already have the tag bit set. */
+        retv = -ss_file_transfer(save_cmd == SSCMD_FILEWR);
+        goto save_reply;
 	case SSCMD_SSAVE:
         retv = flush_savefile();
         goto save_reply;
@@ -1107,6 +1107,7 @@ void saturn_config(void)
 	*(u32*)(SYSINFO_ADDR+0x04) = lang_id;          // 菜单语言
 	*(u32*)(SYSINFO_ADDR+0x08) = debug_flags;      // 调试选项
     *(u32*)(SYSINFO_ADDR+0x10) = SAVE_ACK_VERSION;
+    *(u32*)(SYSINFO_ADDR+0x14) = FILE_ACK_VERSION;
 
 	// I2S
 	spi2_init();

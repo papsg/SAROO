@@ -24,6 +24,7 @@ static void printk(const char *format, ...)
 }
 #include "log.inc"
 static volatile uint16_t SS_CMD, SS_ARG;
+static uint16_t file_ack;
 static FRESULT checked_open(FIL *, const TCHAR *, BYTE);
 static FRESULT checked_seek(FIL *, FSIZE_t);
 static FRESULT checked_read(FIL *, void *, UINT, UINT *);
@@ -183,10 +184,10 @@ static int bounds_case(const char *mode)
     memcpy((void *)(TMPBUFF_ADDR+0x10), name, strlen(name)+1);
     u8 request[256]; memcpy(request, (void *)TMPBUFF_ADDR, sizeof request);
     reported_size=tc->wide_size;
-    SS_CMD=tc->writing ? SSCMD_FILEWR : SSCMD_FILERD; SS_ARG=0;
+    SS_CMD=(tc->writing ? SSCMD_FILEWR : SSCMD_FILERD) | file_ack; SS_ARG=0;
     command();
     int invalid=tc->invalid_request || tc->invalid_extent;
-    assert(!SS_CMD && (int16_t)SS_ARG == (invalid ? -FR_INVALID_PARAMETER : FR_OK));
+    assert(!SS_CMD && (int16_t)SS_ARG == (invalid ? -FR_INVALID_PARAMETER : file_ack));
     assert(opens == (unsigned)!tc->invalid_request && seeks == opens && closes == opens);
     assert(reads == (unsigned)(!tc->writing && !invalid));
     assert(writes == (unsigned)(tc->writing && !invalid));
@@ -213,7 +214,10 @@ static int bounds_case(const char *mode)
 
 int main(int argc, char **argv)
 {
-    assert(argc == 5); log_mask = atoi(argv[4]) ? _INFO : 0;
+    assert(argc == 6);
+    log_mask = atoi(argv[4]) ? _INFO : 0;
+    file_ack = atoi(argv[5]);
+    assert(!file_ack || file_ack == SSCMD_SAVE_ACK);
     const char *mode = argv[2]; fault = argv[3];
     int writing = !strncmp(mode, "write", 5);
     const char *name = "/SAROO/File transfer \xc3\xa9.bin";
@@ -248,7 +252,7 @@ int main(int argc, char **argv)
     *(u32 *)(TMPBUFF_ADDR+0x04) = size;
     *(u32 *)(TMPBUFF_ADDR+0x08) = 0x22001000;
     strcpy((char *)(TMPBUFF_ADDR+0x10), name);
-    SS_CMD = writing ? SSCMD_FILEWR : SSCMD_FILERD; SS_ARG = 0;
+    SS_CMD = (writing ? SSCMD_FILEWR : SSCMD_FILERD) | file_ack; SS_ARG = 0;
     command();
     assert(SS_CMD == 0 && opens == 1);
     int result = (int16_t)SS_ARG;
@@ -256,7 +260,7 @@ int main(int argc, char **argv)
     int expected = is("open") ? FR_NO_FILE :
                    is("short-seek") || is("full-seek") || is("close") ? FR_INT_ERR :
                    is("none") || is("short") ? FR_OK : FR_DISK_ERR;
-    assert(result == -expected);
+    assert(result == (expected ? -expected : file_ack));
     unsigned stopped = is("open") || is("seek") || is("seek-close") || is("disk-seek") || is("short-seek") || is("full-seek");
     if (is("disk-seek")) assert(disk_read_failures > 0);
     assert(seeks == !is("open") && closes == !is("open"));

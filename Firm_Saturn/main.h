@@ -54,6 +54,7 @@ typedef unsigned long long u64;
 #define SSCMD_SMEMS    0x000c
 #define SSCMD_SAVE_ACK 0x0020
 #define SAVE_ACK_VERSION 0x53415631u
+#define FILE_ACK_VERSION 0x46494c31u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 

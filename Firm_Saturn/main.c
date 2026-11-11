@@ -15,6 +15,7 @@
 /**********************************************************/
 
 u16 save_ack;
+static u16 file_ack;
 u32 mcu_ver;
 u32 debug_flag;
 int bios_type;
@@ -604,13 +605,17 @@ static int file_command(char *name, int offset, u32 size, void *buf, int writing
     /* Publish ordinary request/payload stores before the MMIO command. */
     __asm__ volatile ("" ::: "memory");
     SS_ARG = 0;
-    SS_CMD = writing ? SSCMD_FILEWR : SSCMD_FILERD;
+    SS_CMD = (writing ? SSCMD_FILEWR : SSCMD_FILERD) | file_ack;
     while (SS_CMD);
     /* Consume shared response/data only after external completion. */
     __asm__ volatile ("" ::: "memory");
     int result = (signed short)SS_ARG;
     u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
-    if (result >= 0) result = count > size ? -19 : (int)count;
+    if (result >= 0) {
+        /* Require the negotiated result before using the reported count. */
+        if (result != file_ack) result = -1;
+        else result = count > size ? -19 : (int)count;
+    }
     if (!writing) {
         if (direct) file_cache_purge(address, result < 0 ? size : (u32)result);
         else if (result > 0) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), result);
@@ -1369,6 +1374,7 @@ int _main(void)
 	printk("    SRAOOO start!\n");
 
     save_ack = LE32((void *)(SYSINFO_ADDR + 0x10)) == SAVE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+    file_ack = LE32((void *)(SYSINFO_ADDR + 0x14)) == FILE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
 	mcu_ver = LE32((void*)(SYSINFO_ADDR+0x00));
 	lang_id = LE32((void*)(SYSINFO_ADDR+0x04));
 	debug_flag = LE32((void*)(SYSINFO_ADDR+0x08));

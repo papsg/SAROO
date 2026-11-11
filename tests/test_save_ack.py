@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from test_file_transfer import command_dispatch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,12 +20,7 @@ def mcu_dispatch(raw):
     function = raw.index(b'void ss_cmd_handle(void)')
     start = re.search(rb'^[ \t]*case SSCMD_SSAVE:', raw[function:], re.M).start() + function
     end = raw.index(b'\tcase SSCMD_STARTUP:', start)
-    if b'switch(save_cmd){' in raw[function:start]:
-        first = raw.index(b'u32 save_cmd = cmd;', function)
-        last = raw.index(b'switch(save_cmd){', first) + len(b'switch(save_cmd){')
-        dispatch = raw[first:last]
-    else:
-        dispatch = b'switch (cmd) {'
+    dispatch = command_dispatch(raw)
     return (b'static void mcu_command(void) { int retv; u32 cmd = SS_CMD;\n'
             + dispatch + b'\n' + raw[start:end] + b'default: break;\n} }\n')
 
@@ -58,7 +54,7 @@ class SaveAcknowledgmentTests(unittest.TestCase):
         input_paths = ((menu / 'main.h', current_menu / 'main.h'),
                        (mcu / 'cdc.h', current_mcu / 'cdc.h'))
         for name in (b'SSCMD_SSAVE', b'SSCMD_LSAVE', b'SSCMD_LMEMS', b'SSCMD_SMEMS',
-                     b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
+                     b'SSCMD_FILERD', b'SSCMD_FILEWR', b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
             values = []
             for selected, fallback in input_paths:
                 pattern = rb'^#define ' + name + rb'\s+(\S+)'
@@ -71,6 +67,8 @@ class SaveAcknowledgmentTests(unittest.TestCase):
             if values[0] != values[1]:
                 raise AssertionError(f'Menu and MCU disagree on {name!r}')
             definitions.append(b'#define ' + name + b' ' + values[0])
+        listbin = re.search(rb'^#define SSCMD_LISTBIN\s+\S+', (mcu / 'cdc.h').read_bytes(), re.M)
+        definitions.append(listbin[0])
         (cls.target / 'commands.h').write_bytes(b'\n'.join(definitions) + b'\n')
         inputs = {
             'menu_main.c': main, 'menu_game_save.c': save, 'mcu_saturn_main.c': dispatch,
@@ -131,7 +129,7 @@ output reg [15:0] ss_reg_cmd,ss_reg_data);
         self.assertEqual(compile_result.returncode, 0, compile_result.stdout + compile_result.stderr)
         result = subprocess.run(['vvp', str(binary)], capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('PASS 8 tagged save opcodes', result.stdout)
+        self.assertIn('PASS 12 tagged file/save opcodes', result.stdout)
 
 
 if __name__ == '__main__':
