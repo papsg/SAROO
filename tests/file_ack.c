@@ -75,11 +75,13 @@ static u32 normalize(u32 cmd)
 
 static unsigned expected_opcode(unsigned opcode)
 {
-    /* Independent oracle: six exact aliases, not a duplicate range expression. */
+    /* Independent oracle for the fourteen tagged menu opcodes. */
     switch(opcode) {
-    case 0x26: return 6; case 0x27: return 7;
-    case 0x29: return 9; case 0x2a: return 10;
-    case 0x2b: return 11; case 0x2c: return 12;
+    case 0x21: return 1; case 0x22: return 2; case 0x23: return 3;
+    case 0x24: return 4; case 0x25: return 5; case 0x26: return 6;
+    case 0x27: return 7; case 0x28: return 8; case 0x29: return 9;
+    case 0x2a: return 10; case 0x2b: return 11; case 0x2c: return 12;
+    case 0x2d: return 13; case 0x2e: return 14;
     default: return opcode;
     }
 }
@@ -93,8 +95,7 @@ static void check_command(unsigned opcode, int error)
     if ((base>=6 && base<=12) || archive) {
         assert(!command_value && calls==1 && (unsigned)operation==base);
         unsigned tag=opcode & SSCMD_SAVE_ACK;
-        int expected = base<8 || archive ? (error ? -error : (int)tag) :
-                       base==8 ? error : error|tag;
+        int expected = base<8 || archive ? (error ? -error : (int)tag) : error|tag;
         assert(argument==(u16)expected);
         if(base==11 || base==12)assert(supplied==0xa5c3);
     } else assert(!calls && command_value==opcode && argument==0xa5c3);

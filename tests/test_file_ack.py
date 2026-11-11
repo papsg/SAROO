@@ -90,7 +90,7 @@ class FileAcknowledgmentTests(unittest.TestCase):
     def test_independent_capabilities_and_entry_latches(self):
         self.invoke('capability', 68)
 
-    def test_every_opcode_preserves_listbin_gap_and_unknown_commands(self):
+    def test_every_opcode_keeps_other_commands_outside_the_alias_range(self):
         self.invoke('dispatch', 65536)
 
     def test_every_fatfs_error_preserves_signed_file_and_unsigned_save_results(self):

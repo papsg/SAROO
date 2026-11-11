@@ -725,6 +725,9 @@ _Static_assert(SSCMD_ARCHIVEWR == SSCMD_ARCHIVERD + 1 &&
                (SSCMD_ARCHIVERD & SSCMD_SAVE_ACK) != 0 && (SSCMD_ARCHIVEWR & SSCMD_SAVE_ACK) != 0 &&
                (SSCMD_ARCHIVERD ^ SSCMD_SAVE_ACK) > SSCMD_SELECT && SSCMD_ARCHIVEWR < 0x8000,
                "archive commands overlap existing aliases or lose the acknowledgment bit");
+_Static_assert(SSCMD_PRINTF == 1 && SSCMD_LISTDISC == 2 && SSCMD_LOADDISC == 3 &&
+               SSCMD_CHECK == 4 && SSCMD_UPDATE == 5 && SSCMD_STARTUP == 13 && SSCMD_SELECT == 14,
+               "menu opcode assignments changed");
 
 void ss_cmd_handle(void)
 {
@@ -733,28 +736,25 @@ void ss_cmd_handle(void)
 
 	//SSLOG(_INFO, "scmd_task: %04x\n", SS_CMD);
 
-    /* Normalize negotiated file/save aliases, leaving the LISTBIN gap. */
-    u32 save_cmd = cmd ^ SSCMD_SAVE_ACK;
-    if (save_cmd - SSCMD_FILERD > SSCMD_SMEMS - SSCMD_FILERD || save_cmd == SSCMD_LISTBIN)
+    /* Menu v1 uses the existing tag for all fourteen legacy operations. */
+    u32 save_cmd = cmd & ~SSCMD_SAVE_ACK;
+    if (save_cmd - SSCMD_PRINTF > SSCMD_SELECT - SSCMD_PRINTF)
         save_cmd = cmd;
     switch(save_cmd){
 	case SSCMD_PRINTF:
 		// 输出信息
 		printk("%s", (char*)(TMPBUFF_ADDR+0x10));
+        if (cmd & SSCMD_SAVE_ACK) SS_ARG = SSCMD_SAVE_ACK;
 		SS_CMD = 0;
 		break;
 	case SSCMD_LISTBIN:
 		// 列出bin信息
 		retv = list_bins(1);
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        goto save_reply;
 	case SSCMD_LISTDISC:
 		// 列出镜像信息
 		retv = list_disc(SS_ARG, 0);
-		SS_ARG = retv;
-		SS_CMD = 0;
-		break;
+        goto save_reply;
 	case SSCMD_LOADDISC:
 		// 装载镜像
 		/* Stop the GIF reader before disc parsing reuses its workspace. */
@@ -763,27 +763,22 @@ void ss_cmd_handle(void)
             retv = pause_disc();
             if (!retv) retv = unload_disc();
         } else retv = load_disc(SS_ARG, 1);
-		SS_ARG = retv;
-		SS_CMD = 0;
-
-		break;
+        goto save_reply;
 	case SSCMD_CHECK:
 	{
 		// 检查是否有升级固件
 		int fpga = (fpga_update(1)==0)? 1: 0;
 		int firm = (flash_update(1)==0)? 1: 0;
-		SS_ARG = (fpga<<1) | firm;
-		SS_CMD = 0;
-		break;
+        retv = (fpga<<1) | firm;
+        goto save_reply;
 	}
 	case SSCMD_UPDATE:
 	{
 		// 固件升级
 		int fpga = (fpga_update(0)>=-1)? 0: 1;
 		int firm = (flash_update(0)>=-1)? 0: 1;
-		SS_ARG = (fpga<<1) | firm;
-		SS_CMD = 0;
-		break;
+        retv = (fpga<<1) | firm;
+        goto save_reply;
 	}
 	case SSCMD_FILERD:
 	case SSCMD_FILEWR:
@@ -817,7 +812,7 @@ void ss_cmd_handle(void)
 		buf_fad_end = 0;
 		buf_fad_size = 0;
 		// 镜像列表
-		list_disc(0, 0);
+        int listed = list_disc(0, 0);
 
 		// 封面数据
 		cover_init();
@@ -831,8 +826,7 @@ void ss_cmd_handle(void)
 				audio_repeat = 1;
 			}
 		}
-		SS_ARG = retv;
-		//SS_CMD = 0;
+        if (!(cmd & SSCMD_SAVE_ACK)) SS_ARG = retv;
 		if(retv==0){
             cdb.play_pos_types = 0;
 			cdb.play_fad_start = track_to_fad(0x0100);
@@ -850,6 +844,8 @@ void ss_cmd_handle(void)
 
 		TIM6->CR1 = 0x0005;
 		gif_decode_init();
+        /* Tagged startup reports the catalog result after all services retire. */
+        if (cmd & SSCMD_SAVE_ACK) { retv = listed; goto save_reply; }
 		break;
 	}
 	case SSCMD_SELECT: {
@@ -865,6 +861,8 @@ void ss_cmd_handle(void)
 		}else{
 			load_cover(index);
 		}
+        /* The preview request has retired, even if artwork was unavailable. */
+        if (cmd & SSCMD_SAVE_ACK) { retv = 0; goto save_reply; }
 		break;
 	}
 	default:
@@ -1129,6 +1127,7 @@ void saturn_config(void)
     *(u32*)(SYSINFO_ADDR+0x10) = SAVE_ACK_VERSION;
     *(u32*)(SYSINFO_ADDR+0x14) = FILE_ACK_VERSION;
     *(u32*)(SYSINFO_ADDR+0x18) = ARCHIVE_IO_VERSION;
+    *(u32*)(SYSINFO_ADDR+0x2c) = MENU_ACK_VERSION;
 
 	// I2S
 	spi2_init();

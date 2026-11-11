@@ -9,6 +9,7 @@ import json
 import shlex
 import tempfile
 import unittest
+from menu_command_source import load_case
 
 # Adapted from paps-g 3e62998c; no private preparation or runtime diagnostics.
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,7 +88,7 @@ class GifSafetyTests(unittest.TestCase):
         cls.results = []
         inputs = {'tinygif.c': source_path.read_bytes(), 'saturn_main.c': main_path.read_bytes(),
                   'cdc.h': (ROOT / 'Firm_MCU/Saturn/cdc.h').read_bytes()}
-        for name in ('test_gif_safety.py', 'gif_safety.c'):
+        for name in ('test_gif_safety.py', 'gif_safety.c', 'menu_command_source.py'):
             inputs[name] = (ROOT / 'tests' / name).read_bytes()
         for name, data in inputs.items():
             (cls.target / name).write_bytes(data)
@@ -102,9 +103,9 @@ class GifSafetyTests(unittest.TestCase):
                             if line.startswith(b'#define COVER_INDEX_OFFSET '))
         (cls.target / 'gif.inc').write_bytes(layout + b'\n' + source)
         main = inputs['saturn_main.c']
-        case = main[main.index(b'case SSCMD_LOADDISC:'):main.index(b'case SSCMD_CHECK:')]
         (cls.target / 'handoff.inc').write_bytes(
-            b'static void dispatch_load(void) { int retv; switch (SS_CMD) {\n' + case + b'\n} }\n')
+            b'static void dispatch_load(void) { int retv; unsigned cmd=SS_CMD; switch (cmd) {\n'
+            + load_case(main) + b'\n} }\n')
         cls.binary = cls.target / 'test-gif'
         flags = ['-O2'] if os.environ.get('SAROO_GIF_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']

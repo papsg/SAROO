@@ -54,7 +54,8 @@ class SaveAcknowledgmentTests(unittest.TestCase):
         input_paths = ((menu / 'main.h', current_menu / 'main.h'),
                        (mcu / 'cdc.h', current_mcu / 'cdc.h'))
         for name in (b'SSCMD_SSAVE', b'SSCMD_LSAVE', b'SSCMD_LMEMS', b'SSCMD_SMEMS',
-                     b'SSCMD_FILERD', b'SSCMD_FILEWR', b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
+                     b'SSCMD_FILERD', b'SSCMD_FILEWR', b'SSCMD_PRINTF', b'SSCMD_SELECT',
+                     b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
             values = []
             for selected, fallback in input_paths:
                 pattern = rb'^#define ' + name + rb'\s+(\S+)'

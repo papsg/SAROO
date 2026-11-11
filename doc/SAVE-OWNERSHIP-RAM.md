@@ -90,3 +90,33 @@ The menu adds 528 linked code/data bytes to 80,244. BSS stays at 9,240
 bytes and the padded image remains 488,770 bytes. These tests exercise
 the real handlers with modeled cartridge registers. Physical timing
 and save recovery remain unqualified.
+
+## Offer optional acknowledgments for menu commands
+
+The MCU advertises version 1 in the system info word at 0x2c. A caller
+that recognizes it can use the existing tag bit with all fourteen
+legacy menu, file and save commands. The two archive opcodes retain
+their independent capability and responses. The MCU publishes the
+tagged result before clearing the command. Tagged startup waits for
+the catalog, cover, music and GIF setup to return and reports the
+catalog status. Tagged selection confirms the preview request has
+retired. Legacy startup and selection retain their asynchronous
+handling, which the normal menu continues to use.
+[Original interrupt retirement register, lines 299–312](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L299-L312) ·
+[Original command and result registers, lines 526–548](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L526-L548).
+
+Adapted from paps-g's `36c4de4b`. The preceding MCU fails all five
+new handler checks. The port checks every 16-bit opcode, every
+selection argument in both modes, 360 startup cases and 3,510 result
+checks. It also checks that a tagged request retains its argument
+until the last service returns. The original public FPGA register
+simulation covers 28 requests and verifies that retiring the IRQ
+leaves the command pending until its result and completion arrive.
+Run `python3 -m unittest discover -s tests -p test_menu_command_completion.py -v`.
+Set `SAROO_MENU_COMPLETION_SOURCE` to a preceding MCU source directory
+to reproduce the baseline. The associated file, save, GIF and disc
+checks pass in a 37-method ASan/UBSan run and a 47-method O2 run.
+
+The GNU App load adds 48 bytes to 63,232. Static DTCM stays at
+60,216 bytes. The protocol is an MCU capability for callers that
+negotiate it. Physical command timing remains unmeasured.

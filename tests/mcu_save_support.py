@@ -9,6 +9,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from menu_command_source import load_case
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'tests/build/mcu-save'
@@ -96,7 +97,7 @@ class MCUSaveTest(unittest.TestCase):
                 data = (ROOT / 'tests/firmware-save-stubs' / name).read_bytes()
                 (cls.target / name).write_bytes(data); inputs['tests/firmware-save-stubs/' + name] = data
         if cls.fixture == 'disc':
-            harnesses += ['mcu_save_disc.c', 'test_mcu_save_disc.py']
+            harnesses += ['mcu_save_disc.c', 'test_mcu_save_disc.py', 'menu_command_source.py']
             start = module.index(b'static char *gameid_split(')
             config = module[start:module.index(b'/******************************************************************************/', start)]
             start = module.index(b'char *get_line(')
@@ -145,9 +146,7 @@ class MCUSaveTest(unittest.TestCase):
             begin = main.index(b'\t\t\tif(next_disc>=0)')
             end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
             (cls.target / 'swap.inc').write_bytes(main[begin:end])
-            begin = main.index(b'case SSCMD_LOADDISC:')
-            end = main.index(b'\n\t\tbreak;', begin)
-            (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
+            (cls.target / 'menu-load.inc').write_bytes(load_case(main))
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             clock = data.index(b'#define SDCLK_LOW ')
             prefix = data[clock:data.index(b'\n', clock)+1]

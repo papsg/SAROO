@@ -145,10 +145,14 @@ static void swap_step(void)
 }
 /* Decoder ownership is exercised by the separate actual-GIF fixture. */
 static void gif_decode_exit(void) {}
+#define SSCMD_LOADDISC 3
+#define SSCMD_SAVE_ACK 0x20
 static int menu_step(int index)
 {
-    int retv=0;SS_ARG=index;
+    int retv=0;u32 cmd=SSCMD_LOADDISC;SS_ARG=index;
+    switch (cmd) {
 #include "menu-load.inc"
+    }
     return SS_ARG;
 }
 static void make_iso(const char *dir,const char *id,unsigned size)
