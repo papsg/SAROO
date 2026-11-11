@@ -1858,3 +1858,24 @@ left untouched.
    BSS bytes. BIOS execution and asynchronous read completion remain
    unqualified on hardware.
    [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#gate-bios-handoff-on-executable-request-admission)
+
+### CD startup, transfer and save metadata final verification
+
+All six checkpoints are on public main at
+[`e8f6830`](https://github.com/papsg/SAROO/commit/e8f6830b073ce497c6104f40a138b1e2818b9fd2).
+The full `make -C tests check` run with the pinned Pillow dependency
+passes 693 Python methods, 18 Rust checks and the native language check.
+The Windows-only CD+G replacement fixture is skipped on macOS.
+
+The final committed sources reproduce the SH-2 ELF and image and the
+GNU MCU ELF byte for byte. All 36 tracked menu inputs and 56 tracked
+MCU inputs match the build receipts. The 488,770-byte menu image contains
+80,788 code/data bytes and 9,244 BSS bytes, with 24,656 bytes of body
+margin. The GNU MCU App loads 63,212 bytes with 2,324 bytes of ITCM
+margin and 60,216 bytes of static DTCM.
+
+Existing serial callers check query results and use the received file
+count before reading those outputs. Physical CD timing, game music,
+media recovery and BIOS execution remain unqualified. The private
+HEAD, worktree, refs and stash match the initial read-only snapshot.
+The Saturn was left untouched.
