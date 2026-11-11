@@ -1303,3 +1303,21 @@ The source and progress updates passed private-data and secret review. The
 private HEAD, clean status, refs and stashes match the initial snapshot.
 The Saturn was left untouched. Native-speaker editorial review, physical
 rendering and hardware timing remain unqualified.
+
+## CD+G repair safety series
+
+Series starts at public `fb8084d`, adapting paps-g `fee3293f` directly in
+the original CD+G utility. Original tpu and Linux Reed–Solomon credit remain.
+[Source citations and validation](https://github.com/papsg/SAROO/blob/main/doc/CDG-REPAIR-SAFETY.md).
+
+1. **HOST-CDG-004 complete packet correction — published**
+   [`e03dc5a`](https://github.com/papsg/SAROO/commit/e03dc5adb6dcac15b2e24c9f01693e36d0b1f5cf).
+   Stage both parity layers in a packet copy. Retain the whole failed packet,
+   rebuild P after Q and preserve logical upper bits. Baseline reproduces
+   all three defects, with clean and all 24 single-symbol controls passing.
+   Five ASan/UBSan methods and the same O2 methods pass. Original 7,806-byte
+   decoder/encoder prefix is byte-identical. Native and x86/x64 MinGW builds
+   pass at the original warning policy. The legacy raw path's existing x86
+   size warning remains for the next checkpoint.
+2. **HOST-CDG-003 raw subchannel and endpoint preservation — in progress.**
+3. **HOST-CDG-001/002 checked file input and replacement — pending.**
