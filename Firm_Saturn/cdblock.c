@@ -170,12 +170,13 @@ int cdc_end_trans(int *cdwnum)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_end_trans");
-	if(cdwnum && !retv){
+	if(retv) return retv;
+	if(cdwnum){
 		cdwnum[0] = ((resp.cr1&0xff)<<16) | resp.cr2;
 	}
 	clear_hirq(HIRQ_DRDY);
 
-	return retv;
+	return 0;
 }
 
 int cdc_get_toc(u8 *buf)

@@ -98,7 +98,7 @@ class MenuCDPlayerTests(unittest.TestCase):
     def test_rom_read_error_returns_before_bios_entry_for_every_launch_type(self):
         self.cases(*range(33, 48))
 
-    def test_failed_data_end_does_not_publish_unread_response(self):
+    def test_failed_data_end_preserves_readiness_and_output(self):
         self.cases(30, 31, 32)
 
 

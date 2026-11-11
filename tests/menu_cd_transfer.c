@@ -17,6 +17,7 @@ int cdc_end_trans(int *words);
 static unsigned CR1, CR2, CR3, CR4, HIRQ;
 static int first_timeout, ready_timeout, cleanup_timeout;
 static unsigned reply_status, calls, ready_calls;
+static unsigned direct_end, reply_words, late_ready;
 static void clear_hirq(int mask) { HIRQ &= ~mask; }
 static void printk(const char *format, ...) { (void)format; }
 static int wait_hirq(int mask)
@@ -28,16 +29,19 @@ static int wait_hirq(int mask)
     }
     ++calls;
     if(calls == 1) {
-        assert(CR1 == 0x6300 && !CR2 && !CR3 && CR4 == 1);
+        assert(CR1 == (direct_end ? 0x0600u : 0x6300u) && !CR2 && !CR3 &&
+               CR4 == (direct_end ? 0u : 1u));
         if(first_timeout) return first_timeout;
-        CR1 = reply_status;
-        CR2 = 123;
+        CR1 = reply_status | (direct_end ? reply_words >> 16 : 0);
+        CR2 = direct_end ? reply_words & 0xffff : 123;
         CR3 = CR4 = 0;
     } else {
         assert(calls == 2 && CR1 == 0x0600 && !CR2 && !CR3 && !CR4);
+        if (late_ready) HIRQ |= HIRQ_DRDY;
         if(cleanup_timeout) return cleanup_timeout;
         CR1 = 0; CR2 = 1024;
     }
+    HIRQ |= HIRQ_CMOK;
     return 0;
 }
 #include "commands.inc"
@@ -48,15 +52,70 @@ static int command(int wait)
     calls=ready_calls=0; HIRQ=0xffff;
     return cdc_cmd(wait, &request, &response, "fixture");
 }
+
+static void test_end_errors(void)
+{
+    const int errors[] = {-3, -5, -6};
+    direct_end = 1;
+    for (unsigned failure = 0; failure < 3; ++failure) {
+        for (unsigned output = 0; output < 2; ++output) {
+            const unsigned initial = 0xa537;
+            HIRQ = initial;
+            calls = ready_calls = 0;
+            first_timeout = failure == 0 ? -3 : 0;
+            reply_status = failure == 1 ? 0xff00 : 0x8100;
+            int words = 0x12345678;
+            assert(cdc_end_trans(output ? &words : NULL) == errors[failure]);
+            assert(words == 0x12345678 && calls == 1 && !ready_calls);
+            assert(HIRQ == (first_timeout ? initial & ~HIRQ_CMOK : initial));
+        }
+    }
+}
+
+static void test_end_success(void)
+{
+    const unsigned counts[] = {0, 1, 1024, 0xffff, 0x10000, 0x7fffff, 0xfffffe, 0xffffff};
+    direct_end = 1;
+    reply_status = 0x0100;
+    for (unsigned i = 0; i < sizeof counts / sizeof *counts; ++i) {
+        for (unsigned output = 0; output < 2; ++output) {
+            for (unsigned ready = 0; ready < 2; ++ready) {
+                const unsigned initial = 0xa535;
+                HIRQ = initial | (ready ? HIRQ_DRDY : 0);
+                calls = ready_calls = 0;
+                reply_words = counts[i];
+                int words = -1;
+                assert(cdc_end_trans(output ? &words : NULL) == 0);
+                assert(words == (output ? (int)counts[i] : -1));
+                assert(HIRQ == initial && calls == 1 && !ready_calls);
+            }
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
-    if(!strcmp(argv[1], "cleanup")) {
+    if(!strcmp(argv[1], "end-errors")) {
+        test_end_errors();
+    } else if(!strcmp(argv[1], "end-success")) {
+        test_end_success();
+    } else if(!strcmp(argv[1], "cleanup")) {
         for(unsigned failure=0; failure<2; ++failure) {
             first_timeout=0; ready_timeout=-3; cleanup_timeout=failure ? -3 : 0;
             reply_status=0x4100;
             assert(command(HIRQ_DRDY) == -3);
             assert(calls == 2 && ready_calls == 1 && !(HIRQ & HIRQ_DRDY));
+        }
+    } else if(!strcmp(argv[1], "late-ready")) {
+        late_ready = 1;
+        ready_timeout = -3;
+        reply_status = 0x4100;
+        for (unsigned failure = 0; failure < 2; ++failure) {
+            cleanup_timeout = failure ? -3 : 0;
+            assert(command(HIRQ_DRDY) == -3);
+            assert(calls == 2 && ready_calls == 1);
+            assert(!!(HIRQ & HIRQ_DRDY) == failure);
         }
     } else {
         assert(!strcmp(argv[1], "ordinary"));

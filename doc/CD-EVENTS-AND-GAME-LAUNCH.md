@@ -57,3 +57,22 @@ with whole-VRAM comparisons, patch bypass, game selection and ROM takeover
 checks. Ten additional companion ROM and BIOS handoff methods pass. The
 SH-2 menu links 80,852 code/data bytes (+32) and 9,244 BSS bytes. Croc's
 physical drawing behavior and the reported game symptoms remain unqualified.
+
+## Preserve readiness when DataEnd fails
+
+Adapted from paps-g `3d10ea73` (SATURN-CD-003). DataEnd now clears DRDY
+and writes the optional 24-bit count after a successful reply. A timeout,
+REJECT or WAIT returns its original error without acknowledging DRDY. This
+also preserves a ready event arriving during the existing cleanup attempt
+if that attempt times out. Sega treats data readiness and transfer end as
+separate events and specifies the count returned by DataEnd.
+[ST-162-062094, §3.4, printed p. 32](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=20),
+[§8.2.1 No. 1.10, printed p. 81](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=69).
+
+Run the CD tests above with `-k data_end` and set `SAROO_MENU_CD_SOURCE`
+to the parent `Firm_Saturn` directory to reproduce the failure. The parent
+fails three methods and passes the successful-count control. All 38 CD
+methods pass ASan/UBSan and O2 on the port. The fixture checks the event
+bits and optional output on failure, success, and arrival of DRDY during
+cleanup. The SH-2 menu retains 80,852 code/data and 9,244 BSS bytes.
+Physical interrupt timing and recovery remain unqualified.

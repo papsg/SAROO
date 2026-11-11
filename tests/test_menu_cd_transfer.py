@@ -92,6 +92,15 @@ class MenuCDTransferTests(unittest.TestCase):
     def test_accepted_data_ready_timeout_ends_once(self):
         self.scenario('cleanup', 'commands')
 
+    def test_failed_data_end_preserves_readiness_and_output(self):
+        self.scenario('end-errors', 'commands')
+
+    def test_successful_data_end_acknowledges_readiness_and_returns_count(self):
+        self.scenario('end-success', 'commands')
+
+    def test_data_end_timeout_preserves_late_readiness(self):
+        self.scenario('late-ready', 'commands')
+
     def test_other_commands_skip_transfer_cleanup(self):
         self.scenario('ordinary', 'commands')
 

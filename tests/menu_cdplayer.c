@@ -156,12 +156,12 @@ int main(int argc, char **argv) {
         assert(use_sys_bup == ((type & 0x80) != 0) && disc_type == (type & 0x7f));
     } else {
         int count=-99;
-        HIRQ=HIRQ_DRDY;
+        HIRQ=0xffff;
         if(n!=31) command_result=-3;
         result=actual_end_trans(n==32 ? NULL : &count);
         assert(result == (n==31 ? 0 : -3));
         assert(count == (n==31 ? 0x345678 : -99));
-        assert(!(HIRQ & HIRQ_DRDY));
+        assert(HIRQ == (n==31 ? (0xffff & ~HIRQ_DRDY) : 0xffff));
     }
     puts("pass");
     return 0;
