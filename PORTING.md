@@ -1362,3 +1362,31 @@ utility. Public-safe attribution and POSIX/Win32 references are in
 Source and progress commits passed secret and private-data review. The
 private HEAD, status, refs and stashes match the initial snapshot, and the
 Saturn was left untouched.
+
+## Full cover-index lookup
+
+**MCU-COVER-002 — published**
+[`3f02379`](https://github.com/papsg/SAROO/commit/3f023799f42233d7400be2264007d0924af550f0).
+Adapted from paps-g `babf1f4ca4fb5cd0a4e6163ea69dba3d23e33e53`. The
+port uses the catalog/producer checks in `87ddb00` and the menu DMA
+ownership in `0812ccd`. Original SAROO format and cover-tool credit,
+related upstream requests, and the FatFs contract are documented.
+[Source citations and reproduction](https://github.com/papsg/SAROO/blob/main/doc/COVER-INDEX-CAPACITY.md)
+
+The `a8f2961` baseline renders records 0 and 2,047 and fails all five
+tested later positions in the generated index. The port renders through
+record 16,383, including catalog slot 2,558. Startup still requests 64 KiB.
+A full cold lookup reads eight index pages total, retaining them until the
+file reopens. The tests check compact and partial-page layouts, extent and
+checksum controls, transient and latched fault recovery, cache invalidation
+and the busy maximum GIF canvas. All 76 cases pass under ASan/UBSan and O2.
+Both deliberately overlapping SDRAM layouts fail their compile-time guards.
+
+The committed GNU MCU build binds 56 public and 85 dependency inputs,
+loads 62,156 bytes (+144) and leaves 3,380 ITCM bytes. Static DTCM stays
+60,176 bytes and the direct cover lookup frame grows by 16 bytes to 336.
+The resident index adds 448 KiB of shared SDRAM. All 36 menu inputs, the
+ELF and 488,770-byte image match the baseline. Physical SD throughput,
+menu pacing and hardware playback remain unqualified. The private
+HEAD, status, refs and stashes match the initial snapshot. The Saturn
+was left untouched.
