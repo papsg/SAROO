@@ -167,7 +167,7 @@ static int sd_cmd(u32 cmd, u32 arg)
 	SDIO->CMD = cmdr;
 
 	retv = osSemaphoreAcquire(cmd_sem, 100);
-	if(retv==osErrorTimeout){
+	if(retv!=osOK){
 		printk("sd_cmd: irq timeout! CMD=%08x STA=%08x\n", SDIO->CMD, SDIO->STA);
 		stat = 0xffffffff;
 		goto _exit;

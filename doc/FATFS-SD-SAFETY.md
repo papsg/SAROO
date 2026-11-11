@@ -65,11 +65,49 @@ falls from 24 to 16 bytes. The tests establish retry behavior after a
 reported device error. Physical SD durability remains unqualified.
 [Build instructions][build]
 
+## MCU-SD-003 — Reject all failed command waits
+
+The SD driver's `sd_cmd` treats `osErrorTimeout` as failure and falls through
+on other failed semaphore waits. With a clean-looking controller status,
+it can return success and copy stale responses. The pinned RTX source returns
+`osErrorParameter` for a null semaphore, including one left by failed
+allocation. [Original SD driver][original-sd] · [CMSIS semaphore contract][semaphore] ·
+[Pinned RTX implementation][rtx-semaphore]
+
+The port adapts paps-g `dc3468dee53505c41aa577ac31810f8aa5628585`.
+Only `osOK` reaches controller-status interpretation and response
+copying. Failed waits take the existing cleanup path. The public port
+retains the original timeout, log text and register sequence.
+This is the controller command semaphore. The earlier disk-access lock
+is handled in `f2b44e7`. [Public SD driver][current-sd] ·
+[Disk-access lock](SAVE-STORAGE-FOLLOWUP.md)
+
+The fixture compiles actual `sd_cmd` and models the semaphore result
+and SDMMC registers. It verifies five command/response shapes, every
+modeled error status, null-handle rejection, hardware errors, the no-CRC
+response and register cleanup. Baseline `62d993c` accepts 26 failed waits.
+All 43 scenarios pass with ASan/UBSan and O2 on the port. The model's
+register bits follow RM0433 Rev 8 sections 55.10.4 (pp. 2438–2440),
+55.10.11 (pp. 2445–2447), and 55.10.12 (p. 2448).
+[STM32 RM0433][rm0433] · [Command fixture][sd-fixture]
+
+Run `make -C tests check-mcu-diskio`. Set `SAROO_SD_PROFILE=release`
+for the optimized command tests. The GNU App remains at 62,172 load bytes,
+3,364 bytes of ITCM margin, 60,176 bytes of static DTCM and a 16-byte
+direct `sd_cmd` frame. Physical IRQ/DMA completion remains unqualified.
+[Build instructions][build]
+
 [original-fatfs]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c
+[original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
+[current-sd]: ../Firm_MCU/Main/sdio_h7.c
 [current-fatfs]: ../Firm_MCU/FatFS/ff.c
 [sync]: https://elm-chan.org/fsw/ff/doc/sync.html
 [close]: https://elm-chan.org/fsw/ff/doc/close.html
 [ioctl]: https://elm-chan.org/fsw/ff/doc/dioctl.html
 [diskio]: ../Firm_MCU/FatFS/diskio.c
 [fatfs-fixture]: ../tests/fatfs_seek.c
+[sd-fixture]: ../tests/sd_safety.c
+[semaphore]: https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html
+[rtx-semaphore]: https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_semaphore.c
+[rm0433]: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
 [build]: ../tools/README.md#original-mcu-app-compilelink-check
