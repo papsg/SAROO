@@ -15,6 +15,14 @@ from cdc_reply_source import command_reply_source
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def filter_reset_source(raw):
+    signature = b'static __attribute__((noinline,noclone)) void reset_filter_conditions('
+    if signature not in raw:
+        return b''
+    start = raw.index(signature)
+    return (raw[start:raw.index(b'\n}', start) + 2] + b'\n').replace(b'noinline,noclone', b'noinline')
+
+
 def copy_source(raw,required=()):
     def function(signature):
         start=raw.index(signature)
@@ -42,6 +50,7 @@ def copy_source(raw,required=()):
     if b'void invalidate_directory(' in raw:code+=function(b'void invalidate_directory(')
     if b'FILTER *command_filter(' in raw:
         code += function(b'static __attribute__((noinline)) FILTER *command_filter(')
+    code += filter_reset_source(raw)
     code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
     return code
 

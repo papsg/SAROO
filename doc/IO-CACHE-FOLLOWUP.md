@@ -98,3 +98,26 @@ bits. Minimum reported setup slack is 0.361 ns versus 0.843 ns before the
 change. Minimum hold slack is 0.179 ns versus 0.167 ns. MCU and menu
 sources are unaffected. External bus timing and physical reset behavior
 remain unqualified.
+
+## Share filter condition resets and sector lengths
+
+Software initialization, Set Filter Mode, and Reset Selector share the
+nine condition-field clears. Each caller still owns connection updates,
+pause and interrupt state. The four fixed sector lengths fit in read-only
+16-bit entries. The get and put selectors retain their existing behavior,
+including unchanged settings for out-of-range bytes. [Sega ST-162,
+§8.2.5 functions 5.5 and 5.9, printed pp. 89 and 91](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=77) ·
+[§8.2.7 function 7.1, printed p. 95](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83).
+
+Adapted from paps-g's `bc1f69cc` after the shared filter lookup and reply
+ports. The public GNU App load decreases by 72 bytes to 62,796. Static
+DTCM decreases by 16 bytes to 60,216.
+
+The exact preceding source and the port pass the 131,072 filter
+mode/selector calls and 65,536 get/put sector-length pairs. These checks
+compare every filter byte, including adjacent fields and padding. All
+159 CD command and buffer methods pass under ASan/UBSan and O2. Run
+`make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. For the parent control, set
+`SAROO_CDC_CONNECTION_SOURCE` for `test_cdc_connections.py`.
+Physical command timing remains unmeasured.

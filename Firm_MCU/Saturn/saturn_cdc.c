@@ -580,6 +580,20 @@ int get_session_info(void)
 	return 0;
 }
 
+/* Clear condition fields while the caller owns connection changes. */
+static __attribute__((noinline,noclone)) void reset_filter_conditions(FILTER *filter)
+{
+    filter->mode = 0;
+    filter->fad = 0;
+    filter->range = 0;
+    filter->fid = 0;
+    filter->chan = 0;
+    filter->smmask = 0;
+    filter->cimask = 0;
+    filter->smval = 0;
+    filter->cival = 0;
+}
+
 // 0x04 [SR]
 //   iflag[0]: 复位CDBLOCK软件(其他位忽略)
 //   iflag[1]: 解码subcode_rw
@@ -654,15 +668,7 @@ int init_cdblock(void)
 
 		cdb.filter[i].c_false = 0xff;
 		cdb.filter[i].c_true = i;
-		cdb.filter[i].mode   = 0;
-		cdb.filter[i].fad    = 0;
-		cdb.filter[i].range  = 0;
-		cdb.filter[i].fid    = 0;
-		cdb.filter[i].chan   = 0;
-		cdb.filter[i].smmask = 0;
-		cdb.filter[i].cimask = 0;
-		cdb.filter[i].smval  = 0;
-		cdb.filter[i].cival  = 0;
+		reset_filter_conditions(&cdb.filter[i]);
 	}
 
 	cdb.saturn_auth = 0;
@@ -1125,15 +1131,7 @@ int set_filter_mode(void)
 	SSLOG(_FILTER, "set_filter_mode: fid=%d  mode=%02x\n", fid, cdb.cr1&0xff);
 
 	if(filter->mode&0x80){
-		filter->mode   = 0;
-		filter->fad    = 0;
-		filter->range  = 0;
-		filter->fid    = 0;
-		filter->chan   = 0;
-		filter->smmask = 0;
-		filter->cimask = 0;
-		filter->smval  = 0;
-		filter->cival  = 0;
+		reset_filter_conditions(filter);
 	}
 
 	return HIRQ_ESEL;
@@ -1251,15 +1249,7 @@ int reset_filter(void)
 				cdb.filter[i].c_true = i;
 			}
 			if(mode&0x10){
-				cdb.filter[i].mode   = 0;
-				cdb.filter[i].fad    = 0;
-				cdb.filter[i].range  = 0;
-				cdb.filter[i].fid    = 0;
-				cdb.filter[i].chan   = 0;
-				cdb.filter[i].smmask = 0;
-				cdb.filter[i].cimask = 0;
-				cdb.filter[i].smval  = 0;
-				cdb.filter[i].cival  = 0;
+				reset_filter_conditions(&cdb.filter[i]);
 			}
 			if(mode&0x04){
 				free_partition(&cdb.part[i]);
@@ -1398,7 +1388,7 @@ int get_sector_info(void)
 // buffer I/O相关命令
 
 
-u32 sector_len_table[4] = {2048, 2336, 2340, 2352};
+static const u16 sector_len_table[4] = {2048, 2336, 2340, 2352};
 
 // 0x60 [SR]
 int set_sector_length(void)

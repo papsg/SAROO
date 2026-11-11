@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 from cdc_reply_source import command_reply_source
+from test_cdc_copy import filter_reset_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -36,8 +37,12 @@ class CDConnectionTests(unittest.TestCase):
         if b'FILTER *command_filter(' in raw:
             code += function(raw, b'static __attribute__((noinline)) FILTER *command_filter(')
         code += command_reply_source(raw)
+        code += filter_reset_source(raw)
         code+=function(main,b'int pause_drive(')
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))
+        table = raw.rfind(b'\n', 0, raw.index(b'sector_len_table[4]')) + 1
+        code += raw[table:raw.index(b'\n', table)] + b'\n'
+        code += function(raw, b'int set_sector_length(')
         init=function(main,b'void ss_sw_init(')
         # Only physical buffer addresses are relocated; all initialization stays.
         replacements={b'(u8*)(0x2400a000+i*2352)':b'(u8*)payload[i]',b'(u8*)0x2400a000+MAX_BLOCKS*2352':b'info_bytes'}
@@ -75,6 +80,8 @@ class CDConnectionTests(unittest.TestCase):
     def test_software_reset_defaults_and_nonreset_nochange_controls(self):self.run_case(6)
     def test_partition_reset_preserves_unpublished_allocation(self):self.run_case(7)
     def test_baseline_valid_configuration_control(self):self.run_case(8)
+    def test_all_filter_mode_and_selector_bytes(self): self.run_case(9)
+    def test_all_sector_length_selector_pairs(self): self.run_case(10)
 
 
 if __name__=='__main__':unittest.main()

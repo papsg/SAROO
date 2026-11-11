@@ -222,12 +222,63 @@ static void baseline_control(void)
     cdb.cr1=0x42;assert(set_filter_mode()==HIRQ_ESEL && cdb.filter[7].mode==0x42);
     assert(!irq_depth);
 }
+/* Domain controls adapted from paps-g bc1f69cc. */
+static void every_filter_reset(void)
+{
+    _Static_assert(offsetof(FILTER,mode)==8 && offsetof(FILTER,c_true)==15 &&
+                   offsetof(FILTER,c_false)==16 && sizeof(FILTER)==20,
+                   "review the byte-level reset oracle for this layout");
+    unsigned char expected[sizeof cdb.filter];
+    for (unsigned mode=0; mode<256; mode++) for (unsigned fid=0; fid<256; fid++) {
+        for (unsigned operation=0; operation<2; operation++) {
+            setup();
+            for (unsigned i=0; i<sizeof cdb.filter; i++)
+                ((unsigned char *)cdb.filter)[i]=(unsigned char)(i*37+mode+fid+1);
+            memcpy(expected,cdb.filter,sizeof expected);
+            cdb.cr1=mode; cdb.cr3=fid<<8;
+            if (operation==0) {
+                if (fid<MAX_SELECTORS) {
+                    unsigned char *e=expected+fid*sizeof(FILTER);
+                    if (mode&0x80) memset(e,0,15);
+                    else e[8]=(unsigned char)mode;
+                }
+                assert(set_filter_mode()==(fid<MAX_SELECTORS?HIRQ_ESEL:0));
+            } else {
+                if (mode) for (unsigned f=0; f<MAX_SELECTORS; f++) {
+                    unsigned char *e=expected+f*sizeof(FILTER);
+                    if (mode&0xa0) e[16]=0xff;
+                    if (mode&0x40) e[15]=(unsigned char)f;
+                    if (mode&0x10) memset(e,0,15);
+                }
+                assert(reset_filter()==(mode || fid<MAX_SELECTORS?HIRQ_ESEL:0));
+            }
+            assert(!memcmp(expected,cdb.filter,sizeof expected));
+            assert(!irq_depth && cdb.block_free == MAX_BLOCKS);
+        }
+    }
+}
+static void every_sector_length(void)
+{
+    static const unsigned lengths[]={2048,2336,2340,2352};
+    for (unsigned get=0; get<256; get++) for (unsigned put=0; put<256; put++) {
+        setup();cdb.sector_size=2340;cdb.put_sector_size=2352;
+        reply[0]=(u16)(0x6000|get);reply[1]=(u16)((put<<8)|0xa5);
+        CDBLOCK expected; memcpy(&expected, &cdb, sizeof expected);
+        if (get<4) expected.sector_size=lengths[get];
+        if (put<4) expected.put_sector_size=lengths[put];
+        assert(set_sector_length()==HIRQ_ESEL);
+        assert(!memcmp(&expected,&cdb,sizeof cdb));
+        assert(reply[0]==(0x6000|get) && reply[1]==((put<<8)|0xa5));
+        assert(!irq_depth);
+    }
+}
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<9);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<11);
     if(test==0)ownership();else if(test==1)validation();else if(test==2)mode_reset();
     else if(test==3)reset_flags();else if(test==4)pause_policy();
     else if(test==5)startup();else if(test==6)software_init();
-    else if(test==7)unpublished_owner();else baseline_control();
+    else if(test==7)unpublished_owner();else if(test==8)baseline_control();
+    else if(test==9)every_filter_reset();else every_sector_length();
     puts("pass: actual connection ownership, validation, resets and defaults");return 0;
 }
