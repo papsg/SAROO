@@ -1818,3 +1818,13 @@ left untouched.
    80,452 bytes with unchanged BSS and padded image size. Physical
    authentication and wait timing remain unqualified.
    [Sega reference, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#propagate-cd-query-and-authentication-failures)
+
+3. **Save overwrite metadata — published**
+   [`a9c36ba`](https://github.com/papsg/SAROO/commit/a9c36ba789c24abf09e943de326ccdaac89f29d2).
+   Adapted from paps-g `d00d9efe`. The parent fails 23 overwrite
+   cases and ten coupled retries while eleven rejections preserve both
+   archives. All 44 focused methods pass ASan/UBSan and O2. The SH-2
+   menu stays at 80,452 code/data bytes, with a 44-byte direct writer
+   frame. Physical recovery and the Policenauts disc change remain
+   unqualified.
+   [Sega and issue references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#refresh-comment-and-language-on-save-overwrite)
