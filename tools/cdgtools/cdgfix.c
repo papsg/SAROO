@@ -465,6 +465,28 @@ void cdg2sub(u8 *cdg, int len, u8 *out)
 
 
 
+/* P also protects the header covered by Q. Commit only a complete repair. */
+static int correct_packet(u8 packet[24])
+{
+    u8 candidate[24], parity[4];
+    memcpy(candidate, packet, sizeof(candidate));
+    if (decode_rs(&rs20, candidate, 20, candidate + 20) < 0)
+        return -1;
+    int q = decode_rs(&rs2, candidate, 2, candidate + 2);
+    if (q < 0)
+        return -1;
+    if (q) {
+        encode_rs(&rs20, candidate, 20, parity);
+        for (unsigned i = 0; i < sizeof(parity); ++i)
+            candidate[20 + i] = (candidate[20 + i] & 0xc0) | parity[i];
+    }
+    if (!memcmp(candidate, packet, sizeof(candidate)))
+        return 0;
+    memcpy(packet, candidate, sizeof(candidate));
+    return 1;
+}
+
+
 int main(int argc, char *argv[])
 {
 	FILE *fp;
@@ -500,38 +522,16 @@ int main(int argc, char *argv[])
 
 
 	
-	u8 tmp[24];
-	int p = 0;
 	int count_ok = 0;
 	int count_bad = 0;
-	while(p<flen){
-		u8 *data = cdg_buf+p;
-		memcpy(tmp, data, 24);
-		int retv1 = decode_rs(&rs20, data, 20, data+20);
-		int retv2 = decode_rs(&rs2 , data, 2 , data+ 2);
-		if(retv1<0 || retv2<0){
-			count_bad += 1;
-		}else if(retv1 || retv2){
-			count_ok += 1;
-#if 0
-			printf("\n%08x: decode_rs: %d %d\n", p, retv1, retv2);
-			printf("  orig:");
-			for(int i=0; i<24; i++)
-				printf(" %02x", tmp[i]);
-			printf("\n");
-			printf("   fix:");
-			for(int i=0; i<24; i++)
-				printf(" %02x", data[i]);
-			printf("\n");
-#endif
-			if(retv1==0 && retv2>0){
-				// ParityP没有错，但ParityQ纠错了，会导致ParityP有错。
-				// 此时需重建ParityP
-				encode_rs(&rs20, data, 20, data+20);
-			}
-		}
-		p += 24;
+	for(int p=0; p<flen; p+=24){
+		int result = correct_packet(cdg_buf+p);
+		if(result < 0)
+			count_bad++;
+		else if(result)
+			count_ok++;
 	}
+
 
 	if(count_ok){
 		printf("%d packs fixed!\n", count_ok);
