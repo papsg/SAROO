@@ -1629,3 +1629,10 @@ initial read-only snapshot. The Saturn was left untouched.
    grows 80 bytes to 79,668. Physical cache and interrupt timing remain
    unqualified.
    [SH7604 manual, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#invalidate-direct-file-read-cache-lines)
+3. **Shared CD command replies — published**
+   [`1bd8773`](https://github.com/papsg/SAROO/commit/1bd8773856dd09fa164d73db8cef4e9ef777366d).
+   Adapted from the CD portion of paps-g `48f6a105`. Baseline and port
+   pass 1,179,648 ordered replies. All 157 CD command and buffer methods
+   pass ASan/UBSan and O2. A reversed tail-write control fails. The GNU App
+   load falls 64 bytes to 62,868. Physical command timing remains unmeasured.
+   [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-complete-cd-command-replies)
