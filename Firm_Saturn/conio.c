@@ -765,10 +765,11 @@ void menu_status(MENU_DESC *menu, char *string)
 {
 	int mx = 16;
 	int my = 240-16-5;
+	int right = mx+36*8-1;
 
-	put_box(mx, my, mx+36*8-1, my+16-1, 0);
+	put_box(mx, my, right, my+16-1, 0);
 	if(string){
-		menu_draw_string(mx, my, text_color, string, 0, fbw-1);
+		menu_draw_string(mx, my, text_color, string, mx, right);
 	}
 }
 

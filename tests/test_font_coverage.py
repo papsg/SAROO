@@ -37,10 +37,11 @@ def latin_bytes():
     return bytes(int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{2})", array))
 
 
-def build_renderer(directory, fixture="font_lookup.c"):
+def build_renderer(directory, fixture="font_lookup.c", extra_functions=()):
     source = (ROOT / "Firm_Saturn/conio.c").read_text()
     functions = []
-    for signature in ["static u8 *find_ucs", "static u8 *find_font", "int fb_draw_font_buf", "static int utf8_to_ucs"]:
+    signatures = ("static u8 *find_ucs", "static u8 *find_font", "int fb_draw_font_buf", "static int utf8_to_ucs")
+    for signature in (*signatures, *extra_functions):
         function = re.search(re.escape(signature)+r"\([^\n]*\)\n\{.*?\n\}", source, re.S)
         if not function:
             raise AssertionError(signature)

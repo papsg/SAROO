@@ -1,0 +1,26 @@
+{
+  "lang_fr": {
+    "3": "Échec du lancement du jeu ! %d",
+    "5": "Fichier non chargé ! %d",
+    "14": "Mise à jour terminée. Redémarrez !"
+  },
+  "lang_de": {
+    "3": "Spielstart fehlgeschlagen! %d",
+    "5": "Datei nicht geladen! %d"
+  },
+  "lang_es": {
+    "14": "¡Actualización completa! ¡Reinicie!"
+  },
+  "lang_swe": {
+    "14": "Uppdatering klar! Starta om maskinen."
+  },
+  "lang_el": {
+    "3": "Το παιχνίδι δεν ξεκίνησε! %d",
+    "14": "Ενημερώθηκε! Κάνε επανεκκίνηση!"
+  },
+  "lang_ro": {
+    "12": "Actualizare... Nu opriți consola!",
+    "14": "Actualizare încheiată! Reporniți consola!",
+    "18": "Nu este un disc de joc! %d"
+  }
+}

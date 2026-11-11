@@ -80,3 +80,33 @@ The pinned menu build links 79,556 code/data bytes (16 fewer), with the same
 glyph rasterizer's direct frame remains 40 bytes. The packed height convention
 is verified for the supplied font assets. Host raster checks do not qualify
 physical Saturn output.
+
+## SATURN-MENU-008 — match status drawing to its clear area
+
+The original menu clears columns 16–303 on each status update and allows
+drawing through column 319. A long message can write beyond the area its
+replacement clears. Twelve inherited labels also exceed the 288-pixel
+width, including the 368-pixel Romanian update-complete message.
+[Original status implementation](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/conio.c)
+
+The status draw and clear now share the same right edge. Shorter wording
+fits the twelve French, German, Spanish, Swedish, Greek and Romanian
+messages while retaining each error code, update warning and restart
+instruction. This adapts paps-g `4c2cccb4` to the public catalog, retaining
+the public Romanian disc-error format's explicit `%d` and its prior glyph
+repairs. The [approved wording fixture](../tests/fixtures/menu-status-wording.json)
+records the twelve changes.
+
+`make -C tests check-language-catalog` checks 418 complete status variants
+across all 19 languages, including both signed 32-bit error limits.
+The preceding public source fails twelve width cases and both framebuffer
+tests for overflow and stale pixels. Short and empty statuses pass on
+both revisions. The C fixture runs the actual clear and draw routines against
+a guarded framebuffer. The existing formatter and raster tests also pass
+648 prior-language cases and 36 independent Arabic cases.
+[Catalog checks](../tests/test_language_catalog.py) · [Framebuffer fixture](../tests/menu_status.c)
+
+The pinned Yaul build links 79,380 code/data bytes (176 fewer than the glyph
+checkpoint), with a 20-byte direct `menu_status` frame and a 488,770-byte
+menu image. Native-speaker editorial review and physical Saturn appearance
+remain unqualified.

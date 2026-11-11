@@ -132,7 +132,7 @@ int main(int argc, char **argv)
     assert(!fclose(image));
     fclose(cases);
     free(data);
-    printf("%u unchanged prior-language and %u independent Arabic cases pass actual formatting and guarded raster\n",
+    printf("%u prior-language and %u independent Arabic cases pass actual formatting and guarded raster\n",
            checked-arabic, arabic);
     return 0;
 }

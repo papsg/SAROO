@@ -52,20 +52,24 @@ class ArabicTests(unittest.TestCase):
     def test_previous_languages_and_real_formatter_raster(self):
         source = (ROOT / "Firm_Saturn/language.c").read_text()
         previous = json.loads((ROOT / "tests/fixtures/languages-before-arabic.json").read_text())
+        wording = json.loads((ROOT / "tests/fixtures/menu-status-wording.json").read_text())
+        self.assertTrue(wording.keys() <= previous.keys())
         cases = []
         for id_, (name, old) in enumerate(previous.items()):
-            current = labels(name, source)
-            self.assertEqual(current[:18], old[:18])
-            self.assertEqual(current[18], old[18]+"%d")
-            self.assertEqual(current[19], old[19])
-            for slot, text in enumerate(old):
+            expected_labels = list(old)
+            expected_labels[18] += "%d"
+            for slot, text in wording.get(name, {}).items():
+                self.assertIn(int(slot), (3, 5, 12, 14, 18))
+                expected_labels[int(slot)] = text
+            self.assertEqual(labels(name, source), expected_labels)
+            for slot, text in enumerate(expected_labels):
                 arguments = [()]
                 if slot < 2:
                     arguments = [(1, 214), (214, 214), (1, 1)]
                 elif slot in (3, 5, 18):
                     arguments = [(v,) for v in (0, 1, -1, -2147483648, 2147483647)]
                 for args in arguments:
-                    expected = text+str(args[0]) if slot == 18 else text % args
+                    expected = text % args
                     cases.append((id_, slot, args, expected))
         self.assertEqual(len(cases), 648)
         cases += [(18, c["slot"], tuple(c["arguments"]), c["expected"]) for c in ORACLE]
