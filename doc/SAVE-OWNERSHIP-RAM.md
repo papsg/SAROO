@@ -188,3 +188,28 @@ I/O. Physical transfers and game behavior remain unqualified.
 With the original FatFs case table, the GNU App rises from 63,232
 to 63,424 bytes. It fits the 65,536-byte limit with 2,112 bytes to
 spare. Static DTCM stays at 60,216 bytes.
+
+## Compact the pinned FatFs case table
+
+The compact table represents the original mappings as 118 disjoint
+records with 18 signed deltas. Basic Latin and Latin-1 use direct
+checks. A binary search finds other BMP records in at most seven
+comparisons. Identity gaps and values outside the BMP keep their
+existing results. The FatFs notice and other encoding tables are
+preserved. [Original FatFs uppercase routine, lines 109–236](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ffunicode.c#L109-L236) ·
+[Pinned FatFs license and current code](../Firm_MCU/FatFS/ffunicode.c).
+
+Adapted from the table portion of paps-g's `d1079400`. Compiled old and
+new routines produce identical bytes for all 1,114,112 Unicode values
+and five out-of-range inputs, retaining all 874 nonidentity mappings.
+A reversed pair rule changes the expected output. The three public
+methods pass ASan/UBSan and O2. Run
+`python3 -m unittest discover -s tests -p test_unicode_ranges.py -v`.
+The exhaustive check uses the fingerprint of the compiled pinned
+routine, and accepts that source through `SAROO_FATFS_CASE_SOURCE`
+when run individually. The current tests require no repository history.
+
+The mapping-only GNU App already fits with 2,112 bytes to spare.
+The table reduces its load by 180 bytes to 63,244, leaving 2,292
+bytes of ITCM. Static DTCM stays at 60,216 bytes. Directory timing
+on hardware remains unmeasured.
