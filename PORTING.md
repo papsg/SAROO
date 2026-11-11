@@ -1225,5 +1225,20 @@ verification](https://github.com/papsg/SAROO/blob/main/doc/UART-TX-SAFETY.md).
    at 27 and 46. Load 62,012 bytes (+52), ITCM free 3,524, static DTCM 60,176
    (−8). The committed ELF matches the verified candidate. The BOOT UART
    unit compiles with the four original polling routines byte-identical.
-   The broader host suite is running. Physical UART/DMA timing, game
-   behavior, and MDK output remain unqualified.
+   Physical UART/DMA timing, game behavior, and MDK output remain unqualified.
+
+### UART transmit safety final verification
+
+Both source checkpoints are on public main at `9a9910a`. The standard suite
+passed 501 Python methods in 45 groups, 18 Rust checks in four groups, and the
+native language check. The full run used the existing Pillow-enabled test
+environment after the system Python run stopped at the Arabic font check.
+Both MCU build receipts bind their committed source and the same 85 SDK
+inputs. The final App vectors bind to the verified UART DMA and timer handlers.
+The BOOT check covers its UART unit and polling code. Hardware, games and
+the original MDK build remain unqualified.
+
+The production diff is confined to the UART transmit driver. The two direct
+main commits and the progress entries passed private-data and secret review.
+The private HEAD, clean status, all refs and four stashes match the preceding
+preservation audit. The Saturn was left untouched.
