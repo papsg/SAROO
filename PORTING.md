@@ -1670,3 +1670,23 @@ initial read-only snapshot. The Saturn was left untouched.
    code/data bytes. The menu image stays at 488,770 bytes.
    Physical reset and recovery remain unqualified.
    [Original register logic, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#confirm-file-transfers-explicitly)
+### Firmware I/O and cache final verification
+
+All seven checkpoints are on public main as seven commits ending at
+[`f04106d`](https://github.com/papsg/SAROO/commit/f04106d7ed9dc25c800df97728ba8f6c3cf0e8a9).
+The standard `make -C tests check` suite passes 625 Python methods in
+58 groups, 18 Rust checks, and the native language check. macOS skips
+the Windows-only CD+G fixture.
+
+Rebuilding the committed source reproduces both verified ELFs and the
+menu image byte for byte. The GNU App load is 62,812 bytes, with 2,724
+bytes of ITCM margin and 60,216 bytes of static DTCM. The menu links
+79,716 code/data and 9,240 BSS bytes into a 488,770-byte image.
+All 18 fitted FPGA project inputs match the final tree. Quartus reports
+positive constrained setup and hold slack. External bus timing and
+physical reset and recovery remain unqualified.
+
+Publication review covers the seven commits, tests, citations,
+attribution and ledger. The private repository's HEAD, worktree,
+refs and stash match the initial read-only snapshot. The Saturn
+was left untouched.
