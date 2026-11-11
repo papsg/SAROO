@@ -1444,3 +1444,19 @@ was left untouched.
    The retry budget applies when commands return. Physical timing,
    controller abort, and SD session recovery remain outside this checkpoint.
    [SD/CMSIS/STM32 references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-sd-004--bound-card-ready-polling)
+
+### FatFs and SD final verification
+
+All four firmware checkpoints are on public main at `946ca0c`. The standard
+suite passed 550 Python methods in 47 groups, 18 Rust checks in four groups,
+and the native language check. The Windows-only CD+G fixture was skipped
+on macOS. The committed GNU App and menu builds match the verified
+candidates. Both modified MCU units also compile with BOOT and the public
+BootLoader RTE configuration. This is an object compile check for those
+two units. Full MDK linking, physical SD timing and durability, and
+controller abort and media-session recovery remain unqualified.
+
+The series changes only the original FatFs and SD driver in firmware.
+Publication scans covered the source, host fixtures, commit metadata and
+ledger. The private HEAD, worktree status, refs and stashes match the initial
+snapshot. The Saturn was left untouched.
