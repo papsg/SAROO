@@ -50,3 +50,23 @@ repeat the baseline completion controls. The menu links 79,668 code/data
 bytes (+80) with the same BSS and 488,770-byte image size. The host model
 covers the calling CPU. Physical instruction fetch, interrupt timing,
 and ownership on the other SH-2 remain unqualified.
+
+## Share complete CD command replies
+
+Seventeen handlers share the four consecutive CR1–CR4 stores. Each
+store is still a volatile halfword and the register order is unchanged.
+The internal argument combines CR3 and CR4 to keep the helper's register
+use small. The handlers retain their existing admission, interrupt and
+transfer paths. [Sega CD Communication Interface User's Manual,
+ST-162, §8.2.5, printed pp. 87–90](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=75) ·
+[Preceding public handlers](https://github.com/papsg/SAROO/blob/07424e17c16f5b7bf9cd33d119491015ac2fd0b9/Firm_MCU/Saturn/saturn_cdc.c).
+
+Adapted from the CD reply portion of paps-g's `48f6a105`. The GNU App
+load decreases by 64 bytes to 62,868, with static DTCM unchanged.
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. All 157 methods pass in both profiles.
+The baseline and port pass 1,179,648 ordered replies across 18 layouts.
+The fixture rejects a control with the two tail writes reversed. Set
+`SAROO_CDC_REPLY_SOURCE` to select a baseline or control source for
+`test_cdc_replies.py`. Physical command timing remains unmeasured.

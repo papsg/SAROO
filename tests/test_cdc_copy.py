@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cdc_reply_source import command_reply_source
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -35,6 +37,7 @@ def copy_source(raw,required=()):
     operations=raw[start:raw.index(b'/******************************************************************************/',start)]
     for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
         if signature in raw and (call in operations or call in required):code+=function(signature)
+    code += command_reply_source(raw)
     code+=operations
     if b'void invalidate_directory(' in raw:code+=function(b'void invalidate_directory(')
     if b'FILTER *command_filter(' in raw:

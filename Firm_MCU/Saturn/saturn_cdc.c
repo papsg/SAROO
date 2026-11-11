@@ -369,6 +369,23 @@ void trans_handle(void)
 
 /******************************************************************************/
 
+/* CR3 occupies the low half of this internal argument; the peripheral still
+ * receives separate halfword writes in CR1, CR2, CR3, CR4 order. */
+static inline u32 reply_pair(u16 cr3, u16 cr4)
+{
+    return cr3 | ((u32)cr4 << 16);
+}
+
+/* The command task owns these replies. Three arguments leave a scratch
+ * register for the peripheral base, avoiding a saved register/stack frame. */
+static __attribute__((noinline,noclone)) void command_reply(u16 cr1, u16 cr2, u32 cr34)
+{
+    SSCR1 = cr1;
+    SSCR2 = cr2;
+    SSCR3 = (u16)cr34;
+    SSCR4 = (u16)(cr34 >> 16);
+}
+
 void set_report(u8 status)
 {
 	int irqs;
@@ -515,10 +532,7 @@ int get_hw_info(void)
 {
 	SSLOG(_INFO, "get_hw_info\n");
 
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0x0001;
-	SSCR3 = 0x0000;
-	SSCR4 = 0x0400;
+	command_reply((cdb.status<<8), 0x0001, reply_pair(0x0000, 0x0400));
 
 	return 0;
 }
@@ -533,10 +547,7 @@ int get_toc_info(void)
 		return 0;
 	}
 
-	SSCR1 = 0x4000|(cdb.status<<8);
-	SSCR2 = 0x00cc;
-	SSCR3 = 0x0000;
-	SSCR4 = 0x0000;
+	command_reply(0x4000|(cdb.status<<8), 0x00cc, reply_pair(0x0000, 0x0000));
 
 	cdb.trans_type = TRANS_TOC;
 	trans_start();
@@ -669,10 +680,7 @@ int open_tray(void)
 {
 	SSLOG(_INFO, "open_tray\n");
 
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0x0000;
-	SSCR3 = 0x0000;
-	SSCR4 = 0x0000;
+	command_reply((cdb.status<<8), 0x0000, reply_pair(0x0000, 0x0000));
 
 	return 0;
 }
@@ -915,10 +923,7 @@ int get_subcode(void)
 
 	if(type==0){
 		// Get Q Channel
-		SSCR1 = 0x4000 | (cdb.status<<8);
-		SSCR2 = 5;
-		SSCR3 = 0;
-		SSCR4 = 0;
+		command_reply(0x4000 | (cdb.status<<8), 5, reply_pair(0, 0));
 
 		rel_fad = cdb.fad-cdb.tracks[cdb.track-1].fad_start;
 
@@ -941,10 +946,7 @@ int get_subcode(void)
 			set_status(STAT_WAIT | cdb.status);
 			return 0;
 		}
-		SSCR1 = 0x4000 | (cdb.status<<8);
-		SSCR2 = 12;
-		SSCR3 = 0;
-		SSCR4 = 0;
+		command_reply(0x4000 | (cdb.status<<8), 12, reply_pair(0, 0));
 
 		cdb.trans_type = TRANS_SUBRW;
 		trans_start();
@@ -991,10 +993,7 @@ int set_cdev_connect(void)
 // 0x31 [S-]
 int get_cdev_connect(void)
 {
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0;
-	SSCR3 = cdb.cddev_filter<<8;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8), 0, reply_pair(cdb.cddev_filter<<8, 0));
 
 	return 0;
 }
@@ -1002,10 +1001,7 @@ int get_cdev_connect(void)
 // 0x32 [S-]
 int get_last_buffer(void)
 {
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0;
-	SSCR3 = cdb.last_buffer<<8;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8), 0, reply_pair(cdb.last_buffer<<8, 0));
 
 	return 0;
 }
@@ -1065,10 +1061,7 @@ int get_filter_range(void)
 	fad   = filter->fad;
 	range = filter->range;
 
-	SSCR1 = (cdb.status<<8) | ((fad>>16)&0xff);
-	SSCR2 = fad&0xffff;
-	SSCR3 = (range>>16)&0xff;
-	SSCR4 = range&0xffff;
+	command_reply((cdb.status<<8) | ((fad>>16)&0xff), fad&0xffff, reply_pair((range>>16)&0xff, range&0xffff));
 
 	return 0;
 }
@@ -1112,10 +1105,7 @@ int get_filter_subheader(void)
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8) | filter->chan;
-	SSCR2 = (filter->smmask<<8) | filter->cimask;
-	SSCR3 =  filter->fid;
-	SSCR4 = (filter->smval<<8) | filter->cival;
+	command_reply((cdb.status<<8) | filter->chan, (filter->smmask<<8) | filter->cimask, reply_pair(filter->fid, (filter->smval<<8) | filter->cival));
 
 	return 0;
 }
@@ -1161,10 +1151,7 @@ int get_filter_mode(void)
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8) | filter->mode;
-	SSCR2 = 0;
-	SSCR3 = 0;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8) | filter->mode, 0, reply_pair(0, 0));
 
 	return 0;
 }
@@ -1203,10 +1190,7 @@ int get_filter_connection(void)
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = (filter->c_true<<8) | filter->c_false;
-	SSCR3 = 0;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8), (filter->c_true<<8) | filter->c_false, reply_pair(0, 0));
 
 	return 0;
 }
@@ -1297,10 +1281,7 @@ u8 old_block_free;
 // 0x50 [S-]
 int get_buffer_size(void)
 {
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = cdb.block_free;
-	SSCR3 = MAX_SELECTORS<<8;
-	SSCR4 = MAX_BLOCKS;
+	command_reply((cdb.status<<8), cdb.block_free, reply_pair(MAX_SELECTORS<<8, MAX_BLOCKS));
 
 	if(old_block_free!=cdb.block_free){
 		SSLOG(_BUFINFO, "get_buffer_size: free=%d\n", cdb.block_free);
@@ -1323,10 +1304,7 @@ int get_sector_num(void)
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0;
-	SSCR3 = 0;
-	SSCR4 = cdb.part[pt].numblocks;
+	command_reply((cdb.status<<8), 0, reply_pair(0, cdb.part[pt].numblocks));
 
 	if(old_numblocks != cdb.part[pt].numblocks){
 		SSLOG(_BUFINFO, "get_sector_num: part=%d(%d)\n", pt, cdb.part[pt].numblocks);
@@ -1374,10 +1352,7 @@ int cal_actual_size(void)
 // 0x53 [S-]
 int get_actual_size(void)
 {
-	SSCR1 = (cdb.status<<8) | (((cdb.actsize/2)>>16)&0xff);
-	SSCR2 = (cdb.actsize/2)&0xffff;
-	SSCR3 = 0;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8) | (((cdb.actsize/2)>>16)&0xff), (cdb.actsize/2)&0xffff, reply_pair(0, 0));
 
 	SSLOG(_BUFINFO, "get_actual_size: %08x\n", cdb.actsize);
 
@@ -1410,10 +1385,7 @@ int get_sector_info(void)
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8) | ((bp->fad>>16)&0xff);
-	SSCR2 = (bp->fad)&0xffff;
-	SSCR3 = (bp->fn<<8) | (bp->cn);
-	SSCR4 = (bp->sm<<8) | (bp->ci);
+	command_reply((cdb.status<<8) | ((bp->fad>>16)&0xff), (bp->fad)&0xffff, reply_pair((bp->fn<<8) | (bp->cn), (bp->sm<<8) | (bp->ci)));
 
 	return 0;
 }
@@ -1677,10 +1649,7 @@ int move_sector_data(void)
 // 0x67 [S-]
 int get_copy_error(void)
 {
-	SSCR1 = (cdb.status<<8) | copy_move_error;
-	SSCR2 = 0;
-	SSCR3 = 0;
-	SSCR4 = 0;
+	command_reply((cdb.status<<8) | copy_move_error, 0, reply_pair(0, 0));
 
 	return 0;
 }
@@ -2007,10 +1976,8 @@ int get_file_scope(void)
     SSLOG(_FILEIO, "get_file_scope: pfid=%d  pfnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
     if (cdb.play_type == PLAYTYPE_DIR) { set_status(STAT_WAIT|cdb.status); return 0; }
     if (cdb.rdir_state != 3) { set_status(STAT_REJECT); return 0; }
-    SSCR1 = cdb.status<<8;
-    SSCR2 = cdb.cdir_pfnum;
-    SSCR3 = (cdb.cdir_drend<<8) | (cdb.cdir_pfid>>16);
-    SSCR4 = cdb.cdir_pfid;
+    command_reply(cdb.status << 8, cdb.cdir_pfnum,
+                  reply_pair((cdb.cdir_drend << 8) | (cdb.cdir_pfid >> 16), cdb.cdir_pfid));
     return 0;
 }
 
@@ -2105,10 +2072,7 @@ int auth_device(void)
 		cdb.saturn_auth = 4;
 	}
 
-	SSCR1 = (STAT_BUSY<<8) | 0xff;
-	SSCR2 = 0xffff;
-	SSCR3 = 0xffff;
-	SSCR4 = 0xffff;
+	command_reply((STAT_BUSY<<8) | 0xff, 0xffff, reply_pair(0xffff, 0xffff));
 
 	return hirq;
 }

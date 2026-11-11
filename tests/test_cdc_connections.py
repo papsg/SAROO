@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cdc_reply_source import command_reply_source
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -33,6 +35,7 @@ class CDConnectionTests(unittest.TestCase):
         if b'void invalidate_directory(' in raw:code+=function(raw,b'void invalidate_directory(')
         if b'FILTER *command_filter(' in raw:
             code += function(raw, b'static __attribute__((noinline)) FILTER *command_filter(')
+        code += command_reply_source(raw)
         code+=function(main,b'int pause_drive(')
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))
         init=function(main,b'void ss_sw_init(')

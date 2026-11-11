@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cdc_reply_source import command_reply_source
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -25,6 +27,7 @@ class CDSubheaderTests(unittest.TestCase):
         if helper in raw:
             start = raw.index(helper)
             functions += raw[start:raw.index(b'\n}', start) + 2] + b'\n'
+        functions += command_reply_source(raw)
         for name in ('set_filter_subheader','get_filter_subheader'):
             start=raw.index(('int '+name+'(void)\n{').encode())
             functions+=raw[start:raw.index(b'\n}',start)+2]+b'\n'
