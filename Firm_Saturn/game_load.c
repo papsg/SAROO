@@ -560,6 +560,14 @@ int bios_cd_cmd(int type)
         if (save_command(SSCMD_LSAVE, 0)) return -1;
 	}
 
+	// 模拟执行18fe()
+	// Simulate executing 18fe()
+	retv = cdc_change_dir(0, 0xffffff);
+	if(retv) return retv;
+	retv = cdc_read_file(0, 2, 0);
+	if(retv) return retv;
+
+	/* Publish final boot metadata and hooks after both CD commands succeed. */
 	// 模拟执行1A3c()
 	// 跳过各种验证
 	// Simulate executing 1A3c()
@@ -567,11 +575,6 @@ int bios_cd_cmd(int type)
 	memcpy((u8*)0x060002a0, (u8*)0x060020e0, 32);
 	memcpy((u8*)0x06000c00, (u8*)0x06002000, 256);
 	*(u32*)(0x06000254) = 0x6002100;
-
-	// 模拟执行18fe()
-	// Simulate executing 18fe()
-	cdc_change_dir(0, 0xffffff);
-	cdc_read_file(0, 2, 0);
 
 	*(u32*)(0x06002270) = (u32)read_1st;
 	*(u32*)(0x02000f04) = (u32)cdc_read_sector;

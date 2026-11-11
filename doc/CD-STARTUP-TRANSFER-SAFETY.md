@@ -198,3 +198,36 @@ read retry counts and the non-game player fallback.
 The SH-2 menu links 80,772 code/data bytes (+16) and 9,244 BSS bytes.
 Physical BIOS transitions, real drive timing and game boot remain
 unqualified.
+
+## Gate BIOS handoff on executable request admission
+
+Adapted from paps-g `d3d124d3` (SATURN-CD-003). The direct boot path
+now checks the directory change and its completion before requesting
+the executable. It checks admission of the asynchronous file read
+before copying final BIOS metadata, setting the entry pointer and
+installing the execution hooks. Each failure returns the original
+command error. The successful command arguments, controller
+suspend/resume pair and BIOS return value are preserved. [Sega
+ST-162-062094, §8.2.8 Nos. 8.1 and 8.5, printed pp. 99–100](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=87),
+[original boot integration](https://github.com/tpunix/SAROO/commit/a7f540030a54ed34bb892780f7de61c574cf43c0).
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+python3 -B -m unittest discover -s tests -p test_menu_rom.py -v
+```
+
+Use `SAROO_MENU_CD_SOURCE` to run the handoff fixture against the
+preceding source. The parent fails three of the five handoff methods.
+Its healthy handoff and early-failure controls pass. The complete
+boot-caller fixture runs the actual directory and file-read wrappers,
+checks 120 earlier failure combinations and 36 late failures, and
+checks publication and a successful retry. It maps RAM and models
+the CD and BIOS calls. All 33 CD methods pass under ASan/UBSan and O2,
+and all five companion-ROM methods pass.
+
+The SH-2 menu links 80,788 code/data bytes (+16) and 9,244 BSS bytes.
+Earlier IP, ROM and save preparation may already have run when a
+late command fails. The checks cover admission, with physical BIOS
+execution, asynchronous read completion and hardware recovery still
+unqualified.

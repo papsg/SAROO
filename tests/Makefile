@@ -30,6 +30,7 @@ check-menu-safety:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_cd_queries.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_cd_transfer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_cd_initialization.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_cd_boot_handoff.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_rom.py -v
 
 .PHONY: check-gif
