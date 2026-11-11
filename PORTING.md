@@ -1759,3 +1759,10 @@ was left untouched.
    fits with 2,112 bytes to spare. The table saves another 180 bytes
    for a 63,244-byte GNU App and 2,292 bytes of ITCM margin.
    [Pinned source, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#compact-the-pinned-fatfs-case-table)
+
+   **Disc test fixture correction**
+   [`a557905`](https://github.com/papsg/SAROO/commit/a557905dbcfff904e8b7e22c3b83cd4fbf12b21b).
+   The full suite exposed a duplicate transfer-helper definition in
+   the disc fixture's configuration slice. The slice now ends at
+   the actual parser. All 13 disc and save session methods pass
+   after the correction. This commit changes the host fixture.
