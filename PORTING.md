@@ -1327,4 +1327,17 @@ the original CD+G utility. Original tpu and Linux Reed–Solomon credit remain.
    Six focused methods pass with ASan/UBSan and O2, including eleven raw sizes
    and a clean raw file. Both MinGW architectures now pass strict compilation.
    A Win64 Wine packet smoke test also passed at the preceding checkpoint.
-3. **HOST-CDG-001/002 checked file input and replacement — in progress.**
+3. **HOST-CDG-001/002 checked file input and replacement — published**
+   [`a8f2961`](https://github.com/papsg/SAROO/commit/a8f2961b444b6ad716a50d758dd586a2f0a7ed14).
+   Requires both packet checkpoints. The preceding CLI reports success after
+   a forced two-byte save of a 24-byte file and accepts an incomplete tail.
+   Validate regular-file extents and stream in a 6,336-byte default window.
+   Create staged output only on the first correction. POSIX verifies writes,
+   close, sync, identity and rename, and reports post-replacement sync failure.
+   macOS ACLs and extended attributes pass their tests. The MinGW entry
+   point uses native staged replacement and verified backup recovery.
+   macOS and Linux focused suites pass; Windows x86/x64 Wine checks cover
+   early and late logical repair, raw carry, clean and invalid inputs, and
+   the two modeled recovery outcomes. The committed standalone macOS build
+   and both MinGW builds pass. Full repository checks are running.
+   Native Windows filesystems, physical media and power loss remain unqualified.
