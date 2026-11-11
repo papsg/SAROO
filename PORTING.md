@@ -1908,3 +1908,12 @@ The Saturn was left untouched.
    The menu retains 80,852 code/data and 9,244 BSS bytes. Physical CD
    interrupt timing remains unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#preserve-readiness-when-dataend-fails)
+
+4. **Sector-read completion at DataEnd — published**
+   [`982ab77`](https://github.com/papsg/SAROO/commit/982ab7748a338698ee592cb59403ae5777bf812b).
+   Adapted from paps-g `35cf0b88`. The parent publishes EHST during GET
+   admission. The port passes 12 early and full transfer scenarios and
+   both 164-method CD runs. The GNU MCU App retains its 63,212-byte
+   load and 2,324-byte ITCM margin. Physical game event timing remains
+   unqualified.
+   [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#signal-sector-read-completion-at-dataend)
