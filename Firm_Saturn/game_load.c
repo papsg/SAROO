@@ -371,11 +371,18 @@ int my_bios_loadcd_read(void)
 
 	printk("\nmy_bios_loadcd_read!\n");
 
-	cdc_reset_selector(0, 0);
-	cdc_cddev_connect(0);
-	cdc_play_fad(0, 150, 16);
+	/* TOC uses the IP workspace before any IP bytes are live. */
+	if(cdc_get_toc(sbuf)) return -1;
+	int first = sbuf[397], last = sbuf[401];
+	if(first < 1 || last < first || last > 99) return -1;
+	int control = sbuf[(first-1)*4];
+	if(control == 0xff) return -1;
+	if(!(control & 0x40)) return -2; /* Audio: enter the existing player. */
 
-	HIRQ = 0x0f00;
+	if(cdc_reset_selector(0, 0) || cdc_cddev_connect(0)) return -1;
+	/* Clear the old event before PLAY; a fast completion must remain visible. */
+	clear_hirq(HIRQ_PEND);
+	if(cdc_play_fad(0, 150, 16)) return -1;
 	tm = 10000000;
 	while(tm){
 		if(HIRQ&HIRQ_PEND)
@@ -388,9 +395,9 @@ int my_bios_loadcd_read(void)
 		return -1;
 	}
 
-	cdc_get_del_data(0, 0, 16);
+	if(cdc_get_del_data(0, 0, 16)) return -1;
 	cdc_trans_data(sbuf, 2048*16);
-	cdc_end_trans(&status);
+	if(cdc_end_trans(&status) || status != 2048*16/2) return -1;
 
 	if(strncmp("SEGA SEGASATURN ", (char*)0x06002000, 16)){
 		printk("Not a gamedisc!\n");
@@ -522,7 +529,8 @@ int bios_cd_cmd(int type)
 		retv = my_bios_loadcd_read();
 		if(retv<0){
 			if(retv==-2){
-				use_sys_load = 1;
+				/* Virtual images retain the same callbacks as the Z player path. */
+				use_sys_load = (type != 0);
 				my_cdplayer();
 			}
 			return retv;

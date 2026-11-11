@@ -25,6 +25,7 @@ check-menu-safety:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_palette.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_timer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_repeat_transport.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_cdplayer.py -v
 
 .PHONY: check-gif
 check-gif:

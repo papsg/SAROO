@@ -95,6 +95,7 @@ int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 	if(wait){
 		if(wait_hirq(wait)){
 			printk("HIRQ TIMEOUT! HIRQ=%04x wait=%04x %s\n", HIRQ, wait, cmdname);
+			return -3;
 		}
 	}
 	//clear_hirq(wait|HIRQ_CMOK);
@@ -166,7 +167,7 @@ int cdc_end_trans(int *cdwnum)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_end_trans");
-	if(cdwnum){
+	if(cdwnum && !retv){
 		cdwnum[0] = ((resp.cr1&0xff)<<16) | resp.cr2;
 	}
 	clear_hirq(HIRQ_DRDY);
@@ -185,12 +186,13 @@ int cdc_get_toc(u8 *buf)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(HIRQ_DRDY, &cmd, &resp, "cdc_get_toc");
+	if(retv) return retv;
 
 	for(i=0; i<102*4; i+=2){
 		*(u16*)(buf+i) = REG16(0x25898000);
 	}
 
-	cdc_end_trans(NULL);
+	retv = cdc_end_trans(NULL);
 
 	return retv;
 }

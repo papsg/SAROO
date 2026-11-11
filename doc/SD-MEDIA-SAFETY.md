@@ -45,6 +45,40 @@ are 24 and 32 bytes. Historical hardware evidence reached startup.
 Physical SD fault recovery and game behavior remain unqualified.
 [Build instructions][build]
 
+## SATURN-CD-001 — Check menu CD transfers and identify audio first
+
+The menu previously continued after the second HIRQ wait failed and
+read TOC words after a rejected command. It also tried to read 16 game
+header sectors from an audio disc. This port adapts paps-g
+`0b9dc270174e58c47248cd0decccdfd3545be2e5`, the menu part of upstream
+issue #175. [Original report][issue175] · [Original CD helpers][original-menu-cd]
+
+The menu now reads the 408-byte TOC into the existing IP workspace and
+checks its first and last track numbers. An audio-first disc goes to
+the existing player. A data-disc boot requires successful setup,
+PLAY, GET/DELETE and DataEnd with the expected 16,384 CD-block words.
+The old PEND is cleared before PLAY so a fast new completion remains
+visible. Failed TOC or DataEnd operations return an error without
+publishing an unavailable response count. The optical and virtual
+player paths keep their corresponding BIOS callbacks.
+[Sega ST-162 section 3.1, printed p. 28][sega-hirq] ·
+[Section 8.2.1, functions 1.5 and 1.10, printed pp. 77 and 81][sega-toc] ·
+[Public menu source][menu-loader]
+
+Twenty of 33 scenarios fail on `9e53888`. All 33 pass with ASan/UBSan
+and O2, including invalid TOCs, immediate PEND, complete IP data,
+failed waits and the two callback modes. Run
+`make -C tests check-menu-safety check-cover-display` or set
+`SAROO_MENU_CD_PROFILE=release` and run
+`python3 -B tests/test_menu_cdplayer.py -v`.
+[Menu CD fixture][menu-fixture]
+
+The pinned menu build adds 128 bytes of linked code/data to 79,508.
+Its body margin is 25,948 bytes. BSS remains 9,232 bytes and the image
+remains 488,770 bytes. The model checks command admission and menu
+handoffs. Physical disc playback and BIOS timing remain unqualified.
+[Menu build instructions][menu-build]
+
 [original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
 [sd-initialization]: FATFS-SD-SAFETY.md
 [driver]: ../Firm_MCU/Main/sdio_h7.c
@@ -53,4 +87,11 @@ Physical SD fault recovery and game behavior remain unqualified.
 [errata]: https://www.st.com/content/ccc/resource/technical/document/errata_sheet/group0/b8/f4/b7/a3/d1/a0/44/a6/DM00368411/files/DM00368411.pdf/jcr:content/translations/en.DM00368411.pdf
 [hal]: https://github.com/STMicroelectronics/stm32h7xx-hal-driver/blob/e3c518ebda3e00c8e52b1625ca44fba65da3b63e/Src/stm32h7xx_hal_sd.c#L2895
 [transfer-test]: ../tests/sd_transfer.cpp
+[issue175]: https://github.com/tpunix/SAROO/issues/175
+[original-menu-cd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/cdblock.c
+[menu-loader]: ../Firm_Saturn/game_load.c
+[menu-fixture]: ../tests/menu_cdplayer.c
+[sega-hirq]: https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16
+[sega-toc]: https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=65
+[menu-build]: ../tools/README.md#isolated-firmware-qualification
 [build]: ../tools/README.md#original-mcu-app-compilelink-check
