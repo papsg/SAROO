@@ -1828,3 +1828,13 @@ left untouched.
    frame. Physical recovery and the Policenauts disc change remain
    unqualified.
    [Sega and issue references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#refresh-comment-and-language-on-save-overwrite)
+
+4. **CD transfer bounds and failures — published**
+   [`6546ba6`](https://github.com/papsg/SAROO/commit/6546ba6b88800c375d45190b88ddd8f04633f5fc).
+   Adapted from paps-g `4f7cd16b`. The parent fails eight of nine
+   transfer methods, including the 405-byte extent, and passes the
+   ordinary command control. All 22 CD methods pass ASan/UBSan and O2.
+   Cleanup requires a transfer request in the accepted reply. The menu
+   links 80,756 code/data and 9,244 BSS bytes. Physical transfers and
+   Kaitei Daisensou music remain unqualified.
+   [Sega and upstream sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-STARTUP-TRANSFER-SAFETY.md#bound-cd-transfers-and-preserve-failures)
