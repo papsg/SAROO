@@ -1084,8 +1084,36 @@ separately dispositioned. [Citations, attribution, reproduction and limits](http
    task/poll/wait/copy/SD I/O. No hardware speed/stack peak is measured.
    RM0433 Rev8 §50.9.3/Table417 p.2194, §50.9.7 p.2203, §50.11.1 p.2218 and
    §50.11.7 p.2227 distinguish status acknowledgment from peripheral enable.
-2. **MCU-AUDIO-002/003 ownership, FIFO and underrun recovery — pending.**
-3. **MCU-AUDIO-004 warning and005 residual corrections — dependency review.**
+2. **MCU-AUDIO-002/003 ownership, FIFO and underrun recovery — published**
+   [`bd498fd`](https://github.com/papsg/SAROO/commit/bd498fd184a677ee42965f0d8cb3acd450376251),
+   topic `codex/audio-recovery`; depends on7984fe2, included on public main.
+   Publish complete sectors before bank selection; retain all32 slots and
+   immutable silence. Preserve valid FIFO words/stable residual counts and
+   stereo phase; defer asynchronous DMA disable; recover ongoing UDR with
+   bounded timer work. Count the real worker's accepted final-sector flush.
+   Preceding source reproduces unpublished slot2 and retains UDR through eight
+   running completions/publications, with its ordinary preservation control.
+   The coherent port folds all necessary004/005 corrections into their
+   introducing recovery behavior rather than publishing known regressions.
+   Necessary quiet-stop adaptation of paps-g2617a839 adds actual TIM7 grace,
+   CSTART/frame completion and (public adaptation) SUSP acknowledgment.
+   A reproduced public IRQ snapshot race additionally requires acknowledging
+   only observed flags; late TC otherwise replayed a sector, late error stalled.
+   Both bank positions pass the corrected final-beat schedule. The earlier
+   fixture accidentally delayed two completions; its failed run is preserved
+   as a fixture error, not a new hardware finding.
+   37 actual-source methods pass ASan/UBSan and O2;26 compiled recovery mutants
+   detected. All156 CD/68 MCU save methods pass. Actual DMA1_Stream1/SPI2/TIM7
+   ELF vectors resolve to strong handlers. Original startup-only checks remain
+   in Git history; maintained coverage expands to all37 cases.
+3. **MCU-AUDIO-004 warning and005 residual corrections — incorporated prerequisites**
+   Original paps-g e8a47c86/247c1dbd correct private intermediate regressions
+   introduced by104b25fb; these are not extra upstream-baseline defects.
+   bd498fd retains FEIF backpressure/TC accounting, exact residual offset and
+   normal-mode protection, FIFO contents and quiet stereo repair; repeated/
+   permanent faults are rate-limited. The all1176-residual-count and both-bank/
+   phase tests reject prefix replay, active-bank writes and lost late events.
+   No separate broken intermediate implementation is committed.
 
 Full-file/diff/message/identity and actual-blob secret/private-PII scans pass;
 public papsg/noreply identities and original paps-g credit retained. No secrets,
@@ -1095,3 +1123,68 @@ closures, upstream unchanged. Host/GNU evidence does not qualify Saturn/game/
 receiver timing or original-MDK output. Private repo and Saturn remain untouched;
 no USB/SSH/power/capture operations or subagents. Final full suite/build/privacy/
 publication/preservation audits follow the remaining coherent recovery port.
+
+
+### Audio safety series final verification
+
+All scoped MCU-AUDIO-001–005 ports/dispositions are complete on public main
+`bd498fd`, in two verified source checkpoints. Dependencies were folded where
+separation would publish a known regression. Precise source/manual citations,
+original paps-g attribution and public adaptations are recorded in
+[AUDIO-SAFETY.md](https://github.com/papsg/SAROO/blob/main/doc/AUDIO-SAFETY.md).
+Both source topics and main are published; no PRs were opened.
+
+The complete standard suite passes **481 Python methods in44 groups** (416.067
+summed test seconds) and **18 Rust checks in4 groups**, with no failed/ignored
+Rust checks and all44 Python groups reporting OK. The37 audio methods also pass
+O2; coupled156 CD/68 save methods pass. Six startup plus26 recovery compiled
+behavioral controls are detected. All earlier source/test/mutation failures and
+baseline/candidate counterexamples remain preserved; setup errors are excluded.
+Exact accepted PCM is checked independently from hardware underrun repetition;
+this is not an assertion of inaudible faults or arbitrary IRQ-latency tolerance.
+
+Final GNU App/RTX/166-vector MCU build binds all56 public inputs to their own
+committed checkpoint, all85 SDK inputs to the unchanged baseline cohort. Its
+ELF exactly matches the recovery checkpoint. Load61,960(+1,072 against series
+start), ITCM free3,576; static DTCM60,184(-128), main-stack/heap address gap70,888.
+All32 payload sectors retain75,264 fixed SRAM1 bytes; immutable silence adds
+2,352 for77,616 total, ending0x30014f30 below0x30020000 and beyond the unchanged
+4KiB UART prefix. No other fixed workspace/task-stack reservation changes.
+Direct init/producer/DMA IRQ/TIM7 frames8/24/24/8; service16, arm12, start8,
+flush8 are nested direct measurements, not physical whole-path peaks.
+No extra per-sector payload copy, SD I/O, dynamic allocation, task or sample
+checksum is added. Startup fills silence once; temporary quiet DMA and one-shot
+retries have explicit costs. No cycle, physical deadline or speedup claim.
+
+Final menu retains all36 inputs and exact prior ELF/image/resources:79,572
+code/data,9,232 BSS,16,384 reserved stack,25,884 body margin,357,679 font and
+488,751 image bytes. FPGA/menu implementation is unchanged. The only firmware
+changes are the audio driver, final-audio worker flush and its header declaration.
+No USB stack/reload/handoff, runtime diagnostics/probes/telemetry/loaders,
+private platform hooks, patch framework or unrelated research was imported.
+
+Later ordinary-session cancellation and tested continuity-default/retired-
+workaround evidence was read and preserved. Those session/indefinite-idle-clock
+policies remain separate: this port introduces no ordinary cancellation, and
+healthy stops follow a complete zero tail and stereo frame in the source model.
+Their prior private game observations do not qualify this public cohort.
+ST DMA/I2S/FIFO/W1C contracts, Arm DMB ordering and Sega's separate external
+mixer context are cited exactly; receiver behavior under missing clocks,
+physical bus/cache/IRQ/audio/game timing and original-MDK output remain open.
+The public cold path's non-write-back-cache assumption is explicit. No named-
+game or original upstream report is claimed resolved by analogy.
+
+Full proposed files/diffs/messages/identities, actual committed blobs and the
+entire two-commit source history pass secret/private-PII review. Public papsg/
+noreply identities preserve original credit while publishing no secrets/private
+PII, personal paths/accounts/private URLs or raw receipts. Source/evidence is
+preserved locally; the old startup-only fixture remains publicly reproducible
+at7984fe2. No Saturn/USB/SSH/power/capture or subagent operation occurred.
+
+Public main is clean and matches its remote. Default main,v0.8 ancestry,
+historical master and unrelated public refs/stashes are preserved. The private
+repository's exact HEAD/full status/all refs/four stashes match the starting
+snapshot; research branches and other paused work remain untouched. Fork audit:
+issues disabled, zero open issues/PRs, no applicable closure, upstream unchanged.
+The final source/progress publication and preservation audit records completion
+of this offline port, not hardware or game qualification.
