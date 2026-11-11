@@ -499,6 +499,8 @@ _restart_nowait:
 					cdb.play_wait = 1;
 					goto _restart_wait;
 				}
+                if (cdb.fad+1 == cdb.play_fad_end && cdb.repcnt >= cdb.max_repeat)
+                    spi2_flush();
 				if(asize<=4){
 					hw_delay(10000);
 				}else{
