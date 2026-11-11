@@ -51,16 +51,64 @@ static int sd_cmd(u32 command, u32 argument)
     return 0;
 }
 
-static int sd_read_blocks(u32 block, int count, u8 *buffer)
+enum { TEST_SECTORS = 17, SECTOR_BYTES = 512, FIRST_SECTOR = 123 };
+static u8 sector_data[TEST_SECTORS * SECTOR_BYTES];
+static u8 card_data[sizeof sector_data];
+static u8 bounce_data[8 * SECTOR_BYTES];
+static unsigned model_bank, model_write, model_fail, model_chunk;
+
+static u32 sd_address(u8 *buffer)
 {
-    assert(block == 123 && count == 1 && buffer == (u8 *)0x24002000);
+    if (buffer == sector_data)
+        return model_bank << 24;
+    return (u32)(uintptr_t)buffer;
+}
+
+static int transfer_blocks(u32 block, int count, u8 *buffer, unsigned write)
+{
     io_calls++;
+    if (!model_bank) {
+        assert(block == FIRST_SECTOR && count == 1 && buffer == (u8 *)0x24002000);
+        return 0;
+    }
+
+    assert(write == model_write);
+    unsigned chunk = model_chunk++;
+    if (model_bank == 0x20) {
+        assert(chunk < 3 && block == FIRST_SECTOR + chunk * 8);
+        assert(count == (chunk < 2 ? 8 : 1) && buffer == bounce_data);
+    } else {
+        assert(chunk == 0 && block == FIRST_SECTOR && count == TEST_SECTORS);
+        assert(buffer == sector_data);
+    }
+    if (model_fail == chunk + 1)
+        return -17;
+
+    u8 *card = card_data + (block - FIRST_SECTOR) * SECTOR_BYTES;
+    if (write)
+        memcpy(card, buffer, (size_t)count * SECTOR_BYTES);
+    else
+        memcpy(buffer, card, (size_t)count * SECTOR_BYTES);
     return 0;
 }
+
+#ifdef HAS_SHARED_SECTOR_WRAPPER
+static int sd_blocks(u32 block, int count, u8 *buffer, u32 command)
+{
+    assert(command == (CMD_17 & 0x3f) || command == (CMD_24 & 0x3f));
+    return transfer_blocks(block, count, buffer, command == (CMD_24 & 0x3f));
+}
+#else
+static int sd_read_blocks(u32 block, int count, u8 *buffer)
+{
+    return transfer_blocks(block, count, buffer, 0);
+}
+
 static int sd_write_blocks(u32 block, int count, u8 *buffer)
 {
-    return sd_read_blocks(block, count, buffer);
+    return transfer_blocks(block, count, buffer, 1);
 }
+#endif
 #include "identify.inc"
 
 static void attempt(void)
@@ -89,10 +137,50 @@ static void unavailable(void)
     assert(io_calls == before);
 }
 
+static void check_sector_transfers(void)
+{
+    const unsigned banks[] = {0x20, 0x24, 0x61};
+    unsigned cases = 0;
+    for (unsigned i = 0; i < sizeof(banks) / sizeof(*banks); ++i) {
+        model_bank = banks[i];
+        const unsigned chunks = i ? 1 : 3;
+        for (model_write = 0; model_write <= 1; ++model_write) {
+            u8 *source = model_write ? sector_data : card_data;
+            u8 *dest = model_write ? card_data : sector_data;
+            for (model_fail = 0; model_fail <= chunks; ++model_fail) {
+                for (size_t j = 0; j < sizeof sector_data; ++j)
+                    source[j] = (u8)(j * 19 + 3);
+                memset(dest, 0x55, sizeof sector_data);
+                memset(bounce_data, 0xa2, sizeof bounce_data);
+                sdbuf = bounce_data;
+                sd_rca = 0x1234;
+                model_chunk = 0;
+                int result = model_write ? sd_write_sector(FIRST_SECTOR, TEST_SECTORS, sector_data)
+                                         : sd_read_sector(FIRST_SECTOR, TEST_SECTORS, sector_data);
+                assert(result == (model_fail ? -17 : 0));
+                assert(model_chunk == (model_fail ? model_fail : chunks));
+                size_t completed = model_fail ? (model_fail - 1) * sizeof bounce_data
+                                              : sizeof sector_data;
+                for (size_t j = 0; j < sizeof sector_data; ++j) {
+                    assert(source[j] == (u8)(j * 19 + 3));
+                    assert(dest[j] == (j < completed ? source[j] : 0x55));
+                }
+                cases++;
+            }
+        }
+    }
+    assert(cases == 16);
+    puts("16 direct and bounced sector transfer cases pass");
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 3); const char *mode = argv[1]; unsigned value = strtoul(argv[2], NULL, 0);
     for (unsigned i = 0; i < 16; i++) inserted_cid[i] = 0x80 + i;
+    if (!strcmp(mode, "sectors")) {
+        check_sector_transfers();
+        return 0;
+    }
     if (!strcmp(mode, "zero-cid")) {
         memset(inserted_cid, 0, sizeof(inserted_cid)); usable();
         inserted_cid[0] = 1; attempt(); assert(sdcard_identify()); unavailable();

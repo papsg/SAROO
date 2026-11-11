@@ -303,57 +303,35 @@ static u8 *sdbuf = (u8*)0x24000000;
 
 //BLKDEV sd_dev;
 
-int sd_read_sector(u32 start, int size, u8 *buf)
+/* Keep the identical address admission, eight-sector bounce and progress
+ * logic in one implementation. Only copy direction and the SD command differ. */
+static __attribute__((noinline)) int sd_sectors(u32 start, int size, u8 *buf, u32 index)
 {
-	int rsize, retv;
-	u32 type = ((u32)buf)>>24;
-
-	if(sd_rca==0)
-		return -1;
-
-	if(type==0x24 || type==0x61){
-		return sd_read_blocks(start, size, buf);
-	}
-
-	while(size){
-		rsize = (size>SDBUF_SIZE)? SDBUF_SIZE : size;
-		retv = sd_read_blocks(start, rsize, sdbuf);
-		if(retv)
-			return retv;
-		memcpy(buf, sdbuf, rsize*512);
-		buf += rsize*512;
-		size -= rsize;
-		start += rsize;
-	}
-	
-	return 0;
+    u32 type = ((u32)buf) >> 24;
+    if (!sd_rca) return -1;
+    if (type == 0x24 || type == 0x61) return sd_blocks(start, size, buf, index);
+    while (size) {
+        int count = size > SDBUF_SIZE ? SDBUF_SIZE : size;
+        unsigned bytes = count * 512;
+        if (index == (CMD_24 & 0x3f)) memcpy(sdbuf, buf, bytes);
+        int result = sd_blocks(start, count, sdbuf, index);
+        if (result) return result;
+        if (index == (CMD_17 & 0x3f)) memcpy(buf, sdbuf, bytes);
+        buf += bytes;
+        size -= count;
+        start += count;
+    }
+    return 0;
 }
 
+int sd_read_sector(u32 start, int size, u8 *buf)
+{
+    return sd_sectors(start, size, buf, CMD_17 & 0x3f);
+}
 
 int sd_write_sector(u32 start, int size, u8 *buf)
 {
-	int rsize, retv;
-	u32 type = ((u32)buf)>>24;
-
-	if(sd_rca==0)
-		return -1;
-
-	if(type==0x24 || type==0x61){
-		return sd_write_blocks(start, size, buf);
-	}
-
-	while(size){
-		rsize = (size>SDBUF_SIZE)? SDBUF_SIZE : size;
-		memcpy(sdbuf, buf, rsize*512);
-		retv = sd_write_blocks(start, rsize, sdbuf);
-		if(retv)
-			return retv;
-		buf += rsize*512;
-		size -= rsize;
-		start += rsize;
-	}
-	
-	return 0;
+    return sd_sectors(start, size, buf, CMD_24 & 0x3f);
 }
 
 

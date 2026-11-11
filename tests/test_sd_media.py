@@ -23,7 +23,9 @@ class SDMediaTests(unittest.TestCase):
         state = data[data.index(b'#define SDCLK_LOW '):data.index(b'static osSemaphoreId_t cmd_sem;')]
         identify = data.index(b'int sdcard_identify(')
         sectors = data[data.index(b'#define SDBUF_SIZE'):identify]
-        sectors = sectors.replace(b'(u32)buf', b'(u32)(uintptr_t)buf')
+        if b'static __attribute__((noinline)) int sd_sectors(' in sectors:
+            state += b'#define HAS_SHARED_SECTOR_WRAPPER 1\n'
+        sectors = sectors.replace(b'(u32)buf', b'sd_address(buf)')
         acmd = data.index(b'static int sd_acmd(')
         functions = data[acmd:data.index(b'\n}', acmd)+3]
         functions += data[identify:data.index(b'\n}', identify)+3] + sectors
@@ -75,6 +77,9 @@ class SDMediaTests(unittest.TestCase):
     def test_failed_first_attempt_does_not_bind_an_unusable_card(self):
         for command in (9, 7, 16, 6, 13):
             with self.subTest(command=command): self.invoke('first-failure', command)
+
+    def test_direct_and_bounced_reads_and_writes_preserve_copy_and_error_order(self):
+        self.invoke('sectors')
 
     def test_reserved_zero_relative_address_cannot_enable_io(self):
         self.invoke('zero')
