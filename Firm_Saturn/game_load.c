@@ -37,7 +37,8 @@ static int cdp_auth(void)
 
 	if(cdstat==STATUS_OPEN || cdstat==STATUS_NODISC){
 		// 开盖了
-		// Cover open or no disc.
+		// The next medium needs a fresh session.
+		ipstat = 0;
 		return -2;
 	}
 	if(cdstat>=STATUS_RETRY){
@@ -56,7 +57,10 @@ static int cdp_auth(void)
 		// 等待cdblock进入工作状态
 		// Wait for cdblock to enter working state
 		if(cdstat==STATUS_PAUSE){
-			my_bios_loadcd_init();
+			if(my_bios_loadcd_init()){
+				ipstat = 0;
+				return -1;
+			}
 			ipstat = 2;
 		}
 	}else if(ipstat==2){
@@ -350,16 +354,17 @@ int my_bios_loadcd_init(void)
 	*(u32*)(0x06000278) = 0;
 	*(u32*)(0x0600027c) = 0;
 
-	cdc_abort_file();
-	cdc_end_trans(NULL);
-	cdc_reset_selector(0xfc, 0);
-	cdc_set_size(0);
+	int retv = cdc_abort_file();
+	if(retv) return retv;
+	retv = cdc_end_trans(NULL);
+	if(retv) return retv;
+	retv = cdc_reset_selector(0xfc, 0);
+	if(retv) return retv;
+	retv = cdc_set_size(0);
+	if(retv) return retv;
 
 	// This is needed for Yabause: Clear the diskChange flag.
-	int status;
-	cdc_get_hwinfo(&status);
-
-	return 0;
+	return cdc_get_hwinfo(NULL);
 }
 
 
@@ -525,7 +530,8 @@ int bios_cd_cmd(int type)
 	{
 		// 2: 刻录游戏盘
 		// 2: Burned game disc
-		my_bios_loadcd_init();
+		retv = my_bios_loadcd_init();
+		if(retv) return retv;
 		retv = my_bios_loadcd_read();
 		if(retv<0){
 			if(retv==-2){

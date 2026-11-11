@@ -161,3 +161,40 @@ The SH-2 menu links 80,756 code/data bytes (+304) and 9,244 BSS
 bytes (+4). The padded image stays at 488,770 bytes. Failed reads can
 already have written some destination bytes. Physical FIFO behavior,
 disc timing and game music remain unqualified.
+
+## Stop CD startup after failed initialization
+
+Adapted from the production loader portion of paps-g `56980390`
+(SATURN-CD-003). The loader preserves the existing order of Abort File,
+DataEnd, selector reset, sector-size setup and hardware query. It now
+returns the first error. The direct boot entry stops before reading the
+initial program or preparing its ROM. The physical CD-player callback
+uses its existing failure result and clears its stage so a later call
+starts initialization again. The callback also clears its stage when
+it observes OPEN or NODISC, preventing a new disc from inheriting
+the previous disc's authentication progress.
+
+Sega distinguishes those two drive states and documents hardware info
+and DataEnd as separate commands with return codes. The public loader
+retains its existing sequence and queries hardware info for its side
+effect, using the optional output from the query contract above.
+[Sega ST-162-062094, §4.1 Table 4.1, printed p. 33](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=21),
+[§8.2.1 Nos. 1.4 and 1.10, printed pp. 77 and 81](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=65),
+[original physical player callback](https://github.com/tpunix/SAROO/commit/a7f540030a54ed34bb892780f7de61c574cf43c0).
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+```
+
+The preceding source fails four of the six startup methods. Both
+successful-path controls pass. Use `SAROO_MENU_CD_SOURCE` to select
+that source. The port passes all 28 CD methods under ASan/UBSan and
+O2, including 90 failed boot combinations across launch types and
+save modes, 15 player initialization failures, and 36 open or empty
+drive transitions. The fixtures also retain the authentication and IP
+read retry counts and the non-game player fallback.
+
+The SH-2 menu links 80,772 code/data bytes (+16) and 9,244 BSS bytes.
+Physical BIOS transitions, real drive timing and game boot remain
+unqualified.
