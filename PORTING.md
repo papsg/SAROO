@@ -1645,3 +1645,10 @@ initial read-only snapshot. The Saturn was left untouched.
    logic elements and reports positive constrained setup/hold slack.
    External bus timing and physical reset remain unqualified.
    [Original source, reproduction and fit](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#clear-fpga-memory-acknowledgments-on-reset)
+5. **Shared CD filter resets and fixed sector lengths — published**
+   [`ce86de1`](https://github.com/papsg/SAROO/commit/ce86de1cabf3de36b5293235082c26e4b3ab52df).
+   Adapted from paps-g `bc1f69cc`. The parent and port pass 131,072
+   filter command cases and 65,536 sector-length cases. All 159 CD
+   command/buffer methods pass ASan/UBSan and O2. The public GNU App
+   load falls 72 bytes to 62,796 and static DTCM falls 16 bytes.
+   [Sega references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-filter-condition-resets-and-sector-lengths)
