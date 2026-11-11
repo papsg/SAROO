@@ -1659,3 +1659,14 @@ initial read-only snapshot. The Saturn was left untouched.
    methods pass ASan/UBSan and O2. The GNU App and static DTCM sizes
    remain 62,796 and 60,216 bytes. Hardware timing remains unmeasured.
    [Adler-32 reference, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#simplify-the-fixed-length-cover-checksum)
+7. **Explicit file-transfer acknowledgment — published**
+   [`f04106d`](https://github.com/papsg/SAROO/commit/f04106d7ed9dc25c800df97728ba8f6c3cf0e8a9).
+   Adapted from paps-g `08226bbe` on the public cache and SAVE1
+   prerequisites. The parent reports false success in eight reset
+   cases and 16 direct-cache cases. The port passes 34 file methods
+   and five save methods with ASan/UBSan and O2. Nine controls pass
+   for each mixed-version pairing. All 65,536 opcodes are covered.
+   The GNU App is 62,812 bytes, and the linked menu uses 79,716
+   code/data bytes. The menu image stays at 488,770 bytes.
+   Physical reset and recovery remain unqualified.
+   [Original register logic, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#confirm-file-transfers-explicitly)
