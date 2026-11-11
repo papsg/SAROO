@@ -107,14 +107,6 @@ static void sd_bus_width(int width)
 	SDIO->CLKCR = val;
 }
 
-static void sd_power_on(int on)
-{
-	if(on)
-		SDIO->POWER = 0x00000003;
-	else
-		SDIO->POWER = 0x00000000;
-}
-
 int sd_card_insert(void)
 {
 	// PA15
@@ -127,24 +119,71 @@ int sd_card_insert(void)
 
 void SDIO_IRQHandler(void)
 {
-#if 1
-	u32 cmd, mask, stat;
-	
-	stat = SDIO->STA;
-	mask = SDIO->MASK;
-	cmd  = SDIO->CMD;
-
-	if(stat&SDMMC_STA_BUSYD0){
-		//printk("SD_IRQ: cmd=%08x stat=%08x mask=%08x Busy!\n", cmd, stat, mask);
-		SDIO->MASK = SDMMC_STA_BUSYD0END;
-	}else{
+	u32 stat = SDIO->STA;
+	if (!(stat & SDIO->MASK)) return;
+	if ((stat & SDMMC_STA_BUSYD0) && !(stat & (CMD_ERROR | DATA_ERROR))) {
+		SDIO->MASK = SDMMC_STA_BUSYD0END | CMD_ERROR | DATA_ERROR;
+	} else {
 		SDIO->MASK = 0;
 		osSemaphoreRelease(cmd_sem);
 	}
-#else
-	SDIO->MASK = 0;
-	osSemaphoreRelease(cmd_sem);
-#endif
+}
+
+/* Poll only during error recovery. Keep DMA ownership until both state
+ * machines finish, including the STOP response and the card busy interval. */
+static int sd_stop(void)
+{
+	u32 start = osKernelGetTickCount();
+	int sent = 0;
+	for (;;) {
+		u32 stat = SDIO->STA;
+		if (sent) {
+			if ((stat & (SDMMC_STA_CMDREND | CMD_ERROR)) &&
+			    !(SDIO->CMD & SDMMC_CMD_CPSMEN) &&
+			    !(stat & (SDMMC_STA_CPSMACT | SDMMC_STA_DPSMACT | SDMMC_STA_BUSYD0)))
+				return 0;
+		} else if (!(SDIO->CMD & SDMMC_CMD_CPSMEN)) {
+			SDIO->ICR = 0x1fe00fff;
+			SDIO->ARG = 0;
+			SDIO->CMD = 0x1000 | CMD_12;
+			sent = 1;
+		}
+		if ((u32)(osKernelGetTickCount() - start) >= OS_TICK_FREQ || osDelay(1) != osOK)
+			return -1;
+	}
+}
+
+static void sd_reset_controller(u32 clock, u32 hold_ticks)
+{
+	RCC->AHB3RSTR |= RCC_AHB3RSTR_SDMMC1RST;
+	__DSB();
+	if (hold_ticks) osDelay(hold_ticks);
+	RCC->AHB3RSTR &= ~RCC_AHB3RSTR_SDMMC1RST;
+	SDIO->CLKCR = clock;
+	SDIO->DTIMER = 0xffffffff;
+	SDIO->POWER = 3;
+}
+
+/* Keep rare recovery state out of every successful command's stack frame. */
+static __attribute__((noinline)) void sd_recover(u32 cmd)
+{
+	/* The caller masked and qualified the IRQ. Release increments its token
+	 * before deferred RTOS processing, so one drain removes late completion. */
+	(void)osSemaphoreAcquire(cmd_sem, 0);
+	/* ES0392: a receive IDMA error can retain data even after DATAEND. */
+	int reset = (SDIO->STA & SDMMC_STA_IDMATE) && (SDIO->DCTRL & SDMMC_DCTRL_DTDIR);
+	if ((cmd & (SDMMC_CMD_CMDTRANS | SDMMC_CMD_CMDSTOP)) ||
+	    (SDIO->CMD & SDMMC_CMD_CPSMEN) ||
+	    (SDIO->STA & (SDMMC_STA_CPSMACT | SDMMC_STA_DPSMACT))) {
+		/* Retry a failed STOP as well as an interrupted data command.
+		 * One resynchronization attempt keeps a recoverable card usable. */
+		for (int remaining = 2; sd_stop(); ) {
+			sd_reset_controller(SDIO->CLKCR, 0);
+			reset = 0;
+			if (!--remaining) { sd_rca = 0; break; }
+		}
+	}
+	if (reset) sd_reset_controller(SDIO->CLKCR, 0);
 }
 
 
@@ -181,10 +220,6 @@ static int sd_cmd(u32 cmd, u32 arg)
 	if(stat&(CMD_ERROR|DATA_ERROR)){
 		// CMD or DATA error
 		printk("sd_cmd: CMD_%02d error %08x!\n", (cmd&0x3f), stat);
-		if(stat&0x1000){ // DPSMACT
-			SDIO->CMD = (0x1000 | CMD_12);
-			while(SDIO->STA&0x3000);
-		}
 		goto _exit;
 	}
 	stat = 0;
@@ -201,12 +236,13 @@ static int sd_cmd(u32 cmd, u32 arg)
 
 _exit:
 
+	SDIO->MASK = 0;
+	if (stat) sd_recover(cmd);
 	SDIO->CMD = 0;
-	if(HAS_DATA(cmd)){
+	if(HAS_DATA(cmd) || stat){
 		SDIO->DCTRL = 0;
 		SDIO->IDMACTRL = 0;
 	}
-	SDIO->MASK = 0;
 	SDIO->ICR = 0x1fe00fff;
 	return stat;
 }
@@ -225,67 +261,37 @@ static int sd_acmd(u32 cmd, u32 arg)
 
 /******************************************************************************/
 
-int sd_read_blocks(u32 block, int count, u8 *buf)
+/* One setup/cleanup contract for both directions. Select the final transfer
+ * mode before enabling IDMA; no data command runs during write pre-erase.
+ * Callers supply only the command index; response/data flags are invariant. */
+static int sd_blocks(u32 block, int count, u8 *buf, u32 index)
 {
-	int retv, dsize;
-
-	//printk("sd_read_blocks:  blk=%08x cnt=%d\n", block, count);
-
-	dsize = count*512;
-
-	SDIO->DTIMER = 0xffffffff;
-	SDIO->DLEN   = dsize;
-	SDIO->DCTRL  = 0x00000092;
+	int retv;
+	u32 control = index == (CMD_17 & 0x3f) ? 0x92 : 0x90;
+	SDIO->DTIMER = index == (CMD_17 & 0x3f) ? 0xffffffff : 0x0fffffff;
+	SDIO->DLEN = count * 512;
+	if (count != 1) { control |= 0x0c; index++; }
+	SDIO->DCTRL = control;
 	SDIO->IDMABASE0 = (u32)buf;
 	SDIO->IDMACTRL = 1;
-
-	if(!is_sdhc)
-		block *= 512;
-
-	if(count==1){
-		retv = sd_cmd(CMD_17, block);
-	}else{
-		SDIO->DCTRL  = 0x0000009e;
-		retv = sd_cmd(CMD_18, block);
-		if(retv==0){
-			retv = sd_cmd(CMD_12, 0);
-		}
+	if (!is_sdhc) block *= 512;
+	if (index == (CMD_25 & 0x3f)) {
+		retv = sd_acmd(CMD_23, count);
+		if (retv) return retv;
 	}
-
+	retv = sd_cmd(index | CMD_RESP_SHORT | SDMMC_CMD_CMDTRANS, block);
+	if (!retv && count != 1) retv = sd_cmd(CMD_12, 0);
 	return retv;
+}
+
+int sd_read_blocks(u32 block, int count, u8 *buf)
+{
+	return sd_blocks(block, count, buf, CMD_17 & 0x3f);
 }
 
 int sd_write_blocks(u32 block, int count, u8 *buf)
 {
-	int retv, dsize;
-
-	dsize = count*512;
-
-	SDIO->DTIMER = 0x0fffffff;
-	SDIO->DLEN   = dsize;
-	SDIO->DCTRL  = 0x00000090;
-	SDIO->IDMABASE0 = (u32)buf;
-	SDIO->IDMACTRL = 1;
-
-
-	if(!is_sdhc)
-		block *= 512;
-
-	if(count==1){
-		retv = sd_cmd(CMD_24, block);
-	}else{
-		SDIO->DCTRL  = 0x0000009c;
-		retv = sd_acmd(CMD_23, count);
-		if(retv){
-			return retv;
-		}
-		retv = sd_cmd(CMD_25, block);
-		if(retv==0){
-			retv = sd_cmd(CMD_12, 0);
-		}
-	}
-
-	return retv;
+	return sd_blocks(block, count, buf, CMD_24 & 0x3f);
 }
 
 /******************************************************************************/
@@ -514,13 +520,8 @@ void sd_rw_test(void)
 
 int sdio_init(void)
 {
-	SDIO->CMD  = 0;
-	SDIO->DCTRL = 0;
-	SDIO->IDMACTRL = 0;
-	SDIO->MASK = 0;
-	SDIO->ICR = 0x1fe00fff;
-	SDIO->CLKCR = 0;
-	SDIO->CLKCR = 1<<16;
+	/* Preserve the initial falling-edge clock configuration. */
+	sd_reset_controller((1u << 16) | SDCLK_LOW, 0);
 
 	sd_rca = 0;
 	cmd_sem = osSemaphoreNew(1, 0, NULL);
@@ -528,9 +529,6 @@ int sdio_init(void)
 	NVIC_SetPriority(SDIO_IRQn, 6);
 	NVIC_EnableIRQ(SDIO_IRQn);
 
-	sd_clk_set(SDCLK_LOW);
-	sd_bus_width(1);
-	sd_power_on(1);
 
 	if(sd_card_insert()){
 		printk("SDCARD insert!\n");
@@ -555,19 +553,8 @@ int sdio_reset(void)
 {
 	printk("\nSDIO reset ...\n");
 
-	RCC->AHB3RSTR |=  0x00010000;
-	osDelay(10);
-	RCC->AHB3RSTR &= ~0x00010000;
-
-	SDIO->CMD  = 0;
-	SDIO->DCTRL = 0;
-	SDIO->IDMACTRL = 0;
-	SDIO->MASK = 0;
-	SDIO->ICR = 0x1fe00fff;
-
-	sd_clk_set(SDCLK_LOW);
-	sd_bus_width(1);
-	sd_power_on(1);
+	/* Preserve reinsertion's reset hold and initial clock phase. */
+	sd_reset_controller(SDCLK_LOW, 10);
 
 	sd_rca = 0;
 	int retv = sdcard_identify();

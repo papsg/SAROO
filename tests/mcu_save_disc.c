@@ -116,15 +116,16 @@ static int select_disc(int index,int start_save)
 #endif
 }
 static struct { u32 AHB3RSTR; } rcc;
-static struct { u32 CMD,DCTRL,IDMACTRL,MASK,ICR; } sdio;
+static struct { u32 CMD,DCTRL,IDMACTRL,MASK,ICR,CLKCR,DTIMER,POWER; } sdio;
 #define RCC (&rcc)
 #define SDIO (&sdio)
-#define SDCLK_LOW 0
+#define RCC_AHB3RSTR_SDMMC1RST (1u << 16)
 static int sd_rca;
-static void osDelay(int ticks) { assert(ticks==10); }
-static void sd_clk_set(int clock) { assert(clock==SDCLK_LOW); }
-static void sd_bus_width(int width) { assert(width==1); }
-static void sd_power_on(int on) { assert(on==1); }
+static void osDelay(int ticks) { assert(ticks==10 && (rcc.AHB3RSTR & RCC_AHB3RSTR_SDMMC1RST)); }
+#define __DSB() assert(rcc.AHB3RSTR & RCC_AHB3RSTR_SDMMC1RST)
+#define sd_clk_set(clock) (sdio.CLKCR=(clock))
+#define sd_bus_width(width) assert((width)==1)
+#define sd_power_on(on) assert((on)==1)
 static int sdcard_identify(void) { identifies++;return identify_result; }
 #include "sd-reset.inc"
 int sd_card_insert(void) { return present; }

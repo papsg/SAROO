@@ -141,7 +141,13 @@ class MCUSaveTest(unittest.TestCase):
             end = main.index(b'\n\t\tbreak;', begin)
             (cls.target / 'menu-load.inc').write_bytes(main[main.index(b'\n', begin)+1:end])
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
-            (cls.target / 'sd-reset.inc').write_bytes(data[data.index(b'int sdio_reset(void)'):])
+            clock = data.index(b'#define SDCLK_LOW ')
+            prefix = data[clock:data.index(b'\n', clock)+1]
+            reset = data.find(b'static void sd_reset_controller(')
+            if reset >= 0:
+                prefix += data[reset:data.index(b'\n}', reset)+3]
+            begin = data.index(b'int sdio_reset(void)')
+            (cls.target / 'sd-reset.inc').write_bytes(prefix + data[begin:data.index(b'\n}', begin)+3])
         if cls.fixture in ('discovery', 'cover'):
             harnesses += ['mcu_save_discovery.c', 'test_mcu_save_discovery.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data

@@ -29,14 +29,21 @@ class SDSafetyTests(unittest.TestCase):
             end = data.index(b'\n}', start) + 2
             return data[start:end] + b'\n'
 
+        recover = b''
+        if b'static int sd_stop(void)' in data:
+            recover = b''.join(function(signature) for signature in (
+                b'static int sd_stop(', b'static void sd_reset_controller(',
+                b'static __attribute__((noinline)) void sd_recover('))
         inputs = {
             'sdio_h7.c': data,
-            'command-defines.inc': data[definitions:last_define] + b'\n',
-            'command.inc': function(b'static int sd_cmd('),
+            'command-defines.inc': (b'#define TEST_SD_RECOVERY\n' if recover else b'')
+                                   + data[definitions:last_define] + b'\n',
+            'command.inc': recover + function(b'static int sd_cmd('),
             'identify.inc': b'\n'.join(function(signature) for signature in (
                 b'static void sd_clk_set(', b'static void sd_bus_width(',
                 b'static int sd_acmd(', b'int sdcard_identify(')),
             'RTX_Config.h': config.read_bytes(),
+            'sd_model.h': (ROOT / 'tests/sd_model.h').read_bytes(),
             'sd_safety.c': (ROOT / 'tests/sd_safety.c').read_bytes(),
             'test_sd_safety.py': Path(__file__).read_bytes(),
         }

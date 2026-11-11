@@ -76,6 +76,7 @@ check-cover-display:
 check-mcu-diskio:
 	$(PYTHON) -B -m unittest discover -s . -p test_mcu_diskio.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_sd_safety.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_sd_transfer.py -v
 
 .PHONY: check-fatfs
 check-fatfs:

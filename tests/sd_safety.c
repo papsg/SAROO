@@ -8,45 +8,26 @@
 
 typedef uint32_t u32;
 typedef uint8_t u8;
-typedef void *osSemaphoreId_t;
-/* CMSIS-RTOS2 status values used by the command path. */
-typedef enum {
-    osOK = 0,
-    osError = -1,
-    osErrorTimeout = -2,
-    osErrorResource = -3,
-    osErrorParameter = -4,
-    osErrorNoMemory = -5,
-    osErrorISR = -6
-} osStatus_t;
-
-/* Bit positions from STM32H750 SDMMC, RM0433 Rev 8. */
-#define SDMMC_CMD_CMDTRANS (1u << 6)
-#define SDMMC_CMD_CMDSTOP  (1u << 7)
-#define SDMMC_STA_CCRCFAIL (1u << 0)
-#define SDMMC_STA_DCRCFAIL (1u << 1)
-#define SDMMC_STA_CTIMEOUT (1u << 2)
-#define SDMMC_STA_DTIMEOUT (1u << 3)
-#define SDMMC_STA_TXUNDERR (1u << 4)
-#define SDMMC_STA_RXOVERR  (1u << 5)
-#define SDMMC_STA_CMDREND  (1u << 6)
-#define SDMMC_STA_CMDSENT  (1u << 7)
-#define SDMMC_STA_DATAEND  (1u << 8)
-#define SDMMC_STA_IDMATE   (1u << 27)
+#include "sd_model.h"
 #include "command-defines.inc"
 
 static struct {
     volatile u32 MASK, ARG, CMD, STA, RESP1, RESP2, RESP3, RESP4;
-    volatile u32 DCTRL, IDMACTRL, ICR, CLKCR;
+    volatile u32 DCTRL, IDMACTRL, ICR, CLKCR, DTIMER, POWER;
 } controller;
 #define SDIO (&controller)
+#ifdef TEST_SD_RECOVERY
+static struct { volatile u32 AHB3RSTR; } rcc;
+#define RCC (&rcc)
+static void __DSB(void) { assert(rcc.AHB3RSTR & RCC_AHB3RSTR_SDMMC1RST); }
+#endif
 
 static int semaphore_token;
 static osSemaphoreId_t cmd_sem = &semaphore_token;
 static u32 cmd_resp[4];
 static u32 wanted_command, wanted_mask, completion_status;
 static osStatus_t wait_status;
-static unsigned waits;
+static unsigned waits, drains;
 
 /* Adapted from paps-g 96c9dd85. Drive the actual identify and command paths. */
 static u8 sd_cid[16], sd_csd[16];
@@ -71,6 +52,12 @@ static u32 osKernelGetTickCount(void)
 static osStatus_t osDelay(u32 ticks)
 {
     assert(ticks == 10 || ticks == 1);
+    if (SDIO->CMD & SDMMC_CMD_CMDSTOP) {
+        SDIO->CMD &= ~SDMMC_CMD_CPSMEN;
+        SDIO->STA = SDMMC_STA_CMDREND;
+        identify.tick += ticks;
+        return osOK;
+    }
     if (ticks == 1 && !identify.post_ready) identify.retry_delays++;
     identify.tick += ticks;
     return osOK;
@@ -136,11 +123,22 @@ static osStatus_t identify_completion(void)
 
 static osStatus_t osSemaphoreAcquire(osSemaphoreId_t semaphore, u32 timeout)
 {
-    assert(semaphore == cmd_sem && timeout == 100);
+    assert(semaphore == cmd_sem);
+    if (!timeout) {
+        assert(!SDIO->MASK);
+        drains++;
+        return semaphore ? osErrorResource : osErrorParameter;
+    }
+    assert(timeout == 100);
     waits++;
-    if (identify.active) return identify_completion();
+    if (identify.active) {
+        osStatus_t result = identify_completion();
+        SDIO->CMD &= ~SDMMC_CMD_CPSMEN;
+        return result;
+    }
     assert(SDIO->CMD == (0x1000u | (wanted_command & 0x03ff)));
     assert(SDIO->ARG == 0x12345678 && SDIO->MASK == wanted_mask);
+    SDIO->CMD &= ~SDMMC_CMD_CPSMEN;
     SDIO->STA = completion_status;
     return semaphore ? wait_status : osErrorParameter;
 }
@@ -185,7 +183,14 @@ static void check_command(const char *mode, unsigned shape, int value)
 
     u32 result = (u32)sd_cmd(wanted_command, 0x12345678);
     assert(waits == 1 && !SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
-    assert(SDIO->DCTRL == (data ? 0 : 0x92) && SDIO->IDMACTRL == (data ? 0 : 1));
+    int clear_data = data;
+#ifdef TEST_SD_RECOVERY
+    clear_data |= failed_wait || hardware_error;
+    assert(drains == (unsigned)(failed_wait || hardware_error));
+#else
+    assert(!drains);
+#endif
+    assert(SDIO->DCTRL == (clear_data ? 0 : 0x92) && SDIO->IDMACTRL == (clear_data ? 0 : 1));
     if (failed_wait && result != UINT32_MAX) {
         fprintf(stderr, "Accepted failed command wait: shape=%u status=%d result=%u\n",
                 shape, cmd_sem ? value : osErrorParameter, result);
