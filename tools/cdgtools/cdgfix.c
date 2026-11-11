@@ -373,102 +373,39 @@ void hex_dump(char *str, const void *buf, int size)
 /******************************************************************************/
 
 
-static u8 reorder[24] = {
-	0x00, 0x42, 0x7d, 0xbf, 0x64, 0x32, 0x96, 0xaf,
-	0x08, 0x21, 0x3a, 0x53, 0x6c, 0x85, 0x9e, 0xb7,
-	0x10, 0x29, 0x19, 0x5b, 0x74, 0x8d, 0xa6, 0x4b
+enum { FRAME_BYTES = 96, PACK_BYTES = 24, PACK_SPAN = 192 };
+
+static const u8 interleave[PACK_BYTES] = {
+    0x00, 0x42, 0x7d, 0xbf, 0x64, 0x32, 0x96, 0xaf,
+    0x08, 0x21, 0x3a, 0x53, 0x6c, 0x85, 0x9e, 0xb7,
+    0x10, 0x29, 0x19, 0x5b, 0x74, 0x8d, 0xa6, 0x4b
 };
 
-
-void sub2cdg(u8 *buf, int len, u8 *cdg)
+/* Each symbol occupies one bit in each R-W channel. */
+static u8 raw_symbol(const u8 *raw, size_t index)
 {
-	u8 tbuf[96];
-	u8 *sub;
-	int p, i, j, k;
-
-	sub = buf;
-	p = 0;
-	while(p<len){
-		memset(tbuf, 0, 96);
-		for(i=0; i<8; i++){ // 带PQ通道
-			for(j=0; j<12; j++){
-				u8 d = sub[i*12+j];
-				for(k=0; k<8; k++){
-					u8 b = (d>>(7-k))&1;
-					tbuf[j*8+k] |= b<<(7-i);
-				}
-			}
-		}
-		memcpy(sub, tbuf, 96);
-		sub += 96;
-		p += 96;
-	}
-
-	memset(cdg, 0, (unsigned int)len);
-	sub = buf;
-	p = 0;
-	while(p<(len-192)){
-		for(j=0; j<24; j++){
-			cdg[j] = sub[reorder[j]]&0x3f;
-		}
-		p += 24;
-		cdg += 24;
-		sub += 24;
-
-	}
+    size_t offset = index / FRAME_BYTES * FRAME_BYTES + index % FRAME_BYTES / 8;
+    unsigned shift = 7 - index % 8, value = 0;
+    for (unsigned channel = 2; channel < 8; ++channel)
+        value = (value << 1) | ((raw[offset + channel * 12] >> shift) & 1);
+    return (u8)value;
 }
 
-
-void cdg2sub(u8 *cdg, int len, u8 *out)
+static void set_raw_symbol(u8 *raw, size_t index, u8 value)
 {
-	u8 tbuf[96];
-	u8 *sub;
-	int p, i, j, k;
-
-	for(i=0; i<len; i++){
-		out[i] &= 0xc0;
-	}
-
-	sub = out;
-	p = 0;
-	while(p<(len-192)){
-		for(j=0; j<24; j++){
-			sub[reorder[j]] |= cdg[j]&0x3f;
-		}
-		p += 24;
-		cdg += 24;
-		sub += 24;
-
-	}
-
-	sub = out;
-	p = 0;
-	while(p<len){
-		memset(tbuf, 0, 96);
-		for(i=0; i<8; i++){ // 8个ch
-			for(j=0; j<12; j++){ // 每个ch有12个字节
-				u8 b = 0;
-				for(k=0; k<8; k++){ // 每个字节有8位
-					u8 d = sub[j*8+k];
-					b |= ((d>>(7-i))&1) << (7-k);
-				}
-				tbuf[i*12+j] = b;
-			}
-		}
-		memcpy(sub, tbuf, 96);
-		sub += 96;
-		p += 96;
-	}
+    size_t offset = index / FRAME_BYTES * FRAME_BYTES + index % FRAME_BYTES / 8;
+    unsigned shift = 7 - index % 8, mask = 1u << shift;
+    for (unsigned channel = 2; channel < 8; ++channel) {
+        u8 *byte = raw + offset + channel * 12;
+        *byte = (*byte & ~mask) | (((value >> (7 - channel)) & 1u) << shift);
+    }
 }
-
-/******************************************************************************/
-
 
 
 /* P also protects the header covered by Q. Commit only a complete repair. */
-static int correct_packet(u8 packet[24])
+static int correct_packet(u8 packet[PACK_BYTES])
 {
-    u8 candidate[24], parity[4];
+    u8 candidate[PACK_BYTES], parity[4];
     memcpy(candidate, packet, sizeof(candidate));
     if (decode_rs(&rs20, candidate, 20, candidate + 20) < 0)
         return -1;
@@ -493,9 +430,6 @@ int main(int argc, char *argv[])
 	u8 *fbuf;
 	int flen;
 
-	int format;
-	u8 *cdg_buf;
-
 	init_rs();
 
 
@@ -507,31 +441,46 @@ int main(int argc, char *argv[])
 	flen = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
 
-	fbuf = malloc(flen);
-	fread(fbuf, 1, flen, fp);
+	if(flen <= 0 || !(fbuf = malloc(flen))){
+		fclose(fp);
+		return 1;
+	}
+	if(fread(fbuf, 1, flen, fp) != (size_t)flen){
+		fclose(fp);
+		free(fbuf);
+		return 1;
+	}
 	fclose(fp);
 
-	if(fbuf[0]==0xff){
-		format = 1;
-		cdg_buf = malloc(flen);
-		sub2cdg(fbuf, flen, cdg_buf);
-	}else{
-		format = 2;
-		cdg_buf = fbuf;
+	int raw = fbuf[0] == 0xff;
+	if(raw && flen % FRAME_BYTES){
+		free(fbuf);
+		return 1;
 	}
 
-
-	
 	int count_ok = 0;
 	int count_bad = 0;
-	for(int p=0; p<flen; p+=24){
-		int result = correct_packet(cdg_buf+p);
-		if(result < 0)
-			count_bad++;
-		else if(result)
-			count_ok++;
-	}
+	size_t span = raw ? PACK_SPAN : PACK_BYTES;
+	for(size_t p=0; (size_t)flen-p >= span; p+=PACK_BYTES){
+		u8 packet[PACK_BYTES];
+		u8 *data = fbuf+p;
+		if(raw){
+			for(unsigned j=0; j<PACK_BYTES; ++j)
+				packet[j] = raw_symbol(fbuf, p+interleave[j]);
+			data = packet;
+		}
 
+		int result = correct_packet(data);
+		if(result < 0){
+			count_bad++;
+		}else if(result){
+			count_ok++;
+			if(raw){
+				for(unsigned j=0; j<PACK_BYTES; ++j)
+					set_raw_symbol(fbuf, p+interleave[j], packet[j]);
+			}
+		}
+	}
 
 	if(count_ok){
 		printf("%d packs fixed!\n", count_ok);
@@ -548,10 +497,6 @@ int main(int argc, char *argv[])
 	}
 
 
-	if(format==1){
-		cdg2sub(cdg_buf, flen, fbuf);
-	}
-
 	fp = fopen(argv[1], "wb");
 	fwrite(fbuf, 1, flen, fp);
 	fclose(fp);
@@ -559,6 +504,7 @@ int main(int argc, char *argv[])
 	printf("Writing done.\n");
 
 _exit:
+	free(fbuf);
 	system("pause");
 	return 0;
 }

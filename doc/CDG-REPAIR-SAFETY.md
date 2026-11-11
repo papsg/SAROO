@@ -27,5 +27,27 @@ corrections pass. The updated source passes all five cases under
 ASan/UBSan and optimization. These tests verify decoded bytes in generated
 files. Intended graphics, physical media and playback remain unqualified.
 
+## HOST-CDG-003 — retain raw subchannel bits and process the final packet
+
+The original SAROO layout stores 96-byte frames as eight 12-byte channel
+blocks. Its 24-symbol packet interleave reaches offset 191. The old raw
+converter cleared all R–W bits and reconstructed only the offsets it
+processed. Its strict end condition also omitted a complete packet when
+exactly 192 bytes remained. [Original raw converters][baseline]
+
+The public port uses that original interleave and edits only the six R–W
+bits at each corrected symbol. It checks the packet whose last symbol
+lands at the end of the file. The P/Q subchannel bits and raw symbols
+outside a successfully repaired packet retain their values. The
+frame alignment check rejects a partial raw frame.
+
+The independent fixture transposes all eight channels from generated
+symbols and compares every output byte. The previous checkpoint fails
+ten raw cases with two or more frames. The single-frame control
+contains no complete packet and is preserved. The updated tool passes
+all eleven sizes, a clean raw file and the logical packet controls.
+The x86 and x64 MinGW builds pass and the former raw-converter size
+warning is gone.
+
 [pr352]: https://github.com/tpunix/SAROO/pull/352
 [baseline]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/tools/cdgtools/cdgfix.c

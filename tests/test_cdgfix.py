@@ -51,6 +51,41 @@ def packet(seed=0):
     return bytes(value)
 
 
+# Original SAROO channel-separated SUB layout. The fixture builds symbols
+# first and transposes whole frames to channel bytes independently of the CLI.
+FRAME_BYTES = 96
+INTERLEAVE = (0, 66, 125, 191, 100, 50, 150, 175, 8, 33, 58, 83,
+              108, 133, 158, 183, 16, 41, 25, 91, 116, 141, 166, 75)
+
+
+def raw_bytes(symbols):
+    result = bytearray()
+    for frame in range(0, len(symbols), FRAME_BYTES):
+        for channel in range(8):
+            for byte in range(12):
+                result.append(sum(
+                    ((symbols[frame + byte * 8 + bit] >> (7 - channel)) & 1) << (7 - bit)
+                    for bit in range(8)))
+    return bytes(result)
+
+
+def raw_case(frames, damage=True):
+    rng = random.Random(200 + frames)
+    symbols = bytearray(rng.randrange(256) for _ in range(frames * FRAME_BYTES))
+    # Keep the original CLI's first-byte marker for the historical control.
+    for index in range(8):
+        symbols[index] |= 0x80
+    positions = list(range(0, len(symbols) - max(INTERLEAVE), PACKET_BYTES))
+    for position in positions:
+        for offset, value in zip(INTERLEAVE, packet(position // PACKET_BYTES)):
+            symbols[position + offset] = (symbols[position + offset] & 0xc0) | value
+    expected = raw_bytes(symbols)
+    if damage:
+        for position in set(positions[:1] + positions[252:260] + positions[-1:]):
+            symbols[position + INTERLEAVE[9]] ^= 1
+    return raw_bytes(symbols), expected, len(positions)
+
+
 class CDGFixTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -112,6 +147,16 @@ class CDGFixTests(unittest.TestCase):
         broken[8] ^= 1
         self.repair("failed-only.cdg", bad, bad)
         self.repair("mixed.cdg", bad + broken, bad + good)
+
+    def test_raw_complete_endpoint_and_untouched_channel_bits(self):
+        self.assertEqual(sorted(offset % PACKET_BYTES for offset in INTERLEAVE),
+                         list(range(PACKET_BYTES)))
+        for frames in (1, 2, 3, 63, 64, 65, 66, 67, 128, 129, 130):
+            with self.subTest(frames=frames):
+                broken, expected, _ = raw_case(frames)
+                self.repair("capture.sub", broken, expected)
+        clean, _, _ = raw_case(3, damage=False)
+        self.repair("clean.sub", clean, clean)
 
     def test_clean_packets_remain_exact(self):
         expected = packet(1) + packet(2)
