@@ -1283,6 +1283,23 @@ verification](https://github.com/papsg/SAROO/blob/main/doc/MENU-STATUS-FONT.md).
    418 status variants across 19 languages and the existing formatter
    and raster controls, including the independent Arabic oracle.
    The 36-input committed build links 79,380 code/data bytes (−176), with
-   a 20-byte status frame and 488,770-byte image. The standard host suite
-   is running. Hardware appearance/timing and native-speaker editorial
-   review remain unqualified.
+   a 20-byte status frame and 488,770-byte image.
+
+### Menu status and font safety final verification
+
+All three source checkpoints are on public main at `fb8084d`. The standard
+suite passed 511 Python methods in 45 groups, 18 Rust checks in four groups,
+and the native language check. The original C converter and existing merge
+tool reproduce the complete appended and Latin assets. Each checkpoint's
+pinned menu build binds its 36 public inputs and matches the corresponding
+verified candidate ELF and image. The final image is 488,770 bytes with
+79,380 linked code/data bytes, 9,232 bytes of BSS, a 16 KiB stack reservation
+and 26,076 bytes of body margin.
+
+The production diff is confined to the Saturn menu and its font assets.
+Citations, the font license, original contribution credit, and public
+adaptations are in [MENU-STATUS-FONT.md](https://github.com/papsg/SAROO/blob/main/doc/MENU-STATUS-FONT.md).
+The source and progress updates passed private-data and secret review. The
+private HEAD, clean status, refs and stashes match the initial snapshot.
+The Saturn was left untouched. Native-speaker editorial review, physical
+rendering and hardware timing remain unqualified.
