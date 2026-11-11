@@ -1063,7 +1063,7 @@ static int sel_handle(int ctrl)
 			SS_CMD = SSCMD_LOADDISC;
 			while(SS_CMD);
 
-			retv = SS_ARG;
+			retv = (signed short)SS_ARG;
 			if(retv==0){
 				retv = bios_cd_cmd(0);
 			}
@@ -1088,7 +1088,7 @@ static int sel_handle(int ctrl)
 			SS_CMD = SSCMD_LOADDISC;
 			while(SS_CMD);
 
-            retv = SS_ARG;
+            retv = (signed short)SS_ARG;
             if (retv) {
                 menu_error(menu, TT("游戏启动失败! %d"), retv);
             } else {

@@ -98,3 +98,26 @@ public firmware's produced-word counts, and buffer ownership. Both runs
 of the full CD group pass 164 methods. The GNU MCU App loads 63,212
 bytes with 2,324 bytes of ITCM space. Physical
 event timing and game behavior remain unqualified.
+
+## Preserve signed disc-launch errors
+
+Adapted from the normal menu portion of paps-g `218abca2`
+(SATURN-MENU-009). The A and Z launch paths now interpret the completed
+16-bit mailbox result as signed, so the MCU error `-6` reaches the
+error dialog as `-6`. A successful A launch still calls the BIOS and a
+successful Z launch still enters the CD player. The original report shows
+the previous unsigned value of `65530`.
+[Upstream SAROO issue #227](https://github.com/tpunix/SAROO/issues/227#issuecomment-2770044683).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_launch_errors.py -v
+SAROO_MENU_LAUNCH_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_launch_errors.py -v
+```
+
+Set `SAROO_MENU_LAUNCH_SOURCE` to the parent `Firm_Saturn` directory
+to reproduce the displayed value in both paths. The fixture runs the real
+selector for all 65,536 possible mailbox words on each path and verifies
+launch admission, player state and BIOS error propagation. Both methods
+pass under ASan/UBSan and O2. The SH-2 menu links 80,836 code/data bytes
+(−16) and 9,244 BSS bytes. Physical disc loading and the causes of the
+reported launch failures remain unqualified.
