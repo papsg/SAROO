@@ -45,3 +45,38 @@ specific, written prior permission. Adobe Systems and Digital Equipment
 Corporation make no representations about the suitability of this software for
 any purpose. It is provided "as is" without express or implied warranty.
 [Adapted BDF and original notice](../tools/menu-assets/font-source/romanian14.bdf)
+
+## SATURN-FONT-003 and SATURN-FONT-004 — glyphs that fit a menu row
+
+The original renderer reads a four-bit height. The shipped CJK U+9515 record
+holds sixteen bitmap rows but its height field is zero. The Latin U+046E record
+holds seventeen rows but its height field is one. They render blank and
+one-row respectively. Twelve other Latin records extend past the 16-pixel
+row the menu clears or copies. The Romanian `ț` (U+021B) extends to row 18.
+[Original rasterizer and menu item staging](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/conio.c)
+
+The renderer reads zero height as sixteen rows when the record has a
+nonzero width. U+9515 retains its entire original bitmap. The zero-width
+space record stays empty. The curated Latin BDF retains all distinct
+strokes of U+046E by removing a repeated stem row, then encodes its sixteen
+rows using the same convention. Eleven comma-below glyphs lose two repeated
+tail rows while preserving their base letters and gap. U+0375 keeps its bitmap
+and moves up one row. These changes adapt paps-g `4c2cccb4` by editing the
+public BDF source and regenerating its header with the original converter.
+[Latin BDF and notice](../tools/bdfont/cbdf/helvR14c.bdf) · [WenQuanYi BDF and notice](../tools/bdfont/bdf/wqy13px.bdf)
+
+All 637 Latin code points remain. The other 624 Latin records and the
+appended 10,796-record asset retain their exact bytes. `make -C tests
+check-font` regenerates the Latin header, checks all 11,433 record spans and
+renders the fourteen repaired glyphs against their indexed bitmaps with
+guarded rows. The preceding source fails the CJK raster, Cyrillic raster,
+overhang and record geometry checks. The original CJK additions, Arabic
+glyphs, Romanian `ș` and space are controls. The space test uses an exact
+three-byte allocation to catch an accidental read past its header.
+[Rebuild commands](../tools/README.md#rebuild-the-shipped-font)
+
+The pinned menu build links 79,556 code/data bytes (16 fewer), with the same
+9,232-byte BSS, 16 KiB stack reservation and 488,770-byte image. The
+glyph rasterizer's direct frame remains 40 bytes. The packed height convention
+is verified for the supplied font assets. Host raster checks do not qualify
+physical Saturn output.

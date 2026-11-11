@@ -18,6 +18,9 @@ ARABIC_ADDED = {int(value, 16) for value in ARABIC["added_codepoints"]}
 ROMANIAN = 0x0219
 ROMANIAN_BDF = ROOT / "tools/menu-assets/font-source/romanian14.bdf"
 
+LATIN_REPAIRS = {0x0122, 0x0136, 0x0137, 0x013B, 0x013C, 0x0145, 0x0146,
+                 0x0156, 0x0157, 0x021A, 0x021B, 0x0375, 0x046E}
+
 
 def remove_records(data, codepoints):
     return encode_records({cp: record for cp, record in read_records(data).items()
@@ -145,6 +148,51 @@ class FontCoverageTests(unittest.TestCase):
         self.assertEqual(len(data), ARABIC["output_bytes"] + 5 + len(expected))
         subprocess.run([str(self.renderer), str(FONT), str(selected), "1"], check=True,
                        env=environment, timeout=15)
+
+    def render_geometry(self, name, codes, *table):
+        selected = self.directory / name
+        selected.write_text("".join(f"{cp:04x}\n" for cp in sorted(codes)))
+        subprocess.run([str(self.renderer), str(FONT), str(selected), str(len(codes)), *table],
+                       check=True, env=dict(os.environ, UBSAN_OPTIONS="halt_on_error=1"), timeout=15)
+
+    def test_full_height_cjk_raster(self):
+        self.render_geometry("cjk-geometry.txt", {0x9515})
+
+    def test_ksi_full_height_raster(self):
+        self.render_geometry("ksi-geometry.txt", {0x046E}, "latin")
+
+    def test_latin_glyphs_fit_the_row_and_space_stays_empty(self):
+        self.render_geometry("latin-geometry.txt", (LATIN_REPAIRS - {0x046E}) | {0x20, ord("s")}, "latin")
+
+    def test_all_indexed_bitmaps_match_their_geometry(self):
+        latin_data = latin_bytes()
+        latin = read_records(latin_data)
+        appended = read_records(FONT.read_bytes())
+        for records in (latin, appended):
+            for cp, record in records.items():
+                width, stored_height = record[1] >> 4, record[1] & 15
+                height = stored_height or (16 if width else 0)
+                top = record[2] & 15
+                self.assertEqual(bool(width), bool(height), hex(cp))
+                self.assertEqual(len(record), 3 + height * (2 if width > 8 else 1), hex(cp))
+                self.assertLessEqual(top + height, 16, hex(cp))
+
+        repaired = encode_records({cp: latin[cp] for cp in LATIN_REPAIRS})
+        unchanged = remove_records(latin_data, LATIN_REPAIRS)
+        self.assertEqual(hashlib.sha256(repaired).hexdigest(),
+                         "3c42d22d869968443d4f07b2658ed986738d6904b1588e4995e677519c5bf5c9")
+        self.assertEqual(hashlib.sha256(unchanged).hexdigest(),
+                         "6222c6a05f7b890b31b1fda0a30fb1a77bb2d641d51f9fb339c5c516a1f9f73e")
+
+    def test_reproducible_latin_font(self):
+        output = self.directory / "font_latin.h"
+        bdf = ROOT / "tools/bdfont"
+        environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="halt_on_error=1")
+        subprocess.run([str(self.converter), str(bdf / "cbdf/helvR14c.bdf"), "-l",
+                        str(bdf / "latin.txt"), "-h", str(output), "font_latin"],
+                       check=True, cwd=self.directory, env=environment,
+                       timeout=20, stdout=subprocess.PIPE)
+        self.assertEqual(output.read_bytes(), (ROOT / "Firm_Saturn/font_latin.h").read_bytes())
 
     def test_reproducible_original_converter(self):
         output = self.directory / "regenerated.bin"

@@ -270,6 +270,8 @@ int fb_draw_font_buf(u8 *bmp, int x, int color, u8 *font_data, int lb, int rb)
 	int ft_adv = font_data[0];
 	int ft_bw = font_data[1]>>4;
 	int ft_bh = font_data[1]&0x0f;
+	/* A nonempty zero-height record stores sixteen rows. */
+	if(!ft_bh && ft_bw) ft_bh = 16;
 	int ft_bx = font_data[2]>>4;
 	int ft_by = font_data[2]&0x0f;
 	int ft_lsize = (ft_bw>8)? 2: 1;

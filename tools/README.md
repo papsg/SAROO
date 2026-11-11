@@ -184,6 +184,8 @@ tools/target/debug/menu-assets merge-font tests/build/cjk-only.bin tests/build/a
 tools/bdfont/bdfont tools/menu-assets/font-source/romanian14.bdf -adj 0 -c tests/build/romanian-only.bin
 tools/target/debug/menu-assets merge-font tests/build/cjk-arabic.bin tests/build/romanian-only.bin tests/build/font_cjk.bin
 cmp tests/build/font_cjk.bin Firm_Saturn/font_cjk.bin
+tools/bdfont/bdfont tools/bdfont/cbdf/helvR14c.bdf -l tools/bdfont/latin.txt -h tests/build/font_latin.h font_latin
+cmp tests/build/font_latin.h Firm_Saturn/font_latin.h
 ```
 
 Normal menu builds consume the checked-in C table and font. To edit Arabic,
