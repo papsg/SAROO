@@ -653,12 +653,14 @@ void cdc_dump(int status)
 /******************************************************************************/
 
 
-/* One file handle and completion path for the two shared-memory commands. */
-/* Keep the file object out of the persistent CD-task frame. */
-static __attribute__((noinline)) int ss_file_transfer(int writing)
+/* Named and primary-archive transfers share the mapped buffer bounds.
+ * Keep the named file object out of the persistent CD-task frame. */
+static __attribute__((noinline)) int ss_file_transfer(int mode)
 {
     FIL fp;
-    int offset = *(u32 *)(TMPBUFF_ADDR + 0x00);
+    int writing = mode & 1;
+    int archive = mode & 2;
+    u32 request_offset = *(u32 *)(TMPBUFF_ADDR + 0x00);
     u32 size = *(u32 *)(TMPBUFF_ADDR + 0x04);
     u32 baddr = *(u32 *)(TMPBUFF_ADDR + 0x08);
     char *name = (char *)(TMPBUFF_ADDR + 0x10);
@@ -669,8 +671,18 @@ static __attribute__((noinline)) int ss_file_transfer(int writing)
     const u32 request = TMPBUFF_ADDR - FIRM_ADDR;
     u32 capacity = (position < request ? request : 0x01000000) - position;
     *(u32 *)(TMPBUFF_ADDR + 0x04) = 0;
-    if ((position >= request && position < request + 0x100) || size > capacity ||
-        !memchr(name, 0, 0xf0)) return FR_INVALID_PARAMETER;
+    if ((!archive || size) &&
+        ((position >= request && position < request + 0x100) || size > capacity))
+        return FR_INVALID_PARAMETER;
+    if (archive) {
+        if (size > 65536 || (!size && !writing)) return FR_INVALID_PARAMETER;
+        int result = save_archive_io(*(u32 *)(TMPBUFF_ADDR + 0x0c), request_offset,
+                                     size ? buffer : NULL, writing ? -(int)size : (int)size);
+        if (!result) *(u32 *)(TMPBUFF_ADDR + 0x04) = size;
+        return result;
+    }
+    if (!memchr(name, 0, 0xf0)) return FR_INVALID_PARAMETER;
+    int offset = (int)request_offset;
     int flags = writing ? ((offset == -1 ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS) | FA_WRITE) : FA_READ;
     int retv = f_open(&fp, name, flags);
     u32 count = 0;
@@ -709,6 +721,10 @@ _Static_assert(SSCMD_SELECT < SSCMD_SAVE_ACK && SSCMD_SMEMS < SSCMD_SAVE_ACK &&
                SSCMD_LSAVE == SSCMD_SSAVE + 1 && SSCMD_LMEMS == SSCMD_SSAVE + 2 &&
                SSCMD_SMEMS == SSCMD_SSAVE + 3,
                "file/save aliases must remain separate from existing commands");
+_Static_assert(SSCMD_ARCHIVEWR == SSCMD_ARCHIVERD + 1 &&
+               (SSCMD_ARCHIVERD & SSCMD_SAVE_ACK) != 0 && (SSCMD_ARCHIVEWR & SSCMD_SAVE_ACK) != 0 &&
+               (SSCMD_ARCHIVERD ^ SSCMD_SAVE_ACK) > SSCMD_SELECT && SSCMD_ARCHIVEWR < 0x8000,
+               "archive commands overlap existing aliases or lose the acknowledgment bit");
 
 void ss_cmd_handle(void)
 {
@@ -773,6 +789,10 @@ void ss_cmd_handle(void)
 	case SSCMD_FILEWR:
         /* Negative FatFs errors already have the tag bit set. */
         retv = -ss_file_transfer(save_cmd == SSCMD_FILEWR);
+        goto save_reply;
+    case SSCMD_ARCHIVERD:
+    case SSCMD_ARCHIVEWR:
+        retv = -ss_file_transfer(2 | (save_cmd == SSCMD_ARCHIVEWR));
         goto save_reply;
 	case SSCMD_SSAVE:
         retv = flush_savefile();
@@ -1108,6 +1128,7 @@ void saturn_config(void)
 	*(u32*)(SYSINFO_ADDR+0x08) = debug_flags;      // 调试选项
     *(u32*)(SYSINFO_ADDR+0x10) = SAVE_ACK_VERSION;
     *(u32*)(SYSINFO_ADDR+0x14) = FILE_ACK_VERSION;
+    *(u32*)(SYSINFO_ADDR+0x18) = ARCHIVE_IO_VERSION;
 
 	// I2S
 	spi2_init();

@@ -20,8 +20,12 @@ static unsigned checks;
 #define SYSINFO_ADDR ((uintptr_t)sysinfo)
 #define TMPBUFF_ADDR ((uintptr_t)scratch)
 #define SSLOG(...) ((void)0)
-static int ss_file_transfer(int writing)
-{ calls++; operation=writing ? SSCMD_FILEWR : SSCMD_FILERD; return result; }
+static int ss_file_transfer(int mode)
+{
+    calls++;
+    operation = (mode & 2 ? SSCMD_ARCHIVERD : SSCMD_FILERD) + (mode & 1);
+    return result;
+}
 static int list_bins(int first)
 { assert(first==1); calls++; operation=SSCMD_LISTBIN; return result; }
 static int flush_savefile(void) { calls++; operation=SSCMD_SSAVE; return result; }
@@ -85,10 +89,12 @@ static void check_command(unsigned opcode, int error)
     assert(normalize(opcode)==base);
     command_value=opcode;argument=0xa5c3;calls=0;result=error;supplied=-1;
     command();
-    if(base>=6 && base<=12) {
+    int archive = base==SSCMD_ARCHIVERD || base==SSCMD_ARCHIVEWR;
+    if ((base>=6 && base<=12) || archive) {
         assert(!command_value && calls==1 && (unsigned)operation==base);
         unsigned tag=opcode & SSCMD_SAVE_ACK;
-        int expected=base<8 ? (error ? -error : (int)tag) : base==8 ? error : error|tag;
+        int expected = base<8 || archive ? (error ? -error : (int)tag) :
+                       base==8 ? error : error|tag;
         assert(argument==(u16)expected);
         if(base==11 || base==12)assert(supplied==0xa5c3);
     } else assert(!calls && command_value==opcode && argument==0xa5c3);
@@ -105,6 +111,8 @@ int main(int argc,char **argv)
         for(unsigned tag=0;tag<=32;tag+=32)
             for(unsigned opcode=6;opcode<=12;opcode++)
                 for(int error=0;error<=FR_INVALID_PARAMETER;error++)check_command(opcode|tag,error);
+        for(unsigned opcode=SSCMD_ARCHIVERD;opcode<=SSCMD_ARCHIVEWR;opcode++)
+            for(int error=0;error<=FR_INVALID_PARAMETER;error++)check_command(opcode,error);
     }
     printf("PASS %s %u checks\n",argv[1],checks);
 }

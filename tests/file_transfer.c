@@ -35,6 +35,14 @@ static FRESULT checked_close(FIL *);
 #define f_read checked_read
 #define f_write checked_write
 #define f_close checked_close
+#ifndef TEST_ARCHIVE_IO
+static __attribute__((unused)) int save_archive_io(unsigned device, u32 offset,
+                                                   void *buffer, int length)
+{
+    (void)device; (void)offset; (void)buffer; (void)length;
+    abort(); /* This fixture sends only ordinary file commands. */
+}
+#endif
 #include "file-transfer.inc"
 #undef f_open
 #undef f_lseek

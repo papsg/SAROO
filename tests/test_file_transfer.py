@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def protocol_definitions(header):
-    return b'\n'.join(re.findall(rb'^#define (?:SSCMD_\w+|(?:SAVE|FILE)_ACK_VERSION)\s+\S+',
+    return b'\n'.join(re.findall(rb'^#define (?:SSCMD_\w+|(?:SAVE|FILE)_ACK_VERSION|ARCHIVE_IO_VERSION)\s+\S+',
                                  header, re.M)) + b'\n'
 
 
@@ -53,6 +53,10 @@ class FileTransferTests(unittest.TestCase):
         build=ROOT/'tests/build/file-transfer'; build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build)); cls.results=[]
         (cls.target/'file-transfer.inc').write_bytes(extract_command_source(raw))
+        c_source = getattr(cls, 'c_source', 'file_transfer.c')
+        if c_source != 'file_transfer.c':
+            publish = re.search(rb'^[ \t]*\*\(u32\*\)\(SYSINFO_ADDR\+0x18\) = ARCHIVE_IO_VERSION;', raw, re.M)
+            (cls.target/'archive-publish.inc').write_bytes(publish[0] if publish else b'')
         header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         addresses=dict(re.findall(rb'#define\s+(TMPBUFF_ADDR|FIRM_ADDR)\s+(0x[0-9a-fA-F]+)',header))
         assert addresses=={b'TMPBUFF_ADDR':b'0x610c7000',b'FIRM_ADDR':b'0x61000000'}
@@ -64,14 +68,17 @@ class FileTransferTests(unittest.TestCase):
         fatfs=cls.target/'FatFS';fatfs.mkdir()
         for name in ('ff.c','ff.h','ffconf.h','ffunicode.c','diskio.h'):
             blob=(ROOT/'Firm_MCU/FatFS'/name).read_bytes();(fatfs/name).write_bytes(blob);inputs['FatFS/'+name]=blob
-        for name in ('file_transfer.c','test_file_transfer.py','mcu_save_support.py'):
+        fixture_sources = ['file_transfer.c', 'test_file_transfer.py', 'mcu_save_support.py']
+        if c_source != 'file_transfer.c':
+            fixture_sources += [c_source, 'test_save_owner_protocol.py']
+        for name in fixture_sources:
             blob=(ROOT/'tests'/name).read_bytes();(cls.target/name).write_bytes(blob);inputs['tests/'+name]=blob
         for name,blob in inputs.items():
             target=cls.target/'inputs'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(blob)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_FILE_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'file-transfer'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/'file_transfer.c'),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/c_source),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

@@ -19,6 +19,12 @@ static uint16_t file_ack;
 static volatile uint16_t mcu_cmd, mcu_arg;
 #define SS_CMD mcu_cmd
 #define SS_ARG mcu_arg
+static __attribute__((unused)) int save_archive_io(unsigned device, u32 offset,
+                                                   void *buffer, int length)
+{
+    (void)device; (void)offset; (void)buffer; (void)length;
+    abort(); /* This fixture sends only ordinary file commands. */
+}
 #include "mcu-file.inc"
 #undef SS_CMD
 #undef SS_ARG

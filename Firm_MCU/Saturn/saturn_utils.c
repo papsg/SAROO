@@ -458,6 +458,9 @@ struct save_reopen {
 };
 
 static struct save_reopen slot_reopen, mems_reopen;
+#define SAVE_ID_ADDR (SYSINFO_ADDR + 0x1c)
+/* Zero means no cached block. Valid block indices start at eight. */
+#define MEMS_ROOT_STALE 1
 
 int open_savefile(void)
 {
@@ -466,6 +469,7 @@ int open_savefile(void)
     u8 *fbuf = (u8*)0x24002000;
     ss_index = sm_index0 = sm_index1 = 0;
     slot_reopen.pending = mems_reopen.pending = 0;
+    memset((void *)SAVE_ID_ADDR, 0, 16);
 
     for (mems = 0; mems < 2; mems++) {
         FIL *fp = mems ? &sm_fp : &ss_fp;
@@ -593,10 +597,58 @@ static int save_ready(FIL *fp)
     return result;
 }
 
+/* Use the live primary handle for exact, existing archive extents.
+ * Positive lengths read, negative lengths write, and (0, NULL, 0) syncs.
+ * The caller owns its buffer and determines the game association. */
+int save_archive_io(unsigned device, u32 offset, void *buffer, int length)
+{
+    int writing = length < 0;
+    u32 size = writing ? 0u - (u32)length : (u32)length;
+    if (device > 1 || size > 65536 || (size ? !buffer : (buffer || offset)))
+        return FR_INVALID_PARAMETER;
+
+    FIL *fp = device ? &sm_fp : &ss_fp;
+    fs_lock();
+    int result = save_ready(fp);
+    if (result) goto done;
+
+    FSIZE_t extent = f_size(fp);
+    if (device ? extent < 0x800000 : (extent < 65536 || extent > 0x10000000)) {
+        result = FR_INT_ERR;
+        goto done;
+    }
+    /* Opaque MEMS trailers are outside the firmware's archive address space. */
+    if (device) extent = 0x800000;
+    if (!size) {
+        result = f_sync(fp);
+        goto done;
+    }
+    if (offset > extent || size > extent - offset || (writing && !device && offset < 65536)) {
+        result = FR_INVALID_PARAMETER;
+        goto done;
+    }
+
+    int root = device && offset == 0 && length == 8192 && buffer == (void *)SMEMS_HDR;
+    /* A transfer can change a prefix before it fails. Revoke stale ownership
+       before any write or direct reload of the resident MEMS root. */
+    if (device && (writing || root)) {
+        sm_index0 = MEMS_ROOT_STALE;
+    } else if (writing) {
+        ss_index = 0;
+        memset((void *)SAVE_ID_ADDR, 0, 16);
+    }
+    result = save_io(fp, offset, buffer, size, writing);
+    if (root && !result) sm_index0 = sm_index1 = 0;
+
+done:
+    fs_unlock();
+    return result;
+}
+
 int load_savefile(char *gameid)
 {
     u8 *directory = (u8*)0x24002000;
-    char key[16];
+    _Alignas(4) char key[16];
     int result, found = 0, empty = 0;
 
     fs_lock();
@@ -657,8 +709,12 @@ int load_savefile(char *gameid)
         if (!result) result = save_io(&ss_fp, found * 16, key, sizeof(key), 1);
         if (!result) result = f_sync(&ss_fp);
     }
-    if (!result) ss_index = found;
+    if (!result) {
+        ss_index = found;
+        memcpy32((void *)SAVE_ID_ADDR, key, sizeof(key));
+    }
 done:
+    if (result) memset((void *)SAVE_ID_ADDR, 0, 16);
     fs_unlock();
     return result;
 }
@@ -685,8 +741,9 @@ int load_smems(int id)
 {
     int header = id & 0x8000;
     int *index = header ? &sm_index0 : &sm_index1;
-    int result;
+    int result = FR_INVALID_PARAMETER;
     fs_lock();
+    if (sm_index0 == MEMS_ROOT_STALE) goto done;
     /* A partial transfer invalidates the destination's previous ownership. */
     *index = 0;
     if ((id & ~0xffff) || (id & 0x7fff) < 8 || (id & 0x7fff) >= 8064) {
@@ -702,6 +759,7 @@ int load_smems(int id)
                              header ? 1024 : 65536, 0);
         if (!result) *index = id;
     }
+done:
     fs_unlock();
     return result;
 }
@@ -710,7 +768,7 @@ int flush_smems(int flag)
 {
     int result = FR_INVALID_PARAMETER;
     fs_lock();
-    if (flag <= 0 || (flag & ~7) ||
+    if (sm_index0 == MEMS_ROOT_STALE || flag <= 0 || (flag & ~7) ||
         ((flag & 2) && (sm_index0 < 8 || sm_index0 >= 8064)) ||
         ((flag & 4) && (sm_index1 < 8 || sm_index1 >= 8064)))
         goto done;

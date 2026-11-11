@@ -120,6 +120,9 @@
 #define SSCMD_SAVE_ACK 0x0020
 #define SAVE_ACK_VERSION 0x53415631u
 #define FILE_ACK_VERSION 0x46494c31u
+#define SSCMD_ARCHIVERD 0x0036
+#define SSCMD_ARCHIVEWR 0x0037
+#define ARCHIVE_IO_VERSION 0x534f5731u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -406,6 +409,7 @@ int get_disc_ip(int index, u8 *ipbuf);
 
 int open_savefile(void);
 int load_savefile(char *gameid);
+int save_archive_io(unsigned device, u32 offset, void *buffer, int length);
 int flush_savefile(void);
 
 int load_smems(int id);

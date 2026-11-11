@@ -17,6 +17,8 @@ static void memcpy32(void *to, const void *from, int size) { memcpy(to, from, si
 static u8 test_scratch[65536], test_shared[0x23000];
 #define TEST_SCRATCH_ADDR ((uintptr_t)test_scratch)
 #define SAVINFO_ADDR ((uintptr_t)test_shared)
+static u32 test_save_sysinfo[1024] __attribute__((unused));
+#define TEST_SAVE_SYSINFO_ADDR ((uintptr_t)test_save_sysinfo)
 #define printk(...) ((void)0)
 static void (*before_open)(FIL *, const TCHAR *, BYTE);
 static unsigned media_checks, media_restarts;

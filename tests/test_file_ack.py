@@ -94,7 +94,7 @@ class FileAcknowledgmentTests(unittest.TestCase):
         self.invoke('dispatch', 65536)
 
     def test_every_fatfs_error_preserves_signed_file_and_unsigned_save_results(self):
-        self.invoke('errors', 280)
+        self.invoke('errors', 320)
 
 
 if __name__ == '__main__':
