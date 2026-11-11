@@ -1460,3 +1460,18 @@ The series changes only the original FatFs and SD driver in firmware.
 Publication scans covered the source, host fixtures, commit metadata and
 ledger. The private HEAD, worktree status, refs and stashes match the initial
 snapshot. The Saturn was left untouched.
+
+## SD transfer, media launch and storage safety
+
+1. **MCU-SD-004 transfer recovery — published**
+   [`9e53888`](https://github.com/papsg/SAROO/commit/9e53888e1da77a77d77479913daf9f4e6b7843c6).
+   Adapted from paps-g `433866e8`, with final historical evidence at
+   `33916ab5`. Builds on the public wait and card-ready fixes. Twenty
+   baseline scenarios fail and three pass. All 23 transfer cases pass
+   ASan/UBSan and O2, including a public STOP-enable control. All 68 prior
+   SD command/initialization cases and four diskio methods pass in both
+   profiles. Eleven disc/save methods pass. The GNU App binds 56 public
+   inputs and 85 SDK inputs, loads 62,364 bytes (+144) and leaves 3,172
+   ITCM bytes. Static DTCM remains 60,176 bytes. Historical hardware
+   evidence reaches startup. Physical SD fault recovery remains unqualified.
+   [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SD-MEDIA-SAFETY.md#mcu-sd-004--recover-transfer-ownership)
