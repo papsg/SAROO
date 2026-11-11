@@ -182,7 +182,8 @@ class MCUSaveTest(unittest.TestCase):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             layout = b'\n'.join(line for line in header.splitlines() if line.startswith(
                 (b'#define COVER_INDEX_OFFSET ', b'#define COVER_CACHE_OFFSET ')))
-            begin = module.index(b'u32 adler32(')
+            hash_start = b'#define COVER_TITLE_BYTES ' if b'cover_title_hash(' in module else b'u32 adler32('
+            begin = module.index(hash_start)
             adler = module[begin:module.index(b'/******************************************************************************/', begin)]
             code = module[module.index(b'static FIL cover_fp;'):]
             # Keep the old 32-bit physical cache representation on a 64-bit host.

@@ -8,17 +8,22 @@
 /******************************************************************************/
 
 
-u32 adler32(u8 *data, int len) 
+/* The only firmware checksum caller hashes the 64-byte field at IP offset 0x30.
+ * Keep its exact Adler-32 value: a <= 16321, b <= 530464 before reduction.
+ * Neither accumulator can overflow and a never reaches the modulus. */
+#define COVER_TITLE_BYTES 64u
+_Static_assert(1u + COVER_TITLE_BYTES * 255u < 65521u &&
+               COVER_TITLE_BYTES + 255ull * COVER_TITLE_BYTES *
+               (COVER_TITLE_BYTES + 1u) / 2u <= 0xffffffffu,
+               "Cover title sums must fit before final Adler reduction");
+static u32 cover_title_hash(const u8 *data)
 {
-	u32 a = 1, b = 0;
-	int i;
-
-	for(i=0; i<len; i++) {
-		a = (a + data[i]) % 65521;
-		b = (b + a) % 65521;
-	}
-
-	return (b<<16) | a;
+    u32 a = 1, b = 0;
+    for (unsigned i = 0; i < COVER_TITLE_BYTES; i++) {
+        a += data[i];
+        b += a;
+    }
+    return ((b % 65521u) << 16) | a;
 }
 
 
@@ -809,7 +814,7 @@ void load_cover(int index)
         if (p) *p = 0;
         p = strchr(gid, ' ');
         if (p) *p = 0;
-        chdr = find_cover(gid, adler32(ipbuf + 0x30, 64));
+        chdr = find_cover(gid, cover_title_hash(ipbuf + 0x30));
         ip_cache[index] = chdr;
     }
     if (!chdr || (unsigned)chdr > cover_resident || (unsigned)chdr > cover_limit)

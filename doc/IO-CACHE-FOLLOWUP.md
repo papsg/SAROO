@@ -121,3 +121,25 @@ compare every filter byte, including adjacent fields and padding. All
 `SAROO_CDC_PROFILE=release`. For the parent control, set
 `SAROO_CDC_CONNECTION_SOURCE` for `test_cdc_connections.py`.
 Physical command timing remains unmeasured.
+
+## Simplify the fixed-length cover checksum
+
+Cover matching still uses the game ID and the Adler-32 of the same
+64 IP.BIN bytes starting at offset 0x30. For that length the first sum
+stays below 65,521 and the second fits in 32 bits. Accumulating both
+sums before reducing the second preserves the exact key and removes
+the two per-byte reductions. The public menu code already copies the
+game ID separately, so its string cleanup leaves the title bytes intact.
+[RFC 1950, §8.2](https://www.rfc-editor.org/rfc/rfc1950#section-8.2) ·
+[Cover tool key format](../tools/covertool/README.md#ipbin-hash).
+
+Adapted from paps-g's `11836b8c`. The exact preceding source and the
+port match zlib for 20,760 title fields at eight alignments each.
+The corpus covers every byte at every position and both sides of all
+reachable modulus boundaries. Run `make -C tests check-cover-display`
+and `python3 -m unittest discover -s tests -p test_mcu_save_cover.py -v`.
+All 20 methods pass with ASan/UBSan and with
+`SAROO_FIRMWARE_SAVE_PROFILE=release`. Set `SAROO_COVER_HASH_SOURCE`
+when running `test_cover_hash.py` to test a preceding MCU source.
+The linked GNU App stays at 62,796 bytes and static DTCM at 60,216 bytes.
+Hardware timing remains unmeasured.

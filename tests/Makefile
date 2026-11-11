@@ -75,6 +75,7 @@ check-native-cover:
 
 .PHONY: check-cover-display
 check-cover-display:
+	$(PYTHON) -B -m unittest discover -s . -p test_cover_hash.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cover_display.py -v
 
 .PHONY: check-mcu-diskio
