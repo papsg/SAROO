@@ -1381,6 +1381,9 @@ file reopens. The tests check compact and partial-page layouts, extent and
 checksum controls, transient and latched fault recovery, cache invalidation
 and the busy maximum GIF canvas. All 76 cases pass under ASan/UBSan and O2.
 Both deliberately overlapping SDRAM layouts fail their compile-time guards.
+The standard suite passed 532 Python methods in 46 groups, 18 Rust checks
+in four groups, and the native language check. The Windows-only CD+G
+fixture was skipped on macOS.
 
 The committed GNU MCU build binds 56 public and 85 dependency inputs,
 loads 62,156 bytes (+144) and leaves 3,380 ITCM bytes. Static DTCM stays
