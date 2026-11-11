@@ -338,42 +338,25 @@ int decode_rs(RSCTRL *rs, u8 *data, int len, u8 *par)
 
 
 
-void hex_dump(char *str, const void *buf, int size)
-{
-	int i, j;
-	const uint8_t *ubuf = buf;
+#undef mm
+#undef nn
+#undef gfpoly
+#undef prim
+#undef iprim
+#undef fcr
 
-	if(str)
-		printf("%s:\n", str);
+#include "cdgfix_file.h"
+#include <inttypes.h>
 
-	for(i=0; i<size; i+=16){
-		printf("%4x: ", i);
-		for(j=0; j<16; j++){
-			if((i+j)<size){
-				printf(" %02x", ubuf[j]);
-			}else{
-				printf("   ");
-			}
-		}
-		printf("  ");
-		for(j=0; j<16&&(i+j)<size; j++){
-			if(ubuf[j]>=0x20 && ubuf[j]<=0x7f){
-				printf("%c", ubuf[j]);
-			}else{
-				printf(".");
-			}
-		}
-		printf("\n");
-		ubuf += 16;
-	}
-	printf("\n");
-}
+#ifndef CDG_BATCH_FRAMES
+#define CDG_BATCH_FRAMES 64
+#endif
 
-
-/******************************************************************************/
-
-
-enum { FRAME_BYTES = 96, PACK_BYTES = 24, PACK_SPAN = 192 };
+enum { FRAME_BYTES = 96, PACK_BYTES = 24, PACK_SPAN = 192,
+       BATCH_BYTES = FRAME_BYTES * CDG_BATCH_FRAMES,
+       WINDOW_BYTES = BATCH_BYTES + PACK_SPAN };
+_Static_assert(CDG_BATCH_FRAMES >= 1 && CDG_BATCH_FRAMES <= 1024,
+               "CD+G processing windows must have bounded capacity");
 
 static const u8 interleave[PACK_BYTES] = {
     0x00, 0x42, 0x7d, 0xbf, 0x64, 0x32, 0x96, 0xaf,
@@ -424,92 +407,160 @@ static int correct_packet(u8 packet[PACK_BYTES])
 }
 
 
-int main(int argc, char *argv[])
+static int repair_stream(CDG_FILE *file, bool raw, uint64_t *fixed, uint64_t *bad)
 {
-	FILE *fp;
-	u8 *fbuf;
-	int flen;
+    u8 window[WINDOW_BYTES], packet[PACK_BYTES];
+    size_t filled = 0;
+    uint64_t remaining = file->size, retired = 0;
+    while (remaining || filled) {
+        size_t read_bytes = sizeof(window) - filled;
+        if (remaining < read_bytes)
+            read_bytes = (size_t)remaining;
+        if (read_bytes) {
+            if (fread(window + filled, 1, read_bytes, file->input) != read_bytes) {
+                if (!ferror(file->input))
+                    errno = EIO;
+                return -1;
+            }
+            filled += read_bytes;
+            remaining -= read_bytes;
+        }
 
-	init_rs();
-
-
-	fp = fopen(argv[1], "rb");
-	if(fp==NULL)
-		return -1;
-
-	fseek(fp, 0, SEEK_END);
-	flen = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	if(flen <= 0 || !(fbuf = malloc(flen))){
-		fclose(fp);
-		return 1;
-	}
-	if(fread(fbuf, 1, flen, fp) != (size_t)flen){
-		fclose(fp);
-		free(fbuf);
-		return 1;
-	}
-	fclose(fp);
-
-	int raw = fbuf[0] == 0xff;
-	if(raw && flen % FRAME_BYTES){
-		free(fbuf);
-		return 1;
-	}
-
-	int count_ok = 0;
-	int count_bad = 0;
-	size_t span = raw ? PACK_SPAN : PACK_BYTES;
-	for(size_t p=0; (size_t)flen-p >= span; p+=PACK_BYTES){
-		u8 packet[PACK_BYTES];
-		u8 *data = fbuf+p;
-		if(raw){
-			for(unsigned j=0; j<PACK_BYTES; ++j)
-				packet[j] = raw_symbol(fbuf, p+interleave[j]);
-			data = packet;
-		}
-
-		int result = correct_packet(data);
-		if(result < 0){
-			count_bad++;
-		}else if(result){
-			count_ok++;
-			if(raw){
-				for(unsigned j=0; j<PACK_BYTES; ++j)
-					set_raw_symbol(fbuf, p+interleave[j], packet[j]);
-			}
-		}
-	}
-
-	if(count_ok){
-		printf("%d packs fixed!\n", count_ok);
-	}
-	if(count_bad){
-		printf("%d packs failed!\n", count_bad);
-	}
-
-	if(count_ok==0){
-		if(count_bad==0){
-			printf("No error found!\n");
-		}
-		goto _exit;
-	}
-
-
-	fp = fopen(argv[1], "wb");
-	fwrite(fbuf, 1, flen, fp);
-	fclose(fp);
-
-	printf("Writing done.\n");
-
-_exit:
-	free(fbuf);
-	system("pause");
-	return 0;
+        /* Retire whole raw frames and retain the lookahead, including any
+         * corrected bits there. Subsequent packets only touch later bytes. */
+        size_t retire = raw && filled > BATCH_BYTES ? BATCH_BYTES : filled;
+        bool changed = false;
+        for (size_t pos = 0; pos < retire && (!raw || pos + PACK_SPAN <= filled); pos += PACK_BYTES) {
+            u8 *data = window + pos;
+            if (raw) {
+                for (unsigned j = 0; j < PACK_BYTES; ++j)
+                    packet[j] = raw_symbol(window, pos + interleave[j]);
+                data = packet;
+            }
+            int result = correct_packet(data);
+            if (result < 0) {
+                ++*bad;
+            } else if (result) {
+                ++*fixed;
+                changed = true;
+                if (raw) {
+                    for (unsigned j = 0; j < PACK_BYTES; ++j)
+                        set_raw_symbol(window, pos + interleave[j], packet[j]);
+                }
+            }
+        }
+        if (changed && file->output < 0 && begin_replacement(file, retired))
+            return -1;
+        if (file->output >= 0 && write_all(file->output, window, retire))
+            return -1;
+        retired += retire;
+        filled -= retire;
+        if (filled)
+            memmove(window, window + retire, filled);
+    }
+    if (fgetc(file->input) != EOF || ferror(file->input)) {
+        errno = EIO;
+        return -1;
+    }
+    return 0;
 }
 
+static int select_format(FILE *input, const char *name, const char *format)
+{
+    if (!strcmp(format, "sub"))
+        return 1;
+    if (!strcmp(format, "cdg"))
+        return 0;
+    const char *suffix = strrchr(name, '.');
+    if (suffix && !cdg_casecmp(suffix, ".sub"))
+        return 1;
+    if (suffix && !cdg_casecmp(suffix, ".cdg"))
+        return 0;
 
-/******************************************************************************/
+    int first = fgetc(input);
+    if (first == EOF || ungetc(first, input) == EOF) {
+        errno = EIO;
+        return -1;
+    }
+    return first == 0xff; /* Historical fallback for unrecognized names. */
+}
 
+static int usage(const char *program)
+{
+    fprintf(stderr, "Usage: %s [--format auto|cdg|sub] file\n"
+            "Exit 0: complete. 1: input or I/O failure. 2: uncorrectable packets retained.\n",
+            program);
+    return 1;
+}
 
+static void report_failure(const char *name, const CDG_FILE *file, int error)
+{
+    const char *message = "Repair failed before replacement. Input path was not replaced.";
+    if (file->replaced)
+        message = "File replaced. Finalization failed.";
+#ifdef _WIN32
+    else if (file->path_uncertain)
+        message = "Replacement failed. Original path could not be verified.";
+    else if (file->restored)
+        message = "Replacement failed. Original file restored.";
+#endif
+    fprintf(stderr, "%s: %s %s\n", name, message,
+            error == CDG_INPUT_CHANGED ? "Input changed while being read." : strerror(error));
+#ifdef _WIN32
+    if (file->backup_kept)
+        fprintf(stderr, "Recovery copy in the source directory at %ls\\original\n",
+                wcsrchr(file->directory, L'\\') + 1);
+#endif
+}
+
+int main(int argc, char **argv)
+{
+    const char *format = "auto", *name;
+    if (argc == 2) {
+        name = argv[1];
+    } else if (argc == 4 && !strcmp(argv[1], "--format")) {
+        format = argv[2];
+        name = argv[3];
+    } else {
+        return usage(argv[0]);
+    }
+    if (strcmp(format, "auto") && strcmp(format, "cdg") && strcmp(format, "sub"))
+        return usage(argv[0]);
+
+    CDG_FILE file = CDG_FILE_INIT;
+    int status = 1;
+    uint64_t fixed = 0, bad = 0;
+    if (open_input(&file, name))
+        goto done;
+    int raw = select_format(file.input, name, format);
+    if (raw < 0)
+        goto done;
+    if (file.size % (raw ? FRAME_BYTES : PACK_BYTES)) {
+        errno = EINVAL;
+        goto done;
+    }
+
+    init_rs();
+    if (repair_stream(&file, raw, &fixed, &bad) || verify_input(&file))
+        goto done;
+    int closed = fclose(file.input);
+    file.input = NULL;
+    if (closed < 0 || (file.output >= 0 && publish_replacement(&file)))
+        goto done;
+
+    uint64_t checked = raw ? (file.size < PACK_SPAN ? 0 : (file.size - PACK_SPAN) / PACK_BYTES + 1)
+                           : file.size / PACK_BYTES;
+    printf("%s: %" PRIu64 " packets checked, %" PRIu64 " corrected, %" PRIu64 " uncorrectable retained. %s.\n",
+           raw ? "SUB" : "CDG", checked, fixed, bad,
+           file.replaced ? "File replaced" : "File unchanged");
+    status = bad ? 2 : 0;
+
+done:
+    if (status == 1)
+        report_failure(name, &file, errno);
+    cleanup_file(&file);
+#ifdef _WIN32
+    pause_new_console();
+#endif
+    return status;
+}

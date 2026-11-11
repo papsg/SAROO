@@ -1,5 +1,10 @@
+CC = gcc
+CFLAGS ?= -Wall -g -O3
+LDFLAGS ?= -s
 
-all:
-	gcc -Wall -g -O3 -s -o cdgplay cdgplay.c gdifb.c -lgdi32
-	gcc -Wall -g -O3 -s -o cdgfix  cdgfix.c
+.PHONY: all cdgfix
+all: cdgfix
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o cdgplay cdgplay.c gdifb.c -lgdi32
 
+cdgfix:
+	$(CC) $(CPPFLAGS) -D_FILE_OFFSET_BITS=64 $(CFLAGS) $(LDFLAGS) -o cdgfix cdgfix.c

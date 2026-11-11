@@ -67,10 +67,10 @@ qualification is claimed here.
 
 - [`cdgplay`](../tools/cdgtools/) plays SUB/CDG files. Its readme describes
   full-speed playback by default and an optional speed argument.
-- `cdgfix` attempts error correction and reports corrected/unrecoverable packets.
-  The original implementation writes corrections back to the input path; its
-  description of automatic saving does not imply a backup or separate output.
-  This documentation change does not correct or qualify that file-writing path.
+- `cdgfix` repairs CD+G packets and reports corrected and uncorrectable packets.
+  The current utility validates the input and stages the complete output before
+  replacing the source. See [CD+G repair safety](CDG-REPAIR-SAFETY.md) for the
+  standalone build, supported layouts and exit codes.
 - [`cpmk`](../tools/cpktools/) describes a historical Windows pipeline using
   FFmpeg and `iccvid.dll`. In the source, `-key k` is the forced-keyframe interval,
   not the total number of keyframes. Its 32-bit build instructions and speed
