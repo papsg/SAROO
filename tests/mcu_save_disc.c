@@ -121,13 +121,21 @@ static struct { u32 CMD,DCTRL,IDMACTRL,MASK,ICR,CLKCR,DTIMER,POWER; } sdio;
 #define SDIO (&sdio)
 #define RCC_AHB3RSTR_SDMMC1RST (1u << 16)
 static int sd_rca;
+static void *cmd_sem=&rcc;
+static int expect_reset_lock;
 static void osDelay(int ticks) { assert(ticks==10 && (rcc.AHB3RSTR & RCC_AHB3RSTR_SDMMC1RST)); }
 #define __DSB() assert(rcc.AHB3RSTR & RCC_AHB3RSTR_SDMMC1RST)
 #define sd_clk_set(clock) (sdio.CLKCR=(clock))
 #define sd_bus_width(width) assert((width)==1)
 #define sd_power_on(on) assert((on)==1)
-static int sdcard_identify(void) { identifies++;return identify_result; }
+static int sdcard_identify(void)
+{
+    if (expect_reset_lock) assert(lock_depth==1);
+    identifies++;
+    return identify_result;
+}
 #include "sd-reset.inc"
+static int disk_reidentify(void) { return sdio_reset(); }
 int sd_card_insert(void) { return present; }
 static void swap_step(void)
 {
@@ -285,6 +293,17 @@ static void automatic_no_wait(void)
     assert(cdb.track_num==1 && cdb.status==STAT_PAUSE && ss_index==1);
     assert(!pause_waits && !pause_wakes && !api_reads && !api_writes);
 }
+static void reidentify_under_lock(int fail)
+{
+    expect_reset_lock=1;
+    next_disc=1;
+    cdb.status=STAT_OPEN;
+    identify_result=fail ? -17 : 0;
+    swap_step();
+    assert(!lock_depth && identifies==1 && ss_index==1);
+    assert(cdb.status==(fail ? STAT_NODISC : STAT_PAUSE));
+    assert(discoveries==!fail && !api_reads && !api_writes);
+}
 static void configuration_failure(int value)
 {
     fixture(0,32);
@@ -391,6 +410,7 @@ int main(int argc,char **argv)
     } else if(!strcmp(mode,"quiesce")) quiesce(value);
     else if(!strcmp(mode,"publication")) publication(value);
     else if(!strcmp(mode,"automatic-no-wait")) automatic_no_wait();
+    else if(!strcmp(mode,"reset-lock")) reidentify_under_lock(value);
     else if(!strcmp(mode,"stop")) {
         u8 snapshot[sizeof test_shared];memcpy(snapshot,test_shared,sizeof snapshot);
         assert(!menu_step(0xffff) && cdb.status==STAT_NODISC && !cdb.track_num);

@@ -57,4 +57,8 @@ class DiscSaveSessionTests(MCUSaveTest):
         for result in (0,-1,1,2,19):
             with self.subTest(result=result): self.invoke('reset',result)
 
+    def test_automatic_reidentification_holds_the_filesystem_lock(self):
+        for result in (0,1):
+            with self.subTest(result=result): self.invoke('reset-lock',result)
+
 if __name__ == '__main__': unittest.main()

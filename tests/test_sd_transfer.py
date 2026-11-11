@@ -85,7 +85,7 @@ class SDTransferTests(unittest.TestCase):
                 self.invoke(scenario)
 
     def test_preerase_startup_and_reinsertion_ownership(self):
-        for scenario in (9, 15, 16):
+        for scenario in (9, 15, 16, 23, 24):
             with self.subTest(scenario=scenario):
                 self.invoke(scenario)
 

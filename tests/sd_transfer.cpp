@@ -27,7 +27,8 @@ struct { Register AHB3RSTR; } rcc;
 #define SDIO (&controller)
 #define RCC (&rcc)
 static u32 cmd_resp[4];
-static int sd_rca, is_sdhc;
+static u32 sd_rca;
+static int is_sdhc;
 static osSemaphoreId_t cmd_sem = (void *)1;
 static void SDIO_IRQHandler(void);
 static unsigned reads, tokens, releases, drains, waits, delays, resets, barriers, clock_reads;
@@ -35,13 +36,14 @@ static u32 tick, issued, fault_status;
 static unsigned current, fault_command, fault_uses, stop_before_reset, stop_after_reset;
 static bool in_irq, faulty, awaiting, late_irq, pending_irq, busy_error, bad_delay;
 static bool permanent_cpsm, healthy_busy, pending_start;
-static unsigned reset_hold, identified;
+static unsigned reset_hold, identified, irq_enables;
+static bool fail_semaphore_creation;
 static int identify_result;
 struct { u32 IDR; } gpio;
 #define GPIOA (&gpio)
 static constexpr int SDIO_IRQn = 49;
 static void NVIC_SetPriority(int irq, int priority) { assert(irq == SDIO_IRQn && priority == 6); }
-static void NVIC_EnableIRQ(int irq) { assert(irq == SDIO_IRQn); }
+static void NVIC_EnableIRQ(int irq) { assert(irq == SDIO_IRQn); irq_enables++; }
 static osStatus_t wait_failure;
 static std::vector<unsigned> commands;
 static std::vector<u32> arguments;
@@ -207,7 +209,7 @@ static void printk(const char *, ...)
 osSemaphoreId_t osSemaphoreNew(uint32_t maximum, uint32_t initial, const osSemaphoreAttr_t *)
 {
     assert(maximum == 1 && initial == 0 && !(SDIO->STA.value & active));
-    tokens = 0; return (void *)1;
+    tokens = 0; return fail_semaphore_creation ? nullptr : (void *)1;
 }
 static int sdcard_identify(void)
 {
@@ -231,7 +233,8 @@ static void setup(void)
     fault_command = 99; stop_before_reset = stop_after_reset = 0;
     in_irq = faulty = awaiting = late_irq = pending_irq = busy_error = bad_delay = false;
     wait_failure = osOK;
-    permanent_cpsm = healthy_busy = pending_start = false; reset_hold = identified = 0; identify_result = 0; gpio.IDR = 0;
+    permanent_cpsm = healthy_busy = pending_start = fail_semaphore_creation = false;
+    reset_hold = identified = irq_enables = 0; identify_result = 0; gpio.IDR = 0;
     commands.clear(); arguments.clear();
     SDIO->CLKCR.value = selected_clock; SDIO->POWER.value = 3; RCC->AHB3RSTR.value = RCC_AHB3RSTR_MDMARST;
     for (unsigned i = 0; i < 4; i++) cmd_resp[i] = 0xa0b0c000 + i;
@@ -331,7 +334,7 @@ int main(int argc, char **argv)
         for (bool present : {false,true}) {
             setup(); gpio.IDR = present ? 0 : 0x8000;
             SDIO->STA.value = active; SDIO->IDMACTRL.value = 1; SDIO->MASK.value = 0xffffffff;
-            assert(sdio_init() == 0);
+            assert(sdio_init() == (present ? 0 : -1));
             assert(resets == 1 && !reset_hold && identified == unsigned(present));
             assert(SDIO->CLKCR.value == ((1u << 16) | SDCLK_LOW));
             assert(!(SDIO->STA.value & active) && !SDIO->IDMACTRL.value);
@@ -385,6 +388,15 @@ int main(int argc, char **argv)
         stop_before_reset = 6;
         assert(sd_read_blocks(42,1,buffer) != 0); clean();
         assert(!resets && sd_rca && delays >= 3);
+    } else if (which == 23) {
+        fail_semaphore_creation = true;
+        assert(sdio_init() == -1 && !irq_enables && !identified && !sd_rca);
+        setup();
+        identify_result = -17;
+        assert(sdio_init() == -17 && irq_enables == 1 && identified == 1 && !sd_rca);
+    } else if (which == 24) {
+        cmd_sem = nullptr;
+        assert(sdio_reset() == -1 && !resets && !identified && !sd_rca);
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);
 }

@@ -65,5 +65,13 @@ class MCUDiskIOTests(unittest.TestCase):
             for failures in (0, 1, 3, 4):
                 with self.subTest(mode=mode, failures=failures):self.invoke(mode, failures)
 
+    def test_reidentification_requires_the_disk_lock_and_returns_the_driver_result(self):
+        for value in range(5):
+            with self.subTest(value=value): self.invoke('reidentify',value)
+
+    def test_reidentification_cannot_reset_an_in_flight_read_or_write(self):
+        for write in (0,1):
+            with self.subTest(write=write): self.invoke('reidentify-overlap',write)
+
 
 if __name__ == '__main__': unittest.main()

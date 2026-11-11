@@ -31,7 +31,12 @@ static unsigned waits, drains;
 
 /* Adapted from paps-g 96c9dd85. Drive the actual identify and command paths. */
 static u8 sd_cid[16], sd_csd[16];
-static int sd_rca, is_sdhc, bsize, csize, cblock;
+static volatile u32 sd_rca;
+static int is_sdhc, bsize, csize, cblock;
+#ifdef TEST_SD_SESSION
+static u8 sd_known;
+#define __DMB() ((void)0)
+#endif
 static struct {
     u32 tick, first_tick, last_tick, ready_after, prefix_ticks, command_ticks;
     unsigned prefixes, requests, retry_delays, post_ready;

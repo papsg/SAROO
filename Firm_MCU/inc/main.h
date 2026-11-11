@@ -53,6 +53,7 @@ int tiny_xmodem_recv(u8 *dest);
 
 int sdio_init(void);
 int sdio_reset(void);
+int disk_reidentify(void);
 
 int scan_dir(char *dirname, int level, int (*func)(char *, char*, int));
 

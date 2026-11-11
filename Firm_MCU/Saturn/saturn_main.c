@@ -381,11 +381,12 @@ _restart_wait:
 			}
 			if(next_disc>=0){
 				int sd_card_insert(void);
-				int sdio_reset(void);
 				if(cdb.status==STAT_OPEN){
 					if(sd_card_insert()){
                         int requested = next_disc;
-                        retv = sdio_reset();
+                        fs_lock();
+                        retv = disk_reidentify();
+                        fs_unlock();
                         if (!retv) retv = load_disc(requested, 0);
                         if (retv) {
                             /* Wait for another removal/insertion, retaining

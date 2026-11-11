@@ -141,6 +141,50 @@ and 60,176 bytes of static DTCM. The direct `f_write` frame stays at
 56 bytes. Physical SD durability remains unqualified.
 [Build instructions][build]
 
+## MCU-SD-005 and MCU-SD-006 — Bind sector access to an initialized card
+
+The old driver overwrote the remembered card ID during reidentification.
+It also published a signed relative card address before several required
+commands had succeeded. A later error could leave sector I/O enabled,
+and shifting a valid address with bit 15 set could overflow a signed
+integer. [Original driver][original-sd] · [Public driver][driver]
+
+The port adapts paps-g `613efd17b74bec535f3f94cf1beab8766cce03c1`.
+It retains the first successfully initialized card's complete 16-byte CID.
+A different CID is refused before requesting a relative address. The
+candidate address stays local and unsigned until all required commands
+complete, so sector I/O remains disabled throughout identification and
+after any failure. The same card can return with a different address.
+An absent card, failed identification or missing semaphore returns an
+error at startup. [Public driver][driver]
+
+Automatic reidentification holds the existing filesystem mutex. The
+public adaptation also takes the disk I/O semaphore because public
+callers can reach sector I/O outside the filesystem mutex. Acquisition
+failure returns an error before the controller is touched. Both locks
+are released before loading the next disc. A different card requires a
+fresh MCU/filesystem session. Live card removal and changes made to the
+same card outside SAROO remain unqualified.
+[Public disk adapter][disk-adapter] · [Disc worker][disc-worker] ·
+[CMSIS-RTOS2 semaphore contract][semaphore-contract]
+
+Thirty-five of 40 identity cases fail on `4e4bdf0`. Three startup
+scenarios and both modeled filesystem-lock paths also expose the old
+behavior. All 40 identity cases, 25 transfer scenarios, seven new
+disk-lock controls and 13 disc/save methods pass in both profiles.
+Removing the disk lock fails the in-flight read and write controls.
+Publishing the address early fails both in-progress initialization
+controls. Run `make -C tests check-mcu-diskio` and
+`python3 -B tests/test_mcu_save_disc.py -v`.
+[Identity fixture][media-fixture] · [Disk I/O fixture][disk-fixture]
+
+The GNU App adds 208 load bytes for 62,620 total and 2,916 bytes of
+ITCM margin. Static DTCM grows by eight bytes to 60,184. Direct
+identification and disk-reidentification frames are 72 and 16 bytes.
+The tests check identity, command failure, and ownership at modeled
+boundaries. Physical card replacement, bus timing and durability remain
+unqualified. [Build instructions][build]
+
 [original-sd]: https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/sdio_h7.c
 [sd-initialization]: FATFS-SD-SAFETY.md
 [driver]: ../Firm_MCU/Main/sdio_h7.c
@@ -166,5 +210,10 @@ and 60,176 bytes of static DTCM. The direct `f_write` frame stays at
 [fatfs-error]: https://elm-chan.org/fsw/ff/doc/rc.html#de
 [fatfs-close]: https://elm-chan.org/fsw/ff/doc/close.html
 [fatfs-fixture]: ../tests/fatfs_seek.c
+[disk-adapter]: ../Firm_MCU/FatFS/diskio.c
+[disc-worker]: ../Firm_MCU/Saturn/saturn_main.c
+[semaphore-contract]: https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html
+[media-fixture]: ../tests/sd_media.c
+[disk-fixture]: ../tests/mcu_diskio.c
 [menu-build]: ../tools/README.md#isolated-firmware-qualification
 [build]: ../tools/README.md#original-mcu-app-compilelink-check

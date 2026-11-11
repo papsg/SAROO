@@ -34,10 +34,12 @@ class SDSafetyTests(unittest.TestCase):
             recover = b''.join(function(signature) for signature in (
                 b'static int sd_stop(', b'static void sd_reset_controller(',
                 b'static __attribute__((noinline)) void sd_recover('))
+        layout = b'#define TEST_SD_RECOVERY\n' if recover else b''
+        if b'static u8 sd_known;' in data:
+            layout += b'#define TEST_SD_SESSION\n'
         inputs = {
             'sdio_h7.c': data,
-            'command-defines.inc': (b'#define TEST_SD_RECOVERY\n' if recover else b'')
-                                   + data[definitions:last_define] + b'\n',
+            'command-defines.inc': layout + data[definitions:last_define] + b'\n',
             'command.inc': recover + function(b'static int sd_cmd('),
             'identify.inc': b'\n'.join(function(signature) for signature in (
                 b'static void sd_clk_set(', b'static void sd_bus_width(',
