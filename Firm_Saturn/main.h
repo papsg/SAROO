@@ -55,6 +55,9 @@ typedef unsigned long long u64;
 #define SSCMD_SAVE_ACK 0x0020
 #define SAVE_ACK_VERSION 0x53415631u
 #define FILE_ACK_VERSION 0x46494c31u
+#define ARCHIVE_IO_VERSION 0x534f5731u
+#define SSCMD_ARCHIVERD 0x0036
+#define SSCMD_ARCHIVEWR 0x0037
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -465,6 +468,10 @@ void gif_timer(void);
 
 
 /*****************************************************************************/
+
+/* Primary save archive transport used by the menu. */
+int archive_command(unsigned device, u32 offset, void *buf, int length);
+int archive_find_slot(const u8 *key, void *workspace, u32 capacity);
 
 #endif
 

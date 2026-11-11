@@ -17,6 +17,7 @@ static volatile uint16_t command_value, argument;
 #define TMPBUFF_ADDR ((uintptr_t)(memory+0xc7000))
 #include "protocol.inc"
 static uint16_t file_ack;
+static uint16_t archive_ack __attribute__((unused));
 
 static void flush_ccr(void)
 {

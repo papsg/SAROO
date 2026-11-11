@@ -16,6 +16,7 @@
 
 u16 save_ack;
 static u16 file_ack;
+static u16 archive_ack;
 u32 mcu_ver;
 u32 debug_flag;
 int bios_type;
@@ -582,16 +583,21 @@ static void file_cache_purge(u32 address, u32 size)
     __asm__ volatile ("" ::: "memory");
 }
 
-/* The caller owns size bytes at buf; this helper also bounds the shared hop. */
-static int file_command(char *name, int offset, u32 size, void *buf, int writing)
+/* The low mode bit is direction. Modes 0/1 are named files, and 2/3
+ * and 4/5 address the two primary owners with a direct FPGA buffer. */
+static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
 {
-    if (!name || (!buf && size)) return -19; /* FR_INVALID_PARAMETER */
+    int archive = mode >> 1, writing = mode & 1;
     unsigned length = 0;
-    while (length < 0xf0 && name[length]) ++length;
-    if (length == 0xf0) return -19;
+    if (!archive) {
+        if (!name || (!buf && size)) return -19; /* FR_INVALID_PARAMETER */
+        while (length < 0xf0 && name[length]) ++length;
+        if (length == 0xf0) return -19;
+    }
 
     u32 bus_addr = (u32)buf & 0x1fffffff;
     int direct = bus_addr >= 0x02000000 && bus_addr < 0x03000000;
+    if (archive && size && !direct) return -19;
     u32 address = direct ? bus_addr : ((TMPBUFF_ADDR & 0x1fffffff) + 0x100);
     /* Stop the bounce buffer before the active cover workspace at 0x02400000. */
     u32 end = direct ? (address < 0x020c7000 ? 0x020c7000 : 0x03000000) : 0x02400000;
@@ -600,12 +606,14 @@ static int file_command(char *name, int offset, u32 size, void *buf, int writing
     LE32W((void*)(TMPBUFF_ADDR+0x00), offset);
     LE32W((void*)(TMPBUFF_ADDR+0x04), size);
     LE32W((void*)(TMPBUFF_ADDR+0x08), address);
-    memcpy((void*)(TMPBUFF_ADDR+0x10), name, length+1);
+    if (archive) LE32W((void*)(TMPBUFF_ADDR+0x0c), archive - 1);
+    else memcpy((void*)(TMPBUFF_ADDR+0x10), name, length+1);
     if (writing && !direct && size) memcpy((void*)(TMPBUFF_ADDR+0x100), buf, size);
     /* Publish ordinary request/payload stores before the MMIO command. */
     __asm__ volatile ("" ::: "memory");
+    int ack = archive ? archive_ack : file_ack;
     SS_ARG = 0;
-    SS_CMD = (writing ? SSCMD_FILEWR : SSCMD_FILERD) | file_ack;
+    SS_CMD = archive ? SSCMD_ARCHIVERD + writing : (SSCMD_FILERD + writing) | ack;
     while (SS_CMD);
     /* Consume shared response/data only after external completion. */
     __asm__ volatile ("" ::: "memory");
@@ -613,14 +621,54 @@ static int file_command(char *name, int offset, u32 size, void *buf, int writing
     u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
     if (result >= 0) {
         /* Require the negotiated result before using the reported count. */
-        if (result != file_ack) result = -1;
-        else result = count > size ? -19 : (int)count;
+        if (result != ack) result = -1;
+        else result = (count > size || (archive && count != size)) ? -19 : (int)count;
     }
     if (!writing) {
         if (direct) file_cache_purge(address, result < 0 ? size : (u32)result);
         else if (result > 0) memcpy(buf, (void*)(TMPBUFF_ADDR+0x100), result);
     }
     return result;
+}
+
+/* Positive lengths read, negative lengths write, and (0, NULL, 0) syncs.
+ * The MCU admits existing file extents. The caller owns the buffer and
+ * determines when it may access the archive. */
+int archive_command(unsigned device, u32 offset, void *buf, int length)
+{
+    u32 size = length < 0 ? 0u - (u32)length : (u32)length;
+    if (!archive_ack) return -12; /* FR_NOT_ENABLED */
+    if (device > 1 || size > 65536 ||
+        (size ? !buf : (buf || offset)) ||
+        (length < 0 && !device && offset < 65536)) return -19;
+    return file_command(NULL, offset, size, buf, 2 + device * 2 + (length <= 0));
+}
+
+/* Find an existing slot using the primary owner's directory. The caller
+ * supplies the read window, which may also contain the input key. */
+int archive_find_slot(const u8 *key, void *workspace, u32 capacity)
+{
+    u8 wanted[16];
+    if (!key || !key[0] || !workspace || capacity < 512 || capacity > 65536 ||
+        (capacity & 511)) return -19;
+    memcpy(wanted, (void *)key, sizeof(wanted));
+    unsigned found = 0;
+    for (u32 offset = 0; offset < 65536;) {
+        u32 size = 65536 - offset;
+        if (size > capacity) size = capacity;
+        int result = archive_command(0, offset, workspace, size);
+        if (result < 0) return result;
+        u8 *entry = workspace;
+        if (!offset && memcmp(entry, "Saroo Save File", 16)) return -2;
+        for (u32 pos = offset ? 0 : 16; pos < size; pos += 16) {
+            if (entry[pos] && !strncmp((char *)entry + pos, (char *)wanted, 16)) {
+                if (found) return -2;
+                found = offset + pos;
+            }
+        }
+        offset += size;
+    }
+    return found ? (int)(found << 12) : -4; /* FR_NO_FILE */
 }
 
 int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity)
@@ -1375,6 +1423,7 @@ int _main(void)
 
     save_ack = LE32((void *)(SYSINFO_ADDR + 0x10)) == SAVE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
     file_ack = LE32((void *)(SYSINFO_ADDR + 0x14)) == FILE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+    archive_ack = LE32((void *)(SYSINFO_ADDR + 0x18)) == ARCHIVE_IO_VERSION ? SSCMD_SAVE_ACK : 0;
 	mcu_ver = LE32((void*)(SYSINFO_ADDR+0x00));
 	lang_id = LE32((void*)(SYSINFO_ADDR+0x04));
 	debug_flag = LE32((void*)(SYSINFO_ADDR+0x08));

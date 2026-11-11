@@ -195,7 +195,10 @@ static void transfer(unsigned device, u8 *buffer, const char *mode)
     assert(api_opens == opens);
 }
 
-int main(int argc, char **argv)
+#ifndef SAVE_OWNER_TEST_ENTRY
+#define SAVE_OWNER_TEST_ENTRY main
+#endif
+int SAVE_OWNER_TEST_ENTRY(int argc, char **argv)
 {
     assert(argc == 5); unsigned device = atoi(argv[4]); assert(device < 2);
     disk = fopen(argv[1], "r+b"); assert(disk); fault = "none";

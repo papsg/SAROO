@@ -59,3 +59,34 @@ The 20 focused methods pass ASan/UBSan and O2, with 46 methods passing
 in the broader O2 run. Use `SAROO_FILE_PROFILE=release` and
 `SAROO_FIRMWARE_SAVE_PROFILE=release` for the optimized fixtures.
 The GNU App adds 432 bytes to 63,184. Static DTCM stays at 60,216 bytes.
+
+## Pair the menu with the primary save owners
+
+The menu latches the MCU archive capability and uses direct FPGA buffers
+for archive transfers. A transfer requires the exact tagged reply and
+byte count. If a read fails, the caller invalidates the full possible
+written extent. The existing named file API and BIOS save callers use
+their established request paths. [Shared command register contract](IO-CACHE-FOLLOWUP.md#confirm-file-transfers-explicitly) ·
+[Original public save archive layout](FIRMWARE-SAVE-SAFETY.md).
+
+The slot helper scans the 64 KiB directory through the same primary
+owner. A caller-provided window can be 512 bytes through 64 KiB in
+512-byte units. Lookup copies the 16-byte input key before the first
+read, accepts a single matching entry, and refuses a missing or
+duplicate key. It returns the payload offset. Archive I/O checks the
+actual extent when a caller uses that offset.
+
+Adapted from paps-g's `3f6e0121` after the bounded MCU owner port.
+The public lookup validates the full 16-byte directory signature,
+including its terminator, consistent with the public MCU. Run
+`python3 -m unittest discover -s tests -p test_mcu_save_menu_owner.py -v`
+and repeat with `SAROO_FIRMWARE_SAVE_PROFILE=release`. Sixteen paired
+FAT32 and exFAT cases cover both archives, reset replies, bounded reads,
+key aliasing and directory faults. Omitting the exact-count requirement
+falsely accepts short replies in four cases. The paired and ordinary
+transfer methods pass under ASan/UBSan, and all 32 focused methods pass
+under O2. Three legacy-menu controls also pass against the new MCU.
+The menu adds 528 linked code/data bytes to 80,244. BSS stays at 9,240
+bytes and the padded image remains 488,770 bytes. These tests exercise
+the real handlers with modeled cartridge registers. Physical timing
+and save recovery remain unqualified.

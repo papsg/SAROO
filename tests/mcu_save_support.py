@@ -84,6 +84,9 @@ class MCUSaveTest(unittest.TestCase):
             harnesses += ['mcu_save_reopen.c', 'test_mcu_save_reopen.py']
         if cls.fixture == 'owner':
             harnesses += ['mcu_save_owner.c', 'test_mcu_save_owner.py']
+            if hasattr(cls, 'prepare_menu'):
+                inputs.update(cls.prepare_menu(source, cls.target))
+                harnesses += ['menu_save_owner.c', 'test_mcu_save_menu_owner.py']
         if cls.fixture in ('api', 'disc'):
             harnesses += ['mcu_save_api.c', 'test_mcu_save_api.py']
             path = Path(os.environ.get('SAROO_GAME_SAVE_SOURCE', ROOT / 'Firm_Saturn/game_save.c'))

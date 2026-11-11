@@ -15,6 +15,7 @@ static u32 target_bus=0x06004000, allocation;
 #define TMPBUFF_ADDR ((uintptr_t)(test_shared+0xc7000))
 #include "protocol.inc"
 static uint16_t file_ack;
+static uint16_t archive_ack __attribute__((unused));
 #define SSLOG(...) ((void)0)
 static volatile uint16_t mcu_cmd, mcu_arg;
 #define SS_CMD mcu_cmd
