@@ -1564,3 +1564,12 @@ The Saturn was left untouched.
    62,876 and SDIO and diskio compile with the BootLoader configuration.
    Physical SD recovery and power loss durability remain unqualified.
    [FatFs citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#recover-aborted-save-handles-through-ordinary-requests)
+4. **Companion ROM admission — published**
+   [`a1f81a2`](https://github.com/papsg/SAROO/commit/a1f81a271af26156a2e298dbc78ceca46e644cb2).
+   Adapted from paps-g `198a079f` after the checked file and CD transfer
+   ports. The old callbacks fail 21 missing, failed or short-read cases
+   and pass three complete reads. All 39 ROM cases, 15 coupled launch
+   controls and 29 menu and cover methods pass ASan/UBSan and O2.
+   The menu adds 176 code/data and 4 BSS bytes. Both relocated helpers
+   fit their aligned 96-byte slots. Physical launch remains unqualified.
+   [Sega citation, upstream issues and reproduction](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#check-companion-roms-before-bios-handoff)
