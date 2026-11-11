@@ -1611,3 +1611,13 @@ timing and reset behavior across hardware variants remain unqualified.
 Publication review covered the source, fixtures, attribution, commit
 metadata and ledger. The private HEAD, refs, stashes and status match the
 initial read-only snapshot. The Saturn was left untouched.
+
+## Firmware I/O and cache follow-up
+
+1. **Shared CUE parser checks — published**
+   [`4c30063`](https://github.com/papsg/SAROO/commit/4c3006303e2196a2e1f8f5010cabc25612b5fa15).
+   Adapted from paps-g `8ef2ac7f` after the public CUE safety and layout
+   ports. The baseline and port pass all 37 host methods, including 42
+   indexed-sector and 25 malformed-mode controls. The port passes
+   ASan/UBSan and O2. The GNU App load decreases by 8 bytes to 62,932.
+   [Contracts, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-cue-parser-checks)
