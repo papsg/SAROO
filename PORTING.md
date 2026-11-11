@@ -1260,5 +1260,17 @@ verification](https://github.com/papsg/SAROO/blob/main/doc/MENU-STATUS-FONT.md).
    pass. The complete pinned menu build adds 19 appended bytes for a
    488,770-byte image and preserves the ELF, body, stack and BSS. Its
    36 built inputs bind to the committed source.
-2. **SATURN-FONT-003/004 legacy glyph height and row overhang — in progress.**
-3. **SATURN-MENU-008 status drawing bounds and wording — pending.**
+2. **SATURN-FONT-003/004 legacy glyph height and row overhang — published**
+   [`5d53919`](https://github.com/papsg/SAROO/commit/5d53919c768be55f65b8fd91f3bf4177592b92f9).
+   Adapted from paps-g `4c2cccb4`. The baseline renderer omits U+9515, crops
+   U+046E to one row and writes overhanging Latin glyph pixels beyond the row.
+   Nonempty zero-height records render all 16 rows. Thirteen curated BDF
+   changes keep 637 Latin code points, all distinct strokes, and all 624
+   other Latin records intact. The original converter reproduces the header.
+   All 11,433 indexed spans fit. Nine font methods and 20 related menu methods
+   pass, including guarded actual C raster, an exact-size empty space, and
+   unchanged CJK/Arabic/Romanian cases. Both compiled decoder controls fail
+   as expected. The 36-input committed menu build links 79,556 code/data
+   bytes (−16), with the same 40-byte raster frame, 9,232-byte BSS, 16 KiB
+   stack reservation, and 488,770-byte image.
+3. **SATURN-MENU-008 status drawing bounds and wording — in progress.**
