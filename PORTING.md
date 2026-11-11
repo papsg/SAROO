@@ -1935,3 +1935,10 @@ The Saturn was left untouched.
    38,208 full-buffer pauses. The GNU MCU App loads 63,196 bytes,
    with 2,340 bytes of ITCM space. Physical scheduling remains unqualified.
    [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-EVENTS-AND-GAME-LAUNCH.md#keep-a-file-read-pending-while-the-cd-buffer-is-full)
+
+**Save boot fixture follow-up — published**
+[`43a2fb8`](https://github.com/papsg/SAROO/commit/43a2fb8a19c5ca1a776374100030e902440cda12). The first
+full run found that the older CD player fixture expected the raw mailbox
+word for −1. The fixture now checks signed results and retains its boot
+gates. Both save boot methods pass ASan/UBSan and O2. This updates the
+host fixture.
