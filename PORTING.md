@@ -1773,3 +1773,27 @@ was left untouched.
    and parser through the end of parse_config. All 28 combined methods
    pass ASan/UBSan and O2. The preceding parser also passes all 15
    standalone loader methods through the shared fixture.
+
+### Save ownership and expansion RAM final verification
+
+All six checkpoints are on public main as seven firmware commits.
+Two test fixture corrections bring main to
+[`dc5e079`](https://github.com/papsg/SAROO/commit/dc5e0798b4992b4afb59641581da2daf5ebda615).
+The full `make -C tests check` suite passes 662 Python tests in
+62 groups, 18 Rust checks and the native language check.
+macOS skips the Windows-only CD+G fixture.
+
+The MCU and SH-2 menu rebuilds reproduce both ELFs and the menu image
+byte for byte. The final public tree matches all 56 tracked MCU inputs
+and all 36 menu inputs from the rebuilds. The GNU App is 63,244 bytes,
+with 2,292 bytes of ITCM margin and 60,216 bytes of static DTCM.
+The menu links 80,308 code/data and 9,240 BSS bytes into the
+488,770-byte image. The mapping-only image fit with 2,112 bytes
+of ITCM margin before the separate FatFs compaction.
+
+The original FPGA command register model passes its simulated
+transport cases. Physical transfer timing, save recovery, and game
+behavior remain unqualified. Publication review covered the source,
+fixtures, provenance, commit metadata and ledger. The private HEAD,
+worktree, refs and stash match the initial snapshot. The Saturn was
+left untouched.
