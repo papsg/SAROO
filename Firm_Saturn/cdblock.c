@@ -120,7 +120,7 @@ int cdc_get_status(int *status)
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_status");
 
-	if(status)
+	if(status && !retv)
 		*status = resp.cr1>>8;
 	return retv;
 }
@@ -137,7 +137,7 @@ int cdc_get_hwinfo(int *status)
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_hwinfo");
 
-	if(status)
+	if(status && !retv)
 		*status = resp.cr1>>8;
 	return retv;
 }
@@ -239,6 +239,7 @@ int cdc_get_cddev(int *selnum)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_cddev");
+	if(retv) return retv;
 
 	*selnum = resp.cr3>>8;
 	return retv;
@@ -270,6 +271,7 @@ int cdc_get_filter_range(int selnum, int *fad, int *num_sector)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_filter_range");
+	if(retv) return retv;
 
 	*fad = ((resp.cr1&0xff)<<16) | resp.cr2;
 	*num_sector = ((resp.cr3&0xff)<<16) | resp.cr4;
@@ -301,6 +303,7 @@ int cdc_get_filter_mode(int selnum, int *mode)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_filter_mode");
+	if(retv) return retv;
 
 	*mode = resp.cr1&0xff;
 	return retv;
@@ -329,6 +332,7 @@ int cdc_get_filter_connect(int selnum, int *c_true, int *c_false)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_filter_connect");
+	if(retv) return retv;
 
 	*c_true = resp.cr2>>8;
 	*c_false = resp.cr2&0xff;
@@ -355,9 +359,9 @@ void show_selector(int id)
 
 	for(i=0; i<24; i++){
 		if(id==-1 || id==i){
-			cdc_get_filter_mode(i, &mode);
-			cdc_get_filter_range(i, &fad, &range);
-			cdc_get_filter_connect(i, &c_true, &c_false);
+			if(cdc_get_filter_mode(i, &mode)) return;
+			if(cdc_get_filter_range(i, &fad, &range)) return;
+			if(cdc_get_filter_connect(i, &c_true, &c_false)) return;
 			printk("filter %2d: mode_%02x fad_%08x range_%08x true_%02x false_%02x\n",
 					i, mode, fad, range, c_true, c_false);
 		}
@@ -378,6 +382,7 @@ int cdc_get_buffer_size(int *total, int *pnum, int *free)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_buffer_size");
+	if(retv) return retv;
 
 	*free = resp.cr2;
 	*pnum = resp.cr3>>8;
@@ -390,14 +395,13 @@ int cdc_get_numsector(int selnum, int *snum)
 	CDCMD cmd, resp;
 	int retv;
 
-	*snum = 0;
-
 	cmd.cr1 = 0x5100;
 	cmd.cr2 = 0x0000;
 	cmd.cr3 = selnum<<8;
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_numsector");
+	if(retv) return retv;
 	*snum = resp.cr4;
 	return retv;
 }
@@ -426,6 +430,7 @@ int cdc_get_actsize(int *actsize)
 	cmd.cr4 = 0;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_actsize");
+	if(retv) return retv;
 
 	*actsize = ((resp.cr1&0xff)<<16) | resp.cr2;
 	return retv;
@@ -442,6 +447,7 @@ int cdc_get_sector_info(int bufno, int secno, int *fad)
 	cmd.cr4 = 0x0000;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_sector_info");
+	if(retv) return retv;
 
 	*fad = ((resp.cr1&0xff)<<16) | resp.cr2;
 	return retv;
@@ -528,6 +534,7 @@ int cdc_auth_status(int *status)
 	cmd.cr4 = 0x0000;
 
 	int retv = cdc_cmd(0, &cmd, &resp, "cdc_auth_status");
+	if(retv) return retv;
 
 	*status = resp.cr2;
 	return retv;
@@ -537,7 +544,7 @@ int cdc_auth_status(int *status)
 int cdc_auth_device(void)
 {
 	CDCMD cmd, resp;
-	int status;
+	int status, retv;
 
 	//printk("\n\nCD_AUTH ... HIRQ=%04x\n", HIRQ);
 
@@ -547,14 +554,15 @@ int cdc_auth_device(void)
 	cmd.cr4 = 0x0000;
 
 	clear_hirq(HIRQ_EFLS);
-	cdc_cmd(0, &cmd, &resp, "cdc_auth_device");
+	retv = cdc_cmd(0, &cmd, &resp, "cdc_auth_device");
+	if(retv) return retv;
 	while(1){
-		int retv = wait_hirq(HIRQ_EFLS);
-		if(retv==0)
+		if(!wait_hirq(HIRQ_EFLS))
 			break;
 	}
 
-	cdc_auth_status(&status);
+	retv = cdc_auth_status(&status);
+	if(retv) return retv;
 	printk("AUTH: %02x\n\n", status);
 
 	return status;
@@ -597,6 +605,7 @@ int cdc_get_file_scope(int *fid, int *fnum, int *drend)
 	cmd.cr4 = 0;
 
 	retv = cdc_cmd(0, &cmd, &resp, "cdc_get_file_scope");
+	if(retv) return retv;
 
 	*fnum = resp.cr2;
 	*drend = resp.cr3>>8;
@@ -740,7 +749,7 @@ void cdc_auth_hram(CDCMD *resp, int delay)
 
 int jhl_auth_hack(int delay)
 {
-	int status;
+	int status, retv, cleanup;
 	CDCMD resp;
 
 	memcpy((u8*)0x06080000, cdc_auth_hram, 0x400);
@@ -758,14 +767,16 @@ int jhl_auth_hack(int delay)
 	}
 #endif
 
-	cdc_set_size(3);
+	retv = cdc_set_size(3);
+	if(retv) return retv;
 
 	go(&resp, delay);
 
 	int old = 0xffffffff;
 	while(1){
 		for(int i=0; i<100000; i++){ }
-		cdc_get_status(&status);
+		retv = cdc_get_status(&status);
+		if(retv) goto restore_size;
 		if(status!=old){
 			printk("stat: %04x\n", status);
 		}
@@ -776,14 +787,19 @@ int jhl_auth_hack(int delay)
 		if(status==STATUS_PAUSE)
 			break;
 		if(status==STATUS_OPEN || status==STATUS_NODISC){
-			return -1;
+			retv = -1;
+			goto restore_size;
 		}
 	}
 
-	cdc_auth_status(&status);
-	printk("AUTH: %02x\n\n", status);
+	retv = cdc_auth_status(&status);
+	if(!retv) printk("AUTH: %02x\n\n", status);
 
-	cdc_set_size(0);
+restore_size:
+	/* Preserve the first error even if restoration also fails. */
+	cleanup = cdc_set_size(0);
+	if(retv) return retv;
+	if(cleanup) return cleanup;
 	return status;
 }
 
@@ -886,7 +902,8 @@ int cdblock_check(void)
 	cdc_reset_selector(0xfc, 0);
 
 	while(1){
-		cdc_get_status(&cdstat);
+		retv = cdc_get_status(&cdstat);
+		if(retv) return retv;
 		cdstat &= 0x0f;
 		// cdc_reset_selector会有比较长的BUSY状态。
 		// cdc_reset_selector has a relatively long BUSY state.
@@ -942,7 +959,7 @@ void cdc_file_test(void)
 	cdc_change_dir(0, 0xffffff);
 
 	fnum = 0;
-	cdc_get_file_scope(&fid, &fnum, &drend);
+	if(cdc_get_file_scope(&fid, &fnum, &drend)) return;
 	printk("file scope: fid=%d fnum=%d drend=%d\n", fid, fnum, drend);
 	cdc_get_file_info(0xffffff, finfo);
 	if(fnum>254){
@@ -958,11 +975,11 @@ void cdc_file_test(void)
 	show_selector(1);
 
 	do{
-		cdc_get_numsector(1, &free);
+		if(cdc_get_numsector(1, &free)) return;
 		printk("cdc_get_numsector 1: %d HIRQ=%04x\n", free, HIRQ);
 	}while(free==0);
 
-	cdc_get_buffer_size(&total, &npart, &free);
+	if(cdc_get_buffer_size(&total, &npart, &free)) return;
 	printk("cdc_get_buffer_size: free=%d\n", free);
 
 	cdc_get_del_data(1, 0, free);
@@ -970,12 +987,12 @@ void cdc_file_test(void)
 	cdc_end_trans(NULL);
 
 	while(1){
-		cdc_get_numsector(1, &free);
+		if(cdc_get_numsector(1, &free)) return;
 		if(free==200)
 			break;
 	}
 
-	cdc_get_numsector(1, &free);
+	if(cdc_get_numsector(1, &free)) return;
 	printk("cdc_get_numsector 1: %d HIRQ=%04x\n", free, HIRQ);
 	cdc_get_buffer_size(&total, &npart, &free);
 }
@@ -1012,7 +1029,7 @@ void cdc_read_test(void)
 		cr3 = CR3;
 		cr4 = CR4;
 		if(old_hirq!=hirq || old_cr1!=cr1 || old_cr4!=cr4){
-			cdc_get_buffer_size(&total, &npart, &free);
+			if(cdc_get_buffer_size(&total, &npart, &free)) return;
 			printk("%08x: HIRQ=%04x CR1=%04x CR4=%04x free=%d\n", get_timer() - start, hirq, cr1, cr4, free);
 			log_p += sprintf(logbuf+log_p, "%08x: HIRQ=%04x CR1=%04x CR4=%04x free=%d\n",
 							get_timer() - start, hirq, cr1, cr4, free);
