@@ -1208,6 +1208,22 @@ verification](https://github.com/papsg/SAROO/blob/main/doc/UART-TX-SAFETY.md).
    bytes, ITCM free 3,576, static DTCM 60,184 and 166 vectors are unchanged.
    The sender's direct frame grows from 72 to 80 bytes. No physical UART, audio
    contention, hardware, game or MDK qualification is claimed.
-2. **MCU-SCHED-002 and MCU-UART-001 queue and recovery — in progress**
-   Verify the current public queue's wrap, preemption, DMA completion and
-   bounded failure behavior before replacing the queue and recovery together.
+2. **MCU-SCHED-002 and MCU-UART-001 queue and recovery — published**
+   [`9a9910a`](https://github.com/papsg/SAROO/commit/9a9910ab7a6d34cc2af40f384013e8811de9a406).
+   Adapted from paps-g `acb824af`, with the transfer mode from `d24d860`.
+   Reserve the complete message before copying, publish complete reservations
+   in order, and advance the queue using stable DMA residuals. Keep accepted
+   UART FIFO bytes and defer failed enables and delayed stops to a 10 ms TIM4
+   one-shot. A new message is dropped whole when space runs out. Public
+   adaptations preserve BOOT polling, acknowledge observed IRQ flags and keep
+   the pending retry deadline. The App queue stays at 4,096 bytes.
+   Baseline fails 13 of 20 methods, including wrapped/nested publication,
+   premature retirement on UART TC and unbounded waits. The candidate passes
+   all 20 with ASan/UBSan and O2, including 300 residual counts and a partial
+   transfer at the ring boundary. Eight compiled changes are detected.
+   GNU App links all 166 vectors, with strong DMA1 Stream 0 and TIM4 entries
+   at 27 and 46. Load 62,012 bytes (+52), ITCM free 3,524, static DTCM 60,176
+   (−8). The committed ELF matches the verified candidate. The BOOT UART
+   unit compiles with the four original polling routines byte-identical.
+   The broader host suite is running. Physical UART/DMA timing, game
+   behavior, and MDK output remain unqualified.
