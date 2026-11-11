@@ -1721,3 +1721,13 @@ was left untouched.
    80,244, with unchanged BSS and padded image size. The existing BIOS
    save path and four-argument file ABI are covered by ordinary controls.
    [Protocol, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#pair-the-menu-with-the-primary-save-owners)
+4. **Optional menu command completion — published**
+   [`3ffee52`](https://github.com/papsg/SAROO/commit/3ffee5246e0124de9c10fdd3d3bd7631debfec31).
+   Adapted from paps-g `36c4de4b` after tagged save, file and archive
+   support. The parent fails all five new handler checks. The port
+   covers all 65,536 opcodes, 131,072 selection arguments and 360
+   startup cases. The original public FPGA passes 28 register cases.
+   The 37-method ASan/UBSan and 47-method O2 runs pass. The GNU App
+   adds 48 bytes to 63,232. Ordinary menu callers continue to use their
+   legacy requests. Physical command timing remains unmeasured.
+   [Register sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#offer-optional-acknowledgments-for-menu-commands)
