@@ -1731,3 +1731,11 @@ was left untouched.
    adds 48 bytes to 63,232. Ordinary menu callers continue to use their
    legacy requests. Physical command timing remains unmeasured.
    [Register sources, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#offer-optional-acknowledgments-for-menu-commands)
+5. **Cache invalidation for 1 MiB expansion RAM mirrors — published**
+   [`39911f6`](https://github.com/papsg/SAROO/commit/39911f6a46c4ee06738807de102e3824404a4c5d).
+   Adapted from the menu portion of paps-g `855d0092`. The exact parent
+   fails 75 cases. Reading the mode after completion fails all 15 reset
+   cases. The port passes 583 cache scenarios and all 24 focused methods
+   under ASan/UBSan and O2. The linked menu adds 64 bytes to 80,308.
+   Physical cache and bus timing remain unmeasured.
+   [FPGA and SH7604 references, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/SAVE-OWNERSHIP-RAM.md#invalidate-every-expansion-ram-cache-mirror)
