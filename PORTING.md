@@ -1942,3 +1942,23 @@ full run found that the older CD player fixture expected the raw mailbox
 word for −1. The fixture now checks signed results and retains its boot
 gates. Both save boot methods pass ASan/UBSan and O2. This updates the
 host fixture.
+
+### CD events and game launch final verification
+
+The six firmware ports are published through
+[`21d9187`](https://github.com/papsg/SAROO/commit/21d918794c04cc854cb2981cce9b4b2d1c8b5a8e).
+The full `make -C tests check` run on
+[`43a2fb8`](https://github.com/papsg/SAROO/commit/43a2fb8a19c5ca1a776374100030e902440cda12)
+passes 712 Python methods, 18 Rust checks and the native language check.
+The Windows-only CD+G replacement fixture is skipped on macOS.
+
+The clean firmware revision reproduces the menu ELF and image and the
+GNU MCU ELF byte for byte. All 36 tracked menu inputs and 56 tracked MCU
+inputs match the receipts. The final test commit changes one host
+fixture. The 488,770-byte menu contains 80,836 code/data bytes and 9,244
+BSS bytes, with 24,608 bytes of body margin. The GNU MCU App loads 63,196
+bytes with 2,340 bytes of ITCM margin and 60,216 bytes of static DTCM.
+
+The private HEAD, worktree, refs and stash match the starting snapshot.
+Physical CD event timing and game rendering remain unqualified. The
+Saturn was left untouched.
