@@ -1546,3 +1546,11 @@ The Saturn was left untouched.
    and O2. The GNU App load falls 80 bytes to 62,540 and static DTCM is
    unchanged. Physical command timing remains unmeasured.
    [Sega citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#shared-cd-command-filter-lookup)
+2. **Shared SD sector transfers — published**
+   [`3893aa5`](https://github.com/papsg/SAROO/commit/3893aa525b7fb36c4f2d1b6244fce3130b188515).
+   Adapted from paps-g `31326563`. The baseline and port pass 16
+   direct and bounced copy and error cases. All 28 storage driver
+   methods pass ASan/UBSan and O2. The GNU App load falls 64 bytes
+   to 62,476. Static DTCM and the 4,096-byte bounce buffer remain
+   unchanged. Physical SD timing and fault recovery remain unmeasured.
+   [STM32 citation, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#shared-sd-sector-transfers)
