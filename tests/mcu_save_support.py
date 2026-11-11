@@ -104,7 +104,9 @@ class MCUSaveTest(unittest.TestCase):
             start = module.index(b'static char *gameid_split(')
             config = module[start:module.index(b'/******************************************************************************/', start)]
             start = module.index(b'char *get_line(')
-            config += module[start:module.index(b'#define SSAVE_FILE', start)]
+            parse = module.index(b' parse_config(', start)
+            end = module.index(b'\n}', parse) + 2
+            config += module[start:end] + b'\n'
             (cls.target / 'config-disc.inc').write_bytes(config.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             coupled = (ROOT / 'tests/mcu_save_api.c').read_bytes()
             (cls.target / 'coupled-harness.inc').write_bytes(coupled[:coupled.index(b'int main(')])
