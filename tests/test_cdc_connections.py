@@ -31,6 +31,8 @@ class CDConnectionTests(unittest.TestCase):
         code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
         if b'static void disconnect_filter_input(' in raw:code+=function(raw,b'static void disconnect_filter_input(')
         if b'void invalidate_directory(' in raw:code+=function(raw,b'void invalidate_directory(')
+        if b'FILTER *command_filter(' in raw:
+            code += function(raw, b'static __attribute__((noinline)) FILTER *command_filter(')
         code+=function(main,b'int pause_drive(')
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))
         init=function(main,b'void ss_sw_init(')

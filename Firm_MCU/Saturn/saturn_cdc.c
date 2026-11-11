@@ -1023,19 +1023,28 @@ static void _set_filter(int fid, int mode, int fad, int range)
 }
 
 
+/* Keep selector admission shared while each command owns its reply. */
+static __attribute__((noinline)) FILTER *command_filter(unsigned fid)
+{
+    if (fid >= MAX_SELECTORS)
+        return NULL;
+    return &cdb.filter[fid];
+}
+
 // 0x40 [SR]
 int set_filter_range(void)
 {
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
-	cdb.filter[fid].fad   = ((cdb.cr1&0xff)<<16) | cdb.cr2;
-	cdb.filter[fid].range = ((cdb.cr3&0xff)<<16) | cdb.cr4;
-	SSLOG(_FILTER, "set_filter_range: fid=%d fad=%08x range=%08x\n", fid, cdb.filter[fid].fad, cdb.filter[fid].range);
+	filter->fad   = ((cdb.cr1&0xff)<<16) | cdb.cr2;
+	filter->range = ((cdb.cr3&0xff)<<16) | cdb.cr4;
+	SSLOG(_FILTER, "set_filter_range: fid=%d fad=%08x range=%08x\n", fid, filter->fad, filter->range);
 
 	return HIRQ_ESEL;
 }
@@ -1047,13 +1056,14 @@ int get_filter_range(void)
 	int fad, range;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 
-	fad   = cdb.filter[fid].fad;
-	range = cdb.filter[fid].range;
+	fad   = filter->fad;
+	range = filter->range;
 
 	SSCR1 = (cdb.status<<8) | ((fad>>16)&0xff);
 	SSCR2 = fad&0xffff;
@@ -1069,21 +1079,22 @@ int set_filter_subheader(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 
-	cdb.filter[fid].chan   = cdb.cr1&0xff;
-	cdb.filter[fid].smmask = cdb.cr2>>8;
-	cdb.filter[fid].cimask = cdb.cr2&0xff;
-	cdb.filter[fid].fid    = cdb.cr3&0xff;
-	cdb.filter[fid].smval  = cdb.cr4>>8;
-	cdb.filter[fid].cival  = cdb.cr4&0xff;
+	filter->chan   = cdb.cr1&0xff;
+	filter->smmask = cdb.cr2>>8;
+	filter->cimask = cdb.cr2&0xff;
+	filter->fid    = cdb.cr3&0xff;
+	filter->smval  = cdb.cr4>>8;
+	filter->cival  = cdb.cr4&0xff;
 	SSLOG(_FILTER, "set_filter_subh: fid=%d  FN=%02x CN=%02x SMM=%02x CIM=%02x SM=%02x CI=%02x\n", fid,
-		cdb.filter[fid].fid, cdb.filter[fid].chan,
-		cdb.filter[fid].smmask, cdb.filter[fid].cimask,
-		cdb.filter[fid].smval, cdb.filter[fid].cival
+		filter->fid, filter->chan,
+		filter->smmask, filter->cimask,
+		filter->smval, filter->cival
 	);
 
 	return HIRQ_ESEL;
@@ -1095,15 +1106,16 @@ int get_filter_subheader(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8) | cdb.filter[fid].chan;
-	SSCR2 = (cdb.filter[fid].smmask<<8) | cdb.filter[fid].cimask;
-	SSCR3 =  cdb.filter[fid].fid;
-	SSCR4 = (cdb.filter[fid].smval<<8) | cdb.filter[fid].cival;
+	SSCR1 = (cdb.status<<8) | filter->chan;
+	SSCR2 = (filter->smmask<<8) | filter->cimask;
+	SSCR3 =  filter->fid;
+	SSCR4 = (filter->smval<<8) | filter->cival;
 
 	return 0;
 }
@@ -1114,23 +1126,24 @@ int set_filter_mode(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
-	cdb.filter[fid].mode = cdb.cr1&0xff;
+	filter->mode = cdb.cr1&0xff;
 	SSLOG(_FILTER, "set_filter_mode: fid=%d  mode=%02x\n", fid, cdb.cr1&0xff);
 
-	if(cdb.filter[fid].mode&0x80){
-		cdb.filter[fid].mode   = 0;
-		cdb.filter[fid].fad    = 0;
-		cdb.filter[fid].range  = 0;
-		cdb.filter[fid].fid    = 0;
-		cdb.filter[fid].chan   = 0;
-		cdb.filter[fid].smmask = 0;
-		cdb.filter[fid].cimask = 0;
-		cdb.filter[fid].smval  = 0;
-		cdb.filter[fid].cival  = 0;
+	if(filter->mode&0x80){
+		filter->mode   = 0;
+		filter->fad    = 0;
+		filter->range  = 0;
+		filter->fid    = 0;
+		filter->chan   = 0;
+		filter->smmask = 0;
+		filter->cimask = 0;
+		filter->smval  = 0;
+		filter->cival  = 0;
 	}
 
 	return HIRQ_ESEL;
@@ -1142,12 +1155,13 @@ int get_filter_mode(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 
-	SSCR1 = (cdb.status<<8) | cdb.filter[fid].mode;
+	SSCR1 = (cdb.status<<8) | filter->mode;
 	SSCR2 = 0;
 	SSCR3 = 0;
 	SSCR4 = 0;
@@ -1183,13 +1197,14 @@ int get_filter_connection(void)
 	int fid;
 
 	fid = cdb.cr3>>8;
-    if (fid >= MAX_SELECTORS) {
+	FILTER *filter = command_filter(fid);
+    if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 
 	SSCR1 = (cdb.status<<8);
-	SSCR2 = (cdb.filter[fid].c_true<<8) | cdb.filter[fid].c_false;
+	SSCR2 = (filter->c_true<<8) | filter->c_false;
 	SSCR3 = 0;
 	SSCR4 = 0;
 

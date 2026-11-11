@@ -21,6 +21,10 @@ class CDSubheaderTests(unittest.TestCase):
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
         start=raw.index(b'void set_status(')
         functions=raw[start:raw.index(b'\n}',start)+2]+b'\n'
+        helper = b'static __attribute__((noinline)) FILTER *command_filter('
+        if helper in raw:
+            start = raw.index(helper)
+            functions += raw[start:raw.index(b'\n}', start) + 2] + b'\n'
         for name in ('set_filter_subheader','get_filter_subheader'):
             start=raw.index(('int '+name+'(void)\n{').encode())
             functions+=raw[start:raw.index(b'\n}',start)+2]+b'\n'

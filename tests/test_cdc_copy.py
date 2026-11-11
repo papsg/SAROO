@@ -37,6 +37,8 @@ def copy_source(raw,required=()):
         if signature in raw and (call in operations or call in required):code+=function(signature)
     code+=operations
     if b'void invalidate_directory(' in raw:code+=function(b'void invalidate_directory(')
+    if b'FILTER *command_filter(' in raw:
+        code += function(b'static __attribute__((noinline)) FILTER *command_filter(')
     code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
     return code
 
