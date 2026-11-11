@@ -46,6 +46,8 @@ void spi2_init(void)
 	SPI2->CFG1 = 0x00000000;
 	SPI2->CFG2 = 0x00000000;
 	SPI2->IER  = 0x00000000;
+	/* SPE does not acknowledge retained I2S status; SUSP blocks CSTART. */
+	SPI2->IFCR = SPI_IFCR_SUSPC | SPI_IFCR_TIFREC | SPI_IFCR_OVRC | SPI_IFCR_UDRC;
 	SPI2->CR1  = 0x00000001;
 	SPI2->CR1  = 0x00000201;
 
@@ -67,6 +69,8 @@ void spi2_dma_start(void *buf0, void *buf1, int len)
 
 	SPI2->CR1  = 0x00000000;
 	SPI2->CFG1 = 0x00008000;
+	/* Acknowledge the preceding session before enabling its replacement. */
+	SPI2->IFCR = SPI_IFCR_SUSPC | SPI_IFCR_TIFREC | SPI_IFCR_OVRC | SPI_IFCR_UDRC;
 	SPI2->CR1  = 0x00000001;
 	SPI2->CR1  = 0x00000201;
 }
