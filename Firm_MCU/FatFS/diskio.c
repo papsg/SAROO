@@ -22,15 +22,26 @@ int sd_write_sector(u32 block, int count, u8 *buf);
 
 static osSemaphoreId_t sem_diskio;
 
-/* Exclude an in-flight disk transfer while resetting the controller. */
+/* Exclude in-flight disk transfers from reidentification. */
+static int disk_recover(int force)
+{
+    if (!force && sdio_ready())
+        return 0;
+    if (!sem_diskio || osSemaphoreAcquire(sem_diskio, 100) != osOK)
+        return -1;
+    int result = force || !sdio_ready() ? sdio_reset() : 0;
+    osSemaphoreRelease(sem_diskio);
+    return result;
+}
+
 int disk_reidentify(void)
 {
-	if (!sem_diskio || osSemaphoreAcquire(sem_diskio, 100) != osOK)
-		return -1;
+    return disk_recover(1);
+}
 
-	int result = sdio_reset();
-	osSemaphoreRelease(sem_diskio);
-	return result;
+int disk_resume(void)
+{
+    return disk_recover(0);
 }
 
 /*-----------------------------------------------------------------------*/

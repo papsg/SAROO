@@ -425,12 +425,22 @@ static int sm_index0;
 static int sm_index1;
 
 
+struct save_reopen {
+    FSIZE_t size;
+    DWORD cluster;
+    WORD generation;
+    int pending;
+};
+
+static struct save_reopen slot_reopen, mems_reopen;
+
 int open_savefile(void)
 {
     u32 rv;
     int retv = 0, mems;
     u8 *fbuf = (u8*)0x24002000;
     ss_index = sm_index0 = sm_index1 = 0;
+    slot_reopen.pending = mems_reopen.pending = 0;
 
     for (mems = 0; mems < 2; mems++) {
         FIL *fp = mems ? &sm_fp : &ss_fp;
@@ -511,6 +521,53 @@ static int save_io(FIL *fp, u32 offset, void *buffer, u32 size, int write)
     return result ? result : count == size ? FR_OK : FR_INT_ERR;
 }
 
+/* The caller owns the filesystem and shared save buffers. Keep the file
+ * identity separately because a failed open can invalidate the FIL. */
+static int save_ready(FIL *fp)
+{
+    int result = f_error(fp);
+    if (result && result != FR_DISK_ERR)
+        return result;
+    int mems = fp == &sm_fp;
+    struct save_reopen *reopen = mems ? &mems_reopen : &slot_reopen;
+    if (!fp->obj.fs && !reopen->pending)
+        return FR_INVALID_OBJECT;
+    if (disk_resume())
+        return FR_DISK_ERR;
+    if (!result && !reopen->pending)
+        return FR_OK;
+
+    if (fp->obj.fs) {
+        struct save_reopen identity = { f_size(fp), fp->obj.sclust, fp->obj.id, 1 };
+        result = f_close(fp);
+        if (result)
+            return result;
+        if (!reopen->pending)
+            *reopen = identity;
+    }
+
+    const char *name = mems ? SMEMS_FILE : SSAVE_FILE;
+    result = f_open(fp, name, FA_READ | FA_WRITE | FA_OPEN_EXISTING);
+    if (result)
+        return result;
+    if (f_size(fp) != reopen->size || fp->obj.sclust != reopen->cluster ||
+        fp->obj.id != reopen->generation) {
+        reopen->pending = 0;
+        return fp->err = FR_INT_ERR;
+    }
+
+    u8 signature[16];
+    unsigned bytes = mems ? 8 : sizeof signature;
+    result = save_io(fp, 0, signature, bytes, 0);
+    if (!result && memcmp(signature, mems ? "SaroMems" : "Saroo Save File", bytes))
+        result = FR_INT_ERR;
+    if (result == FR_INT_ERR)
+        fp->err = FR_INT_ERR;
+    if (result == FR_OK || result == FR_INT_ERR)
+        reopen->pending = 0;
+    return result;
+}
+
 int load_savefile(char *gameid)
 {
     u8 *directory = (u8*)0x24002000;
@@ -526,6 +583,9 @@ int load_savefile(char *gameid)
     /* Both callers provide the fixed 16-byte disc ID. Short C inputs are
      * zero-padded; do not append a seventeenth byte to a directory entry. */
     strncpy(key, gameid, sizeof(key));
+    result = save_ready(&ss_fp);
+    if (result)
+        goto done;
     /* An incomplete unindexed tail is allowed; every published extent below
      * must still contain its complete payload before selection. */
     if (f_size(&ss_fp) < 0x10000 || f_size(&ss_fp) > 0x10000000) {
@@ -582,11 +642,14 @@ int flush_savefile(void)
 {
     int result;
     fs_lock();
-    if (ss_index <= 0 || ss_index >= 4096 ||
-        (u32)(ss_index + 1) * 0x10000 > f_size(&ss_fp)) {
+    if (ss_index <= 0 || ss_index >= 4096) {
         result = FR_INVALID_PARAMETER;
     } else {
-        result = save_io(&ss_fp, ss_index * 0x10000, (u8*)SSAVE_ADDR, 0x10000, 1);
+        result = save_ready(&ss_fp);
+        if (!result && (u32)(ss_index + 1) * 0x10000 > f_size(&ss_fp))
+            result = FR_INVALID_PARAMETER;
+        if (!result)
+            result = save_io(&ss_fp, ss_index * 0x10000, (u8*)SSAVE_ADDR, 0x10000, 1);
         if (!result) result = f_sync(&ss_fp);
     }
     fs_unlock();
@@ -601,14 +664,17 @@ int load_smems(int id)
     fs_lock();
     /* A partial transfer invalidates the destination's previous ownership. */
     *index = 0;
-    if ((id & ~0xffff) || (id & 0x7fff) < 8 || (id & 0x7fff) >= 8064 ||
-        f_size(&sm_fp) < 0x800000) {
+    if ((id & ~0xffff) || (id & 0x7fff) < 8 || (id & 0x7fff) >= 8064) {
         result = FR_INVALID_PARAMETER;
     } else {
         id &= 0x7fff;
-        result = save_io(&sm_fp, id * 1024,
-                         header ? (u8*)SMEMS_HDR + 8192 : (u8*)SMEMS_BUF,
-                         header ? 1024 : 65536, 0);
+        result = save_ready(&sm_fp);
+        if (!result && f_size(&sm_fp) < 0x800000)
+            result = FR_INVALID_PARAMETER;
+        if (!result)
+            result = save_io(&sm_fp, id * 1024,
+                             header ? (u8*)SMEMS_HDR + 8192 : (u8*)SMEMS_BUF,
+                             header ? 1024 : 65536, 0);
         if (!result) *index = id;
     }
     fs_unlock();
@@ -619,10 +685,18 @@ int flush_smems(int flag)
 {
     int result = FR_INVALID_PARAMETER;
     fs_lock();
-    if (flag <= 0 || (flag & ~7) || f_size(&sm_fp) < 0x800000 ||
+    if (flag <= 0 || (flag & ~7) ||
         ((flag & 2) && (sm_index0 < 8 || sm_index0 >= 8064)) ||
         ((flag & 4) && (sm_index1 < 8 || sm_index1 >= 8064)))
         goto done;
+
+    result = save_ready(&sm_fp);
+    if (result)
+        goto done;
+    if (f_size(&sm_fp) < 0x800000) {
+        result = FR_INVALID_PARAMETER;
+        goto done;
+    }
 
     int d = sm_index0 - sm_index1;
     int overlap = sm_index0 >= 8 && sm_index0 < 8064 &&

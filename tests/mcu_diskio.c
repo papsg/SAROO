@@ -11,6 +11,7 @@
 static unsigned creates, acquires, releases, transfers, driver_failures;
 static int fail_create, held;
 static int reset_result, overlap_reset;
+static int card_ready, ready_on_acquire;
 static unsigned resets;
 static osStatus_t acquire_result;
 static unsigned char handles[1024], buffer[1024];
@@ -35,7 +36,10 @@ osStatus_t osSemaphoreAcquire(osSemaphoreId_t sem, uint32_t timeout)
     if (!sem) return osErrorParameter;
     assert(sem == first_handle);
     if (held) return osErrorTimeout;
-    if (acquire_result == osOK) held = 1;
+    if (acquire_result == osOK) {
+        held = 1;
+        if (ready_on_acquire) card_ready = 1;
+    }
     return acquire_result;
 }
 
@@ -48,6 +52,8 @@ osStatus_t osSemaphoreRelease(osSemaphoreId_t sem)
 }
 
 int printk(const char *format, ...) { (void)format;return 0; }
+
+int sdio_ready(void) { return card_ready; }
 
 int sdio_reset(void)
 {
@@ -134,6 +140,16 @@ int main(int argc, char **argv)
             assert(disk_reidentify()==reset_result);
             assert(acquires==1 && resets==1 && releases==1 && !held);
         }
+    } else if (!strcmp(mode, "resume")) {
+        assert(disk_initialize(0) == 0);
+        card_ready = value == 0;
+        ready_on_acquire = value == 1;
+        reset_result = value == 3 ? -17 : 0;
+        if (value == 4) acquire_result = osErrorTimeout;
+        assert(disk_resume() == (value == 4 ? -1 : reset_result));
+        assert(acquires == (value != 0));
+        assert(releases == (value != 0 && value != 4));
+        assert(resets == (value == 2 || value == 3) && !held);
     } else if (!strcmp(mode, "reidentify-overlap")) {
         assert(disk_initialize(0)==0);
         overlap_reset=1;

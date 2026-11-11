@@ -21,7 +21,7 @@ class MCURuntimeTests(MCUSaveTest):
     def test_runtime_sequences_hold_service_lock(self):
         self.invoke('locking')
 
-    def test_real_disk_errors_stay_reported_until_file_recovery(self):
+    def test_real_disk_errors_recover_on_the_next_request(self):
         for value in (0,1,2):
             with self.subTest(value=value): self.invoke('disk-read-fault',value)
 

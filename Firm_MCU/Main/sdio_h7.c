@@ -523,6 +523,11 @@ int sdio_init(void)
 }
 
 
+int sdio_ready(void)
+{
+    return sd_rca != 0;
+}
+
 int sdio_reset(void)
 {
 	sd_rca = 0;

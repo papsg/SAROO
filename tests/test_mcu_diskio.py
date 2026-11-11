@@ -74,4 +74,10 @@ class MCUDiskIOTests(unittest.TestCase):
             with self.subTest(write=write): self.invoke('reidentify-overlap',write)
 
 
+    def test_save_resume_preserves_ready_media_and_owns_reidentification(self):
+        for case in range(5):
+            with self.subTest(case=case):
+                self.invoke('resume', case)
+
+
 if __name__ == '__main__': unittest.main()

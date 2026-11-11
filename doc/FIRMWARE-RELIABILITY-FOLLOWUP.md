@@ -43,3 +43,40 @@ separate baseline checkout, set `SAROO_SD_SOURCE` to its
 `Firm_MCU/Main/sdio_h7.c` and run
 `python3 -m unittest discover -s tests -p test_sd_media.py -v`.
 Physical SD timing and fault recovery remain unmeasured by these checks.
+
+## Recover aborted save handles through ordinary requests
+
+FatFs latches a disk error on an open file. Subsequent requests on that
+handle keep failing after the card becomes usable. The save service now
+lets a valid slot or MEMS request recover under the filesystem mutex.
+If the SD address was revoked, the existing disk semaphore excludes an
+in-flight transfer while the CID-checked driver reidentifies the card.
+Ready media uses the existing handle and issues no reidentification
+commands. [FatFs result codes](https://elm-chan.org/fsw/ff/doc/rc.html).
+
+Recovery checks close before replacing the handle and keeps the original
+file identity across failed opens. It opens the existing file, verifies its
+size, first cluster, mount generation and canonical signature, then retries
+the ordinary operation. A failed close leaves cached data pending. The
+signature is read into local storage, leaving the shared save buffers
+available for a retry. Files with a structural error remain rejected.
+[FatFs f_close](https://elm-chan.org/fsw/ff/doc/close.html) ·
+[FatFs f_open](https://elm-chan.org/fsw/ff/doc/open.html).
+
+Adapted from paps-g's `d5cb72ea`. The port retains the public save extent
+rules and SD ownership fixes. The GNU App load is 62,876 bytes (+400), with
+2,660 bytes of ITCM margin. Static DTCM is 60,232 bytes (+48). SDIO and
+diskio also compile as objects with the BootLoader configuration.
+
+Run `make -C tests check-mcu-save check-mcu-diskio` and repeat with
+`SAROO_FIRMWARE_SAVE_PROFILE=release SAROO_SD_PROFILE=release`.
+The 60 recovery cases use the actual save code and FatFs on generated
+FAT32 and exFAT volumes. The baseline fails 56 cases and passes the four
+structural-error controls. To repeat the baseline comparison, set
+`SAROO_MCU_SAVE_DIR` to the older checkout's `Firm_MCU/Saturn` and run
+`python3 -m unittest discover -s tests -p test_mcu_save_reopen.py -v`.
+
+The identity checks cover the file reopened after a successful close.
+The host cases exercise retry behavior and preservation of neighboring
+files. Physical SD recovery, writes interrupted by power loss and external
+changes to a still-mounted volume remain unqualified.

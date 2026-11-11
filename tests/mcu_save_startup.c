@@ -18,6 +18,23 @@ static u8 test_scratch[65536], test_shared[0x23000];
 #define TEST_SCRATCH_ADDR ((uintptr_t)test_scratch)
 #define SAVINFO_ADDR ((uintptr_t)test_shared)
 #define printk(...) ((void)0)
+static void (*before_open)(FIL *, const TCHAR *, BYTE);
+static unsigned media_checks, media_restarts;
+static int media_unready, media_failure;
+
+static __attribute__((unused)) int disk_resume(void)
+{
+    assert(lock_depth == 1);
+    media_checks++;
+    if (!media_unready)
+        return 0;
+    media_restarts++;
+    if (media_failure)
+        return -1;
+    media_unready = 0;
+    return 0;
+}
+
 static FRESULT checked_open(FIL *, const TCHAR *, BYTE);
 static FRESULT checked_read(FIL *, void *, UINT, UINT *);
 static FRESULT checked_write(FIL *, const void *, UINT, UINT *);
@@ -96,6 +113,7 @@ static int selected(FIL *fp, const char *operation)
 static FRESULT checked_open(FIL *fp, const TCHAR *name, BYTE mode)
 {
     api_opens++;
+    if (before_open) before_open(fp, name, mode);
     if (!(mode & (FA_CREATE_NEW | FA_CREATE_ALWAYS)) && selected(fp, "cleanup-error")) {
         hits++; return FR_DENIED;
     }
@@ -110,6 +128,11 @@ static FRESULT checked_open(FIL *fp, const TCHAR *name, BYTE mode)
 static FRESULT checked_read(FIL *fp, void *data, UINT size, UINT *count)
 {
     api_reads++; read_bytes += size;
+    if (selected(fp, "read-disk-error")) {
+        assert(size == 8 || size == 16);
+        hits++;
+        disk_read_fault = 1;
+    }
     if (selected(fp, "read-error")) { hits++; *count = 0; return fault_value ? fault_value : FR_DISK_ERR; }
     if (selected(fp, "read-partial-error")) {
         hits++; FRESULT result = f_read(fp, data, size / 2, count);

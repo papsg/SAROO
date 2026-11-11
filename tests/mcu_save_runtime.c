@@ -294,12 +294,7 @@ static void disk_error_case(int kind)
     int result = kind ? load_smems(id) : load_savefile((char*)key_b);
     assert(result == FR_DISK_ERR && !disk_read_fault && fp->err == FR_DISK_ERR);
     result = kind ? load_smems(id) : load_savefile((char*)key_b);
-    assert(result == FR_DISK_ERR && !api_writes);
-    /* Recovery is explicit in this harness; production does not reopen yet. */
-    assert(f_close(fp) == FR_OK);
-    assert(f_open(fp,kind ? SMEMS_FILE : SSAVE_FILE,FA_READ|FA_WRITE) == FR_OK);
-    result = kind ? load_smems(id) : load_savefile((char*)key_b);
-    assert(result == FR_OK);
+    assert(result == FR_OK && !f_error(fp) && !api_writes);
     assert_archives(slot_before,slot_size,mems_before);
 }
 static void large_slot_case(const char *mode)

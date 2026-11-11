@@ -47,7 +47,7 @@ class MCUSaveTest(unittest.TestCase):
         cls.results = []
         module = (source / 'saturn_utils.c').read_bytes()
         begin = module.index(b'#define SSAVE_FILE')
-        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'api', 'disc') else b'int load_savefile(char *gameid)'
+        marker = b'static FIL cover_fp;' if cls.fixture in ('runtime', 'extents', 'reopen', 'api', 'disc') else b'int load_savefile(char *gameid)'
         end = module.index(marker, begin)
         (cls.target / 'save-startup.inc').write_bytes(
             module[begin:end].replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
@@ -58,7 +58,7 @@ class MCUSaveTest(unittest.TestCase):
         (cls.target / 'save-startup-gate.inc').write_bytes(main[begin:end])
         inputs = {'Saturn/saturn_utils.c': module, 'Saturn/saturn_main.c': main}
         harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py']
-        if cls.fixture in ('runtime', 'extents', 'disc', 'cue', 'header'):
+        if cls.fixture in ('runtime', 'extents', 'reopen', 'disc', 'cue', 'header'):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
             end = header.index(b'typedef struct', header.index(b'}TRACK_INFO;'))
@@ -66,7 +66,7 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'track-limit.h').write_bytes(b'\n'.join(
                 line for line in header.splitlines() if line.startswith((b'#define MAX_TRACKS', b'#define PLAYTYPE_')))+b'\n')
             harnesses += ['track_fixture.h']
-        if cls.fixture in ('runtime', 'extents'):
+        if cls.fixture in ('runtime', 'extents', 'reopen'):
             disc = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = disc
             begin = disc.index(b'int get_gameid(')
             selected = disc[begin:disc.index(b'\n}', begin)+2]
@@ -79,6 +79,8 @@ class MCUSaveTest(unittest.TestCase):
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']
         if cls.fixture == 'extents':
             harnesses += ['mcu_save_extents.c', 'test_mcu_save_extents.py']
+        if cls.fixture == 'reopen':
+            harnesses += ['mcu_save_reopen.c', 'test_mcu_save_reopen.py']
         if cls.fixture in ('api', 'disc'):
             harnesses += ['mcu_save_api.c', 'test_mcu_save_api.py']
             path = Path(os.environ.get('SAROO_GAME_SAVE_SOURCE', ROOT / 'Firm_Saturn/game_save.c'))
@@ -193,7 +195,8 @@ class MCUSaveTest(unittest.TestCase):
                           rb'(\1*)(TEST_GFX_BASE + (u32)chdr - 0x61400000 + \2)', code)
             if b'void cover_reset(void)' not in code:
                 code += b'\nvoid cover_reset(void) {}\n'
-            helper = module[module.index(b'static int save_io('):module.index(b'int load_savefile(')]
+            start = module.index(b'static int save_io(')
+            helper = module[start:module.index(b'\n}', start) + 2] + b'\n'
             (cls.target / 'cover.inc').write_bytes(layout + b'\n' + adler + helper + code)
             path = Path(os.environ.get('SAROO_COVER_MENU_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
@@ -239,7 +242,7 @@ class MCUSaveTest(unittest.TestCase):
         fatfs = cls.target / 'FatFS'; fatfs.mkdir()
         for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
             data = (ROOT / 'Firm_MCU/FatFS' / name).read_bytes()
-            if name == 'ffconf.h' and cls.fixture == 'extents':
+            if name == 'ffconf.h' and cls.fixture in ('extents', 'reopen'):
                 inputs['FatFS-production/ffconf.h'] = data
                 before = b'#define FF_USE_MKFS\t\t0'
                 assert data.count(before) == 1

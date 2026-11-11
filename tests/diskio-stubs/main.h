@@ -4,7 +4,9 @@
 #include <stdint.h>
 #include "cmsis_os2.h"
 int sdio_reset(void);
+int sdio_ready(void);
 int disk_reidentify(void);
+int disk_resume(void);
 typedef uint8_t u8;
 typedef uint32_t u32;
 int printk(const char *format, ...);
