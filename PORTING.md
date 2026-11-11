@@ -1621,3 +1621,11 @@ initial read-only snapshot. The Saturn was left untouched.
    indexed-sector and 25 malformed-mode controls. The port passes
    ASan/UBSan and O2. The GNU App load decreases by 8 bytes to 62,932.
    [Contracts, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#share-cue-parser-checks)
+2. **Direct file-read cache invalidation — published**
+   [`07424e1`](https://github.com/papsg/SAROO/commit/07424e17c16f5b7bf9cd33d119491015ac2fd0b9).
+   Adapted from paps-g `8078e501` on the public bounded file-transfer API.
+   The baseline fails 48 stale-line cases. All 415 cache scenarios pass,
+   with 29 sanitizer and 28 O2 transfer/menu methods. The linked menu
+   grows 80 bytes to 79,668. Physical cache and interrupt timing remain
+   unqualified.
+   [SH7604 manual, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/IO-CACHE-FOLLOWUP.md#invalidate-direct-file-read-cache-lines)
