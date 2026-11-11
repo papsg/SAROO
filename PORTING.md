@@ -1408,3 +1408,15 @@ was left untouched.
    The GNU MCU link binds 56 public and 85 dependency inputs, with 62,156
    load bytes, 3,380 bytes of ITCM margin, 60,176 bytes of static DTCM and
    a 112-byte direct sync frame. [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-fs-002--keep-a-failed-sync-pending)
+2. **MCU-FS-003 failed FAT mirrors and FSInfo — published**
+   [`62d993c`](https://github.com/papsg/SAROO/commit/62d993cd1306ee1de1b5ae0a46689147affe48c9).
+   Adapted from paps-g `a81828e4`, after the file-sync retry checkpoint.
+   Seven mirror and FSInfo cases expose ignored errors on the baseline;
+   seven primary-failure and single-FAT controls pass there. All 14
+   FAT12/16/32 scenarios and the preceding FatFs/diskio checks pass with
+   ASan/UBSan and O2. Both FAT copies, FSInfo and neighboring files match
+   after recovery and remount. The 73 MCU save/disc methods also pass.
+   The GNU MCU link adds 16 load bytes to 62,172, with 3,364 bytes of ITCM
+   margin and 60,176 bytes of static DTCM. The direct sync_fs frame falls
+   to 16 bytes. Physical SD durability remains unqualified.
+   [Citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#mcu-fs-003--retry-failed-fat-mirrors-and-fsinfo-writes)
