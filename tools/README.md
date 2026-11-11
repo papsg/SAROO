@@ -180,7 +180,9 @@ tools/target/debug/menu-assets arabic-table tools/menu-assets/arabic.json tests/
 tools/target/debug/menu-assets arabic-glyphs tools/menu-assets/arabic.json tests/build/arabic.txt
 tools/bdfont/bdfont tools/bdfont/bdf/wqy13px.bdf -l tools/bdfont/cjk.txt -adj 1 -c tests/build/cjk-only.bin
 tools/bdfont/bdfont tools/menu-assets/font-source/arabic12.bdf -l tests/build/arabic.txt -adj 0 -c tests/build/arabic-only.bin
-tools/target/debug/menu-assets merge-font tests/build/cjk-only.bin tests/build/arabic-only.bin tests/build/font_cjk.bin
+tools/target/debug/menu-assets merge-font tests/build/cjk-only.bin tests/build/arabic-only.bin tests/build/cjk-arabic.bin
+tools/bdfont/bdfont tools/menu-assets/font-source/romanian14.bdf -adj 0 -c tests/build/romanian-only.bin
+tools/target/debug/menu-assets merge-font tests/build/cjk-arabic.bin tests/build/romanian-only.bin tests/build/font_cjk.bin
 cmp tests/build/font_cjk.bin Firm_Saturn/font_cjk.bin
 ```
 

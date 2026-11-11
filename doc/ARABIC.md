@@ -66,7 +66,7 @@ for the existing C converter; all original pixels, 6/12-pixel advances,
 All 10,736 preceding font records and the Latin font remain byte-for-byte
 unchanged. The complete font has 10,795 records. The 59 additions match the
 preserved independent record digest and add 295 index plus 921 record bytes.
-No unrelated Romanian glyph or legacy font geometry repair is included.
+For later Romanian coverage and glyph geometry fixes, see [Menu status and font safety](MENU-STATUS-FONT.md).
 
 | Resource | Before | Arabic | Change |
 | --- | ---: | ---: | ---: |

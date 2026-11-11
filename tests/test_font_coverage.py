@@ -15,11 +15,23 @@ SPEC = json.loads((ROOT / "tools/bdfont/cjk-pr203.json").read_text())
 ADDED = {int(value, 16) for value in SPEC["added_codepoints"]}
 ARABIC = json.loads((ROOT / "tools/menu-assets/arabic-font.json").read_text())
 ARABIC_ADDED = {int(value, 16) for value in ARABIC["added_codepoints"]}
+ROMANIAN = 0x0219
+ROMANIAN_BDF = ROOT / "tools/menu-assets/font-source/romanian14.bdf"
+
+
+def remove_records(data, codepoints):
+    return encode_records({cp: record for cp, record in read_records(data).items()
+                           if cp not in codepoints})
 
 
 def cjk_only(data):
-    return encode_records({cp: record for cp, record in read_records(data).items()
-                           if cp not in ARABIC_ADDED})
+    return remove_records(data, ARABIC_ADDED | {ROMANIAN})
+
+
+def latin_bytes():
+    source = (ROOT / "Firm_Saturn/font_latin.h").read_text()
+    array = source.split("font_latin[] = {", 1)[1].split("};", 1)[0]
+    return bytes(int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{2})", array))
 
 
 def build_renderer(directory, fixture="font_lookup.c"):
@@ -88,8 +100,9 @@ class FontCoverageTests(unittest.TestCase):
 
     def test_original_records_and_independent_additions(self):
         composed = FONT.read_bytes()
-        self.assertEqual(len(composed), ARABIC["output_bytes"])
-        self.assertEqual(hashlib.sha256(composed).hexdigest(), ARABIC["output_sha256"])
+        arabic_stage = remove_records(composed, {ROMANIAN})
+        self.assertEqual(len(arabic_stage), ARABIC["output_bytes"])
+        self.assertEqual(hashlib.sha256(arabic_stage).hexdigest(), ARABIC["output_sha256"])
         data = cjk_only(composed)
         self.assertEqual(len(data), SPEC["output_bytes"])
         self.assertEqual(hashlib.sha256(data).hexdigest(), SPEC["output_sha256"])
@@ -103,6 +116,35 @@ class FontCoverageTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(additions).hexdigest(), SPEC["added_records_sha256"])
         bdf = ROOT / "tools/bdfont" / SPEC["source_bdf"]
         self.assertEqual(hashlib.sha256(bdf.read_bytes()).hexdigest(), SPEC["source_sha256"])
+
+    def test_romanian_comma_below_matches_source_and_renders(self):
+        data = FONT.read_bytes()
+        shipped = read_records(data)
+        self.assertTrue(ROMANIAN in shipped, "Romanian loading label falls back to a square")
+        selected = self.directory / "romanian.txt"
+        selected.write_text("0219\n")
+        source = (ROOT / "tools/bdfont/bdf/helvR14.bdf").read_text()
+        glyph = re.search(r"^STARTCHAR scommaaccent\n(.*?)^ENDCHAR$", source, re.M | re.S)[1]
+        self.assertIn("ENCODING 537\n", glyph)
+        self.assertIn("DWIDTH 8 0\nBBX 6 13 1 -5\n", glyph)
+        self.assertIn("FONT_ASCENT 13\n", source)
+        rows = bytes.fromhex(glyph.split("BITMAP\n", 1)[1])
+        self.assertEqual(len(rows), 13)
+        self.assertEqual(rows[9:], bytes.fromhex("10 10 10 20"))
+        latin_s = read_records(latin_bytes())[ord("s")]
+        self.assertEqual(rows[:8], latin_s[3:])
+        expected = bytes.fromhex("08 6B 15") + rows[:9] + rows[11:]
+
+        environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="halt_on_error=1")
+        output = self.directory / "romanian.bin"
+        subprocess.run([str(self.converter), str(ROMANIAN_BDF), "-adj", "0", "-c", str(output)],
+                       check=True, cwd=self.directory, env=environment,
+                       timeout=20, stdout=subprocess.PIPE)
+        self.assertEqual(read_records(output.read_bytes()), {ROMANIAN: expected})
+        self.assertEqual(shipped[ROMANIAN], expected)
+        self.assertEqual(len(data), ARABIC["output_bytes"] + 5 + len(expected))
+        subprocess.run([str(self.renderer), str(FONT), str(selected), "1"], check=True,
+                       env=environment, timeout=15)
 
     def test_reproducible_original_converter(self):
         output = self.directory / "regenerated.bin"

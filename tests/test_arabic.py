@@ -81,7 +81,7 @@ class ArabicTests(unittest.TestCase):
     def test_font_records_notices_and_original_atlas_pixels(self):
         # Pillow is used only for this independent PNG pixel oracle, not firmware builds.
         from PIL import Image
-        data = fonts.FONT.read_bytes()
+        data = fonts.remove_records(fonts.FONT.read_bytes(), {fonts.ROMANIAN})
         self.assertEqual(len(data), SPEC["output_bytes"])
         self.assertEqual(hashlib.sha256(data).hexdigest(), SPEC["output_sha256"])
         records = fonts.read_records(data)
@@ -127,9 +127,9 @@ class ArabicTests(unittest.TestCase):
         base.write_bytes(fonts.cjk_only(fonts.FONT.read_bytes()))
         merged = self.directory / "merged.bin"
         self.run_tool("merge-font", base, extra, merged)
-        self.assertEqual(merged.read_bytes(), fonts.FONT.read_bytes())
+        self.assertEqual(merged.read_bytes(), fonts.remove_records(fonts.FONT.read_bytes(), {fonts.ROMANIAN}))
         renderer = fonts.build_renderer(self.directory)
-        subprocess.run([str(renderer), str(merged), str(selected), "59"], check=True, timeout=20)
+        subprocess.run([str(renderer), str(fonts.FONT), str(selected), "59"], check=True, timeout=20)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,8 @@ The separate trailing-period filename discussion in the original PR remains
 unresolved; ASCII period was already present, and this font addition does not
 establish a filename fix.
 
-The complete shipped font now also includes the separate [Arabic contribution](../../doc/ARABIC.md).
-The command above regenerates the CJK-only stage; [tools/README.md](../README.md)
-documents the complete merge. Removing only the 59 Arabic records must reconstruct
-this CJK font exactly. Tests check both stages and the complete composed asset.
+The shipped font also includes [59 Arabic records](../../doc/ARABIC.md) and
+[Romanian U+0219](../../doc/MENU-STATUS-FONT.md#saturn-font-002--romanian-s-with-comma-below).
+The command above regenerates the CJK-only stage. Removing the Arabic and
+Romanian additions reconstructs that stage exactly. The [complete merge commands](../README.md#rebuild-the-shipped-font)
+regenerate the shipped asset.

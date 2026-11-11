@@ -40,11 +40,19 @@ int main(int argc, char **argv)
         assert(!find_ucs(font_latin, (int)code));
         u8 *glyph = find_font((int)code);
         assert(glyph == expected_record);
-        char encoded[] = {(char)(0xe0 | code>>12), (char)(0x80 | (code>>6 & 63)),
-                          (char)(0x80 | (code & 63)), 0};
+        assert(code >= 0x80 && code <= 0xffff);
+        char encoded[4] = {0};
+        unsigned bytes = 0;
+        if (code < 0x800) {
+            encoded[bytes++] = (char)(0xc0 | code>>6);
+        } else {
+            encoded[bytes++] = (char)(0xe0 | code>>12);
+            encoded[bytes++] = (char)(0x80 | (code>>6 & 63));
+        }
+        encoded[bytes++] = (char)(0x80 | (code & 63));
         char *cursor = encoded;
-        assert(utf8_to_ucs(&cursor) == (int)code && cursor == encoded+3);
-        assert(utf8_to_ucs(&cursor) == 0 && cursor == encoded+3);
+        assert(utf8_to_ucs(&cursor) == (int)code && cursor == encoded+bytes);
+        assert(utf8_to_ucs(&cursor) == 0 && cursor == encoded+bytes);
 
         unsigned width = glyph[1]>>4, height = glyph[1]&15;
         unsigned left = glyph[2]>>4, top = glyph[2]&15;
