@@ -16,6 +16,11 @@ class FirmwareResizeTests(FirmwareSaveTest):
             with self.subTest(device=dev, before=before, after=after):
                 self.invoke(dev, before, after)
 
+    def test_metadata_only_overwrites_preserve_other_archive_bytes(self):
+        for dev in (0, 1):
+            with self.subTest(device=dev):
+                self.invoke('metadata', dev, '')
+
     def test_rejected_writes_preserve_persistent_state(self):
         cases = [(dev, reason) for dev in (0, 1)
                  for reason in ('full', 'oversized', 'new-oversized', 'bad-chain', 'protected')]

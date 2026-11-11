@@ -140,6 +140,8 @@ static void round_trip(int dev, int old_size, int new_size)
     reload_model();
     target.data_size = new_size;
     target.date++;
+    memcpy(target.comment, "Overwrite!", 10);
+    target.language = 2;
     assert(sro_bup_write(dev, &target, replacement, 0) == 0);
     check_save(dev, &target, replacement);
     check_save(dev, &neighbor, keep);
@@ -152,6 +154,49 @@ static void round_trip(int dev, int old_size, int new_size)
     assert((dev ? MEMS->free_block : BUPMEM->free_block) == expected_free);
     free(old); free(replacement); free(keep);
     puts("Replacement and neighboring save survive a modeled RAM discard/reload.");
+}
+
+/* Adapted from paps-g d00d9efe. Generate all save bytes in the fixture. */
+static void metadata_overwrite(int dev)
+{
+    initialize();
+    BUPDIR target = directory("POLICENAUTS", 3224);
+    memcpy(target.comment, "Autosave  ", 10);
+    target.language = 0;
+    BUPDIR neighbor = directory("KEEP0000001", 32);
+    u8 *data = payload(3224, 3), *keep = payload(32, 7);
+    assert(sro_bup_write(dev, &target, data, 0) == 0);
+    assert(sro_bup_write(dev, &neighbor, keep, 0) == 0);
+    reload_model();
+
+    const char comments[][11] = {"Autosave10", "", "ACT 2", "0123456789"};
+    size_t extent = dev ? sizeof(mems_disk) : sizeof(slot_disk);
+    const u8 *disk_image = dev ? mems_disk : slot_disk;
+    u8 *expected = malloc(extent);
+    assert(expected);
+    for (unsigned i = 0; i < sizeof(comments) / sizeof(comments[0]); i++) {
+        memcpy(target.comment, comments[i], 10);
+        target.language = i;
+        int free_before = dev ? MEMS->free_block : BUPMEM->free_block;
+        bup_dev = dev;
+        int header = find_exact_save(target.file_name, NULL);
+        assert(header > 0);
+        size_t offset = header * (dev ? 1024 : 128);
+        assert(offset + 28 <= extent);
+        memcpy(expected, disk_image, extent);
+        memcpy(expected + offset + 16, target.comment, 10);
+        expected[offset + 27] = target.language;
+        assert(sro_bup_write(dev, &target, data, 0) == 0);
+        assert(!memcmp(expected, disk_image, extent));
+        check_save(dev, &target, data);
+        reload_model();
+        check_save(dev, &target, data);
+        check_save(dev, &neighbor, keep);
+        assert((dev ? MEMS->free_block : BUPMEM->free_block) == free_before);
+    }
+    free(data);
+    free(keep);
+    free(expected);
 }
 
 static void rejection(int dev, const char *reason)
@@ -211,6 +256,8 @@ static void rejection(int dev, const char *reason)
     u8 *data = payload(size, 13);
     target.data_size = size;
     target.date++;
+    memcpy(target.comment, "Rejected! ", 10);
+    target.language = 3;
     assert(sro_bup_write(dev, &target, data, mode) == expected);
     assert(flushes == writes_before);
     assert(memcmp(slot_disk, before_slot, sizeof(slot_disk)) == 0);
@@ -228,6 +275,7 @@ int main(int argc, char **argv)
     _Static_assert(offsetof(BUPDIR, data_size) == 28, "BUP size offset");
     assert(argc == 4);
     if (!strcmp(argv[1], "reject")) rejection(atoi(argv[2]), argv[3]);
+    else if (!strcmp(argv[1], "metadata")) metadata_overwrite(atoi(argv[2]));
     else round_trip(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
     return 0;
 }

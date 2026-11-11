@@ -25,6 +25,12 @@ class MCUSaveAPITests(MCUSaveTest):
                 for fault in ('write-error','write-short','sync-error','seek-any-error','seek-any-short'):
                     with self.subTest(dev=dev,mode=mode,fault=fault): self.invoke(mode,dev,fault)
 
+    def test_existing_save_retries_publish_resupplied_metadata(self):
+        for dev in (0, 1):
+            for fault in ('write-error','write-short','sync-error','seek-any-error','seek-any-short'):
+                with self.subTest(dev=dev,fault=fault):
+                    self.invoke('commit-resupply-existing',dev,fault)
+
     def test_directory_output_is_unchanged_after_any_failed_header(self):
         for nth in (1,2,15,29,33,65):
             for fault in ('read-error','read-short','read-partial-error'):

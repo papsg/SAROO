@@ -77,3 +77,40 @@ The [SuperH menu build](../tools/README.md#isolated-firmware-qualification)
 links 80,452 code/data bytes, up from 80,308, and 9,240 BSS bytes into the
 488,770-byte padded image. Hardware authentication, recovery from a
 failed size command and the duration of the existing waits remain unqualified.
+
+## Refresh comment and language on save overwrite
+
+Adapted from paps-g `d00d9efe` (SATURN-SAVE-007). The save writer updated
+date and payload on an overwrite but set the comment and language only
+on creation. It now copies all ten comment bytes and the requested
+language on every admitted write, including a matching retry. Directory
+link creation remains conditional. Sega defines both fields in the
+directory input and describes overwriting through the `BUP_Write` flag.
+[System Library User's Guide, ST-162-R1-092994, Backup Library §2.1,
+printed p. 42](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=47),
+[§2.3 function No. 5, printed p. 45](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50).
+
+The Policenauts report supplied a relevant comment change from
+`Autosave  ` to `Autosave10`. The fixtures use generated data with
+that comment shape. The report remains open and the game’s disc change
+remains unqualified. [Upstream issue #71](https://github.com/tpunix/SAROO/issues/71).
+
+```sh
+make -C tests check-firmware-save
+python3 -B -m unittest discover -s tests -p test_mcu_save_api.py -v
+```
+
+Repeat both commands with `SAROO_FIRMWARE_SAVE_PROFILE=release`. Use
+`SAROO_GAME_SAVE_SOURCE` to run either fixture against the preceding
+`game_save.c`. The parent fails 23 overwrite cases and ten
+matching retries with changed metadata. Eleven rejected writes leave
+both archive images untouched on the parent and port. The port covers
+both backup devices, same-size and resized writes, full and padded
+comments, neighboring records and preservation of every other byte on
+metadata-only writes. The coupled fixture uses the public MCU and FatFs
+code with scripted I/O failures. It verifies a retry through the
+existing pending-write path.
+
+The SH-2 build retains 80,452 code/data bytes, 9,240 BSS bytes, and
+a 44-byte direct `write_pending` frame. Physical backup timing,
+power-loss recovery and the reported game transition remain unqualified.

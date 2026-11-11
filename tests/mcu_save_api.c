@@ -181,8 +181,13 @@ static void commit_failure(const char *mode, int dev)
     fixture(dev,32);fault_only_flush=1;
     BUPDIR request=target;request.date++;
     int resupply = !strncmp(mode,"commit-resupply",15);
-    int new_record = !strcmp(mode,"commit-new") || resupply;
+    int existing_retry = !strcmp(mode,"commit-resupply-existing");
+    int new_record = !strcmp(mode,"commit-new") || (resupply && !existing_retry);
     if (new_record) memcpy(request.file_name,"NEW00000001",11);
+    if (existing_retry) {
+        memcpy(request.comment,"First try ",10);
+        request.language=3;
+    }
     if (!strcmp(mode,"commit-resupply-short")) {
         memset(request.file_name,0,12);memcpy(request.file_name,"SHORT",5);
     }
@@ -201,9 +206,11 @@ static void commit_failure(const char *mode, int dev)
         request.date++;
         if (!strcmp(mode,"commit-resupply-short")) {
             memset(request.file_name+6,0x7a,5);
+        }
+        if (!strcmp(mode,"commit-resupply-short") || existing_retry) {
             memcpy(request.comment,"Retried!  ",10);request.language=2;
         }
-        assert(sro_bup_write(dev,&request,retry,1)==0);
+        assert(sro_bup_write(dev,&request,retry,new_record)==0);
     } else assert(sro_bup_stat(dev,32,&stat)==0);
     assert(phase(dev)==0);reload_buffers();
     if (!strcmp(mode,"format")) {

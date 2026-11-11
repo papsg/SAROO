@@ -836,10 +836,8 @@ static int write_pending(int dev, BUPDIR *dir, u8 *data)
         return BUP_BROKEN;
     pending->state = SAVE_WRITING;
     *(u32*)(bp + 28) = dir->date;
-    if (pending->last >= 0) {
-        memcpy(bp + 16, dir->comment, 10);
-        bp[27] = dir->language;
-    }
+    bp[27] = dir->language;
+    memcpy(bp + 16, dir->comment, 10);
     int result = access_data(header, data, 2);
     if (result)
         return result;
