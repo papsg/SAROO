@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from test_menu_cdplayer import ROOT, function
+from test_menu_cdplayer import ROOT, command_functions, function
 
 
 class MenuCDTransferTests(unittest.TestCase):
@@ -48,7 +48,7 @@ class MenuCDTransferTests(unittest.TestCase):
         (cls.target / 'timing.inc').write_bytes(
             tick + b'\n' + elapsed.replace(b'static int', b'static __attribute__((unused)) int', 1))
         (cls.target / 'commands.inc').write_bytes(
-            function(raw, 'cdc_cmd') + function(raw, 'cdc_end_trans'))
+            command_functions(raw) + function(raw, 'cdc_end_trans') + function(raw, 'cdc_read_file'))
         flags = ['-O2'] if os.environ.get('SAROO_MENU_CD_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
         cls.binaries = {}
@@ -124,6 +124,15 @@ class MenuCDTransferTests(unittest.TestCase):
 
     def test_late_reply_allows_admission_after_timeout(self):
         self.scenario('timeout-retry', 'commands')
+
+    def test_file_read_clears_stale_efls_without_waiting_for_completion(self):
+        self.scenario('file-admission', 'commands')
+
+    def test_refused_file_read_leaves_efls_and_registers_intact(self):
+        self.scenario('file-refusal', 'commands')
+
+    def test_fresh_efls_survives_fast_reply_and_command_errors(self):
+        self.scenario('file-completion', 'commands')
 
 
 if __name__ == '__main__':

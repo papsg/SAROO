@@ -61,7 +61,7 @@ void cdc_dump(int count)
 }
 
 
-int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
+static int cdc_reply(int clear, int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 {
 
 	//printk("\ncdc_cmd: %04x %04x %04x %04x  %s\n", cmd->cr1, cmd->cr2, cmd->cr3, cmd->cr4, cmdname);
@@ -69,7 +69,7 @@ int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 	/* A response timeout leaves the previous command in flight. */
 	if(!(HIRQ & HIRQ_CMOK)) return -2;
 
-	clear_hirq(wait|HIRQ_CMOK);
+	clear_hirq(clear|HIRQ_CMOK);
 
 	CR1 = cmd->cr1;
 	CR2 = cmd->cr2;
@@ -109,6 +109,11 @@ int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 	//printk("   resp: %04x %04x %04x %04x\n", resp->cr1,resp->cr2,resp->cr3,resp->cr4);
 
 	return 0;
+}
+
+int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
+{
+	return cdc_reply(wait, wait, cmd, resp, cmdname);
 }
 
 /**********************************************************/
@@ -671,8 +676,9 @@ int cdc_read_file(int selnum, int fid, int offset)
 	cmd.cr3 = (selnum<<8) | ((fid>>16)&0xff);
 	cmd.cr4 = fid&0xffff;
 
-	return cdc_cmd(0, &cmd, &resp, "cdc_read_file");
-//	return cdc_cmd(HIRQ_EFLS, &cmd, &resp, "cdc_read_file");
+	/* Acknowledge the old file event at admission. The caller drains the
+	 * new asynchronous read before it can complete. */
+	return cdc_reply(HIRQ_EFLS, 0, &cmd, &resp, "cdc_read_file");
 }
 
 

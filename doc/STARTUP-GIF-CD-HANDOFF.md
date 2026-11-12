@@ -111,3 +111,28 @@ player, boot and recovery paths. The group passes 90 methods in
 both runs, with the CD methods exercised under sanitizers and O2.
 The pinned menu links 81,396 code/data bytes with 24,048 bytes of
 body space. Physical CD and game behavior remain unqualified.
+
+## Acknowledge the previous file event on read admission
+
+Adapted from paps-g `e515b7c5` (SATURN-CD-003), using the shared
+acknowledgment and wait masks from `5ef543a2`. The directory operation
+can leave EFLS set when the next asynchronous Read File request is
+issued. Clearing it with CMOK at admission prevents the old event
+from being mistaken for completion of the new file. The wrapper
+returns after the command reply so the caller can drain the buffer
+while the file is being read. A busy refusal leaves the old event
+intact. A new EFLS can arrive before the reply and remains pending.
+[Sega CD Communication Interface ST-162-062094, §3.2 Table 3.2,
+printed p. 30](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=18),
+[§8.2.8 No. 8.5 Read File, printed p. 100](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=88),
+[upstream Read File wrapper](https://github.com/tpunix/SAROO/commit/a7f540030a54ed34bb892780f7de61c574cf43c0).
+
+Use the menu safety commands above, or point `SAROO_MENU_CD_SOURCE`
+at the parent and run `test_menu_cd_transfer.py`. Two parent methods
+reproduce stale EFLS and 19 pass, including busy refusal. The port
+passes all 65,536 initial HIRQ patterns, unchanged command encoding,
+fast completion and a fresh event during each modeled error. The
+boot caller fixture checks both the asynchronous wait and the EFLS
+acknowledgment mask. Both menu runs pass 93 methods. The pinned menu
+links 81,428 code/data bytes with 24,016 bytes of body space. Actual
+BIOS and game execution remain unqualified.

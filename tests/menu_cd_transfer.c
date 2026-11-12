@@ -9,7 +9,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef struct { u16 cr1, cr2, cr3, cr4; } CDCMD;
 typedef struct { int fad, size; u8 unit, gap, fn, attr; } CdcFile;
-enum { HIRQ_CMOK=1, HIRQ_DRDY=2, HIRQ_ESEL=0x40,
+enum { HIRQ_CMOK=1, HIRQ_DRDY=2, HIRQ_ESEL=0x40, HIRQ_EFLS=0x200,
        STATUS_OPEN=6, STATUS_NODISC=7, STATUS_RETRY=8, STATUS_ERROR=9, STATUS_FATAL=10 };
 int cdc_end_trans(int *words);
 
@@ -18,6 +18,7 @@ static unsigned CR1, CR2, CR3, CR4, HIRQ;
 static int first_timeout, ready_timeout, cleanup_timeout;
 static unsigned reply_status, calls, ready_calls;
 static unsigned direct_end, reply_words, late_ready;
+static unsigned file_read, file_event, file_flags_at_reply;
 static void clear_hirq(int mask) { HIRQ &= ~mask; }
 static void printk(const char *format, ...) { (void)format; }
 static int wait_hirq(int mask)
@@ -28,6 +29,16 @@ static int wait_hirq(int mask)
         return ready_timeout;
     }
     ++calls;
+    if (file_read) {
+        assert(CR1 == 0x7412 && CR2 == 0x3456 && CR3 == 0x17ab && CR4 == 0xcdef);
+        file_flags_at_reply = HIRQ;
+        HIRQ |= file_event;
+        if (first_timeout) return first_timeout;
+        CR1 = reply_status;
+        CR2 = CR3 = CR4 = 0;
+        HIRQ |= HIRQ_CMOK;
+        return 0;
+    }
     if(calls == 1) {
         assert(CR1 == (direct_end ? 0x0600u : 0x6300u) && !CR2 && !CR3 &&
                CR4 == (direct_end ? 0u : 1u));
@@ -140,6 +151,49 @@ static void test_timeout_retry(void)
     assert(!response.cr3 && !response.cr4 && HIRQ == 0x0281 && calls == 1 && !ready_calls);
 }
 
+/* Asynchronous file admission and event lifetimes from paps-g e515b7c5. */
+static void test_file_admission(void)
+{
+    file_read = 1;
+    reply_status = 0x0100;
+    for (unsigned flags = HIRQ_CMOK; flags <= UINT16_MAX; flags += 2) {
+        HIRQ = flags;
+        calls = ready_calls = 0;
+        assert(!cdc_read_file(0x17, 0xabcdef, 0x123456));
+        assert(file_flags_at_reply == (flags & ~(HIRQ_CMOK | HIRQ_EFLS)));
+        assert(HIRQ == (flags & ~HIRQ_EFLS) && calls == 1 && !ready_calls);
+    }
+}
+
+static void test_file_refusal(void)
+{
+    file_read = 1;
+    for (unsigned flags = 0; flags <= UINT16_MAX; flags += 2) {
+        HIRQ = flags;
+        CR1 = 0x1100; CR2 = 0x2222; CR3 = 0x3333; CR4 = 0x4444;
+        assert(cdc_read_file(0x17, 0xabcdef, 0x123456) == -2);
+        assert(HIRQ == flags && !calls && !ready_calls);
+        assert(CR1 == 0x1100 && CR2 == 0x2222 && CR3 == 0x3333 && CR4 == 0x4444);
+    }
+}
+
+static void test_file_completion(void)
+{
+    const unsigned statuses[] = {0x0100, 0, 0xff00, 0x8100};
+    const int results[] = {0, -3, -5, -6};
+    file_read = 1;
+    file_event = HIRQ_EFLS;
+    for (unsigned i = 0; i < sizeof results / sizeof *results; ++i) {
+        HIRQ = 0x82a1;
+        calls = ready_calls = 0;
+        reply_status = statuses[i];
+        first_timeout = i == 1 ? -3 : 0;
+        assert(cdc_read_file(0x17, 0xabcdef, 0x123456) == results[i]);
+        assert(file_flags_at_reply == 0x80a0 && calls == 1 && !ready_calls);
+        assert(HIRQ == (first_timeout ? 0x82a0u : 0x82a1u));
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -151,6 +205,12 @@ int main(int argc, char **argv)
         test_busy_admission();
     } else if(!strcmp(argv[1], "timeout-retry")) {
         test_timeout_retry();
+    } else if(!strcmp(argv[1], "file-admission")) {
+        test_file_admission();
+    } else if(!strcmp(argv[1], "file-refusal")) {
+        test_file_refusal();
+    } else if(!strcmp(argv[1], "file-completion")) {
+        test_file_completion();
     } else if(!strcmp(argv[1], "cleanup")) {
         for(unsigned failure=0; failure<2; ++failure) {
             first_timeout=0; ready_timeout=-3; cleanup_timeout=failure ? -3 : 0;

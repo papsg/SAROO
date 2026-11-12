@@ -96,6 +96,12 @@ static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *response, char *name)
     if(enforce_publication) unchanged();
     return operation(op);
 }
+static __attribute__((unused)) int cdc_reply(int clear, int wait, CDCMD *cmd,
+                                            CDCMD *response, char *name)
+{
+    assert(clear == HIRQ_EFLS && !wait && cmd->cr1 == 0x7400);
+    return cdc_cmd(wait, cmd, response, name);
+}
 static void expected_published(void)
 {
     memcpy(before_high+0x2a0,before_high+0x20e0,32);

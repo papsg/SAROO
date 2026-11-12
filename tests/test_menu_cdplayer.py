@@ -17,6 +17,10 @@ def function(source, name):
     assert match, name
     return source[match.start():source.index(b'\n}', match.end()) + 3]
 
+def command_functions(source):
+    helper = function(source, 'cdc_reply') if b'static int cdc_reply(' in source else b''
+    return helper + function(source, 'cdc_cmd')
+
 
 class MenuCDPlayerTests(unittest.TestCase):
     @classmethod
@@ -28,7 +32,7 @@ class MenuCDPlayerTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_MENU_CD_SOURCE', ROOT / 'Firm_Saturn'))
         block = (source / 'cdblock.c').read_bytes()
         load = (source / 'game_load.c').read_bytes()
-        code = function(block, 'cdc_cmd').replace(b'int cdc_cmd(', b'int actual_cdc_cmd(')
+        code = command_functions(block).replace(b'int cdc_cmd(', b'int actual_cdc_cmd(')
         code += function(block, 'cdc_end_trans').replace(b'int cdc_end_trans(', b'int actual_end_trans(')
         code += function(block, 'cdc_get_toc').replace(b'int cdc_get_toc(', b'int actual_get_toc(')
         ip = function(load, 'my_bios_loadcd_read')
