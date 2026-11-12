@@ -125,6 +125,11 @@
 #define FILE_ACK_VERSION 0x46494c31u
 #define SSCMD_ARCHIVERD 0x0036
 #define SSCMD_ARCHIVEWR 0x0037
+#define SSCMD_BINDIR   0x0038
+#define BIN_DIRECTORY_VERSION 1u
+#define BIN_DIRECTORY_ENTRY 0x80000000u
+#define BIN_PATH_CAPACITY 0xf0u
+#define BIN_ROOT "/SAROO/BIN"
 #define ARCHIVE_IO_VERSION 0x534f5731u
 #define MENU_ACK_VERSION 1u
 #define SSCMD_STARTUP  0x000d
@@ -400,6 +405,7 @@ void init_toc(void);
 
 char *get_category(int id);
 int list_bins(int show);
+int list_bin_dir(const char *path);
 int list_disc(int cid, int show);
 int load_disc(int index, int start_save);
 int load_pcm(char *fname);

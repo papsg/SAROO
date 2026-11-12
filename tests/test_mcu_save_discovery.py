@@ -41,4 +41,15 @@ class DiscDiscoveryTests(MCUSaveTest):
     def test_actual_bin_consumer_rejects_stale_failed_and_empty_catalogs(self):
         self.invoke('producer-consumer')
 
+    def test_bin_folders_publish_tagged_directories_and_files(self):
+        self.invoke('folders')
+
+    def test_bin_folder_paths_reject_aliases_and_respect_the_shared_bound(self):
+        self.invoke('folder-paths')
+
+    def test_bin_folder_errors_empty_the_catalog_and_allow_retry(self):
+        for value in range(1, 5):
+            with self.subTest(value=value):
+                self.invoke('folder-io', value)
+
 if __name__ == '__main__': unittest.main()

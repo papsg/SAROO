@@ -73,6 +73,11 @@ class MCUSaveTest(unittest.TestCase):
         inputs = {'Saturn/saturn_utils.c': module, 'Saturn/saturn_main.c': main}
         harnesses = ['mcu_save_startup.c', 'mcu_save_support.py', 'test_mcu_save_startup.py',
                      'file_buffer_source.py']
+        catalog_definitions = b''
+        if cls.fixture in ('disc', 'cue', 'header', 'discovery', 'cover'):
+            header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
+            catalog_definitions = b'\n'.join(line for line in header.splitlines() if line.startswith(
+                (b'#define BIN_DIRECTORY_ENTRY ', b'#define BIN_PATH_CAPACITY ', b'#define BIN_ROOT '))) + b'\n'
         if cls.fixture in ('runtime', 'extents', 'reopen', 'disc', 'cue', 'header', 'owner'):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
@@ -123,7 +128,8 @@ class MCUSaveTest(unittest.TestCase):
             if b'static int join_path(' in disc:
                 parts.insert(0, disc[disc.index(b'static int join_path('):disc.index(b'int get_gameid(')])
                 parts.append(disc[disc.index(b'static int game_dir('):disc.index(b'int load_disc(')])
-            (cls.target / 'disc-core.inc').write_bytes(b''.join(parts).replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
+            (cls.target / 'disc-core.inc').write_bytes(catalog_definitions +
+                b''.join(parts).replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             (cls.target / 'disc-load.inc').write_bytes(disc[disc.index(b'int load_disc('):])
             signature = b'int load_disc(int index, int start_save)' in disc
             (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
@@ -172,6 +178,8 @@ class MCUSaveTest(unittest.TestCase):
         if cls.fixture in ('discovery', 'cover'):
             harnesses += ['mcu_save_discovery.c', 'test_mcu_save_discovery.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
+            if b'int list_bin_dir(' in data:
+                catalog_definitions += b'#define HAS_BIN_DIRECTORY 1\n'
             helper = data.index(b'static int join_path(') if b'static int join_path(' in data else -1
             helpers = data[helper:data.index(b'\n}', helper)+2] if helper >= 0 else b''
             suffix = data.find(b'static int image_suffix(')
@@ -179,7 +187,7 @@ class MCUSaveTest(unittest.TestCase):
             close = data.index(b'static int close_tracks(int count)\n{') if b'static int close_tracks(int count)\n{' in data else data.index(b'int unload_disc(')
             catalog = data[data.index(b'int category_current'):close]
             scanner = data[data.index(b'int find_cue_iso('):data.index(b'int load_disc(')]
-            (cls.target / 'discovery.inc').write_bytes(helpers + catalog + scanner)
+            (cls.target / 'discovery.inc').write_bytes(catalog_definitions + helpers + catalog + scanner)
             if b'static int game_dir(' in data:
                 (cls.target / 'path.inc').write_text('return game_dir(index, out);\n')
             else:
@@ -240,7 +248,7 @@ class MCUSaveTest(unittest.TestCase):
                 code = code.replace(old, new)
             (cls.target / 'cue.inc').write_bytes(code)
             begin = data.index(b'static int game_dir(')
-            (cls.target / 'load.inc').write_bytes(data[begin:data.index(b'int get_disc_ip(', begin)])
+            (cls.target / 'load.inc').write_bytes(catalog_definitions + data[begin:data.index(b'int get_disc_ip(', begin)])
             (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])
             begin = main.index(b'u32 bswap32('); end = main.index(b'u32 track_to_fad(', begin)
             (cls.target / 'toc.inc').write_bytes(main[begin:end])

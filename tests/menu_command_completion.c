@@ -40,6 +40,8 @@ static int printk(const char *format, ...)
 { (void)format; event(1); return 0; }
 static int list_bins(int show)
 { assert(show == 1); event(8); return operation_result; }
+static int list_bin_dir(const char *path)
+{ assert(path == scratch + 16); event(56); return operation_result; }
 static int list_disc(int category, int show)
 {
     assert(!show); supplied = category; event(2);
@@ -126,7 +128,8 @@ static void dispatch(void)
     for (unsigned opcode = 0; opcode <= UINT16_MAX; opcode++) {
         unsigned base = normalized(opcode), tag = opcode & 32;
         call(opcode, 0x1234);
-        if ((base >= 1 && base <= 14) || opcode == 54 || opcode == 55) {
+        if ((base >= 1 && base <= 14) || opcode == 54 || opcode == 55 ||
+            (HAS_BIN_DIRECTORY && opcode == 56)) {
             if ((base == 13 || base == 14) && !tag) assert(command_value == opcode);
             else assert(!command_value);
             u16 expected = tag;
@@ -140,7 +143,7 @@ static void dispatch(void)
             case 3: SEQUENCE(20, 3); assert(supplied == 0x1234); break;
             case 4: case 5: SEQUENCE(24, 25); break;
             case 6: case 7: case 8: case 9: case 10: case 11: case 12:
-            case 54: case 55: { unsigned e[] = {base}; sequence(e, 1); break; }
+            case 54: case 55: case 56: { unsigned e[] = {base}; sequence(e, 1); break; }
             case 13: SEQUENCE(2, 26, 27, 28, 21); break;
             case 14: SEQUENCE(1, 14); assert(supplied == 0x1234); break;
             }
@@ -216,6 +219,24 @@ static void results(void)
             assert(!command_value && argument == (expected | tag)); SEQUENCE(24, 25);
         }
     }
+}
+
+static void bin_directory(void)
+{
+    strcpy(scratch + 16, "/SAROO/BIN/Work");
+    for (operation_result = -19; operation_result <= 0; ++operation_result) {
+        call(0x0038, 0);
+        assert(!command_value && argument == (u16)(operation_result | SSCMD_SAVE_ACK));
+        assert(!strcmp(scratch + 16, "/SAROO/BIN/Work"));
+        SEQUENCE(56);
+    }
+    memset(sysinfo, 0xa5, sizeof(sysinfo));
+#include "publish-bin.inc"
+    const u8 expected[] = {1, 0, 0, 0};
+    assert(!memcmp((u8 *)sysinfo + 0x34, expected, sizeof(expected)));
+    for (unsigned i = 0; i < sizeof(sysinfo); i++)
+        if (i < 0x34 || i >= 0x38) assert(((u8 *)sysinfo)[i] == 0xa5);
+    checks++;
 }
 
 static void complete_command(u16 command, u16 arg)
@@ -370,6 +391,7 @@ int main(int argc, char **argv)
     } else if (!strcmp(argv[1], "dispatch")) dispatch();
     else if (!strcmp(argv[1], "startup")) startup();
     else if (!strcmp(argv[1], "selection")) selection();
+    else if (!strcmp(argv[1], "bin-directory")) bin_directory();
     else if (!strcmp(argv[1], "reset-drain")) reset_drain();
     else if (!strcmp(argv[1], "reset-timeout")) reset_timeout();
     else if (!strcmp(argv[1], "reset-legacy")) reset_legacy();

@@ -28,9 +28,14 @@ class MenuCommandCompletionTests(unittest.TestCase):
         cls.results = []
         start = raw.index(b'void ss_cmd_handle(void)')
         (cls.target / 'command.inc').write_bytes(raw[start:raw.index(b'\n}', start) + 2])
-        (cls.target / 'protocol.h').write_bytes(protocol_definitions(header))
+        directory = b'\tcase SSCMD_BINDIR:' in raw
+        (cls.target / 'protocol.h').write_bytes(protocol_definitions(header) +
+                                                f'#define HAS_BIN_DIRECTORY {int(directory)}\n'.encode())
         publish = re.search(rb'^[ \t]*\*\(u32\*\)\(SYSINFO_ADDR\+0x2c\) = MENU_ACK_VERSION;', raw, re.M)
         (cls.target / 'publish.inc').write_bytes(publish[0] if publish else b'')
+        publish_bin = re.search(rb'^[ \t]*\*\(u32\*\)\(SYSINFO_ADDR\+0x34\) = BIN_DIRECTORY_VERSION;',
+                                raw, re.M)
+        (cls.target / 'publish-bin.inc').write_bytes(publish_bin[0] if publish_bin else b'')
 
         menu = Path(os.environ.get('SAROO_MENU_STARTUP_SOURCE', ROOT / 'Firm_Saturn'))
         main = (menu / 'main.c').read_bytes()
@@ -101,6 +106,9 @@ class MenuCommandCompletionTests(unittest.TestCase):
 
     def test_operation_errors_and_stop_before_unload(self):
         self.invoke('results')
+
+    def test_bin_directory_uses_its_tagged_request_and_capability(self):
+        self.invoke('bin-directory')
 
     def test_hot_reset_drains_retained_request_before_startup(self):
         self.invoke('reset-drain')

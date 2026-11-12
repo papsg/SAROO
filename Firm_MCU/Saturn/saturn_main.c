@@ -758,6 +758,10 @@ _Static_assert(SSCMD_ARCHIVEWR == SSCMD_ARCHIVERD + 1 &&
 _Static_assert(SSCMD_PRINTF == 1 && SSCMD_LISTDISC == 2 && SSCMD_LOADDISC == 3 &&
                SSCMD_CHECK == 4 && SSCMD_UPDATE == 5 && SSCMD_STARTUP == 13 && SSCMD_SELECT == 14,
                "menu opcode assignments changed");
+_Static_assert((SSCMD_BINDIR & SSCMD_SAVE_ACK) &&
+               (SSCMD_BINDIR ^ SSCMD_SAVE_ACK) > SSCMD_SELECT &&
+               SSCMD_BINDIR > SSCMD_ARCHIVEWR && SSCMD_BINDIR < 0x8000,
+               "BIN directory command collides with an existing operation");
 
 void ss_cmd_handle(void)
 {
@@ -777,6 +781,9 @@ void ss_cmd_handle(void)
         if (cmd & SSCMD_SAVE_ACK) SS_ARG = SSCMD_SAVE_ACK;
 		SS_CMD = 0;
 		break;
+	case SSCMD_BINDIR:
+        retv = list_bin_dir((const char *)(TMPBUFF_ADDR + 0x10));
+        goto save_reply;
 	case SSCMD_LISTBIN:
 		// 列出bin信息
 		retv = list_bins(1);
@@ -1204,6 +1211,7 @@ void saturn_config(void)
     *(u32*)(SYSINFO_ADDR+0x14) = FILE_ACK_VERSION;
     *(u32*)(SYSINFO_ADDR+0x18) = ARCHIVE_IO_VERSION;
     *(u32*)(SYSINFO_ADDR+0x2c) = MENU_ACK_VERSION;
+    *(u32*)(SYSINFO_ADDR+0x34) = BIN_DIRECTORY_VERSION;
 
     if (cd_sync_init()) return;
     ss_sw_init();

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def protocol_definitions(header):
-    return b'\n'.join(re.findall(rb'^#define (?:SSCMD_\w+|(?:SAVE|FILE|MENU)_ACK_VERSION|ARCHIVE_IO_VERSION)\s+\S+',
+    return b'\n'.join(re.findall(rb'^#define (?:SSCMD_\w+|(?:SAVE|FILE|MENU)_ACK_VERSION|ARCHIVE_IO_VERSION|BIN_DIRECTORY_VERSION)\s+\S+',
                                  header, re.M)) + b'\n'
 
 

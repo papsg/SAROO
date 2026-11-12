@@ -12,13 +12,14 @@ static int category_num,sort_mode;
 static char category[32];
 static char *get_category(int id) { assert(id>=0 && id<category_num);return category; }
 static int injected,reads,opens,closes,allocs,frees;
+static int require_catalog_lock;
 static unsigned image_clears;
 static FRESULT scan_open(DIR *dir,const char *name)
-{ opens++;return injected==1?FR_DISK_ERR:f_opendir(dir,name); }
+{ assert(!require_catalog_lock || lock_depth==1);opens++;return injected==1?FR_DISK_ERR:f_opendir(dir,name); }
 static FRESULT scan_read(DIR *dir,FILINFO *info)
-{ reads++;return injected==3 && reads==2?FR_DISK_ERR:f_readdir(dir,info); }
+{ assert(!require_catalog_lock || lock_depth==1);reads++;return injected==3 && reads==2?FR_DISK_ERR:f_readdir(dir,info); }
 static FRESULT scan_close(DIR *dir)
-{ closes++;FRESULT r=f_closedir(dir);return r?r:injected==4?FR_DISK_ERR:FR_OK; }
+{ assert(!require_catalog_lock || lock_depth==1);closes++;FRESULT r=f_closedir(dir);return r?r:injected==4?FR_DISK_ERR:FR_OK; }
 static void *scan_alloc(size_t size) { allocs++;return injected==2?NULL:malloc(size); }
 static void scan_free(void *ptr) { if(ptr)frees++;free(ptr); }
 static void *scan_memset(void *out,int byte,size_t size)
@@ -195,6 +196,92 @@ static void producer_consumer(void)
     reset_scan();assert(!list_bins(0) && !total_disc && !*(u32*)memory.image);
     assert(run_binary(0,1)==-1 && run_binary(1,1)==-1 && !binary_reads);guards();
 }
+
+static int list_folder(const char *path)
+{
+#ifdef HAS_BIN_DIRECTORY
+    require_catalog_lock = 1;
+    int result = list_bin_dir(path);
+    require_catalog_lock = 0;
+    assert(!lock_depth);
+    return result;
+#else
+    (void)path;
+    return list_bins(0);
+#endif
+}
+
+static void folders(void)
+{
+    const char *root = "/SAROO/BIN", *folder = "/SAROO/BIN/Tools@Demo";
+    create(root, "Tools@Demo", 1);
+    create(root, "Top.bin", 0);
+    create(folder, "Child", 1);
+    create(folder, "Café.bin", 0);
+    create(folder, ".hidden", 0);
+
+    reset_scan();
+    assert(!list_folder(root) && total_disc == 2 && *(u32 *)memory.image == 2);
+    assert((u32)disc_path[0] == (0x80000000u | 0x2800));
+    assert(!strcmp(path_str + 0x2800, "Tools@Demo"));
+    char game[256];
+    assert(find_disc("Tools@Demo") == -1 && build_path(0, game) == -1);
+    assert(opens == 1 && closes == 1 && allocs == 1 && frees == 1);
+
+    reset_scan();
+    assert(!list_folder(folder) && total_disc == 2 && *(u32 *)memory.image == 2);
+    assert((u32)disc_path[0] == (0x80000000u | 0x2800));
+    assert(!strcmp(path_str + 0x2800, "Child"));
+    assert(disc_path[1] == 0x2806 && !strcmp(path_str + disc_path[1], "Café.bin"));
+    assert(find_disc("Child") == -1);
+    assert(!list_bins(0) && total_disc == 1 && !strcmp(path_str + disc_path[0], "Top.bin"));
+    guards();
+}
+
+static void folder_paths(void)
+{
+    static const char *bad[] = {
+        "", "/SAROO/ISO", "/SAROO/BIN2", "/saroo/BIN", "/SAROO/BIN/",
+        "/SAROO/BIN//Child", "/SAROO/BIN/..", "/SAROO/BIN/./Child",
+        "/SAROO/BIN/.hidden", "/SAROO/BIN/A.", "/SAROO/BIN/A /Child",
+        "/SAROO/BIN/A\\B", "/SAROO/BIN/A:B", "/SAROO/BIN/A?B",
+        "/SAROO/BIN/A\x7f", "/SAROO/BIN/A\x1f"
+    };
+    for (unsigned i = 0; i < sizeof(bad) / sizeof(*bad); ++i) {
+        reset_scan();
+        assert(list_folder(bad[i]) == -FR_INVALID_NAME);
+        assert(!opens && !total_disc && !*(u32 *)memory.image);
+    }
+    char name[229], path[241];
+    memset(name, 'x', sizeof(name) - 1);
+    name[sizeof(name) - 1] = 0;
+    create("/SAROO/BIN", name, 1);
+    assert(snprintf(path, sizeof(path), "/SAROO/BIN/%s", name) == 239);
+    reset_scan();
+    assert(!list_folder(path) && opens == 1 && closes == 1 && !total_disc);
+    path[239] = 'x';
+    path[240] = 0;
+    reset_scan();
+    assert(list_folder(path) == -FR_INVALID_NAME && !opens);
+    guards();
+}
+
+static void folder_io(int which)
+{
+    const char *folder = "/SAROO/BIN/Work";
+    create("/SAROO/BIN", "Work", 1);
+    create(folder, "One.bin", 0);
+    create(folder, "Two.bin", 0);
+    assert(!list_folder(folder) && total_disc == 2);
+    reset_scan();
+    injected = which;
+    assert(list_folder(folder) < 0 && !total_disc && !*(u32 *)memory.image);
+    assert(opens == 1 && closes == (which != 1));
+    assert(frees == (which >= 3));
+    reset_scan();
+    assert(!list_folder(folder) && total_disc == 2 && *(u32 *)memory.image == 2);
+    guards();
+}
 #ifndef MCU_DISCOVERY_TEST_ENTRY
 #define MCU_DISCOVERY_TEST_ENTRY main
 #endif
@@ -205,6 +292,9 @@ int MCU_DISCOVERY_TEST_ENTRY(int argc,char **argv)
     assert(f_mkdir("/SAROO")==0 && f_mkdir("/SAROO/ISO")==0 && f_mkdir("/SAROO/BIN")==0);
     memset(&memory,0xa5,sizeof(memory));fault="none";
     if(!strcmp(mode,"discover"))discover(value);
+    else if(!strcmp(mode,"folders"))folders();
+    else if(!strcmp(mode,"folder-paths"))folder_paths();
+    else if(!strcmp(mode,"folder-io"))folder_io(value);
     else if(strstr(mode,"fault"))failure(mode,value);
     else if(!strcmp(mode,"list") || !strcmp(mode,"bins"))list_case(!strcmp(mode,"bins"),value);
     else if(strstr(mode,"capacity"))capacity(value,!strcmp(mode,"name-capacity"),!strcmp(mode,"sorted-capacity")?1:!strcmp(mode,"reverse-capacity")?2:0);
