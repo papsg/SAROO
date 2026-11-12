@@ -72,35 +72,44 @@ DSTATUS disk_initialize (BYTE pdrv)
 /* Read Sector(s)                                                        */
 /*-----------------------------------------------------------------------*/
 
+/* The drive number occupies one byte, leaving a bit for direction in the
+ * same argument. Keep the FatFs entry points and one owner for all retries. */
+#define DISK_TRANSFER_WRITE 0x80000000u
+static __attribute__((noinline)) DRESULT disk_transfer(unsigned operation, BYTE *buff,
+                                                     LBA_t sector, UINT count)
+{
+    if (osSemaphoreAcquire(sem_diskio, 100) != osOK)
+        return RES_ERROR;
+#if FF_FS_READONLY == 0
+    int writing = (operation & DISK_TRANSFER_WRITE) != 0;
+#else
+    int writing = 0;
+#endif
+    int result, retry = 4;
+    do {
+#if FF_FS_READONLY == 0
+        if (writing)
+            result = sd_write_sector(sector, count, buff);
+        else
+#endif
+            result = sd_read_sector(sector, count, buff);
+        if (!result) {
+            if (retry < 4)
+                printk(writing ? "    retry write OK.\n" : "    retry read OK.\n");
+            break;
+        }
+        printk(writing ? "disk_write: pdrv=%d sector=%08x count=%d\n" :
+                         "disk_read: pdrv=%d sector=%08x count=%d\n",
+               (int)(operation & 0xffu), sector, count);
+        printk("    retv=%08x\n", result);
+    } while (--retry);
+    osSemaphoreRelease(sem_diskio);
+    return result ? RES_ERROR : RES_OK;
+}
+
 DRESULT disk_read (BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 {
-	int result, retry;
-
-	result = osSemaphoreAcquire(sem_diskio, 100);
-	if(result!=osOK)
-		return RES_ERROR;
-
-	//printk("disk_read: pdrv=%d sector=%08x count=%d buf=%08x\n", pdrv, sector, count, buff);
-	retry = 4;
-	while(retry){
-		result = sd_read_sector(sector, count, buff);
-		if(result){
-			printk("disk_read: pdrv=%d sector=%08x count=%d\n", pdrv, sector, count);
-			printk("    retv=%08x\n", result);
-			retry -= 1;
-			//sdio_reset();
-		}else{
-			if(retry<4)
-				printk("    retry read OK.\n");
-			break;
-		}
-	}
-
-	osSemaphoreRelease(sem_diskio);
-
-	if(result)
-		return RES_ERROR;
-	return RES_OK;
+    return disk_transfer(pdrv, buff, sector, count);
 }
 
 
@@ -113,33 +122,7 @@ DRESULT disk_read (BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 
 DRESULT disk_write (BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 {
-	int result, retry;
-
-	result = osSemaphoreAcquire(sem_diskio, 100);
-	if(result!=osOK)
-		return RES_ERROR;
-
-	retry = 4;
-	while(retry){
-		result = sd_write_sector(sector, count, (BYTE *)buff);
-		if(result){
-			printk("disk_write: pdrv=%d sector=%08x count=%d\n", pdrv, sector, count);
-			printk("    retv=%08x\n", result);
-			retry -= 1;
-			//sdio_reset();
-		}else{
-			if(retry<4)
-				printk("    retry write OK.\n");
-			break;
-		}
-	}
-
-	osSemaphoreRelease(sem_diskio);
-
-	if(result)
-		return RES_ERROR;
-	return RES_OK;
-
+    return disk_transfer(pdrv | DISK_TRANSFER_WRITE, (BYTE *)buff, sector, count);
 }
 
 #endif

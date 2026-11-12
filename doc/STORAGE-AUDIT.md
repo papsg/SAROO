@@ -34,3 +34,34 @@ The GNU MCU App links 63,864 load bytes with 1,672 bytes of ITCM
 headroom. All 738 direct compiler frames match the parent. The
 checks model the sector and controller boundaries. Physical DMA
 timing remains unqualified.
+
+## Share disk read and write retries
+
+Adapted from paps-g `b483124c` (AUD-RES-001). The FatFs entry points
+share one retry loop. The helper carries the direction in a high bit
+of its existing drive argument and preserves all eight drive bits.
+It acquires the disk semaphore once, makes at most four attempts,
+then releases the semaphore once. Failed acquisition returns before
+the first transfer. The existing failure and recovery messages keep
+their arguments and order. Read-only builds link without a write
+provider.
+[Original SAROO disk adapter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/diskio.c),
+[CMSIS-RTOS2 semaphore acquire and release](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__SemaphoreMgmt.html).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_diskio.py -v
+SAROO_FIRMWARE_SAVE_PROFILE=release python3 -B -m unittest discover -s tests -p test_mcu_diskio.py -v
+```
+
+Both revisions pass the same nine disk adapter methods. The matrix
+checks 2,560 drive, direction and retry combinations and another
+1,280 read-only cases, including exact return codes, payloads, lock
+use and message order. Set `SAROO_DISKIO_SOURCE` to compare the
+parent. Both complete storage runs pass 32 methods on the port.
+
+The public GNU App saves 64 load bytes, from 63,864 to 63,800.
+Static DTCM stays at 60,208 bytes. The two wrappers tail-call
+the 40-byte helper frame, compared with 32-byte frames on the
+parent. This measures an eight-byte increase while the shared
+transfer function runs. Physical timing and peak stack use remain
+unqualified.

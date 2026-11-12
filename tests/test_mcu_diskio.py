@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -29,21 +30,36 @@ class MCUDiskIOTests(unittest.TestCase):
         (cls.target / 'inputs.json').write_text(json.dumps(hashes, indent=2) + '\n')
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        cls.binary = cls.target / 'diskio'
-        command = [*shlex.split(os.environ.get('CC', 'cc')), '-std=c11', '-g', '-Wall', '-Wextra',
-                   '-Wno-unused-parameter', *flags, '-I', str(cls.target),
-                   str(cls.target / 'mcu_diskio.c'), str(cls.target / 'diskio.c'), '-o', str(cls.binary)]
-        result = subprocess.run(command, capture_output=True, timeout=60)
-        (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr); result.check_returncode()
+        def compile_diskio(directory):
+            binary = directory / 'diskio'
+            command = [*shlex.split(os.environ.get('CC', 'cc')), '-std=c11', '-g', '-Wall', '-Wextra',
+                       '-Wno-unused-parameter', *flags, '-I', str(cls.target),
+                       str(directory / 'mcu_diskio.c'), str(directory / 'diskio.c'), '-o', str(binary)]
+            result = subprocess.run(command, capture_output=True, timeout=60)
+            (directory / 'compile.log').write_bytes(result.stdout + result.stderr)
+            result.check_returncode()
+            return binary
+
+        cls.binary = compile_diskio(cls.target)
+        readonly = cls.target / 'readonly'
+        readonly.mkdir()
+        for name in ('mcu_diskio.c', 'diskio.c', 'ff.h', 'ffconf.h', 'diskio.h'):
+            (readonly / name).write_bytes((cls.target / name).read_bytes())
+        config = readonly / 'ffconf.h'
+        configured, changes = re.subn(rb'(#define\s+FF_FS_READONLY\s+)0\b', rb'\g<1>1', config.read_bytes())
+        assert changes == 1
+        config.write_bytes(configured)
+        cls.readonly_binary = compile_diskio(readonly)
 
     @classmethod
     def tearDownClass(cls):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2) + '\n')
 
-    def invoke(self, mode, value=0):
-        result = subprocess.run([str(self.binary), mode, str(value)], capture_output=True, timeout=5,
+    def invoke(self, mode, value=0, readonly=False):
+        binary = self.readonly_binary if readonly else self.binary
+        result = subprocess.run([str(binary), mode, str(value)], capture_output=True, timeout=5,
             env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1', 'ASAN_OPTIONS': 'detect_leaks=0'})
-        self.results.append(dict(mode=mode, value=value, returncode=result.returncode,
+        self.results.append(dict(mode=mode, value=value, readonly=readonly, returncode=result.returncode,
             stdout=result.stdout.decode(errors='replace'), stderr=result.stderr.decode(errors='replace')))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn(b'runtime error:', result.stderr)
@@ -64,6 +80,12 @@ class MCUDiskIOTests(unittest.TestCase):
         for mode in ('read', 'write'):
             for failures in (0, 1, 3, 4):
                 with self.subTest(mode=mode, failures=failures):self.invoke(mode, failures)
+
+    def test_all_byte_drive_ids_preserve_direction_and_retry_messages(self):
+        self.invoke('all-drives')
+
+    def test_readonly_links_without_a_write_provider_and_keeps_retries(self):
+        self.invoke('all-drives', readonly=True)
 
     def test_reidentification_requires_the_disk_lock_and_returns_the_driver_result(self):
         for value in range(5):
