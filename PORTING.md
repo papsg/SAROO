@@ -2182,3 +2182,14 @@ pacing remain unqualified.
    code/data bytes with 24,016 bytes of body space. Actual BIOS
    and game execution remain unqualified.
    [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#acknowledge-the-previous-file-event-on-read-admission)
+
+6. **BIOS disc-change acknowledgment — published**
+   [`0d7459c`](https://github.com/papsg/SAROO/commit/0d7459ce4d74f3d24cada43dd22fe6737fb37b72).
+   Adapted from paps-g `200a447b` (SATURN-CD-003). The parent
+   retains stale DCHG at its first command and passes nine
+   controls. The port passes all 65,536 initial flag states and
+   25 new-event orderings across the five stages. Both menu
+   runs pass 95 methods. The pinned menu links 81,444 code/data
+   bytes with 24,000 bytes of body space. Physical disc and BIOS
+   behavior remain unqualified.
+   [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#acknowledge-the-old-disc-change-before-bios-initialization)
