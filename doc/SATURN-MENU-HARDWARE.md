@@ -57,3 +57,30 @@ slow phases with independent budgets. The SH-2 build links 84,292 code/data
 bytes. The 504-byte relocated routine has identical object bytes and only
 its resolved print and string addresses change at link time. Physical drive
 timing, recovery and waits inside that routine remain unqualified.
+
+## Initialize the VDP1 erase rectangle
+
+SATURN-VDP1-001, adapted from paps-g `bfc3463f`. Menu startup selected
+16-bit framebuffer mode and set the upper-left erase coordinate, leaving
+the lower-right coordinate at its prior value. The write-only register
+is undefined after power-on or reset. Setting EWRR to `0x0200` gives the
+smallest valid rectangle for the existing origin and mode, eight pixels
+on line zero. The menu still draws with VDP2, and a game that initializes
+VDP1 supplies its own values.
+
+[Sega VDP1 User's Manual ST-013-R3-061694, register initialization, printed p. 23](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf#page=38)
+and [erase/write registers, printed pp. 46–49](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf#page=61)
+define the write-only reset state, field encodings and coordinate constraints.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_palette.py -v
+SAROO_MENU_SAFETY_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_palette.py -v
+```
+
+The parent fails the seeded EWRR case and passes all four existing palette
+controls. Both profiles pass five methods on the port. The new case reseeds
+three prior values across cold and logo startup. Seven VDP1 game-handoff
+controls also pass. The SH-2 disassembly writes the 16-bit value to
+`0x25d0000a`. The complete menu adds 16 code/data bytes to reach 84,308.
+Physical erase behavior and software that inherits the register state
+remain unqualified.

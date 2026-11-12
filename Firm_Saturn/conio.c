@@ -96,6 +96,7 @@ void vdp_init(void)
  	VDP1_REG_TVMR = 0x0000;
  	VDP1_REG_EWDR = 0x0000;
  	VDP1_REG_EWLR = (0 << 9) | 0;
+	VDP1_REG_EWRR = 0x0200; /* Eight pixels in one line in 16-bit mode. */
 
 	TVMD = 0x0000;
 

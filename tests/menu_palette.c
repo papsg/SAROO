@@ -19,9 +19,10 @@ static u16 vdp1_ram[2];
 #undef VDP1_REG_TVMR
 #undef VDP1_REG_EWDR
 #undef VDP1_REG_EWLR
+#undef VDP1_REG_EWRR
 #undef VDP1_RAM
 static volatile u16 VDP1_REG_PTMR, VDP1_REG_FBCR, VDP1_REG_TVMR;
-static volatile u16 VDP1_REG_EWDR, VDP1_REG_EWLR;
+static volatile u16 VDP1_REG_EWDR, VDP1_REG_EWLR, VDP1_REG_EWRR;
 #undef VDP2_VRAM
 #undef VDP2_CRAM
 #undef VDP2_REGISTER_BASE
@@ -86,6 +87,22 @@ static void startup(int logo)
     }
 }
 
+static void erase_bounds(void)
+{
+    const u16 stale[] = {0xffff, 0, 0x8000};
+    for (unsigned i = 0; i < sizeof(stale) / sizeof(stale[0]); ++i) {
+        seed(i & 1);
+        VDP1_REG_PTMR = VDP1_REG_FBCR = VDP1_REG_TVMR = stale[i];
+        VDP1_REG_EWDR = VDP1_REG_EWLR = VDP1_REG_EWRR = stale[i];
+        vdp_init();
+        assert(VDP1_REG_PTMR == 0 && VDP1_REG_FBCR == 0 && VDP1_REG_TVMR == 0);
+        assert(VDP1_REG_EWDR == 0 && VDP1_REG_EWLR == 0);
+        assert(VDP1_REG_EWRR == 0x0200);
+        assert(vdp1_ram[0] == 0x8000 && vdp1_ram[1] == 0x1234);
+        guards();
+    }
+}
+
 static void logo_only(void)
 {
     seed(1);
@@ -128,6 +145,7 @@ int main(int argc, char **argv)
     assert(argc == 2);
     if (!strcmp(argv[1], "startup")) startup(0);
     else if (!strcmp(argv[1], "startup-logo")) startup(1);
+    else if (!strcmp(argv[1], "erase-bounds")) erase_bounds();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();
     else return 2;

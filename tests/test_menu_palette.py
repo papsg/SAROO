@@ -55,6 +55,7 @@ class MenuPaletteTests(unittest.TestCase):
 
     def test_startup_and_reinitialization_set_only_the_complete_text_bank(self): self.invoke('startup')
     def test_startup_after_logo_sets_text_bank_and_preserves_other_banks(self): self.invoke('startup-logo')
+    def test_vdp1_minimal_erase_rectangle_is_defined_on_every_startup(self): self.invoke('erase-bounds')
     def test_original_logo_palette_and_tile_upload_remain_intact(self): self.invoke('logo')
     def test_cover_palette_endpoints_do_not_change_text_colors(self): self.invoke('cover')
 
