@@ -516,14 +516,9 @@ void cpu_dmemcpy(void *dst, void *src, int size, int ch)
 void scu_dmemcpy(void *dst, void *src, int size, int ch)
 {
 	volatile SCUDMA_REG *sdma = (SCUDMA_REG *)(SCU_DMA_BASE+ch*0x20);
-	int mask  = 0x0030;
-	int maskh = 0x0001;
-
-	if(ch>0){ mask <<= 4; maskh <<= 1; }
-	if(ch>1){ mask <<= 4; maskh   = 0; }
-	mask |= maskh<<16;
-	while(SDSTAT&mask); // 等待传输结束
-	// Wait for transfer to complete
+	/* D1WT is bit 19. Level 1 does not follow the level-0 layout. */
+	u32 mask = ch == 0 ? 0x00010030 : ch == 1 ? 0x000a0100 : 0x00003000;
+	while (SDSTAT & mask);
 
 	sdma->src = (u32)src;
 	sdma->dst = (u32)dst;

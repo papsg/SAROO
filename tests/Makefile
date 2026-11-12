@@ -22,6 +22,7 @@ check-uart:
 
 .PHONY: check-menu-safety
 check-menu-safety:
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_scu_dma.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_palette.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_timer.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_clock.py -v
