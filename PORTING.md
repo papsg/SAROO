@@ -2007,3 +2007,13 @@ Saturn was left untouched.
    loads 63,228 bytes with 2,308 bytes of ITCM space. Physical command
    and interrupt timing remain unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#return-the-complete-file-abort-response)
+
+5. **Disc-default range after file access — published**
+   [`b937ded`](https://github.com/papsg/SAROO/commit/b937ded80df4ac42a435103c1c2afe59fc6a9fb7).
+   Adapted from paps-g `0b8d2172` (MCU-CDC-031) on the public
+   SEEK, PLAY and file-abort behavior. The parent reuses file bounds
+   for PLAY and SEEK and on media retry. Two ownership and
+   background-audio controls pass on both revisions. Both CD profiles
+   pass 191 methods. The GNU MCU App loads 63,276 bytes with 2,260
+   bytes of ITCM space. Physical game behavior remains unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#use-the-disc-playback-range-after-file-access)
