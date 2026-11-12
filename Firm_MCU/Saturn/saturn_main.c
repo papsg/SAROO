@@ -1,5 +1,6 @@
 
 #include "main.h"
+#include "RTX_Config.h"
 #include "ff.h"
 #include "cdc.h"
 
@@ -24,7 +25,7 @@ int next_disc = -1;
 
 int log_mask = LOG_MASK_DEFAULT;
 
-void hw_delay(int us);
+static int hw_delay(int us);
 
 
 /******************************************************************************/
@@ -470,9 +471,9 @@ _restart_nowait:
 #endif
 				{
 					cdb.status = STAT_BUSY;
-					hw_delay(10000);
+					if (hw_delay(10000)) goto _delay_error;
 					cdb.status = STAT_SEEK;
-					hw_delay(calc_delay);
+					if (hw_delay(calc_delay)) goto _delay_error;
 				}
 				delayed_start = 1;
 			}
@@ -511,16 +512,12 @@ _play_checkpoint:
 				}
                 if (cdb.fad+1 == cdb.play_fad_end && cdb.repcnt >= cdb.max_repeat)
                     spi2_flush();
-				if(asize<=4){
-					hw_delay(10000);
-				}else{
-					hw_delay(13500);
-				}
+				if (hw_delay(asize <= 4 ? 10000 : 13500)) goto _delay_error;
 			}else
 			{
 				//printk("filter sector %08x...\n", cdb.fad);
 				if(cdb.play_type==PLAYTYPE_SECTOR && sector_delay){
-					hw_delay(sector_delay);
+					if (hw_delay(sector_delay)) goto _delay_error;
 				}
 				retv = filter_sector(cdb.play_track, &wblk);
 				HIRQ = HIRQ_CSCT;
@@ -566,9 +563,9 @@ _play_end:
 			{
 				if(cdb.repcnt>=cdb.max_repeat || cdb.play_fad_start>=cdb.play_fad_end){
 					if(pend_delay){
-						hw_delay(pend_delay);
+						if (hw_delay(pend_delay)) goto _delay_error;
 						cdb.status = STAT_BUSY;
-						hw_delay(pend_delay);
+						if (hw_delay(pend_delay)) goto _delay_error;
 					}
 					cdb.status = STAT_PAUSE;
 					if(cdb.play_type==PLAYTYPE_FILE){
@@ -589,6 +586,20 @@ _play_end:
 		}
 
 		set_peri_report();
+		goto _restart_wait;
+
+_delay_error:
+        cdb.play_wait = 0;
+        if (cdb.play_type == PLAYTYPE_DIR) {
+            finish_directory(0);
+        } else {
+            int irqs = disable_irq();
+            cdb.status = STAT_ERROR;
+            cdb.play_type = 0;
+            cdb.play_track = NULL;
+            restore_irq(irqs);
+        }
+        set_peri_report();
 	}
 }
 
@@ -855,7 +866,6 @@ void ss_cmd_handle(void)
 			disk_task_wakeup();
 		}
 
-		TIM6->CR1 = 0x0005;
 		gif_decode_init();
         /* Tagged startup reports the catalog result after all services retire. */
         if (cmd & SSCMD_SAVE_ACK) { retv = listed; goto save_reply; }
@@ -936,37 +946,76 @@ void EXTI1_IRQHandler(void)
 
 /******************************************************************************/
 
-osSemaphoreId_t sem_tim6;
+static osSemaphoreId_t sem_cd_timer;
 
-void TIM6_DAC_IRQHandler(void)
+static int cd_sync_init(void)
 {
-	TIM6->SR = 0;
-	osSemaphoreRelease(sem_tim6);
+    osSemaphoreId_t sems[4];
+    osMutexId_t mutex;
+    unsigned count = 0;
+    while (count < sizeof sems / sizeof *sems) {
+        sems[count] = osSemaphoreNew(1, 0, NULL);
+        if (!sems[count]) goto failed;
+        count++;
+    }
+    mutex = osMutexNew(NULL);
+    if (!mutex) goto failed;
+
+    sem_wait_irq = sems[0];
+    sem_wait_disc = sems[1];
+    sem_wait_pause = sems[2];
+    sem_cd_timer = sems[3];
+    mutex_fs = mutex;
+    return 0;
+
+failed:
+    while (count) osSemaphoreDelete(sems[--count]);
+    return -1;
 }
 
-void hw_delay(int us)
+void TIM2_IRQHandler(void)
 {
-	us = (us+9)/10;
-	if(us==0)
-		us = 2;
-	TIM6->CR1 = 0;
-	TIM6->ARR = us;
-	TIM6->CNT = 0;
-	TIM6->CR1 = 0x000d;
-
-	osSemaphoreAcquire(sem_tim6, osWaitForever);
+    if (!(TIM2->SR & TIM_SR_UIF)) return;
+    TIM2->SR = 0;
+    osSemaphoreRelease(sem_cd_timer);
 }
 
-void tim6_init(void)
+static int hw_delay(int us)
 {
-	sem_tim6 = osSemaphoreNew(1, 0, NULL);
+    unsigned ticks = us > 0 ? ((unsigned)us + 9u) / 10u : 2u;
+    /* URS stays set. UG loads PSC and clears the counter without an IRQ. */
+    TIM2->ARR = ticks;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS | TIM_CR1_CEN;
 
-	TIM6->CR1 = 0;
-	TIM6->PSC = (2000-1); // 200M/2000 = 100k
-	TIM6->SR = 0;
-	TIM6->DIER = 1;
+    /* Allow for the inclusive period, tick phase and an extra scheduler tick. */
+    unsigned timeout = (uint64_t)ticks * OS_TICK_FREQ / 100000u + 3u;
+    if (osSemaphoreAcquire(sem_cd_timer, timeout) == osOK) return 0;
 
-	NVIC_EnableIRQ(TIM6_DAC_IRQn);
+    /* A late completion belongs to this wait. Retire it before reusing TIM2. */
+    int irqs = disable_irq();
+    TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS;
+    TIM2->SR = 0;
+    __DSB();
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+    restore_irq(irqs);
+    osSemaphoreAcquire(sem_cd_timer, 0);
+    return -1;
+}
+
+static void cd_timer_init(void)
+{
+    /* BOOT enables TIM2. Reset the active and retired CD timers only. */
+    unsigned mask = RCC_APB1LRSTR_TIM2RST | RCC_APB1LRSTR_TIM6RST;
+    unsigned reset = RCC->APB1LRSTR & ~mask;
+    RCC->APB1LRSTR = reset | mask;
+    RCC->APB1LRSTR = reset;
+
+    TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS;
+    TIM2->PSC = 2000 - 1; /* 200 MHz to 100 kHz */
+    TIM2->DIER = TIM_DIER_UIE;
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+    NVIC_EnableIRQ(TIM2_IRQn);
 }
 
 
@@ -995,7 +1044,7 @@ void ss_hw_init(void)
 
 	ST_CTRL = 0x0203;
 
-	tim6_init();
+    cd_timer_init();
 }
 
 
@@ -1142,17 +1191,14 @@ void saturn_config(void)
     *(u32*)(SYSINFO_ADDR+0x18) = ARCHIVE_IO_VERSION;
     *(u32*)(SYSINFO_ADDR+0x2c) = MENU_ACK_VERSION;
 
+    if (cd_sync_init()) return;
+    ss_sw_init();
+
 	// I2S
 	spi2_init();
 	spi2_set_notify(disk_task_notify);
 
 	ss_hw_init();
-	ss_sw_init();
-
-	sem_wait_irq   = osSemaphoreNew(1, 0, NULL);
-	sem_wait_disc  = osSemaphoreNew(1, 0, NULL);
-	sem_wait_pause = osSemaphoreNew(1, 0, NULL);
-	mutex_fs = osMutexNew(NULL);
 
 	osThreadAttr_t attr;
 	memset(&attr, 0, sizeof(attr));

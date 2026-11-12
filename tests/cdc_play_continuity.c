@@ -11,6 +11,7 @@ static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
 static int worker_at_gate, request_waiting, acknowledged, command_returned, worker_finished;
 static int ack_status, ack_type, initial_status, read_error, finish_after;
 static int sem_calls, play_delay, sector_delay, seek_delays, last_read_status;
+static int delay_failure, delay_calls, filtered, queued;
 static u32 ack_fad, last_read_fad;
 static jmp_buf worker_exit;
 
@@ -59,10 +60,16 @@ static void advance_file_unit(void) { abort(); }
 static void set_peri_report(void) {}
 static void led_event(int event) { assert(event == 1); }
 static void spi2_flush(void) {}
-static int fill_audio_buffer(const u8 *data) { assert(data == sector_bytes[0]); return 5; }
+static int fill_audio_buffer(const u8 *data)
+{
+    assert(data == sector_bytes[0]);
+    queued++;
+    return 5;
+}
 static int filter_sector(TRACK_INFO *track, BLOCK *block)
 {
     assert(track == cdb.play_track && block->data == sector_bytes[0]);
+    filtered++;
     return 0;
 }
 
@@ -96,9 +103,10 @@ static int get_sector(int fad, BLOCK *block)
     return 0;
 }
 
-static void worker_delay(int ticks)
+static int worker_delay(int ticks)
 {
     if (ticks == play_delay) seek_delays++;
+    return ++delay_calls == delay_failure ? -1 : 0;
 }
 
 #define LEDEV_CSCT 1
@@ -129,6 +137,7 @@ static void prepare(u32 fad, int audio, int status)
     play_delay = 700;
     worker_at_gate = request_waiting = acknowledged = command_returned = worker_finished = 0;
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
+    delay_failure = delay_calls = filtered = queued = sector_delay = pend_delay = 0;
     ack_fad = last_read_fad = 0;
     finish_after = 1;
 }
@@ -259,6 +268,46 @@ static void replacement(void)
     }
 }
 
+static void timer_failure(void)
+{
+    for (int delay = 1; delay <= 2; delay++) {
+        prepare(150, 0, STAT_PAUSE);
+        delay_failure = delay;
+        run_worker(NULL);
+        assert(delay_calls == delay && !read_calls);
+        assert(cdb.status == STAT_ERROR && !cdb.play_type && !cdb.play_track);
+        assert(!(hirq & (HIRQ_CSCT | HIRQ_PEND)) && !cdb.play_wait);
+
+        prepare(250, 0, STAT_PLAY);
+        cdb.play_fad_end = cdb.fad + 1;
+        pend_delay = 2000;
+        finish_after = 0;
+        delay_failure = delay;
+        run_worker(NULL);
+        assert(delay_calls == delay && read_calls == 1 && filtered == 1);
+        assert(cdb.status == STAT_ERROR && !cdb.play_type && !(hirq & HIRQ_PEND));
+    }
+    for (int audio = 0; audio <= 1; audio++) {
+        prepare(250, audio, STAT_PLAY);
+        finish_after = 0;
+        sector_delay = 2000;
+        delay_failure = 1;
+        run_worker(NULL);
+        assert(cdb.status == STAT_ERROR && !cdb.play_type && !cdb.play_track);
+        assert(cdb.fad == 250 && read_calls == 1 && !filtered && queued == audio);
+        assert(!(hirq & (HIRQ_CSCT | HIRQ_PEND)) && !cdb.play_wait);
+    }
+
+    prepare(150, 0, STAT_PAUSE);
+    cdb.play_type = PLAYTYPE_DIR;
+    cdb.rdir_state = 2;
+    cdb.cdir_pfnum = 7;
+    delay_failure = 1;
+    run_worker(NULL);
+    assert(cdb.status == STAT_ERROR && !cdb.play_type && !cdb.play_track);
+    assert(!cdb.rdir_state && !cdb.cdir_pfnum && hirq == HIRQ_EFLS);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -280,6 +329,7 @@ int main(int argc, char **argv)
     } else if (!strcmp(test, "timeout")) timed_out_update();
     else if (!strcmp(test, "error")) failed_reader();
     else if (!strcmp(test, "replace")) replacement();
+    else if (!strcmp(test, "timer")) timer_failure();
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);

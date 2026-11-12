@@ -19,7 +19,7 @@ static int acknowledge_after;
 static int repeat_on_ack;
 static int pend_delay;
 static void (*drive_wait_hook)(void), (*drive_ack_hook)(void);
-static void hw_delay(int delay) { (void)delay; }
+static int hw_delay(int delay) { (void)delay; return 0; }
 static void disk_task_wakeup(void) { assert(!irq_depth);wakeups++; }
 static int pause_active;
 static unsigned pause_signals;

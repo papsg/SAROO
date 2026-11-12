@@ -64,6 +64,9 @@ class CDPlayContinuityTests(unittest.TestCase):
     def test_fresh_start_delays_and_read_error_does_not_signal_end(self):
         self.run_case('controls')
 
+    def test_timer_failure_stops_reader_without_publishing_completion(self):
+        self.run_case('timer')
+
 
 if __name__ == '__main__':
     unittest.main()

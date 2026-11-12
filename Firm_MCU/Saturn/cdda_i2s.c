@@ -45,7 +45,7 @@ void spi2_set_notify(void *handle)
 static void audio_retry(unsigned ticks)
 {
     /* TIM7 is dormant during healthy playback. The APB timer clock is 200 MHz,
-     * as for the existing TIM6 audio pacing timer: 100 counts at 100 kHz = 1 ms. */
+     * as for the CD pacing timer: 100 counts at 100 kHz = 1 ms. */
     TIM7->CR1 = 0;
     TIM7->ARR = ticks-1;
     TIM7->CNT = 0;

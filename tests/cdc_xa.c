@@ -5,7 +5,7 @@ static void file_hirq(unsigned mask);
 
 static unsigned file_events, efls_writes, pend_writes, bful_writes;
 static int pend_delay;
-static void hw_delay(int delay) { (void)delay; }
+static int hw_delay(int delay) { (void)delay; return 0; }
 static void file_hirq(unsigned mask)
 {
     hirq = mask;

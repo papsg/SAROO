@@ -87,3 +87,47 @@ cross-fragment branch, line bounds and timeout behavior. The pinned
 menu links 81,380 code/data bytes with 24,064 bytes of body space.
 Physical SMPC timing, reset-button behavior and BIOS variants remain
 unqualified.
+
+## Use TIM2 for CD worker pacing
+
+Adapted from paps-g `77b8f027` (buffered prescaler) and `dca425eb`
+(timer width and worker ownership). The 16-bit TIM6 could start its
+first delay before its prescaler took effect. A requested delay of
+655,351 microseconds rounded to 65,536 counts and wrote zero to its
+reload register. The menu startup command could also start TIM6
+outside the worker's wait.
+
+The worker uses 32-bit TIM2 in one-pulse mode. It loads the 100 kHz
+prescaler and zeroes the counter through UG with URS set, so a
+software update cannot complete the wait. The counter still counts
+from zero through the reload value, preserving ordinary periods.
+Only an update flag can release the waiter. The bounded wait leaves
+room for the inclusive count and the configured RTX tick phase.
+[STM32H750 reference manual RM0433 Rev 8, §§39.3.1–39.3.2,
+printed pp. 1633–1635](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1633),
+[§39.4.1, printed pp. 1676–1677](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1676),
+[§§39.4.14–39.4.15, printed pp. 1694–1695](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1694).
+
+The public port releases partially allocated synchronization objects
+before CD initialization on failure. If a timer wait fails, it stops
+the timer, clears pending completion and drains any late token before
+publishing the existing CD error status. A subsequent command can
+retry. Directory work uses the existing directory failure response.
+The independent TIM7 audio recovery timer retains its handler.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_cd_pacing_timer.py -v
+python3 -B -m unittest discover -s tests -p test_cdc_play_continuity.py -v
+python3 -B -m unittest discover -s tests -p test_menu_command_completion.py -v
+```
+
+To use the parent firmware with these tests, point
+`SAROO_CD_TIMER_SOURCE`, `SAROO_CDC_DRIVE_DIR` and
+`SAROO_MENU_COMPLETION_SOURCE` at its `Firm_MCU/Saturn` directory.
+The timer model passes two parent controls and reproduces 14 failing
+cases, including an inactive programmed prescaler, reload truncation,
+signed overflow and an unbounded wait. The parent also fails the
+worker timeout and startup ownership checks. The port passes all
+three suites under sanitizers and O2. The GNU MCU link verifies the
+TIM2 vector and uses 64,460 load bytes, leaving 1,076 bytes of ITCM
+space. Physical timer latency and game pacing remain unqualified.

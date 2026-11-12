@@ -66,7 +66,8 @@ class CDDriveTests(unittest.TestCase):
         loop=main[loop_start:main.index(b'\n',loop_start)]
         start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
         (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+loop+
-            b'\nread_calls++;return 1;}\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n}\n')
+            b'\nread_calls++;return 1;}\n_play_end:\n'+main[start:end]+
+            b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n_delay_error: abort();\n}\n')
         start=main.index(b'\t\t\tcdb.play_fad_start = track_to_fad(0x0100);');end=main.index(b'\n\t\t}',start)
         marker=b'            cdb.play_pos_types = 0;';prefix=main.rfind(marker,0,start)
         if prefix>=0 and not main[prefix+len(marker):start].strip():start=prefix

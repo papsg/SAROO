@@ -1,4 +1,4 @@
-"""Actual configured RTX startup/tick paths and original TIM6/semaphore code."""
+"""Actual configured RTX startup and tick paths."""
 # Adapted from paps-g 1b49c143; no private preparation, transport or device access.
 import hashlib
 import json
@@ -17,12 +17,11 @@ class RTXProfileTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         config = Path(os.environ.get('SAROO_RTX_CONFIG', ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h'))
-        main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
         build = ROOT / 'tests/build/rtx-profile'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         cls.results = []
-        inputs = {'RTX_Config.h': config.read_bytes(), 'saturn_main.c': main}
+        inputs = {'RTX_Config.h': config.read_bytes()}
         compiler = shlex.split(os.environ.get('CC', 'cc'))
         p = subprocess.run([*compiler, '-E', '-dM', '-x', 'c', str(config)],
                            capture_output=True, timeout=30)
@@ -51,10 +50,6 @@ class RTXProfileTests(unittest.TestCase):
                 raise AssertionError('pinned RTX extraction changed: '+name)
             (cls.target / destination).write_bytes(data)
             inputs['vendor/'+name] = data
-        for signature, name in ((b'void hw_delay(int us)\n', 'audio-timer.inc'),
-                                (b'void TIM6_DAC_IRQHandler(void)\n', 'audio-irq.inc')):
-            start = main.index(signature)
-            (cls.target / name).write_bytes(main[start:main.index(b'\n}', start)+2]+b'\n')
         for name in ('rtx_profile.c', 'test_rtx_profile.py'):
             inputs[name] = (ROOT / 'tests' / name).read_bytes()
         for name, data in inputs.items():
@@ -92,8 +87,6 @@ class RTXProfileTests(unittest.TestCase):
     def test_selected_profile_starts_only_idle(self): self.invoke('startup')
 
     def test_ticks_delay_and_wait_timeouts_cross_wrap(self): self.invoke('ticks')
-
-    def test_audio_still_uses_tim6_and_semaphore(self): self.invoke('audio')
 
     def test_restoring_timer_configuration_restores_worker(self): self.invoke('restore', 'enabled')
 

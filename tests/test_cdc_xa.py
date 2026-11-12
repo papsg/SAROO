@@ -42,7 +42,7 @@ class CDXATests(unittest.TestCase):
         range_helper = main[range_start:main.index(b'\n}', range_start)+2] if range_start >= 0 else b''
         (cls.target / 'file-end.inc').write_bytes(
             range_helper + b'\nstatic int finish_step(void) {\n' + observe_hirq(main[start:end]) +
-            b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n}\n')
+            b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n_delay_error: abort();\n}\n')
         start=main.index(b'\t\t\tcdb.old_fad = cdb.fad;\n\t\t\tcdb.fad++;')
         end=main.index(b'\n\t\t}',start)
         (cls.target/'advance.inc').write_bytes(b'static void advance(void) {\n'+main[start:end]+b'\n}\n')

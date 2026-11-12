@@ -189,6 +189,7 @@ fn verify_vectors(elf: &[u8], names: &[String], symbols: &BTreeMap<String, u32>)
         "SysTick_Handler",
         "SDMMC1_IRQHandler",
         "EXTI1_IRQHandler",
+        "TIM2_IRQHandler",
     ] {
         if symbols.get(name).is_none() || symbols.get(name) == symbols.get("Default_Handler") {
             return fail(&format!(
@@ -571,6 +572,7 @@ mod tests {
             (14, "PendSV_Handler"),
             (15, "SysTick_Handler"),
             (23, "EXTI1_IRQHandler"),
+            (44, "TIM2_IRQHandler"),
             (65, "SDMMC1_IRQHandler"),
         ] {
             names[index] = name.into();
@@ -590,8 +592,13 @@ mod tests {
         elf[132] ^= 2;
         assert!(verify_vectors(&elf, &names, &symbols).is_err());
         elf[132] ^= 2;
-        symbols.insert("SVC_Handler".into(), 0x400);
-        elf[128 + 11 * 4..132 + 11 * 4].copy_from_slice(&0x401u32.to_le_bytes());
-        assert!(verify_vectors(&elf, &names, &symbols).is_err());
+        for (index, name) in [(11, "SVC_Handler"), (44, "TIM2_IRQHandler")] {
+            let vector = 128 + index * 4..132 + index * 4;
+            let saved = symbols.insert(name.into(), 0x400).unwrap();
+            elf[vector.clone()].copy_from_slice(&0x401u32.to_le_bytes());
+            assert!(verify_vectors(&elf, &names, &symbols).is_err());
+            symbols.insert(name.into(), saved);
+            elf[vector].copy_from_slice(&(saved | 1).to_le_bytes());
+        }
     }
 }

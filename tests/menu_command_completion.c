@@ -15,13 +15,14 @@ static unsigned events[16], count, checks, supplied;
 static int operation_result, listed, first_pcm, second_pcm, pause_result;
 static int fpga_result, flash_result;
 static u32 buf_fad_start, buf_fad_end, buf_fad_size;
-static struct { u32 CR1; } timer;
+static struct { u32 CR1; } timer2, timer6;
 static struct {
     u32 play_fad_start, play_fad_end, track, index, fad, max_repeat, repcnt;
     u32 options, pause_request, play_type, play_pos_types;
 } cdb;
 #define PLAYTYPE_SECTOR 7
-#define TIM6 (&timer)
+#define TIM2 (&timer2)
+#define TIM6 (&timer6)
 #define SS_CMD command_value
 #define SS_ARG argument
 #define SYSINFO_ADDR ((uintptr_t)sysinfo)
@@ -81,7 +82,6 @@ static void call(unsigned opcode, unsigned arg)
 {
     command_value = opcode; request_argument = argument = arg; count = 0; supplied = ~0u;
     buf_fad_start = buf_fad_end = buf_fad_size = 99;
-    timer.CR1 = 0;
     memset(&cdb, 0xa5, sizeof(cdb));
     ss_cmd_handle();
 }
@@ -137,10 +137,14 @@ static void startup(void)
     for (listed = -19; listed <= 0; listed++)
     for (first_pcm = -2; first_pcm <= 0; first_pcm++)
     for (second_pcm = -2; second_pcm <= 0; second_pcm++) {
+        u32 worker_state = 12u + (unsigned)(second_pcm == 0);
+        timer2.CR1 = worker_state;
+        timer6.CR1 = 0;
         call(13 | tag, 0);
         int music = first_pcm ? second_pcm : first_pcm;
         assert(argument == (u16)(tag ? listed | tag : music));
-        assert(command_value == (tag ? 0 : 13) && timer.CR1 == 5);
+        assert(command_value == (tag ? 0 : 13));
+        assert(timer2.CR1 == worker_state && !timer6.CR1);
         assert(events[count - 1] == 21);
         if (!music) {
             assert(cdb.play_fad_start == 0x100 + 150 && cdb.play_fad_end == 0x163 + 151);

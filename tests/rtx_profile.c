@@ -9,7 +9,6 @@
 
 typedef unsigned bool_t;
 enum { FALSE=0, TRUE=1, osRtxKernelRunning=2, osOK=0 };
-#define osWaitForever UINT32_MAX
 enum { osRtxThreadWaitingDelay, osRtxThreadWaitingThreadFlags,
        osRtxThreadWaitingEventFlags, osRtxThreadWaitingMutex,
        osRtxThreadWaitingSemaphore, osRtxThreadWaitingMemoryPool,
@@ -69,16 +68,6 @@ static void osRtxThreadSwitch(os_thread_t *thread) { (void)thread; }
 #include "delay-tick.inc"
 #include "system-tick.inc"
 
-static struct { uint32_t CR1, ARR, CNT, SR; } hw_timer;
-#define TIM6 (&hw_timer)
-static unsigned sem_tim6=7, waits, releases;
-static int osSemaphoreAcquire(unsigned sem, uint32_t timeout)
-{ assert(sem==sem_tim6 && timeout==osWaitForever); ++waits; return osOK; }
-static int osSemaphoreRelease(unsigned sem)
-{ assert(sem==sem_tim6); ++releases; return osOK; }
-#include "audio-timer.inc"
-#include "audio-irq.inc"
-
 static void selected_startup(void)
 {
     assert(OS_TIMER_THREAD_STACK_SIZE==0 && OS_TIMER_CB_QUEUE==0);
@@ -106,16 +95,6 @@ static void ticks(void)
     assert(!osRtxInfo.thread.delay_list && !osRtxInfo.timer.tick);
     osRtxTick_Handler(); assert(ready_count==3 && dispatched==6);
 }
-static void audio(void)
-{
-    const int us[]={0,1,10000,13500}; const uint32_t reload[]={2,1,1000,1350};
-    for (unsigned i=0; i<4; ++i) {
-        memset(&hw_timer,0xff,sizeof hw_timer);
-        hw_delay(us[i]);
-        assert(waits==i+1 && TIM6->ARR==reload[i] && !TIM6->CNT && TIM6->CR1==13);
-        TIM6_DAC_IRQHandler(); assert(releases==i+1 && !TIM6->SR);
-    }
-}
 int main(int argc, char **argv)
 {
     assert(argc==2);
@@ -125,7 +104,6 @@ int main(int argc, char **argv)
         assert(osRtxThreadStartup() && created==2 && osRtxInfo.timer.thread==&timer && osRtxInfo.thread.idle==&idle);
     }
     else if (!strcmp(argv[1],"ticks")) ticks();
-    else if (!strcmp(argv[1],"audio")) audio();
     else return 2;
     puts("pass"); return 0;
 }
