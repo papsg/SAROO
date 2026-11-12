@@ -34,6 +34,14 @@ class CDDriveTests(unittest.TestCase):
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         code+=function(raw,b'int get_subcode(')
         (cls.target/'drive.inc').write_bytes(code)
+        dispatch = function(raw, b'void cdc_cmd_process(')
+        cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
+                         for start in (b'case 0x00:', b'case 0x11:'))
+        start = dispatch.index(b'switch(cmd){') + len(b'switch(cmd){')
+        end = dispatch.index(b'if(cdb.block_free!=MAX_BLOCKS)', start)
+        code = function(raw, b'int get_cd_status(') + function(raw, b'char *cmd_str(')
+        (cls.target/'seek-dispatch.inc').write_bytes(code + dispatch[:start] + cases +
+                                                     b'default: abort();}\n' + dispatch[end:])
         start=main.index(b'_restart_nowait:')
         start=main.index(b'\t\tif(cdb.pause_request)',start)
         end=main.index(b'\n\t\t}',start)+4
@@ -111,6 +119,10 @@ class CDDriveTests(unittest.TestCase):
     def test_subcode_valid_payloads(self):self.run_case(29)
     def test_seek_preserves_range_forms_and_repeats(self):self.run_case(30)
     def test_seek_resume_stays_in_retained_range(self):self.run_case(31)
+    def test_seek_end_event_tracks_range_and_repeat_budget(self):self.run_case(32)
+    def test_seek_dispatch_publishes_event_after_worker_handoff(self):self.run_case(33)
+    def test_seek_busy_reply_and_following_settled_status(self):self.run_case(34)
+    def test_seek_no_event_for_refusal_or_pending_repeat(self):self.run_case(35)
 
 
 if __name__=='__main__':unittest.main()

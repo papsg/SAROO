@@ -874,11 +874,12 @@ int seek_cd(void)
 {
     u32 pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     SSLOG(_CDRV, "\nseek_cd: pos=%08x\n", pos);
+    int explicit_seek = pos && pos != 0xffffff;
     int home_pause = pos == 0xffffff && cdb.fad == 0xffffffff;
-    if (((pos && pos != 0xffffff) || home_pause) && !get_track_info(0xffff)) {
+    if ((explicit_seek || home_pause) && !get_track_info(0xffff)) {
         set_status(STAT_REJECT); return 0;
     }
-    u32 fad = pos && pos != 0xffffff ? drive_position(pos, 0) : cdb.fad;
+    u32 fad = explicit_seek ? drive_position(pos, 0) : cdb.fad;
     if (cdb.play_type) SSLOG(_CDRV, "       : Send PAUSE request!\n");
     if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
     cdb.status = STAT_PAUSE;
@@ -892,14 +893,18 @@ int seek_cd(void)
     } else if (home_pause) {
         set_drive_position(150);
         cdb.options = 0;
-    } else if (pos != 0xffffff) {
+    } else if (explicit_seek) {
         /* SEEK moves the pickup. PLAY owns the retained range and repeat settings. */
         set_drive_position(fad);
         cdb.options = 0;
     }
     SSLOG(_CDRV, "       : fad=%08x track=%d index=%d ctladr=%02x opt=%02x\n",
           cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
-    set_report(cdb.status);
+    /* Acknowledge the drive command with BUSY. Status queries see the settled state. */
+    set_report(STAT_BUSY);
+    if (explicit_seek && cdb.repcnt >= cdb.max_repeat &&
+        (cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end))
+        return HIRQ_PEND;
     return 0;
 }
 

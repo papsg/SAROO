@@ -41,6 +41,13 @@ static void wait_pause_ok(void)
 static unsigned subcode_starts;
 static void trans_start(void) { subcode_starts++; }
 #include "drive.inc"
+static u16 ss_control;
+static u16 *const drive_hirq = &hirq;
+#undef HIRQ
+#define HIRQ (*drive_hirq)
+#undef SS_CTRL
+#define SS_CTRL ss_control
+#include "seek-dispatch.inc"
 #include "file-start.inc"
 #include "reset.inc"
 #include "phase.inc"
@@ -67,6 +74,7 @@ static void ready(void)
     pause_active=0;pause_signals=0;repeat_on_ack=0;
     pause_state=NULL;
     hirq=hirq_clear=0;
+    ss_control=0x8000;
 }
 static void request(u32 start,u32 end,unsigned mode)
 {
@@ -118,7 +126,11 @@ static void track_bytes(void)
         assert(cdb.play_fad_start==expected_track(t,i,0) && cdb.play_fad_end==700);
         cdb.play_type=0;request(0,pos,0);assert(!play_cd());
         assert(cdb.play_fad_start==150 && cdb.play_fad_end==expected_track(t,i,1));
-        if(pos){cdb.play_type=0;request(pos,0,0);assert(!seek_cd());assert(cdb.fad==expected_track(t,i,0));}
+        if(pos){
+            u32 target=expected_track(t,i,0);
+            cdb.play_type=0;request(pos,0,0);
+            assert(seek_cd()==(target>=expected_track(t,i,1)?HIRQ_PEND:0) && cdb.fad==target);
+        }
         assert(cdb.play_track==NULL || (cdb.play_track>=media && cdb.play_track<media+3));
     }
 }
@@ -132,7 +144,8 @@ static void fad_parameters(void)
         uint64_t end=(uint64_t)start+counts[n];if(end>700)end=700;
         cdb.play_type=0;request(0x800000|starts[s],0x800000|counts[n],0);
         assert(!play_cd() && cdb.fad==start && cdb.play_fad_start==start && cdb.play_fad_end==end);
-        cdb.play_type=0;request(0x800000|starts[s],0,0);assert(!seek_cd() && cdb.fad==start);
+        cdb.play_type=0;request(0x800000|starts[s],0,0);
+        assert(seek_cd()==(start==end?HIRQ_PEND:0) && cdb.fad==start);
     }
     /* Retain all 23 FAD bits even when a synthetic large extent covers them. */
     media[2].fad_end=0x200000;cdb.play_type=0;
@@ -245,7 +258,8 @@ static void seek_resume_ranges(void)
                     assert(!play_cd());
                     cdb.repcnt = counts[c];
                     request(0x800000 | target, 0, 0);
-                    (void)seek_cd();
+                    int expected = (p == 0 || p >= 4) && counts[c] >= repeats[m] ? HIRQ_PEND : 0;
+                    assert(seek_cd() == expected);
                     assert(cdb.fad == target && cdb.play_fad_start == first && cdb.play_fad_end == last);
                     request(0xffffff, 0xffffff, 0xff);
                     assert(!play_cd());
@@ -326,7 +340,7 @@ static void valid_log_control(void)
     cdb.play_type=0;request(0xffffff,0,0);fixture_log_used=0;fixture_log_text[0]=0;
     assert(!seek_cd() && cdb.fad==150 && cdb.play_fad_start==150 && cdb.play_fad_end==170);
     assert(!strcmp(fixture_log_text,"\nseek_cd: pos=00ffffff\n       : PAUSE cmd\n       : fad=00000096 track=1 index=1 ctladr=41 opt=08\n"));
-    assert(reply[0]==((STAT_PAUSE<<8)|0x80) && reply[3]==150);check_owners();
+    assert(reply[0]==((STAT_BUSY<<8)|0x80) && reply[3]==150);check_owners();
 }
 static void full_track_capacity(void)
 {
@@ -394,7 +408,7 @@ static void repeat_seek_stop(void)
         request((u32[]){0xffffff,0,0x201,0x800190}[kind],0,0);assert(!seek_cd());
         assert(cdb.repcnt==count && cdb.max_repeat==15);
         if (kind==1) {
-            assert(reply[0]==((STAT_STANDBY<<8)|255));
+            assert(reply[0]==((STAT_BUSY<<8)|255));
             assert(reply[1]==65535 && reply[2]==65535 && reply[3]==65535);
             assert(cdb.play_fad_start==150 && cdb.play_fad_end==700);
         } else assert((reply[0]&15)==count);
@@ -828,6 +842,120 @@ static void subcode_valid_payloads(void)
         assert(subcode_payload[i] == 0xa5);
 }
 
+static void seek_completion_bounds(void)
+{
+    const u32 ranges[][2] = {{175, 225}, {375, 425}, {375, 625}, {400, 400}};
+    for (unsigned r = 0; r < sizeof ranges / sizeof *ranges; r++) {
+        u32 first = ranges[r][0], last = ranges[r][1];
+        const u32 targets[] = {first - 1, first, first + 1, last - 1, last, last + 1, 700};
+        for (unsigned p = 0; p < sizeof targets / sizeof *targets; p++) {
+            for (unsigned limit = 0; limit < 16; limit++) {
+                for (unsigned count = 0; count < 15; count++) {
+                    ready();
+                    request(0x800000 | first, 0x800000 | (last - first), limit);
+                    assert(!play_cd());
+                    cdb.repcnt = count;
+                    hirq = HIRQ_EHST | HIRQ_EFLS;
+                    hirq_clear = 0;
+                    int outside = r == 3 || p == 0 || p >= 4;
+                    request(0x800000 | targets[p], 0, 0);
+                    assert(seek_cd() == (outside && count >= limit ? HIRQ_PEND : 0));
+                    assert(!hirq_clear && hirq == (HIRQ_EHST | HIRQ_EFLS));
+                    assert(cdb.fad == targets[p] && cdb.status == STAT_PAUSE && !cdb.play_type);
+                    assert(cdb.play_fad_start == first && cdb.play_fad_end == last);
+                    assert(cdb.repcnt == count && cdb.max_repeat == (int)limit);
+                }
+            }
+        }
+    }
+    ready();
+    cdb.play_fad_start = 550;
+    cdb.play_fad_end = 350;
+    request(0x800190, 0, 0);
+    assert(seek_cd() == HIRQ_PEND);
+}
+
+static void dispatch_seek(u32 target)
+{
+    request(target, 0, 0);
+    cdb.cr1 |= 0x1100;
+    cdc_cmd_process();
+}
+
+static void seek_handoff_event(void)
+{
+    for (unsigned active = 0; active < 2; active++) {
+        for (unsigned buffered = 0; buffered < 2; buffered++) {
+            for (unsigned pending = 0; pending < 2; pending++) {
+                ready();
+                pause_active = active;
+                cdb.block_free = MAX_BLOCKS - buffered;
+                cdb.play_type = PLAYTYPE_SECTOR;
+                cdb.play_fad_start = 175;
+                cdb.play_fad_end = 225;
+                cdb.max_repeat = 1;
+                repeat_on_ack = 1;
+                u16 prior = HIRQ_EFLS | (pending ? HIRQ_PEND : 0);
+                u16 common = HIRQ_CMOK | (buffered ? HIRQ_SCDQ : 0);
+                hirq = prior;
+                acknowledge_after = -1;
+                dispatch_seek(0x80012c);
+                assert(hirq == common && !hirq_clear && waits == 500);
+                assert(cdb.fad == 180 && !cdb.repcnt && reply[0] >> 8 == (STAT_WAIT | STAT_PAUSE));
+                hirq = prior;
+                waits = 0;
+                acknowledge_after = 1;
+                dispatch_seek(0x80012c);
+                assert(hirq == (common | HIRQ_PEND) && !hirq_clear && waits == 1);
+                assert(cdb.fad == 300 && cdb.repcnt == 1 && !cdb.play_type);
+                assert(buf_fad_start == 123 && buf_fad_end == 456);
+            }
+        }
+    }
+}
+
+static void seek_status_reply(void)
+{
+    const u32 positions[] = {0, 0xffffff, 0x101, 0x202, 0x303, 0x800096, 0x800190, 0xfffffe};
+    const unsigned states[] = {STAT_PAUSE, STAT_PLAY, STAT_STANDBY, STAT_SEEK, STAT_SCAN, STAT_RETRY, STAT_ERROR};
+    for (unsigned s = 0; s < sizeof states / sizeof *states; s++) {
+        for (unsigned p = 0; p < sizeof positions / sizeof *positions; p++) {
+            ready();
+            cdb.status = states[s];
+            if (states[s] == STAT_STANDBY) cdb.fad = 0xffffffff;
+            dispatch_seek(positions[p]);
+            assert(reply[0] >> 8 == STAT_BUSY);
+            int settled = positions[p] ? STAT_PAUSE : STAT_STANDBY;
+            assert(cdb.status == settled);
+            u16 low = reply[0] & 255, fields[] = {reply[1], reply[2], reply[3]};
+            request(0, 0, 0);
+            cdc_cmd_process();
+            assert(reply[0] == ((settled << 8) | low));
+            assert(reply[1] == fields[0] && reply[2] == fields[1] && reply[3] == fields[2]);
+        }
+    }
+}
+
+static void seek_event_controls(void)
+{
+    for (unsigned kind = 0; kind < 6; kind++) {
+        const u32 targets[] = {0x8000c8, 0x80012c, 0, 0xffffff, 0x80012c, 0x80012c};
+        ready();
+        cdb.play_fad_start = 175;
+        cdb.play_fad_end = 225;
+        cdb.block_free = MAX_BLOCKS;
+        if (kind == 1) cdb.max_repeat = 15;
+        if (kind == 4) cdb.track_num = 0;
+        if (kind == 5) ss_control = 0;
+        hirq = HIRQ_EHST | HIRQ_PEND;
+        u16 prior_low = reply[0] & 255;
+        dispatch_seek(targets[kind]);
+        assert(hirq == (kind == 5 ? (HIRQ_EHST | HIRQ_PEND) : HIRQ_CMOK));
+        assert(!hirq_clear);
+        if (kind == 4) assert(reply[0] == ((STAT_REJECT << 8) | prior_low));
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -850,6 +978,10 @@ int main(int argc,char **argv)
     case 29:subcode_valid_payloads();break;
     case 30:seek_retained_forms();break;
     case 31:seek_resume_ranges();break;
+    case 32:seek_completion_bounds();break;
+    case 33:seek_handoff_event();break;
+    case 34:seek_status_reply();break;
+    case 35:seek_event_controls();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

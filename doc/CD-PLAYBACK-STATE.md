@@ -31,3 +31,25 @@ home-to-pause controls. The port passes 63 endpoint/seek combinations and
 162 seek, resume and repeat sequences. Both the sanitizer and O2 runs pass
 170 CD methods. The GNU MCU App loads 63,164 bytes with 2,372 bytes of ITCM
 space. Physical CD timing and game playback remain unqualified.
+
+## Report SEEK completion and status
+
+Adapted from paps-g `13f35e65` (MCU-CDC-024/025). A successful SEEK
+acknowledges with BUSY. A subsequent status query returns the settled
+PAUSE or STANDBY state. An explicit seek outside the retained range raises
+PEND when the repeat budget is exhausted. The handler returns that bit to
+the existing dispatcher, which publishes it with CMOK and the usual SCDQ
+condition. Inside-range seeks, remaining repeats, stop and pause add no
+new PEND. The command never writes the event-clear register.
+[ST-162-062094, §4.1(3), printed p. 33](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=21),
+[§4.2(3–4), table 4.5 in the later manual](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p04_10.htm).
+
+Run the drive fixture with `-k 'seek_'`. With `SAROO_CDC_DRIVE_DIR`
+pointing at the parent, select the four new event and response methods.
+The parent misses PEND in the boundary and dispatcher cases and replies
+with the settled status. The no-event controls pass. The new tests cover
+6,720 interval/repeat combinations, reversed bounds, both worker
+acknowledgment paths with timeout and retry, and 56 status/position pairs.
+Both CD profiles pass 174 methods. The GNU MCU App loads 63,196 bytes
+with 2,340 bytes of ITCM space.
+Physical interrupt timing and actual game waits remain unqualified.
