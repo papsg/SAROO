@@ -2428,3 +2428,11 @@ The public worktrees are clean. The private checkout matches its starting branch
 | CD directory storage and FIFO (`556a6a29`, AUD-RES-005) | `340fc6f` | All 227 CD methods pass on parent and port; port also passes O2. Covers every word of the 1,524-word reply, startup placement, busy and DataEnd behavior, and preserved older negative controls. The CD state saves 3,072 static DTCM bytes and the App image saves 16 bytes. [Validation and Sega citations](https://github.com/papsg/SAROO/blob/340fc6f940bdfe9c1ff051aa3829a3e60d036bad/doc/CD-FILESYSTEM-SAFETY.md#reuse-the-cd-directory-reservation). |
 
 | LED startup fixture follow-up (test only) | `d3d82ba` | The full suite found the GIF fixture lacked the CMSIS `stack_size` member. Adding that field restores all 16 GIF methods under ASan/UBSan and O2. Production files are unchanged. See [LED stack attribution and CMSIS reference](https://github.com/papsg/SAROO/blob/d3d82bac2e26b46be7b6b75167b813c2d1831cc3/doc/MCU-SHRINK.md#size-the-permanent-led-stack-and-common-rtx-pool). |
+
+## SDRAM, UTF-8 and MCU memory series complete
+
+All six production changes were verified and pushed in order. [Public main at `d3d82ba`](https://github.com/papsg/SAROO/commit/d3d82bac2e26b46be7b6b75167b813c2d1831cc3) includes the test-only GIF fixture follow-up. The full suite ran from an archive whose 667 tracked files match the published commit. It passed 862 Python methods and 18 Rust tests; the Windows replacement fixture was skipped on macOS. All 48 linked SH-2 menu clock cases also passed.
+
+The GNU App uses 64,680 load bytes (856 free), unchanged from the start of this series. Static DTCM falls from 59,448 to 50,744 bytes, a saving of 8,704. The GNU BootLoader comparison links its 13 enabled C units and common providers with all 166 vectors at the original flash base. The stock menu ELF and binary match the parent. All 18 FPGA project inputs match the five-stage Quartus fit with 21 passing constrained checks. These are source, host, simulation and link/fit results. The MDK image, physical timing and game behavior were not qualified.
+
+The public checkout is clean. The private checkout's HEAD, branch, refs, stash, status and tracked diff match their starting fingerprints. No Saturn operation or PR was performed.
