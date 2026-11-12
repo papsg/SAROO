@@ -2284,3 +2284,8 @@ The exact archive rebuild reproduced the previous MCU ELF and menu ELF/image byt
 - `eefa5aca` (paps-g, FPGA-CACHE-001) → [36174ac](https://github.com/papsg/SAROO/commit/36174aca6fa36a89b7739592e96b4bbc773b7666) on `main`. Uses the original arbiter's accepted write order and keeps the published memory-ack reset.
 - The exact parent fails five concurrent-write/fill subcases and passes three valid controls. All 416 cache scenarios and four existing reset methods pass.
 - The complete Quartus fit binds all 18 inputs and passes 21 reported constrained timing checks. Logic elements go from 1,479 to 1,426 and registers from 816 to 814. Physical bus timing remains unqualified. [Attribution, original source and reproduction](https://github.com/papsg/SAROO/blob/36174aca6fa36a89b7739592e96b4bbc773b7666/doc/FPGA-MEMORY.md#apply-accepted-writes-to-both-caches).
+
+### SDRAM refresh acknowledgment reset
+
+- `eefa5aca` (paps-g, FPGA-REFRESH-001) → [2b7fd30](https://github.com/papsg/SAROO/commit/2b7fd306133a90ec85be2daa1fb49a474ce88db5) on `main`. Both exact parent ports stall with the acknowledgment held. The adjacent controls and all 48 selected reset combinations pass. The six cache methods retain 416 passing cases.
+- The explicit-register candidate missed a setup constraint by 0.202 ns. The selected public port decodes the refresh-acceptance state and passes the complete five-stage fit and all 21 reported constrained checks. It uses 1,413 logic elements and 813 registers. Physical timing remains unqualified. [Attribution, original source and reproduction](https://github.com/papsg/SAROO/blob/2b7fd306133a90ec85be2daa1fb49a474ce88db5/doc/FPGA-MEMORY.md#clear-refresh-acknowledgment-on-reset).
