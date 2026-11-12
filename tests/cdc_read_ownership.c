@@ -15,13 +15,12 @@ static void read_owners(unsigned count)
 {
     unsigned seen[200]={0},used=0;
     for(unsigned p=0;p<24;p++) {
-        BLOCK *b=cdb.part[p].head,*tail=NULL;unsigned n=0,bytes=0;
+        BLOCK *b=cdb.part[p].head,*tail=NULL;unsigned n=0;
         while(b) {
             ptrdiff_t id=b-cdb.block;assert(id>=0 && id<200 && !seen[id]++);
-            assert(b->size>0 && ++n<=200);bytes+=b->size;used++;tail=b;b=b->next;
+            assert(b->size>0 && ++n<=200);used++;tail=b;b=b->next;
         }
         assert(cdb.part[p].numblocks==(int)n && cdb.part[p].tail==tail);
-        assert(cdb.part[p].size==(int)bytes || (!n && cdb.part[p].size==-1));
     }
     if(cdb.trans_type==TRANS_DATA_DEL) {
         BLOCK *b=&cdb.block[cdb.trans_block_start];unsigned n=0;
@@ -49,8 +48,8 @@ static void detached_ranges(void)
     for(unsigned shape=0;shape<3;shape++)for(unsigned tail=0;tail<2;tail++) {
         unsigned n=lengths[k],start=shape==0?0:shape==1?n/2:n-1,count=tail?n-start:1;
         setup(n,0);
-        if(part){if(part==2){cdb.part[3]=cdb.part[2];cdb.part[2]=(PARTITION){.size=-1};}
-            cdb.part[part]=cdb.part[0];cdb.part[0]=(PARTITION){.size=-1};}
+        if(part){if(part==2){cdb.part[3]=cdb.part[2];cdb.part[2]=(PARTITION){0};}
+            cdb.part[part]=cdb.part[0];cdb.part[0]=(PARTITION){0};}
         start_read(TRANS_DATA_DEL,part,start,count);
         assert(!cdb.block_free && cdb.part[part].numblocks==(int)(n-count));read_owners(count);
         BLOCK *b=cdb.part[part].head;

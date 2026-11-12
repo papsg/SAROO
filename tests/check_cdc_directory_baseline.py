@@ -1,24 +1,28 @@
 """Reproduce six isolated old-parser defects plus a valid control.
 
-Usage: python3 tests/check_cdc_directory_baseline.py /path/to/old/saturn_cdc.c
-Use the source from public commit 525dc55. This intentionally differs from
-the current streamed fixture; it preserves the old sector-count units.
+Use the source from public commit 525dc55. The fixture uses that
+commit's CD declarations. Supply --header when running from an archive.
 """
+import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
 import subprocess
-import sys
 import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 def main():
-    raw=Path(sys.argv[1]).read_bytes()
-    header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source', type=Path)
+    parser.add_argument('--header', type=Path)
+    args = parser.parse_args()
+    raw = args.source.read_bytes()
+    header = (args.header.read_bytes() if args.header else subprocess.check_output(
+        ['git', '--no-optional-locks', '-C', str(ROOT), 'show', '525dc55:Firm_MCU/Saturn/cdc.h']))
     build=ROOT/'tests/build/cdc-directory-baseline';build.mkdir(parents=True,exist_ok=True)
     target=Path(tempfile.mkdtemp(prefix='case-',dir=build))
     def function(sig):

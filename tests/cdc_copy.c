@@ -70,7 +70,7 @@ static void restore_irq(int old)
             for (unsigned i=0;i<MAX_BLOCKS;i++) if(cdb.block[i].size==-1) {
                 BLOCK *b=&cdb.block[i]; b->size=2352; b->next=NULL;
                 if(p->tail) p->tail->next=b; else p->head=b;
-                p->tail=b; p->numblocks++; p->size+=2352;
+                p->tail=b; p->numblocks++;
             }
             cdb.block_free=0;
         }
@@ -105,7 +105,7 @@ static void setup(unsigned source_count,unsigned free_count)
     assert(source_count+free_count<=MAX_BLOCKS);
     memset(&cdb,0,sizeof cdb);
     for(unsigned i=0;i<MAX_SELECTORS;i++) {
-        cdb.part[i].size=-1;cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
+        cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
     }
     for(unsigned i=0;i<MAX_BLOCKS;i++) {
         BLOCK *b=&cdb.block[i]; b->data=sector_bytes[i];
@@ -115,8 +115,7 @@ static void setup(unsigned source_count,unsigned free_count)
         if(b->size!=-1) {
             PARTITION *p=&cdb.part[i<source_count?0:2];
             if(p->tail) p->tail->next=b; else p->head=b;
-            if(p->size<0) p->size=0;
-            p->tail=b; p->numblocks++; p->size+=2352;
+            p->tail=b; p->numblocks++;
         }
     }
     cdb.block_free=free_count; cdb.sector_size=2352; cdb.status=STAT_PAUSE;
@@ -146,14 +145,13 @@ static void check_owners(void)
     unsigned seen[MAX_BLOCKS]={0}, used=0;
     for(unsigned p=0;p<MAX_SELECTORS;p++) {
         PARTITION *part=&cdb.part[p]; BLOCK *b=part->head,*tail=NULL;
-        unsigned count=0,bytes=0;
+        unsigned count=0;
         while(b) {
             ptrdiff_t i=b-cdb.block; assert(i>=0 && i<MAX_BLOCKS);
             assert(!seen[i]++ && b->size>0 && ++count<=MAX_BLOCKS);
-            bytes+=b->size; used++; tail=b; b=b->next;
+            used++; tail=b; b=b->next;
         }
         assert(part->numblocks==(int)count && part->tail==tail);
-        assert(part->size==(int)bytes || (!count && part->size==-1));
     }
     assert(used+cdb.block_free==MAX_BLOCKS);
     for(unsigned i=0;i<MAX_BLOCKS;i++) assert(seen[i]==(cdb.block[i].size!=-1));

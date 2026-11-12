@@ -22,7 +22,7 @@ class CDFilterTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        code=function(b'BLOCK *alloc_block(void)')
+        code=function(b'BLOCK *alloc_block(void)')+function(b'void append_block(')
         if b'static int sector_destination(' in raw:code+=function(b'static int sector_destination(')
         code+=function(b'int filter_sector(')
         (cls.target/'filter.inc').write_bytes(code)
@@ -59,6 +59,7 @@ class CDFilterTests(unittest.TestCase):
     def test_existing_false_disconnect_logging(self):self.run_cases((10,))
     def test_baseline_valid_delivery_controls(self):self.run_cases((11,))
     def test_disconnected_input_needs_no_sector_context(self):self.run_cases((12,))
+    def test_list_and_last_buffer_publish_together(self):self.run_cases((13,))
 
 
 if __name__=='__main__':unittest.main()

@@ -1105,7 +1105,6 @@ void ss_sw_init(void)
 		cdb.filter[i].c_true = i;
 		cdb.filter[i].c_false = 0xff;
 
-		cdb.part[i].size = -1;
 		cdb.part[i].numblocks = 0;
 		cdb.part[i].head = NULL;
 		cdb.part[i].tail = NULL;

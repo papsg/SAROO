@@ -179,3 +179,39 @@ Both port profiles pass. The linked `CDBLOCK` shrinks from 8,160 to
 8,152 bytes. The GNU MCU App saves 64 load bytes, leaving 728 bytes
 of ITCM space, and saves eight static DTCM bytes. Physical timing
 and stack high-water usage remain unmeasured.
+
+## Simplify CD partition updates
+
+Adapted from paps-g `fb924aac` (AUD-RES-011/004). The partition
+maintained a byte total that had no reader. Sector-count replies use
+the list count, and actual-size and transfer replies use the selected
+sector lengths. Drop the unused arithmetic and reuse the existing
+append helper for filtered sectors. The outer saved interrupt mask
+publishes the last destination and its new list entry together. The
+helper restores the mask it received, leaving the outer owner to
+restore interrupts.
+
+[Sega CD Communication Interface ST-162-062094, §5.3.2 and
+Fig. 5.5, printed p. 44](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=32)
+defines partition ordering, sector units and the last store
+destination. [§8.2.6 Nos. 6.2–6.4, printed pp. 92–93](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=80)
+distinguishes sector-count and actual-size replies.
+[Arm DUI0646C, Priority Mask Register, printed p. 2-8](https://developer.arm.com/documentation/dui0646/c)
+defines the mask preserved by both callers.
+
+The exact parent and the port pass all 224 CD/CUE methods. The port
+passes under sanitizers and at O2. The new control observes list and
+destination state at every unmask for all 24 partitions, including
+empty and populated lists and an already-masked caller. Existing
+controls cover GET, GETDEL, PUT, COPY, MOVE, actual-size replies and
+the FIFO payload. Run `make -C tests check-cdc-command-buffer` in
+both profiles as above. The old directory reproduction uses the
+header from its historical source commit and still reproduces six
+defects and one valid control.
+
+The GNU MCU App saves 128 load bytes to 64,680, leaving 856 bytes of
+ITCM space. It retains the 16-byte partition stride. A compact layout
+saves 96 static DTCM bytes but costs 80 load bytes. A separate locked
+helper avoids the nested mask operations at a cost of 16 load bytes.
+The selected form leaves the most image space. Physical interrupt
+latency and throughput remain unmeasured.

@@ -51,7 +51,7 @@ static void setup(void)
         cdb.block[i].data=payload[i];cdb.block[i].size=-1;
     }
     for(unsigned i=0;i<MAX_SELECTORS;i++) {
-        cdb.part[i].size=-1;cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
+        cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
     }
     cdb.cddev_filter=0xff;irq_depth=0;pauses=wakeups=0;st_control=hirq=hirq_clear=0;
 }
@@ -180,7 +180,7 @@ static void startup(void)
     for(unsigned i=0;i<24;i++) {
         assert_conditions(&cdb.filter[i],1);
         assert(cdb.filter[i].c_true==i && cdb.filter[i].c_false==0xff);
-        assert(cdb.part[i].size==-1 && !cdb.part[i].head && !cdb.part[i].tail);
+        assert(!cdb.part[i].numblocks && !cdb.part[i].head && !cdb.part[i].tail);
     }
 }
 static void software_init(void)

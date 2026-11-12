@@ -171,7 +171,7 @@ typedef struct
 
 typedef struct
 {
-	s32 size;
+	u32 reserved; /* Keep the 16-byte ARM partition stride. */
 	int numblocks;
 	BLOCK *head;
 	BLOCK *tail;

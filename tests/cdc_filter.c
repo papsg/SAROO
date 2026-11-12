@@ -19,6 +19,7 @@ static BLOCK sector;
 static u16 hirq;
 static int irq_depth, change_connection;
 static unsigned irq_entries, payload_bytes;
+static void (*publication_probe)(void);
 #undef HIRQ
 #define HIRQ hirq
 static unsigned log_lines;
@@ -36,6 +37,7 @@ static void restore_irq(int old)
         cdb.filter[cdb.cddev_filter].c_true=0xff;
         change_connection=0;
     }
+    if (!old && publication_probe) publication_probe();
 }
 static void *copy_payload(void *to,const void *from,size_t bytes)
 {
@@ -49,7 +51,6 @@ static void setup(unsigned format)
     memset(&cdb,0,sizeof cdb); memset(&track,0,sizeof track);
     memset(&sector,0,sizeof sector); memset(pool,0xa5,sizeof pool);
     for(unsigned i=0;i<MAX_SELECTORS;i++) {
-        cdb.part[i].size=-1;
         cdb.filter[i].c_true=i; cdb.filter[i].c_false=0xff;
     }
     for(unsigned i=0;i<MAX_BLOCKS;i++) {
@@ -62,6 +63,7 @@ static void setup(unsigned format)
     sector.fn=7; sector.cn=9; sector.sm=format==3?0x28:8; sector.ci=0x11;
     cdb.sector_size=2048; cdb.block_free=MAX_BLOCKS; cdb.last_buffer=19;
     log_lines=0; irq_depth=0; irq_entries=0; payload_bytes=0; change_connection=0; hirq=0;
+    publication_probe=NULL;
 }
 
 static void reject_at(unsigned filter,unsigned next)
@@ -76,14 +78,13 @@ static void owners(void)
     unsigned seen[MAX_BLOCKS]={0},used=0;
     for(unsigned i=0;i<MAX_SELECTORS;i++) {
         PARTITION *p=&cdb.part[i]; BLOCK *b=p->head,*last=NULL;
-        int bytes=0,count=0;
+        int count=0;
         while(b) {
             ptrdiff_t n=b-cdb.block; assert(n>=0 && n<MAX_BLOCKS);
             assert(!seen[n]++ && b->size>0 && ++count<=MAX_BLOCKS);
-            used++; bytes+=b->size; last=b; b=b->next;
+            used++; last=b; b=b->next;
         }
         assert(p->tail==last && p->numblocks==count);
-        assert(p->size==bytes || (!count && p->size==-1));
     }
     assert(used+cdb.block_free==MAX_BLOCKS && !irq_depth);
     for(unsigned i=0;i<MAX_BLOCKS;i++) assert(seen[i]==(cdb.block[i].size!=-1));
@@ -103,7 +104,7 @@ static void delivered(unsigned partition,unsigned count,unsigned format)
     assert(cdb.last_buffer==partition && cdb.block_free==(int)(MAX_BLOCKS-count));
     PARTITION *p=&cdb.part[partition]; BLOCK *b=p->head;
     unsigned size=format==3?2324:2048;
-    assert(p->numblocks==(int)count && p->size==(int)(size*count));
+    assert(p->numblocks==(int)count);
     for(unsigned i=0;i<count;i++) {
         assert(b && b->fad==sector.fad && b->fn==sector.fn && b->cn==sector.cn);
         assert(b->sm==sector.sm && b->ci==sector.ci && b->size==(int)size);
@@ -120,9 +121,48 @@ static void delivered(unsigned partition,unsigned count,unsigned format)
     assert(!b); owners();
 }
 
+static PARTITION before_publish;
+static unsigned published, destination, previous_destination;
+
+static void observe_publication(void)
+{
+    PARTITION *p=&cdb.part[destination];
+    if (cdb.last_buffer==previous_destination && p->numblocks==before_publish.numblocks &&
+        p->head==before_publish.head && p->tail==before_publish.tail &&
+        (!p->tail || !p->tail->next)) return;
+    assert(cdb.last_buffer==destination && p->numblocks==before_publish.numblocks+1);
+    assert(p->head && p->tail && p->tail!=before_publish.tail && !p->tail->next);
+    if (before_publish.tail) assert(before_publish.tail->next==p->tail && p->head==before_publish.head);
+    else assert(p->head==p->tail);
+    assert(p->tail->fad==sector.fad && p->tail->size==2048);
+    published++;
+}
+
+static void publication(void)
+{
+    for (destination=0; destination<MAX_SELECTORS; destination++) {
+        setup(0); cdb.filter[0].c_true=destination; cdb.last_buffer=0xff;
+        for (unsigned n=1; n<=2; n++) {
+            before_publish=cdb.part[destination];
+            previous_destination=cdb.last_buffer;
+            published=0; publication_probe=observe_publication;
+            assert(filter_sector(&track,&sector)==0);
+            publication_probe=NULL;
+            assert(published==1);
+            delivered(destination,n,0);
+        }
+        /* A caller with interrupts already masked retains that state. */
+        BLOCK *b=alloc_block(); assert(b); b->size=2048;
+        int key=disable_irq();
+        append_block(&cdb.part[destination],b);
+        assert(irq_depth==key+1 && cdb.part[destination].tail==b && !b->next);
+        restore_irq(key); owners();
+    }
+}
+
 int main(int argc,char **argv)
 {
-    assert(argc==2); int test=atoi(argv[1]); assert(test>=0 && test<=12);
+    assert(argc==2); int test=atoi(argv[1]); assert(test>=0 && test<=13);
     assert(MAX_SELECTORS==24 && MAX_BLOCKS==200);
     if(test==0) {
         for(unsigned f=0;f<MAX_SELECTORS;f++) {
@@ -170,7 +210,7 @@ int main(int argc,char **argv)
         assert(!memcmp(&before,&cdb,sizeof cdb) && payload_bytes==copied);
         /* Independently free one owned block, then retry this same sector. */
         PARTITION *p=&cdb.part[3]; BLOCK *b=p->head;
-        p->head=b->next; p->numblocks--; p->size-=b->size;
+        p->head=b->next; p->numblocks--;
         b->size=-1; b->next=NULL; cdb.block_free++;
         assert(filter_sector(&track,&sector)==0 && cdb.last_buffer==23);
         assert(cdb.part[23].head==b && !cdb.block_free); owners();
@@ -240,6 +280,7 @@ int main(int argc,char **argv)
         assert(filter_sector(NULL,NULL)==1 && !memcmp(&before,&cdb,sizeof cdb));
         assert(!payload_bytes && !irq_entries && !log_lines);owners();
     }
+    if(test==13)publication();
     puts("pass: incoming routing bounds, discard, retry, payload and ownership");
     return 0;
 }

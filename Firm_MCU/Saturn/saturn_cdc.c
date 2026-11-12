@@ -112,8 +112,6 @@ void append_block(PARTITION *part, BLOCK *block)
     else part->head = block;
     part->tail = block;
     block->next = NULL;
-    if (part->size < 0) part->size = 0;
-    part->size += block->size;
     part->numblocks += 1;
     restore_irq(irqs);
 }
@@ -124,7 +122,6 @@ static void unlink_block(PARTITION *part, BLOCK *prev, BLOCK *block)
     if (prev) prev->next = block->next;
     else part->head = block->next;
     if (part->tail == block) part->tail = prev;
-    part->size -= block->size;
     part->numblocks -= 1;
     block->next = NULL;
 }
@@ -153,17 +150,14 @@ static BLOCK *detach_sector_range(PARTITION *part, int start, int count)
     BLOCK *prev = NULL, *head = part->head, *last = NULL, *next;
     while (head && start--) { prev = head; head = head->next; }
     next = head;
-    int bytes = 0;
     for (int i = 0; i < count; i++) {
         if (!next) return NULL;
-        bytes += next->size;
         last = next;
         next = next->next;
     }
     if (prev) prev->next = next;
     else part->head = next;
     if (part->tail == last) part->tail = prev;
-    part->size -= bytes;
     part->numblocks -= count;
     last->next = NULL;
     return head;
@@ -496,24 +490,8 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 
 	irqs = disable_irq();
 	cdb.last_buffer = dst;
-
-	if(pt->size==-1)
-		pt->size = 0;
-
-	// 疑问: partition中的size, 是按wblk的size算,还是按sector_size算?
-	// 已经确认,是按设置的sector_size算.
-	pt->size += blk->size;
-	pt->numblocks += 1;
-
-	if(pt->head==NULL){
-		pt->head = blk;
-		pt->tail = blk;
-	}else{
-		pt->tail->next = blk;
-		pt->tail = blk;
-	}
-	blk->next = NULL;
-
+	/* The inner restore keeps interrupts masked until both updates are visible. */
+	append_block(pt, blk);
 	restore_irq(irqs);
 	//printk("  filter done.\n");
 	return 0;
@@ -656,7 +634,6 @@ int init_cdblock(void)
 
 	// reset all filter
 	for(i=0; i<MAX_SELECTORS; i++){
-		cdb.part[i].size = -1;
 		cdb.part[i].numblocks = 0;
 		cdb.part[i].head = NULL;
 		cdb.part[i].tail = NULL;
@@ -1169,7 +1146,6 @@ void free_partition(PARTITION *pt)
     pt->head = NULL;
     pt->tail = NULL;
     pt->numblocks = 0;
-    pt->size = -1;
     restore_irq(irqs);
     free_block_list(head);
 }

@@ -39,7 +39,7 @@ static void bounds_wakeup(void) { wake_count++; }
 static void seed(unsigned count,unsigned selector)
 {
     setup(count,200-count);
-    if(selector){cdb.part[selector]=cdb.part[0];cdb.part[0]=(PARTITION){.size=-1};}
+    if(selector){cdb.part[selector]=cdb.part[0];cdb.part[0]=(PARTITION){0};}
     cdb.cr3=selector<<8;fifo_words=wake_count=track_count=0;
     fifo_status=fifo_rcnt=st_status=0;
 }
@@ -192,13 +192,13 @@ static void calculation_matches_fifo(void)
 {
     const unsigned lengths[]={2048,2336,2340,2352};
     for(unsigned n=1;n<=200;n++)for(unsigned mode=0;mode<4;mode++) {
-        seed(n,0);cdb.sector_size=lengths[mode];cdb.part[0].size=0;
+        seed(n,0);cdb.sector_size=lengths[mode];
         unsigned sum=0;
         for(unsigned i=0;i<n;i++) {
             BLOCK *b=&cdb.block[i];
             /* Stored lengths/cached tags deliberately differ from read format.
              * Mode1 also has bit5 set: mode must participate in XA detection. */
-            b->size=i&1?2048:2352;b->sm=0xff;cdb.part[0].size+=b->size;
+            b->size=i&1?2048:2352;b->sm=0xff;
             unsigned format=(i+n)%3; /* Rotate first and subsequent formats. */
             b->data[15]=format==0?1:2;b->data[18]=format==1?0:0x20;
             sum+=mode==0 && format==2?2324:lengths[mode];

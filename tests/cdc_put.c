@@ -42,13 +42,12 @@ static void private_owners(unsigned expected)
     }
     assert(reserved==expected);
     for(unsigned p=0;p<24;p++) {
-        unsigned count=0,bytes=0;BLOCK *tail=NULL;
+        unsigned count=0;BLOCK *tail=NULL;
         for(bt=cdb.part[p].head;bt;bt=bt->next) {
             ptrdiff_t i=bt-cdb.block;assert(i>=0 && i<MAX_BLOCKS && !seen[i]++);
-            assert(bt->size>0 && ++count<=200);bytes+=bt->size;tail=bt;
+            assert(bt->size>0 && ++count<=200);tail=bt;
         }
         assert(cdb.part[p].numblocks==(int)count && cdb.part[p].tail==tail);
-        assert(cdb.part[p].size==(int)bytes || (!count && cdb.part[p].size==-1));
         used+=count;
     }
     assert(reserved+used+cdb.block_free==200 && !irq_depth);
@@ -294,7 +293,7 @@ static void unrelated_input_and_captured_length(void)
     cdb.put_sector_size=2352;offer_words(1024,77);trans_handle();
     assert(!cdb.trans_bk && cdb.trans_size==2048);
     assert(end_trans()==HIRQ_EHST);word_reply(1024);
-    assert(cdb.part[7].numblocks==1 && cdb.part[7].size==2048 && cdb.last_buffer==19);
+    assert(cdb.part[7].numblocks==1 && cdb.part[7].head && cdb.part[7].head->size==2048 && cdb.last_buffer==19);
     assert(cdb.filter[8].c_false==6 && !log_count);check_owners();
 }
 static void baseline_payload_control(void)

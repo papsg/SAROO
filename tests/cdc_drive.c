@@ -584,7 +584,7 @@ static void init_flags(void)
             assert(!cdb.rdir_state && !cdb.cdir_pfnum);
             assert(st_control==0x21 && hirq==0x55 && hirq_clear==(HIRQ_PEND|HIRQ_DRDY|HIRQ_BFUL));
             for(unsigned i=0;i<MAX_SELECTORS;i++) {
-                assert(cdb.part[i].size==-1 && !cdb.part[i].head && !cdb.part[i].tail);
+                assert(!cdb.part[i].numblocks && !cdb.part[i].head && !cdb.part[i].tail);
                 FILTER expected;memset(&expected,0,sizeof expected);
                 expected.c_true=i;expected.c_false=0xff;
                 assert(!memcmp(&expected,&cdb.filter[i],sizeof expected));

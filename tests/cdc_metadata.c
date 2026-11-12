@@ -75,7 +75,7 @@ static void setup(unsigned poison)
         cdb.block[i].fn=cdb.block[i].cn=cdb.block[i].sm=cdb.block[i].ci=poison;
     }
     for(unsigned i=0;i<MAX_SELECTORS;i++) {
-        cdb.part[i].size=-1;cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
+        cdb.filter[i].c_true=i;cdb.filter[i].c_false=0xff;
     }
     cdb.block_free=MAX_BLOCKS;cdb.sector_size=2048;cdb.status=STAT_PAUSE;
     fifo_words=fifo_pos=prefix_bytes=0;irq_depth=0;hirq=0;
