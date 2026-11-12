@@ -301,3 +301,39 @@ checks pass. The GNU App adds 16 load bytes (65,064 used, 472 free);
 static DTCM and the audio workspace are unchanged. This verifies the
 software mechanism and does not attribute a particular game symptom to it
 or establish physical timing, synchronization or MDK equivalence.
+
+## Deliver a lone accepted audio track tail
+
+Paps-g `7b6f6ebd` (AUD-MCU-035) fixed a worker that could accept the
+last audio sector of a track and then move into a data track. If the
+audio engine was waiting for two sectors before starting, that one
+accepted sector could stay queued indefinitely. An ordinary Play Disc
+range can span the boundary; see
+[Sega ST-162-062094 §8.2.2, No. 2.1, printed p. 82](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=70)
+for the start and end position fields.
+
+The [continuous I2S link](#retire-cd-audio-while-keeping-the-i2s-link-running)
+already resolves this case on public main. Healthy idle sends zero
+samples and the next available DMA bank can take one accepted sector.
+The worker needs no extra track-end flush. Its existing final-request
+flush remains. The test runs the real worker branch and DMA engine
+with exactly one accepted audio sector at several quiet-bank phases.
+A separate full-worker test checks a short or long following data
+track, data backpressure, repeats and the request ending at the audio
+boundary. The worker test supplies synthetic sectors and uses the
+actual drive-position helper for track selection.
+
+```sh
+make -C tests check-audio check-cdc-command-buffer
+SAROO_AUDIO_PROFILE=release make -C tests check-audio
+SAROO_CDC_PROFILE=release python3 -B -m unittest discover -s tests -p test_cdc_play_continuity.py -v
+```
+
+With the current fixture, point `SAROO_AUDIO_SOURCE` and
+`SAROO_AUDIO_MAIN` at the files from public `d3d82ba` and select
+`-k one_accepted_audio_track_tail`. That version never drains the
+lone accepted sector. The current link emits all 1,176 sample words
+in order without a second sector. All 44 audio methods pass in both
+profiles. The rebuilt GNU App load is byte-identical to its parent
+(64,912 bytes, 624 free). This checkpoint adds coverage and no runtime
+change. Mixed-mode playback on a physical console remains unqualified.

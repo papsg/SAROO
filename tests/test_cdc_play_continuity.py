@@ -91,6 +91,9 @@ class CDPlayContinuityTests(unittest.TestCase):
     def test_delayed_sector_keeps_data_and_audio_retirement_order(self):
         self.run_case('sector-handoff')
 
+    def test_accepted_audio_track_tail_followed_by_data_or_request_end(self):
+        self.run_case('audio-track-tail')
+
 
 if __name__ == '__main__':
     unittest.main()

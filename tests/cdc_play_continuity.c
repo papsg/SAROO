@@ -12,6 +12,7 @@ static int worker_at_gate, request_waiting, acknowledged, command_returned, work
 static int ack_status, ack_type, initial_status, lookup_error, read_error, finish_after;
 static int sem_calls, play_delay, sector_delay, seek_delays, last_read_status;
 static int delay_failure, delay_calls, filtered, queued;
+static int mixed_tail, flushes;
 static int delay_request, delay_request_at, audio_depth, filter_result, accepted;
 static unsigned buf_subcode_mode;
 static int resume_end, hirq_at_ack, filtered_at_ack, queued_at_ack;
@@ -70,7 +71,7 @@ static void set_peri_report(void)
     }
 }
 static void led_event(int event) { assert(event == 1); }
-static void spi2_flush(void) {}
+static void spi2_flush(void) { ++flushes; }
 static inline void publish_subrw(u32 fad) { (void)fad; }
 static int fill_audio_buffer(const u8 *data)
 {
@@ -110,6 +111,9 @@ static int fail_sector(int result)
 
 static int get_sector(int fad, BLOCK *block)
 {
+    if (mixed_tail && cdb.play_track &&
+        ((u32)fad < cdb.play_track->fad_0 || (u32)fad > cdb.play_track->fad_end))
+        set_drive_position(fad);
     if (!block) {
         lookup_calls++;
         if (lookup_error) {
@@ -173,6 +177,7 @@ static void prepare(u32 fad, int audio, int status)
     worker_at_gate = request_waiting = acknowledged = command_returned = worker_finished = 0;
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
     delay_failure = delay_calls = filtered = queued = sector_delay = pend_delay = 0;
+    mixed_tail = flushes = 0;
     delay_request = delay_request_at = filter_result = accepted = resume_end = 0;
     hirq_at_ack = filtered_at_ack = queued_at_ack = 0;
     audio_depth = 5;
@@ -491,6 +496,39 @@ static void sector_handoff(void)
         }
 }
 
+/* Track selection uses the same FAD bounds as the source reader, with the
+ * production drive position helper and synthetic sector bytes. */
+static void audio_track_tail(void)
+{
+    const u32 ends[] = {300, 301, 450};
+    for (unsigned i=0;i<sizeof ends/sizeof ends[0];i++) {
+        u32 end = ends[i];
+        for (int repeat=0;repeat<=1;repeat++)
+            for (int full=0;full<=(end>300);full++) {
+                prepare(299, 1, STAT_PLAY);
+                mixed_tail = 1;
+                media[1].mode = 1;
+                cdb.play_fad_start = 299;
+                cdb.play_fad_end = end;
+                cdb.max_repeat = repeat;
+                finish_after = play_delay = 0;
+                filter_result = full ? 2 : 0;
+                run_worker(NULL);
+                assert(queued == (full ? 1 : 1+repeat));
+                assert(flushes == (end==300));
+                assert(filtered == (full ? 1 : (int)(end-300)*(1+repeat)));
+                assert(accepted == (full ? 0 : filtered));
+                assert(read_calls == (unsigned)(filtered+queued));
+                if (full) {
+                    assert(cdb.fad == 300 && cdb.play_type == PLAYTYPE_SECTOR);
+                    assert(cdb.play_wait && (hirq & HIRQ_BFUL) && !(hirq & HIRQ_PEND));
+                } else {
+                    assert(cdb.fad == end && !cdb.play_type && (hirq & HIRQ_PEND));
+                }
+            }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -519,6 +557,7 @@ int main(int argc, char **argv)
     else if (!strcmp(test, "seek-handoff")) seek_handoff();
     else if (!strcmp(test, "eof-handoff")) eof_handoff();
     else if (!strcmp(test, "sector-handoff")) sector_handoff();
+    else if (!strcmp(test, "audio-track-tail")) audio_track_tail();
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);

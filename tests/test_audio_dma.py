@@ -75,7 +75,7 @@ class AudioDMATests(unittest.TestCase):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2) + '\n')
 
     def run_case(self, case):
-        if case >= 38 and not self.continuity:
+        if 38 <= case <= 42 and not self.continuity:
             self.skipTest('The parent has no clock-preserving cancellation or quiet link')
         result = subprocess.run([str(self.binary), str(case)], capture_output=True,
                                 timeout=120 if case in (30, 38) else 30, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
@@ -138,6 +138,7 @@ class AudioDMATests(unittest.TestCase):
     def test_startup_and_idle_send_valid_silence(self):self.run_case(40)
     def test_publication_recovers_an_exhausted_quiet_stream(self):self.run_case(41)
     def test_plain_cdda_uses_queue_room_and_sidecars_keep_timer_errors(self):self.run_case(42)
+    def test_one_accepted_audio_track_tail_drains_without_another_sector(self):self.run_case(43)
 
 if __name__ == '__main__':
     unittest.main()

@@ -421,7 +421,7 @@ static void partial_transfer_error(){
 }
 // The actual worker audio admission, flush and pacing branch.
 constexpr int PLAYTYPE_SECTOR=1, PLAYTYPE_FILE=2, PLAYTYPE_DIR=3;
-struct { int mode; } worker_track;
+struct { int mode; u32 fad_end; } worker_track;
 struct {
     int play_type, play_wait;
     u32 fad, play_fad_end, repcnt, max_repeat;
@@ -465,6 +465,22 @@ static void worker_final_case(){
     worker_track.mode=3;cdb={PLAYTYPE_SECTOR,0,150,151,0,0,&worker_track};
     cdda_reader_audio=0;worker_tail();
     assert(cdb.play_wait==1 && awp==32 && !worker_flushes && !cdda_reader_audio);drain();
+}
+/* Adapted from paps-g 7b6f6ebd. An accepted track tail must play even
+ * when the next sector is data, delayed or never arrives. */
+static void worker_track_tail_case(){
+    for (u32 end:{301u,450u,300u}) for (bool repeat:{false,true})
+    for (unsigned phase:{0u,580u,1170u}) {
+        reset_model();spi2_init();step(phase);
+        worker_track={3,299};
+        cdb={PLAYTYPE_SECTOR,0,299,end,0,unsigned(repeat),&worker_track};
+        cdda_reader_audio=0;buf_subcode_mode=0;
+        prepare_input(1);worker_tail();
+        assert(awp-arp==1 && !cdb.play_wait);
+        assert(worker_flushes==unsigned(end==300 && !repeat));
+        for (unsigned word=0;word<ABUF_WORDS;++word) accepted.emplace_back(1,word);
+        drain_without_flush();
+    }
 }
 static void quiet_tail_case(){
     reset_model();spi2_init();publish(1);publish(2);
@@ -867,7 +883,7 @@ static void quiet_rearm(){
 #endif
 
 int main(int argc,char **argv){assert(argc==2);switch(std::atoi(argv[1])){
-case 37:worker_retirement();break;
+case 37:worker_retirement();break;case 43:worker_track_tail_case();break;
 #if TEST_LINK_CONTINUITY
 case 38:cancel_all_phases();break;case 39:pending_retirement();break;
 case 40:continuous_idle();break;case 41:quiet_rearm();break;case 42:worker_pacing();break;
