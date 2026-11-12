@@ -2392,3 +2392,9 @@ The public working tree is clean. The private checkout matches its starting HEAD
 - `8da2769d` (paps-g, AUD-MCU-009/029) → [3fb78c7](https://github.com/papsg/SAROO/commit/3fb78c79c98f7473cac993cb7ea2fc6e5c0da7fe) on `main`. Validate classic FAT arithmetic and the complete exFAT table before following the mounted layout.
 - The exact parent mounts five invalid geometries. The port passes all 11 geometry cases and both 32-method filesystem runs, including valid endpoint, one/two FAT and exFAT allocation controls.
 - The GNU MCU App links 64,872 load bytes with 664 bytes of ITCM space and unchanged static DTCM. The checks cover declared geometry with a host block device. [Attribution, Microsoft FAT and exFAT references, and reproduction](https://github.com/papsg/SAROO/blob/3fb78c79c98f7473cac993cb7ea2fc6e5c0da7fe/doc/STARTUP-CD-STORAGE-AUDIT.md#validate-fat-geometry-before-mount).
+
+### Obsolete CD position history
+
+- `1206dfc8` (paps-g, AUD-RES-012) → [e897dd4](https://github.com/papsg/SAROO/commit/e897dd407c09876e12943dcc6ec5970a4e1735ac) on `main`. Remove the unused previous-FAD field and the excluded delay experiment.
+- The exact parent and port pass all 223 CD/CUE methods; both port profiles pass. Drive timing controls, repeat, pause, file and subcode behavior remain covered.
+- The GNU MCU App saves 64 load bytes to 64,808, with 728 bytes of ITCM space, and eight static DTCM bytes. The linked CD object shrinks from 8,160 to 8,152 bytes. Physical timing remains unmeasured. [Attribution, Sega references and reproduction](https://github.com/papsg/SAROO/blob/e897dd407c09876e12943dcc6ec5970a4e1735ac/doc/STARTUP-CD-STORAGE-AUDIT.md#remove-unused-cd-position-history).
