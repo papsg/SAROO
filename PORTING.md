@@ -2289,3 +2289,9 @@ The exact archive rebuild reproduced the previous MCU ELF and menu ELF/image byt
 
 - `eefa5aca` (paps-g, FPGA-REFRESH-001) → [2b7fd30](https://github.com/papsg/SAROO/commit/2b7fd306133a90ec85be2daa1fb49a474ce88db5) on `main`. Both exact parent ports stall with the acknowledgment held. The adjacent controls and all 48 selected reset combinations pass. The six cache methods retain 416 passing cases.
 - The explicit-register candidate missed a setup constraint by 0.202 ns. The selected public port decodes the refresh-acceptance state and passes the complete five-stage fit and all 21 reported constrained checks. It uses 1,413 logic elements and 813 registers. Physical timing remains unqualified. [Attribution, original source and reproduction](https://github.com/papsg/SAROO/blob/2b7fd306133a90ec85be2daa1fb49a474ce88db5/doc/FPGA-MEMORY.md#clear-refresh-acknowledgment-on-reset).
+
+### MCU executable folder catalog
+
+- `6f1ab00f` (paps-g, BIN-DIRS-001) → [fc083e4](https://github.com/papsg/SAROO/commit/fc083e43a24f4208830fef0be0c18e6d30cbd937) on `main`. Adds a tagged capability and bounded BIN-path listing while preserving the legacy flat command. [Original request](https://github.com/tpunix/SAROO/issues/84).
+- The parent passes the flat-order control and fails the six folder subcases and tagged command check. The port passes 108 MCU save/catalog and 58 file-transfer methods under sanitizers. The optimized catalog and file-transfer groups pass 10 and 58 methods.
+- The GNU MCU App links 63,864 load bytes with 1,672 bytes of ITCM space. Static RAM is unchanged. The next menu checkpoint consumes this protocol. Physical media behavior remains unqualified. [Attribution, FatFs references and reproduction](https://github.com/papsg/SAROO/blob/fc083e43a24f4208830fef0be0c18e6d30cbd937/doc/BIN-FOLDERS.md#list-executable-folders-on-the-mcu).
