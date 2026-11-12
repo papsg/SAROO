@@ -839,13 +839,15 @@ void gif_timer(void)
 		}
 #endif
 
-		dst += img_y*512+img_x;
-
-		//int start = get_timer();
-		for(int y=0; y<img_h; y++){
-			scu_dmemcpy(dst, src, img_w, 2);
-			dst += 512;
-			src += src_llen;
+		// An empty clipped rectangle has no DMA rows.
+		if(img_w>0 && img_h>0){
+			dst += img_y*512+img_x;
+			//int start = get_timer();
+			for(int y=0; y<img_h; y++){
+				scu_dmemcpy(dst, src, img_w, 2);
+				dst += 512;
+				src += src_llen;
+			}
 		}
 		//int end = get_timer();
 		//printk("gt: %d ms\n", TICK2MS(end-start));

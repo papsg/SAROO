@@ -59,5 +59,9 @@ class CoverDisplayTests(unittest.TestCase):
 
     def test_non_vblank_preserves_pending_ownership(self):self.invoke(10)
 
+    def test_fully_clipped_gifs_release_without_dma_and_allow_the_next_frame(self):
+        for value in range(11,17):
+            with self.subTest(value=value):self.invoke(value)
+
 
 if __name__=='__main__':unittest.main()

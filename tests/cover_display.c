@@ -53,13 +53,20 @@ static u8 pixel(unsigned row,unsigned col) { return (row*71+col*17+(row^col)*3+9
 
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned value=atoi(argv[1]);assert(value<11);
-    const unsigned widths[]={128,128,1,127,512,127,320,127,128,127,128};
-    const unsigned heights[]={128,192,1,97,240,31,240,97,192,97,128};
-    unsigned w=widths[value],h=heights[value];
-    int x=value==7?-5:value==8?230:value==9?-9:176;
-    int y=value==7?-3:value==8?-7:value==9?-4:h>128?24:88;
-    unsigned flag=value==5 || value==6 || value==9?1:3;
+    static const struct { unsigned w,h,flag; int x,y; } cases[]={
+        {128,128,3,176,88}, {128,192,3,176,24}, {1,1,3,176,88},
+        {127,97,3,176,88}, {512,240,3,176,24}, {127,31,1,176,88},
+        {320,240,1,176,24}, {127,97,3,-5,-3}, {128,192,3,230,-7},
+        {127,97,1,-9,-4}, {128,128,3,176,88},
+        /* Empty GIF intersections adapted from paps-g a3a14724. */
+        {8,5,1,320,10}, {8,5,1,384,10}, {8,5,1,-8,10}, {8,5,1,-9,10},
+        {8,5,1,176,240}, {8,5,1,176,-6},
+    };
+    assert(argc==2);
+    unsigned value=atoi(argv[1]);
+    assert(value<sizeof(cases)/sizeof(cases[0]));
+    unsigned w=cases[value].w,h=cases[value].h,flag=cases[value].flag;
+    int x=cases[value].x,y=cases[value].y;
     unsigned stride=flag>=3?w:512;
     memset(&gfx,0xa5,sizeof(gfx));memset(&screen,0xa5,sizeof(screen));
     for(unsigned row=0;row<h;row++)for(unsigned col=0;col<stride;col++)
@@ -81,11 +88,22 @@ int main(int argc,char **argv)
             expected=pixel(row-y,col-x);
         assert(screen.data[0x20000+row*512+col]==expected);
     }
-    for(int row=0;row<240;row++)if(row>=y && row<y+(int)h)rows++;
+    if(x<fbw && x+(int)w>0)
+        for(int row=0;row<240;row++)if(row>=y && row<y+(int)h)rows++;
     assert(transfers==rows);
     for(unsigned i=0;i<256;i++)assert(palette[i]==
         ((u32)gfx.data[0x100+4*i]<<16|(u32)gfx.data[0x101+4*i]<<8|gfx.data[0x102+4*i]));
     for(unsigned i=0;i<32;i++)
         assert(screen.before[i]==0xa5 && screen.after[i]==0xa5 && gfx.before[i]==0xa5 && gfx.after[i]==0xa5);
     printf("display case=%u flag=%u size=%ux%u rows=%u polls=%u complete=1\n",value,flag,w,h,transfers,polls);
+
+    if(!rows) {
+        /* A producer can hand over another frame after the empty one. */
+        put16(12,12);put16(14,7);
+        gfx.data[0]=flag;
+        gif_timer();
+        assert(!gfx.data[0] && !dma_pending && transfers==h);
+        for(unsigned row=0;row<h;row++)for(unsigned col=0;col<w;col++)
+            assert(screen.data[0x20000+(7+row)*512+12+col]==pixel(row,col));
+    }
 }
