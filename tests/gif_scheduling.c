@@ -7,7 +7,7 @@
 #include <string.h>
 
 typedef void (*task_fn)(void *);
-typedef struct { int priority; } osThreadAttr_t;
+typedef struct { int priority; uint32_t stack_size; } osThreadAttr_t;
 enum { osPriorityLow=8, osPriorityNormal=24, osPriorityHigh=40 };
 static task_fn created[4];
 static int priorities[4], created_count;
