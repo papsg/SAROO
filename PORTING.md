@@ -2328,3 +2328,9 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-MCU-001) → [992be39](https://github.com/papsg/SAROO/commit/992be39127e83a6fd42f4295e4affea010c4982f) on `main`. Unaligned sector buffers use the existing eight-sector bounce path.
 - The exact parent fails both modeled DMA regions and passes the existing controls. The port passes 48 new transfer cases, 16 direct and bounce controls, and all 30 storage methods in each host profile.
 - The GNU MCU App links 63,864 load bytes with 1,672 bytes of ITCM headroom. All 738 direct frames match. Physical DMA behavior remains unqualified. [Attribution, STM32 reference and reproduction](https://github.com/papsg/SAROO/blob/992be39127e83a6fd42f4295e4affea010c4982f/doc/STORAGE-AUDIT.md#align-direct-sd-transfers).
+
+### Shared disk read and write retries
+
+- `b483124c` (paps-g, AUD-RES-001) → [8999992](https://github.com/papsg/SAROO/commit/89999923ae5fe5a21b6099d822478ec1220c2292) on `main`. Both FatFs directions share the existing disk owner and four-attempt policy.
+- Both exact revisions pass nine disk adapter methods and 3,840 matrix cases in each host profile, including all drive IDs, all retry positions, exact messages and read-only linking without a write provider. Both port storage runs pass 32 methods.
+- The GNU MCU App links 63,800 load bytes, 64 below the parent. The shared helper uses 40 direct stack bytes while active, eight above the preceding wrappers. Static DTCM stays at 60,208 bytes. [Attribution, CMSIS and reproduction](https://github.com/papsg/SAROO/blob/89999923ae5fe5a21b6099d822478ec1220c2292/doc/STORAGE-AUDIT.md#share-disk-read-and-write-retries).
