@@ -25,7 +25,7 @@ class CDBoundsTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(',b'disconnect_filter_input(')))
         code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
-        code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',
+        code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',b'int get_toc_info(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',
             b'int get_filter_connection(',b'int get_sector_num(',b'int cal_actual_size(',b'int get_actual_size(',
             b'int get_sector_info(',b'static __attribute__((noinline)) int get_sector_data_common(',
@@ -78,6 +78,9 @@ class CDBoundsTests(unittest.TestCase):
     def test_405_size_ranges_sentinels_and_retained_refusals(self):self.run_case(8)
     def test_800_calculations_match_actual_fifo_payload_and_full_counts(self):self.run_case(9)
     def test_incomplete_variable_list_error_and_reset_lifetime(self):self.run_case(10)
+    def test_toc_unavailable_streams_all_ones_and_keeps_cache(self):self.run_case(11)
+    def test_toc_mounted_states_stream_original_words(self):self.run_case(12)
+    def test_toc_busy_transfer_preserves_fifo_and_owner(self):self.run_case(13)
 
 
 if __name__=='__main__':unittest.main()

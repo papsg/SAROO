@@ -56,8 +56,45 @@ static void check(int (*handler)(void), u16 a, u16 b, u16 c, u16 d,
     cases++;
 }
 
-int main(void)
+static void session_replies(int absent)
 {
+    const unsigned states[] = {STAT_BUSY, STAT_PAUSE, STAT_PLAY, STAT_STANDBY, STAT_SEEK,
+                               STAT_SCAN, STAT_RETRY, STAT_ERROR, STAT_FATAL};
+    const u32 endpoints[] = {0, 149, 150, 0xffff, 0x10000, 0x654321, 0x7fffff, 0xffffff};
+    u32 toc[102] = {0};
+    memset(&cdb, 0, sizeof cdb);
+    unsigned state_count = absent ? 2 : sizeof states / sizeof *states;
+    unsigned positions = absent ? 2 : sizeof endpoints / sizeof *endpoints;
+    for (unsigned s = 0; s < state_count; s++) {
+        cdb.status = absent ? STAT_OPEN + s : states[s];
+        for (unsigned p = 0; p < positions; p++) {
+            cdb.TOC = absent && p ? NULL : toc;
+            for (unsigned sid = 0; sid < 256; sid++) {
+                cdb.cr1 = 0x0300 | sid;
+                cdb.trans_type = TRANS_TOC;
+                toc[101] = bswap32((((sid * 17 + s + 0x41) & 255) << 24) | endpoints[p]);
+                u32 saved = toc[101];
+                u16 high = 0xffff, low = 0xffff;
+                if (!absent && sid < 2) {
+                    high = 0x0100 | (sid ? 0 : endpoints[p] >> 16);
+                    low = sid ? 0 : endpoints[p];
+                }
+                check(get_session_info, cdb.status << 8, 0, high, low, 0, 0);
+                assert(toc[101] == saved);
+            }
+        }
+    }
+    printf("%u session replies pass\n", cases);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 2) {
+        assert(!strcmp(argv[1], "unavailable") || !strcmp(argv[1], "valid"));
+        session_replies(!strcmp(argv[1], "unavailable"));
+        return 0;
+    }
+    assert(argc == 1);
     TRACK_INFO track = {0};
     u8 subheader[10];
     BLOCK block = {0};

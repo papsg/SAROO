@@ -131,3 +131,29 @@ on both revisions. The port covers 168 PLAY and 132 SEEK combinations
 across active, completed, aborted and initialized file work. Both CD
 profiles pass 191 methods. The GNU MCU App loads 63,276 bytes with
 2,260 bytes of ITCM space. Physical game playback remains unqualified.
+
+## Return unavailable TOC and session metadata
+
+Adapted from paps-g `748bfd8d` (MCU-CDC-032/033). With the tray open or no
+disc present, a session query returns all ones in its data words and a
+TOC transfer streams 204 all-ones halfwords. The TOC cache stays available
+for mounted-disc queries. The existing transfer admission returns WAIT
+while another transfer owns the FIFO. Session replies use the ordered
+four-word command helper. TOC data is written after counter and direction
+setup and before enabling its data interrupt.
+[CD Communication Interface User's Manual, §8.2.1 Nos. 1.5 and 1.6](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p08_11.htm).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_cdc_bounds.py -v -k toc_
+python3 -B -m unittest discover -s tests -p test_cdc_replies.py -v -k session
+```
+
+For the parent controls, set `SAROO_CDC_BOUNDS_SOURCE` or
+`SAROO_CDC_REPLY_SOURCE` to the parent revision's `saturn_cdc.c`.
+Both unavailable-media methods fail on the parent. Mounted TOC,
+busy transfer, and valid session methods pass on both revisions. The
+port checks 1,024 unavailable and 18,432 available session replies,
+TOC cache and FIFO order, and 24 busy transfer cases. Both CD profiles
+pass 196 methods. The GNU MCU App loads 63,308 bytes with 2,228 bytes
+of ITCM space. Physical tray transitions, TOC-loading timing and
+multi-session disc behavior remain unqualified.

@@ -7,9 +7,14 @@ static int old_numblocks,min_num;
 static u16 fifo_status,fifo_rcnt;
 static u16 fifo_output[MAX_BLOCKS*1176];
 static unsigned fifo_words,wake_count,track_count;
+static int check_toc_fifo;
 static u16 *fifo_slot(void)
 {
     assert(!irq_depth && fifo_words<sizeof fifo_output/sizeof *fifo_output);
+    if (check_toc_fifo) {
+        assert(!fifo_rcnt && !(st_control & (0x0200 | STIRQ_DAT)));
+        assert(st_status == 0x1234);
+    }
     return &fifo_output[fifo_words++];
 }
 #undef FIFO_DATA
@@ -226,17 +231,99 @@ static void incomplete_calculation_and_reset(void)
         seed(0,0);cdb.actsize=4096;cdb.cr1=noreset?0x80:0;init_cdblock();size_reply(2048);check_owners();
     }
 }
+
+static void toc_transfer(int absent)
+{
+    u32 cached[102];
+    if (cdb.TOC) memcpy(cached, cdb.TOC, sizeof cached);
+    st_control = 0x0240;
+    st_status = 0x1234;
+    fifo_rcnt = 0x8888;
+    fifo_words = 0;
+    check_toc_fifo = 1;
+    assert(get_toc_info() == HIRQ_DRDY);
+    check_toc_fifo = 0;
+    assert(reply[0] == ((cdb.status << 8) | 0x4000));
+    assert(reply[1] == 204 && !reply[2] && !reply[3]);
+    assert(cdb.trans_type == TRANS_TOC && cdb.trans_size == 408 && !cdb.trans_finish);
+    assert(st_status == STIRQ_DAT && st_control == (0x0040 | STIRQ_DAT));
+    assert(fifo_words == 204 && !cdb.cdwnum);
+    for (unsigned i = 0; i < fifo_words; i++) {
+        u16 expected = 0xffff;
+        if (!absent) memcpy(&expected, (u8 *)cached + i * sizeof expected, sizeof expected);
+        assert(fifo_output[i] == expected);
+    }
+    if (cdb.TOC) assert(!memcmp(cdb.TOC, cached, sizeof cached));
+    trans_handle();
+    trans_handle();
+    assert(cdb.trans_finish && cdb.cdwnum == 408 && !(st_control & STIRQ_DAT));
+    assert(end_trans() == HIRQ_EHST && !cdb.trans_type && reply[1] == 204);
+}
+
+static void toc_unavailable(void)
+{
+    u32 cached[102];
+    for (unsigned i = 0; i < 102; i++) cached[i] = 0x41230000 | i * 37;
+    for (int status = STAT_OPEN; status <= STAT_NODISC; status++) {
+        seed(0, 0);
+        cdb.status = status;
+        cdb.TOC = cached;
+        toc_transfer(1);
+        cdb.TOC = NULL;
+        toc_transfer(1);
+        cdb.status = STAT_PAUSE;
+        cdb.TOC = cached;
+        toc_transfer(0);
+    }
+}
+
+static void toc_mounted(void)
+{
+    u32 cached[102];
+    for (unsigned i = 0; i < 102; i++) cached[i] = 0x89abcdef ^ (i * 0x00121111);
+    for (int status = 0; status < 256; status++) {
+        if (status == STAT_OPEN || status == STAT_NODISC) continue;
+        seed(0, 0);
+        cdb.status = status;
+        cdb.TOC = cached;
+        toc_transfer(0);
+    }
+}
+
+static void toc_busy(void)
+{
+    const int statuses[] = {STAT_PAUSE, STAT_OPEN, STAT_NODISC};
+    for (unsigned s = 0; s < sizeof statuses / sizeof *statuses; s++) {
+        for (int type = TRANS_DATA; type <= TRANS_PUT; type++) {
+            seed(1, 0);
+            cdb.status = statuses[s];
+            cdb.trans_type = type;
+            cdb.trans_size = 2352;
+            cdb.trans_block = cdb.part[0].head;
+            st_control = STIRQ_DAT | 0x0200;
+            fifo_rcnt = 17;
+            st_status = 0x1234;
+            CDBLOCK before = cdb;
+            assert(!get_toc_info() && reply[0] >> 8 == (STAT_WAIT | cdb.status));
+            assert(!fifo_words && st_control == (STIRQ_DAT | 0x0200));
+            assert(fifo_rcnt == 17 && st_status == 0x1234 && !memcmp(&before, &cdb, sizeof cdb));
+        }
+    }
+}
+
 #ifndef CDC_BOUNDS_MAIN
 #define CDC_BOUNDS_MAIN main
 #endif
 int CDC_BOUNDS_MAIN(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<11);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<14);
     if(test==0)invalid_selectors();else if(test==1)valid_filter_registers();
     else if(test==2)sector_positions();else if(test==3)empty_and_broken_info();
     else if(test==4)busy_precedence();else if(test==5)read_delete_controls();
     else if(test==6)valid_file_selectors();else if(test==7)calculated_size_control();
     else if(test==8)calculation_ranges();else if(test==9)calculation_matches_fifo();
-    else incomplete_calculation_and_reset();
+    else if(test==10)incomplete_calculation_and_reset();
+    else if(test==11)toc_unavailable();else if(test==12)toc_mounted();
+    else toc_busy();
     puts("pass: actual command selector bounds, positions and valid controls");return 0;
 }

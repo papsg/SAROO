@@ -278,7 +278,11 @@ void trans_start(void)
 
 	FIFO_RCNT = 0;
 	ST_CTRL &= ~0x0200;
-	fill_fifo(dp, cdb.trans_size);
+    if (cdb.trans_type == TRANS_TOC && (cdb.status == STAT_OPEN || cdb.status == STAT_NODISC)) {
+        for (int words = cdb.trans_size / 2; words; words--) FIFO_DATA = 0xffff;
+    } else {
+        fill_fifo(dp, cdb.trans_size);
+    }
 	ST_STAT  = STIRQ_DAT;
 	ST_CTRL |= STIRQ_DAT;
 }
@@ -558,26 +562,17 @@ int get_toc_info(void)
 // 0x03 [S-]
 int get_session_info(void)
 {
-	int sid, fad;
+    int sid = cdb.cr1 & 0xff;
+    SSLOG(_INFO, "get_session_info: sid=%d\n", sid);
 
-	sid = cdb.cr1&0xff;
-	SSLOG(_INFO, "get_session_info: sid=%d\n", sid);
-
-	SSCR1 = (cdb.status<<8);
-	SSCR2 = 0x0000;
-	if(sid==0){
-		fad = bswap32(cdb.TOC[101]);
-		SSCR3 = 0x0100 | ((fad>>16)&0xff);
-		SSCR4 = fad&0xffff;
-	}else if(sid==1){
-		SSCR3 = 0x0100;
-		SSCR4 = 0x0000;
-	}else{
-		SSCR3 = 0xffff;
-		SSCR4 = 0xffff;
-	}
-
-	return 0;
+    u16 cr3 = 0xffff, cr4 = 0xffff;
+    if (sid < 2 && cdb.status != STAT_OPEN && cdb.status != STAT_NODISC) {
+        u32 fad = sid ? 0 : bswap32(cdb.TOC[101]);
+        cr3 = 0x0100 | ((fad >> 16) & 0xff);
+        cr4 = fad;
+    }
+    command_reply(cdb.status << 8, 0, reply_pair(cr3, cr4));
+    return 0;
 }
 
 /* Clear condition fields while the caller owns connection changes. */

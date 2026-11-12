@@ -34,8 +34,8 @@ class CDReplyTests(unittest.TestCase):
             code += function(selector)
         code += function(b'void set_status(') + function(b'BLOCK *find_block(')
         main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
-        code += function(b'TRACK_INFO *get_track_info(', main)
-        names = ('get_hw_info', 'get_toc_info', 'open_tray', 'get_subcode',
+        code += function(b'TRACK_INFO *get_track_info(', main) + function(b'u32 bswap32(', main)
+        names = ('get_hw_info', 'get_toc_info', 'get_session_info', 'open_tray', 'get_subcode',
                  'get_cdev_connect', 'get_last_buffer', 'get_filter_range',
                  'get_filter_subheader', 'get_filter_mode', 'get_filter_connection',
                  'get_buffer_size', 'get_sector_num', 'get_actual_size',
@@ -57,13 +57,22 @@ class CDReplyTests(unittest.TestCase):
         if result.returncode:
             raise RuntimeError(result.stderr.decode(errors='replace'))
 
-    def test_complete_replies_keep_values_order_and_command_state(self):
-        result = subprocess.run([str(self.binary)], capture_output=True, text=True,
+    def run_case(self, args, expected):
+        result = subprocess.run([str(self.binary), *args], capture_output=True, text=True,
                                 env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'},
                                 timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('1179648 complete replies pass', result.stdout)
+        self.assertIn(expected, result.stdout)
         print(result.stdout.strip())
+
+    def test_complete_replies_keep_values_order_and_command_state(self):
+        self.run_case([], '1179648 complete replies pass')
+
+    def test_session_unavailable_keeps_all_ones_for_every_selector(self):
+        self.run_case(['unavailable'], '1024 session replies pass')
+
+    def test_session_valid_reports_preserve_leadout_and_transfer_owner(self):
+        self.run_case(['valid'], '18432 session replies pass')
 
 
 if __name__ == '__main__':
