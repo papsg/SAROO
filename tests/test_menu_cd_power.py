@@ -55,6 +55,8 @@ class CDPowerTests(unittest.TestCase):
         block = (source / 'cdblock.c').read_bytes()
         legacy = b'int cdblock_power(' not in block
         body = function((source / 'main.c').read_bytes(), 'smpc_cmd') if legacy else function(block, 'cdblock_power')
+        if b'static int cd_power_display_off_window(' in block:
+            body = function(block, 'cd_power_display_off_window') + body
         body += function(block, 'cdblock_on') + function(block, 'cdblock_off')
         if legacy:
             body += b'''
@@ -72,6 +74,10 @@ static int request_off(void) { cdblock_off(); return 0; }
     def test_wrong_completion_keeps_saroo_disconnected(self): scenario(self, 'wrong')
     def test_ready_timeout_preserves_full_register_read(self): scenario(self, 'drive')
     def test_counter_wrap_and_all_nonbusy_states(self): scenario(self, 'wrap')
+    def test_visible_display_requires_a_fresh_end_of_blanking(self): scenario(self, 'visible')
+    def test_disabled_display_uses_the_local_counter(self): scenario(self, 'hidden')
+    def test_disabled_display_with_an_unusable_latch_expires(self): scenario(self, 'foreign')
+    def test_delay_during_admission_rechecks_phase_and_deadline(self): scenario(self, 'fresh')
 
 
 class CDPowerCallerTests(unittest.TestCase):

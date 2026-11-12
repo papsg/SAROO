@@ -930,19 +930,59 @@ int cdc_read_sector(int fad, int size, u8 *buf)
 }
 
 
-/* Bound both SF waits with one firmware deadline. */
+static int cd_power_display_off_window(unsigned mode)
+{
+    /* With DISP clear, the blank flag is forced high. Read EXTEN to latch
+     * the counter in TV noninterlace modes with local sync and latch. Lines
+     * 0 through 191 leave at least 32 lines before the first TV VBlank. */
+    return !(mode & (LSMD1 | LSMD0 | HRESO2)) &&
+           !(EXTEN & (EXLTEN | EXSYEN)) && (VCNT & 0x03ffu) < 192u;
+}
+
+/* Admission and completion share one firmware deadline. */
 static int cdblock_power(int cmd)
 {
     printk("SMPC_CMD(%02x) ...\n", cmd);
-    u32 deadline = get_timer() + MS2TICK(1000);
-    while (SF & 1) {
-        if (timer_reached(get_timer(), deadline)) return -3;
-    }
+    u32 now = get_timer();
+    u32 deadline = now + MS2TICK(1000);
+    const u32 max_blank_age = MS2TICK(1);
+    u32 last_blank = 0;
+    unsigned blank_mode = 0;
+    for (;;) {
+        unsigned mode = TVMD;
+        int ready = 0;
+        if (!(mode & DISP)) {
+            blank_mode = 0;
+            ready = cd_power_display_off_window(mode);
+        } else if (TVSTAT & VBLANK) {
+            blank_mode = TVMD == mode ? mode : 0;
+            last_blank = now;
+        } else {
+            /* A recent blank sample in this mode proves we are near
+             * VBlank-out, away from the next 300 us prohibition. */
+            ready = blank_mode == mode && now - last_blank < max_blank_age;
+        }
 
-    /* Release the CD interface before the physical drive powers on. */
-    if (cmd == CDON) SS_CTRL = CS0_RAM4M;
-    SF = 1;
-    COMREG = cmd;
+        if (ready && !(SF & 1)) {
+            u32 saved = get_sr();
+            set_sr(saved | 0xf0u);
+            now = get_timer();
+            ready = !timer_reached(now, deadline) && !(SF & 1) && TVMD == mode &&
+                    ((mode & DISP) ? now - last_blank < max_blank_age && !(TVSTAT & VBLANK)
+                                   : cd_power_display_off_window(mode));
+            if (ready) {
+                /* Release the CD interface before the physical drive powers on. */
+                if (cmd == CDON) SS_CTRL = CS0_RAM4M;
+                SF = 1;
+                COMREG = cmd;
+            }
+            set_sr(saved);
+            if (ready) break;
+        }
+
+        now = get_timer();
+        if (timer_reached(now, deadline)) return -3;
+    }
     while (SF & 1) {
         if (timer_reached(get_timer(), deadline)) return -3;
     }

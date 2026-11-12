@@ -145,3 +145,40 @@ Historical NTSC RAM captures yielded 660 samples and observed the 240-line
 enable at line 242. They support the retained counter algorithm. The public
 integration has host and linked-image validation. Physical validation of
 this public build and PAL qualification remain open.
+
+## Admit physical-drive power commands at a safe scan phase
+
+SATURN-SMPC-001, adapted from the CDON/CDOFF portion of paps-g
+`fa537859`. Public main already had timed controller admission and
+[scanline-checked reset enable](CD-POWER-AND-TIMING.md#preserve-reset-enable-after-bios-clock-changes).
+The physical-drive handoff still checked only the SMPC busy flag. It could
+issue while SMPC was using the opening 300 microseconds of VBlank.
+
+[Sega SMPC User's Manual ST-169-R1-072694, §2.2, printed pp. 17–19](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=27)
+defines the command window. [CDON and CDOFF, printed pp. 27–28](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=37)
+specify the power commands. [VDP2 §2.5, printed p. 19](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=37)
+and [Technical Bulletin 37, items 3 and 6](https://antime.kapsi.fi/sega/files/Sattechs.pdf#page=116)
+cover local counter latching and the flag's behavior while output is off.
+
+With output on, require the end of blanking following a sample less than
+one millisecond old from the same display mode. With output off, use
+a fresh local latch on TV noninterlaced modes and accept lines 0–191.
+External sync or latch ownership leaves the off-display command pending
+within its existing deadline. After briefly masking interrupts, recheck
+the phase, mode, time budget and SMPC idle state before changing routing
+or writing the command. Restore the caller's full status register before
+waiting for completion. The one-second shared budget and confirmation
+before returning ownership to SAROO still apply.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p 'test_menu_cd*.py' -v
+```
+
+The parent fails four timing methods and passes the 11 existing power
+and caller methods. Both corrected profiles pass all 68 CD methods.
+The new cases cover visible and disabled output, NTSC and PAL models,
+timer wrap, stale phase, mode changes and expiry before changing routing.
+Eight clock/launch controls and 48 linked ROM clock checks pass. The
+complete menu links 84,900 code/data bytes, with 20,296 bytes of body
+margin. Physical SMPC timing and real-disc behavior remain unqualified.

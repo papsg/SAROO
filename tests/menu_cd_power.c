@@ -9,14 +9,67 @@ typedef uint32_t u32;
 enum { PORT_SF, PORT_CMD, PORT_ACK, PORT_SR };
 static uint8_t reg8[4];
 static uint16_t route, cdreg[4];
-static u32 clock_value;
+static u32 clock_value, clock_start, clock_step;
+static u32 cpu_sr, lock_delay;
+static unsigned raster_offset, total_lines, active_lines, command_phase;
+static unsigned phase_locks, latch_reads;
+static int check_video;
+static uint16_t video_mode, latch_owner, latched_line, mode_after_wrap;
+#define DISP 0x8000u
+#define VBLANK 8u
+#define LSMD1 0x0080u
+#define LSMD0 0x0040u
+#define HRESO2 0x0004u
+#define EXLTEN 0x0200u
+#define EXSYEN 0x0100u
+
+static unsigned raster_phase(void)
+{
+    return ((u32)(clock_value - clock_start) + raster_offset) % (64 * total_lines);
+}
+
+static unsigned screen_status(void)
+{
+    return !(video_mode & DISP) || raster_phase() / 64 >= active_lines ? VBLANK : 0;
+}
+
+static unsigned software_latch(void)
+{
+    ++latch_reads;
+    if (!(latch_owner & EXLTEN))
+        latched_line = check_video ? raster_phase() / 64 : 32;
+    return latch_owner;
+}
+
+static u32 get_sr(void) { return cpu_sr; }
+
+static void set_sr(u32 value)
+{
+    assert(value == 0x351 || value == 0x3f1);
+    assert(value != cpu_sr);
+    cpu_sr = value;
+    if (value == 0x3f1) {
+        ++phase_locks;
+        clock_value += lock_delay;
+        lock_delay = 0;
+    }
+}
+
+#define TVMD video_mode
+#define TVSTAT screen_status()
+#define EXTEN software_latch()
+#define VCNT latched_line
 static int pre_busy, finish_after, pending, finish_polls, wrong_ack, ready_after;
 static unsigned sf_reads, commands, route_writes, cr_reads, timer_reads;
 
 static u32 get_timer(void)
 {
     u32 value = clock_value;
-    clock_value += 1000;
+    clock_value += clock_step;
+    if (mode_after_wrap && raster_phase() / 64 < active_lines) {
+        video_mode = mode_after_wrap;
+        mode_after_wrap = 0;
+    }
     timer_reads++;
     return value;
 }
@@ -36,6 +89,16 @@ static uint8_t *register8(int port)
         }
     } else if (port == PORT_CMD) {
         assert(reg8[PORT_SF] == 1 && !pending && !pre_busy);
+        command_phase = raster_phase();
+        if (check_video) {
+            if (video_mode & DISP)
+                assert(command_phase < 64 * active_lines);
+            else {
+                assert(!(video_mode & (LSMD1 | LSMD0 | HRESO2)) && !latch_owner);
+                assert(command_phase < 64 * 192);
+            }
+            assert(cpu_sr == 0x3f1);
+        }
         commands++;
         pending = 1;
         finish_polls = 0;
@@ -74,7 +137,14 @@ static void reset(u32 start)
     memset(reg8, 0, sizeof reg8); memset(cdreg, 0, sizeof cdreg);
     reg8[PORT_SR] = 0x5a;
     route = CS0_RAM4M;
-    clock_value = start;
+    clock_value = clock_start = start;
+    clock_step = 1000;
+    cpu_sr = 0x351;
+    lock_delay = raster_offset = command_phase = phase_locks = latch_reads = 0;
+    total_lines = 263;
+    active_lines = 240;
+    video_mode = latch_owner = latched_line = mode_after_wrap = 0;
+    check_video = 0;
     pre_busy = pending = finish_polls = wrong_ack = 0;
     finish_after = ready_after = 0;
     sf_reads = commands = route_writes = cr_reads = timer_reads = 0;
@@ -164,6 +234,78 @@ static void wrap(void)
         }
     }
 }
+static void video_case(int pal, int visible)
+{
+    reset(pal ? UINT32_MAX - 160 : 0);
+    total_lines = pal ? 313 : 263;
+    active_lines = pal ? 224 : 240;
+    raster_offset = 64 * active_lines;
+    clock_step = 64;
+    check_video = 1;
+    video_mode = visible ? DISP : 0;
+}
+
+static void visible_timing(void)
+{
+    for (int pal = 0; pal < 2; ++pal) {
+        video_case(pal, 1);
+        route |= SAROO_EN;
+        latch_owner = EXLTEN | EXSYEN;
+        assert(cdblock_on(0) == 0);
+        assert(commands == 1 && route == CS0_RAM4M && route_writes == 1);
+        assert(command_phase < 1000 && !latch_reads && phase_locks == 1);
+        assert(cpu_sr == 0x351);
+    }
+}
+
+static void hidden_timing(void)
+{
+    for (int pal = 0; pal < 2; ++pal) {
+        video_case(pal, 0);
+        assert(cdblock_off() == 0);
+        assert(commands == 1 && route == (CS0_RAM4M | SAROO_EN) && route_writes == 1);
+        assert(command_phase < 1000 && latch_reads >= 2 && phase_locks == 1);
+        assert(cpu_sr == 0x351);
+    }
+}
+
+static void foreign_timing(void)
+{
+    const uint16_t owners[] = {EXLTEN, EXSYEN, 0, 0};
+    const uint16_t modes[] = {0, 0, LSMD1, HRESO2};
+    for (unsigned i = 0; i < sizeof owners / sizeof owners[0]; ++i) {
+        video_case(0, 0);
+        raster_offset = 0;
+        latch_owner = owners[i];
+        video_mode = modes[i];
+        route |= SAROO_EN;
+        assert(cdblock_on(0) == -3);
+        assert(!commands && !route_writes && route == (CS0_RAM4M | SAROO_EN));
+        assert(cpu_sr == 0x351 && !phase_locks);
+    }
+}
+
+static void fresh_timing(void)
+{
+    video_case(0, 1);
+    lock_delay = MS2TICK(10);
+    assert(cdblock_off() == 0);
+    assert(commands == 1 && command_phase < 1000 && phase_locks == 2);
+    assert(cpu_sr == 0x351);
+
+    video_case(0, 1);
+    mode_after_wrap = DISP | 1;
+    assert(cdblock_off() == 0);
+    assert(commands == 1 && command_phase < 1000 && phase_locks == 1);
+    assert(clock_value - clock_start > 64 * total_lines && cpu_sr == 0x351);
+
+    video_case(0, 0);
+    raster_offset = 0;
+    lock_delay = MS2TICK(1000);
+    assert(cdblock_off() == -3);
+    assert(!commands && !route_writes && phase_locks == 1 && cpu_sr == 0x351);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -174,6 +316,10 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "wrong")) wrong();
     else if (!strcmp(argv[1], "drive")) drive();
     else if (!strcmp(argv[1], "wrap")) wrap();
+    else if (!strcmp(argv[1], "visible")) visible_timing();
+    else if (!strcmp(argv[1], "hidden")) hidden_timing();
+    else if (!strcmp(argv[1], "foreign")) foreign_timing();
+    else if (!strcmp(argv[1], "fresh")) fresh_timing();
     else abort();
     puts("ordered CD power and failure recovery checks pass");
     return 0;
