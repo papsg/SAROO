@@ -2320,3 +2320,11 @@ All six checkpoints are published in order on [`main` at `4b5a86b`](https://gith
 The archive rebuild matches all 36 menu, 56 MCU and 18 FPGA repository input hashes. The menu ELF/image and the MCU load image reproduce the checkpoint bytes. The MCU's unstripped ELF differs in debug metadata and its stripped ELF matches. The GNU MCU App links 63,864 load bytes, verifies 166 vectors and retains 1,672 bytes of ITCM space. The menu links 84,164 code/data bytes and retains 21,036 bytes of body space.
 
 The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 logic elements, 813 registers and 32,768 memory bits. The same 21 reported constrained checks pass. Physical bus, media and game behavior remain unqualified. The public working tree is clean. The private checkout matches its starting HEAD, branch, refs and worktree state, and the Saturn was untouched.
+
+## September 14 storage and catalog audit
+
+### SD DMA buffer alignment
+
+- `b483124c` (paps-g, AUD-MCU-001) → [992be39](https://github.com/papsg/SAROO/commit/992be39127e83a6fd42f4295e4affea010c4982f) on `main`. Unaligned sector buffers use the existing eight-sector bounce path.
+- The exact parent fails both modeled DMA regions and passes the existing controls. The port passes 48 new transfer cases, 16 direct and bounce controls, and all 30 storage methods in each host profile.
+- The GNU MCU App links 63,864 load bytes with 1,672 bytes of ITCM headroom. All 738 direct frames match. Physical DMA behavior remains unqualified. [Attribution, STM32 reference and reproduction](https://github.com/papsg/SAROO/blob/992be39127e83a6fd42f4295e4affea010c4982f/doc/STORAGE-AUDIT.md#align-direct-sd-transfers).
