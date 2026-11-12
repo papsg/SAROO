@@ -132,13 +132,19 @@ module tsdram(
 	reg[15:0] ref_count;
 	reg ref_req;
 
+	// Allow for a read or write already in progress and for clock tolerance.
+	// A zero reload still disables autonomous refresh.
+	localparam [15:0] REFRESH_GUARD = 16'd64;
+	wire[15:0] configured_ref_count = {6'b0, reg_sdram[9:0]};
+	wire[15:0] guarded_ref_count = (configured_ref_count > REFRESH_GUARD) ?
+		configured_ref_count - REFRESH_GUARD : configured_ref_count;
+
 	always @(negedge reset or posedge clk)
 	begin
 		if(reset==0) begin
 			ref_count <= tPOR_count[15:0];
 		end else if(ref_ack) begin
-//			ref_count <= tREF_count[15:0];
-			ref_count <= {6'b0, reg_sdram[9:0]};
+			ref_count <= guarded_ref_count;
 		end else if(ref_count) begin
 			ref_count <= ref_count-1'b1;
 		end

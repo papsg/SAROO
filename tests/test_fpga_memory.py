@@ -14,7 +14,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('memhub.v', 'cachebus.v', 'cacheblk.v', 'tsdram.v')
 EARLY_ACK = 'acknowledged before its WRITE command'
-REFRESH_STALL = 'write never completed: state=0 ref_ack=1 ref_count=781'
+REFRESH_STALL = 'write never completed: state=0 ref_ack=1 ref_count='
 
 
 def declarations_first(raw):

@@ -120,3 +120,44 @@ Both fits use 813 registers and 32,768 memory bits. The lowest
 reported setup slack goes from 0.968 ns to 1.093 ns. The compiler,
 clock constraints and 17 other project inputs match the parent.
 [Offline Quartus build instructions](../tools/README.md#original-fpga-project-comparison).
+
+## Bound autonomous refresh spacing
+
+Adapted from paps-g `cd22aeb1` (AUD-FPGA-002). At the default reload
+of 781, the controller used to issue refresh commands 783 clocks
+apart while idle and 792 clocks apart when it admitted a read or write
+as the counter expired. At the nominal 100 MHz controller clock, even
+the idle interval takes 64.143 ms over 8,192 refreshes.
+
+The reload now subtracts 64 clocks from values above 64, allowing time
+for an in-flight command and clock tolerance. The default reload yields
+719 clocks idle and 728 with aligned traffic. The latter is 59.638 ms
+for 8,192 refreshes at 100 MHz, or 62.777 ms at 95 MHz. The budget
+calculation applies to the default reload. The controller keeps the
+zero disable setting, small reload values, external refresh requests,
+and the existing startup and acknowledgment behavior.
+
+Samsung's *512Mb D-die SDRAM K4S511632D*, Rev. 1.0, November 2005,
+§1.0 p. 4 and §13.0 p. 11 note 2, gives the 8,192-cycle, 64 ms refresh
+requirement. The original [default reload](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v)
+and [clock configuration](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/mainpll.v)
+are the inputs to the calculation.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_fpga*.py' -v
+# Use SAROO_FPGA_INTERVAL_SOURCE=/path/to/parent/FPGA for the parent reproduction.
+```
+
+The parent fails both default interval cases. The port passes all 23
+FPGA methods, including two 8,192-interval runs, reload boundaries,
+external-request collisions, reset recovery and cache controls. The
+shorter interval consumes more refresh command slots. The simulation
+observes digital commands and leaves physical retention and throughput
+unmeasured.
+
+The five-stage Quartus build passes all 21 constrained checks. Logic
+elements increase from 1,435 to 1,450; registers (813), memory bits
+(32,768), and pins (150) are unchanged. The lowest reported setup
+slack goes from 1.093 ns to 1.103 ns. Only the SDRAM controller changes
+among the 18 project inputs.
+[Offline Quartus build instructions](../tools/README.md#original-fpga-project-comparison).
