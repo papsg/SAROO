@@ -2340,3 +2340,9 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-MCU-021) → [73a9ce6](https://github.com/papsg/SAROO/commit/73a9ce65b2ea26fb66dab6dded0335b85c70d89b) on `main`. Mount checks declared length, contiguous backing and volume-relative address bounds before publishing the bitmap.
 - The exact parent changes the neighboring file's first byte from zero to one on the short-chain image and fails six subcases. The port refuses seven invalid layouts with zero writes. Seven valid layouts and three read-error retries pass. The FatFs and MCU save runs pass 130 methods in each profile, with the final partitioned control also verified on the parent.
 - GNU MCU App load rises by 96 bytes to 63,896, leaving 1,640 ITCM bytes. The mount frame grows from 40 to 48 bytes and static DTCM stays at 60,208 bytes. [Attribution, exFAT specification and reproduction](https://github.com/papsg/SAROO/blob/73a9ce65b2ea26fb66dab6dded0335b85c70d89b/doc/STORAGE-AUDIT.md#validate-exfat-allocation-bitmap-backing).
+
+### Bounded game catalog sort
+
+- `b483124c` (paps-g, AUD-MCU-006 and AUD-RES-021) → [f6c8ab5](https://github.com/papsg/SAROO/commit/f6c8ab50e2113299afb9e315355703642a707ffd) on `main`. The in-place heap orders the existing offsets with the stock comparator.
+- The exact parent uses 3,272,961 comparisons in three full-catalog cases. The port uses at most 52,436 across the same shapes in both directions. Both revisions pass 100 ordering and offset controls. The port passes 24 discovery and cover methods in each host profile.
+- GNU MCU App load falls by 96 bytes to 63,800, static DTCM by eight to 60,200, and the direct sorter frame from 48 to 40 bytes. Physical startup latency remains unmeasured. [Attribution, original SAROO source and reproduction](https://github.com/papsg/SAROO/blob/f6c8ab50e2113299afb9e315355703642a707ffd/doc/STORAGE-AUDIT.md#bound-game-catalog-sorting).
