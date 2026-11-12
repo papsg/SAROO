@@ -109,6 +109,8 @@ class CDDriveTests(unittest.TestCase):
     def test_subcode_track_bounds(self):self.run_case(27)
     def test_subcode_type_and_transfer_ownership(self):self.run_case(28)
     def test_subcode_valid_payloads(self):self.run_case(29)
+    def test_seek_preserves_range_forms_and_repeats(self):self.run_case(30)
+    def test_seek_resume_stays_in_retained_range(self):self.run_case(31)
 
 
 if __name__=='__main__':unittest.main()

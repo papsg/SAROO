@@ -195,12 +195,80 @@ static void seek_resume(void)
     request(0xffffff,0xffffff,255);assert(!play_cd());assert(cdb.fad==400 && cdb.play_fad_end==700);
     for(unsigned audio=0;audio<2;audio++) {
         ready();request(0x800000|(audio?400:200),0,0);assert(!seek_cd());
-        assert(cdb.play_fad_end==(audio?500u:200u));
+        assert(cdb.play_fad_start==150 && cdb.play_fad_end==700);
         request(0xffffff,0xffffff,255);assert(!play_cd());
-        assert(cdb.fad==(audio?400u:200u) && cdb.play_fad_end==(audio?500u:200u));
+        assert(cdb.fad==(audio?400u:200u) && cdb.play_fad_start==150 && cdb.play_fad_end==700);
     }
     ready();cdb.fad=250;request(0x101,0x101,128);assert(!play_cd());assert(cdb.fad==150);
     ready();cdb.fad=450;request(0x201,0x201,128);assert(!play_cd());assert(cdb.fad==450);
+}
+
+static void seek_retained_forms(void)
+{
+    const u32 starts[] = {0, 0x201, 0x80015e};
+    const u32 ends[] = {0, 0x301, 0x800064};
+    const u32 positions[] = {0, 0xffffff, 0x101, 0x202, 0x303,
+                            0x800096, 0x800190, 0x800258, 0xfffffe};
+    for (unsigned start = 0; start < 3; start++) {
+        for (unsigned end = 0; end < 3; end++) {
+            if ((start | end) == 3) continue;
+            for (unsigned i = 0; i < sizeof positions / sizeof *positions; i++) {
+                ready();
+                request(starts[start], ends[end], 14);
+                assert(!play_cd());
+                cdb.repcnt = 12;
+                u32 first = cdb.play_fad_start, last = cdb.play_fad_end;
+                u8 types = cdb.play_pos_types;
+                request(positions[i], 0, 0);
+                assert(!seek_cd());
+                assert(cdb.play_fad_start == first && cdb.play_fad_end == last);
+                assert(cdb.play_pos_types == types && cdb.repcnt == 12 && cdb.max_repeat == 14);
+                assert(!cdb.play_type && !cdb.pause_request);
+            }
+        }
+    }
+}
+
+static void seek_resume_ranges(void)
+{
+    const u32 ranges[][2] = {{175, 225}, {375, 425}, {375, 625}};
+    const unsigned repeats[] = {0, 1, 15}, counts[] = {0, 1, 14};
+    for (unsigned r = 0; r < sizeof ranges / sizeof *ranges; r++) {
+        u32 first = ranges[r][0], last = ranges[r][1];
+        const u32 positions[] = {first - 1, first, first + 1, last - 1, last, last + 1};
+        for (unsigned p = 0; p < sizeof positions / sizeof *positions; p++) {
+            for (unsigned m = 0; m < sizeof repeats / sizeof *repeats; m++) {
+                for (unsigned c = 0; c < sizeof counts / sizeof *counts; c++) {
+                    ready();
+                    u32 target = positions[p];
+                    request(0x800000 | first, 0x800000 | (last - first), repeats[m]);
+                    assert(!play_cd());
+                    cdb.repcnt = counts[c];
+                    request(0x800000 | target, 0, 0);
+                    (void)seek_cd();
+                    assert(cdb.fad == target && cdb.play_fad_start == first && cdb.play_fad_end == last);
+                    request(0xffffff, 0xffffff, 0xff);
+                    assert(!play_cd());
+                    assert(cdb.fad == target && cdb.repcnt == counts[c] && cdb.max_repeat == (int)repeats[m]);
+                    unsigned delivered = 0;
+                    int state;
+                    while ((state = worker_step()) == 1) {
+                        assert(cdb.fad == target + delivered && cdb.fad >= first && cdb.fad < last);
+                        delivered++;
+                        cdb.fad++;
+                    }
+                    assert(delivered == (target >= first && target < last ? last - target : 0));
+                    assert(read_calls == delivered && cdb.play_fad_start == first && cdb.play_fad_end == last);
+                    if (counts[c] < repeats[m]) {
+                        assert(state == 2 && cdb.fad == first && cdb.repcnt == (counts[c] < 14 ? counts[c] + 1 : 14));
+                        assert(!hirq && cdb.play_type == PLAYTYPE_SECTOR);
+                    } else {
+                        assert(state == 0 && hirq == HIRQ_PEND && !cdb.play_type && cdb.repcnt == counts[c]);
+                    }
+                }
+            }
+        }
+    }
 }
 static void no_media(void)
 {
@@ -780,6 +848,8 @@ int main(int argc,char **argv)
     case 27:subcode_track_bounds();break;
     case 28:subcode_admission();break;
     case 29:subcode_valid_payloads();break;
+    case 30:seek_retained_forms();break;
+    case 31:seek_resume_ranges();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

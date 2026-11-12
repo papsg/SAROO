@@ -893,13 +893,9 @@ int seek_cd(void)
         set_drive_position(150);
         cdb.options = 0;
     } else if (pos != 0xffffff) {
-        cdb.play_fad_start = fad;
+        /* SEEK moves the pickup. PLAY owns the retained range and repeat settings. */
         set_drive_position(fad);
-        TRACK_INFO *tk = cdb.play_track;
         cdb.options = 0;
-        /* Preserve the upstream FAD-seek/resume exceptions while their
-         * difference from retained-range semantics is investigated separately. */
-        if (pos & 0x800000) cdb.play_fad_end = tk && tk->mode == 3 ? tk->fad_end+1 : fad;
     }
     SSLOG(_CDRV, "       : fad=%08x track=%d index=%d ctladr=%02x opt=%02x\n",
           cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
