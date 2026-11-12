@@ -784,6 +784,10 @@ int jhl_auth_hack(int delay)
 {
 	int status, retv, cleanup;
 	CDCMD resp;
+	/* Operational budget for each outer wait while the drive reports no result. */
+	const u32 timeout = MS2TICK(10000);
+	u32 deadline = 0;
+	int waiting = 0;
 
 	memcpy((u8*)0x06080000, cdc_auth_hram, 0x400);
 	void (*go)(CDCMD*, int) = (void*)0x06080000;
@@ -797,6 +801,13 @@ int jhl_auth_hack(int delay)
 		}
 		if(status==STATUS_PAUSE)
 			break;
+		if (!waiting) {
+			deadline = get_timer() + timeout;
+			waiting = 1;
+		} else if (timer_reached(get_timer(), deadline)) {
+			printk("CD authentication wait TIMEOUT\n");
+			return -3;
+		}
 	}
 #endif
 
@@ -804,6 +815,7 @@ int jhl_auth_hack(int delay)
 	if(retv) return retv;
 
 	go(&resp, delay);
+	waiting = 0;
 
 	int old = 0xffffffff;
 	while(1){
@@ -821,6 +833,14 @@ int jhl_auth_hack(int delay)
 			break;
 		if(status==STATUS_OPEN || status==STATUS_NODISC || status==STATUS_ERROR){
 			retv = -1;
+			goto restore_size;
+		}
+		if (!waiting) {
+			deadline = get_timer() + timeout;
+			waiting = 1;
+		} else if (timer_reached(get_timer(), deadline)) {
+			printk("CD authentication wait TIMEOUT\n");
+			retv = -3;
 			goto restore_size;
 		}
 	}

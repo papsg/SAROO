@@ -1,6 +1,7 @@
 """Check actual query publication and physical-disc authentication callers."""
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -19,7 +20,11 @@ class MenuCDQueryTests(unittest.TestCase):
                  'cdc_get_buffer_size', 'cdc_get_numsector', 'cdc_get_actsize',
                  'cdc_get_sector_info', 'cdc_auth_status', 'cdc_get_file_scope',
                  'cdc_set_size', 'cdc_auth_device', 'jhl_auth_hack')
-        code = b''.join(function(raw, name) for name in names)
+        header = (source / 'main.h').read_bytes()
+        ticks = re.search(rb'^#define MS2TICK\b[^\n]+', header, re.M).group()
+        timer = function(header.replace(b'static inline int timer_reached',
+                                        b'static int timer_reached'), 'timer_reached')
+        code = ticks + b'\n' + timer + b''.join(function(raw, name) for name in names)
         # Model only the relocated routine's storage and call.
         for original, replacement in (
             (b'memcpy((u8*)0x06080000, cdc_auth_hram, 0x400);',
@@ -70,6 +75,19 @@ class MenuCDQueryTests(unittest.TestCase):
 
     def test_terminal_authentication_error_restores_sector_size(self):
         self.scenario('terminal-auth')
+
+    def test_stalled_pre_auth_wait_expires_before_setup(self):
+        for suffix in ('', '-wrap'):
+            with self.subTest(wrap=bool(suffix)):
+                self.scenario('pre-timeout' + suffix)
+
+    def test_stalled_post_auth_wait_restores_size_and_keeps_timeout(self):
+        for suffix in ('', '-wrap', '-cleanup', '-wrap-cleanup'):
+            with self.subTest(suffix=suffix):
+                self.scenario('post-timeout' + suffix)
+
+    def test_two_progressing_auth_waits_use_separate_budgets(self):
+        self.scenario('slow-auth')
 
 
 if __name__ == '__main__':

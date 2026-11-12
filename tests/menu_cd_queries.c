@@ -4,10 +4,31 @@
 #include <string.h>
 
 typedef uint8_t u8;
+typedef uint32_t u32;
 typedef struct { uint16_t cr1, cr2, cr3, cr4; } CDCMD;
 enum { HIRQ_ESEL=0x40, HIRQ_EFLS=0x200, STATUS_PAUSE=1, STATUS_SEEK=4, STATUS_OPEN=6, STATUS_NODISC=7,
        STATUS_RETRY=8, STATUS_ERROR=9, STATUS_FATAL=10 };
-static unsigned CR1;
+static unsigned raw_status, raw_reads, pause_read;
+static u32 tick, tick_step;
+static unsigned tick_reads;
+
+static unsigned raw_status_read(void)
+{
+    assert(++raw_reads <= 4);
+    if (raw_reads == pause_read) return STATUS_PAUSE << 8;
+    return raw_status;
+}
+
+#define CR1 raw_status_read()
+
+static u32 get_timer(void) __attribute__((unused));
+static u32 get_timer(void)
+{
+    ++tick_reads;
+    u32 now = tick;
+    tick += tick_step;
+    return now;
+}
 static u8 cdc_auth_hram[0x400], auth_copy[0x400];
 struct step { unsigned command; int result; CDCMD reply; };
 static struct step steps[100];
@@ -16,7 +37,8 @@ static unsigned step_count, position, go_count, wait_count, print_count;
 static void reset(void)
 {
     step_count=position=go_count=wait_count=print_count=0;
-    CR1=STATUS_PAUSE<<8;
+    raw_status = STATUS_PAUSE << 8;
+    raw_reads = pause_read = tick = tick_step = tick_reads = 0;
     memset(auth_copy, 0, sizeof auth_copy);
     memset(cdc_auth_hram, 0x5a, sizeof cdc_auth_hram);
 }
@@ -59,6 +81,7 @@ static void auth_go(CDCMD *resp, int delay)
     ++go_count;
 }
 
+static int timer_reached(u32 now, u32 deadline) __attribute__((unused));
 #include "actual.inc"
 
 static int query(unsigned n, int *a, int *b, int *c)
@@ -145,7 +168,7 @@ static void test_auth(void)
         assert(go_count==1 && position==5 && print_count==3);
     }
     for(unsigned status=STATUS_OPEN;status<16;++status) {
-        reset(); CR1=status<<8;
+        reset(); raw_status = status << 8;
         assert(jhl_auth_hack(100000)==(int)status);
         assert(!position && !go_count);
     }
@@ -213,6 +236,47 @@ static void test_terminal_auth(void)
     }
 }
 
+static void test_pre_timeout(int wrap)
+{
+    reset();
+    raw_status = STATUS_SEEK << 8;
+    tick = wrap ? UINT32_MAX - 1 : 0;
+    tick_step = MS2TICK(5000);
+    assert(jhl_auth_hack(100000) == -3);
+    assert(raw_reads == 3 && tick_reads == 3 && !position && !go_count);
+}
+
+static void test_post_timeout(int wrap, int cleanup_error)
+{
+    reset();
+    tick = wrap ? UINT32_MAX - 1 : 0;
+    tick_step = MS2TICK(5000);
+    expect(0x6003, 0, 0, 0, 0, 0);
+    expect(0, 0, STATUS_SEEK << 8, 0, 0, 0);
+    expect(0, 0, STATUS_RETRY << 8, 0, 0, 0);
+    expect(0, 0, STATUS_SEEK << 8, 0, 0, 0);
+    expect(0x6000, cleanup_error, 0, 0, 0, 0);
+    assert(jhl_auth_hack(100000) == -3);
+    assert(raw_reads == 1 && tick_reads == 3 && go_count == 1);
+    assert(position == step_count);
+}
+
+static void test_slow_auth(void)
+{
+    reset();
+    raw_status = STATUS_SEEK << 8;
+    pause_read = 3;
+    tick_step = MS2TICK(4000);
+    expect(0x6003, 0, 0, 0, 0, 0);
+    expect(0, 0, STATUS_SEEK << 8, 0, 0, 0);
+    expect(0, 0, STATUS_RETRY << 8, 0, 0, 0);
+    expect(0, 0, STATUS_PAUSE << 8, 0, 0, 0);
+    expect(0xe100, 0, 0, 2, 0, 0);
+    expect(0x6000, 0, 0, 0, 0, 0);
+    assert(jhl_auth_hack(100000) == 2);
+    assert(raw_reads == 3 && go_count == 1 && position == step_count);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc==2);
@@ -222,6 +286,12 @@ int main(int argc, char **argv)
     else if(!strcmp(argv[1],"restore")) test_restore();
     else if(!strcmp(argv[1],"device")) test_device();
     else if(!strcmp(argv[1],"terminal-auth")) test_terminal_auth();
+    else if (!strncmp(argv[1], "pre-timeout", 11))
+        test_pre_timeout(strstr(argv[1], "-wrap") != NULL);
+    else if (!strncmp(argv[1], "post-timeout", 12))
+        test_post_timeout(strstr(argv[1], "-wrap") != NULL,
+                          strstr(argv[1], "-cleanup") ? -5 : 0);
+    else if (!strcmp(argv[1], "slow-auth")) test_slow_auth();
     else assert(0);
     return 0;
 }
