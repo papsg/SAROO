@@ -6,8 +6,7 @@
 module cacheblk(
 	reset, clk,
 	cache_addr, cache_data1d, cache_valid, data_valid, cdata,
-	cache_update_a, umask_a, uaddr_a, udata_a,
-	cache_update_b, umask_b, uaddr_b, udata_b,
+	cache_update, umask, uaddr, udata,
 	cache_invalid, iaddr
 );
 
@@ -27,15 +26,11 @@ module cacheblk(
 	input[15:0] cdata;
 
 	// cache update
-	input cache_update_a;
-	input[ 1:0] umask_a;
-	input[25:0] uaddr_a;
-	input[15:0] udata_a;
+	input cache_update;
+	input[ 1:0] umask;
+	input[25:0] uaddr;
+	input[15:0] udata;
 
-	input cache_update_b;
-	input[ 1:0] umask_b;
-	input[25:0] uaddr_b;
-	input[15:0] udata_b;
 
 	// cache incalid
 	input cache_invalid;
@@ -57,12 +52,9 @@ module cacheblk(
 	// cache_data
 	always @(posedge clk)
 	begin
-		if(cache_update_a && uaddr_a[25:3]==cache_addr) begin
-			if(umask_a[1]==0) cache_data[uaddr_a[2:1]][15:8] <= udata_a[15:8];
-			if(umask_a[0]==0) cache_data[uaddr_a[2:1]][ 7:0] <= udata_a[ 7:0];
-		end else if(cache_update_b && uaddr_b[25:3]==cache_addr) begin
-			if(umask_b[1]==0) cache_data[uaddr_b[2:1]][15:8] <= udata_b[15:8];
-			if(umask_b[0]==0) cache_data[uaddr_b[2:1]][ 7:0] <= udata_b[ 7:0];
+		if(cache_update && uaddr[25:3]==cache_addr) begin
+			if(umask[1]==0) cache_data[uaddr[2:1]][15:8] <= udata[15:8];
+			if(umask[0]==0) cache_data[uaddr[2:1]][ 7:0] <= udata[ 7:0];
 		end else if(data_valid) begin
 			// 是否已经被cache_update填充?
 			if(cache_valid[dcnt]==0) begin

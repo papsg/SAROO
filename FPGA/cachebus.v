@@ -6,7 +6,7 @@
 module cachebus(
 	reset, clk,
 	cs, rd, wr, nwait, addr, wdata, rdata,
-	cmd_req, cmd_ack, cache_invalid, cache_update,
+	cmd_req, cmd_ack, cache_invalid,
 	cache_addr, cache_data_1d, cache_valid
 );
 
@@ -31,7 +31,6 @@ module cachebus(
 	output[1:0] cmd_req;
 	input cmd_ack;
 	output cache_invalid;
-	output cache_update;
 
 	// cache interface
 	input[25:3] cache_addr;
@@ -52,7 +51,6 @@ module cachebus(
 
 	reg[ 1:0] cmd_req;
 	reg cache_invalid;
-	reg cache_update;
 	reg[15:0] rdata;
 	reg[1:0] state;
 	reg nwait;
@@ -68,7 +66,6 @@ module cachebus(
 			nwait <= 1;
 			cmd_req <= 0;
 			cache_invalid <= 0;
-			cache_update <= 0;
 		end else begin
 			case(state)
 			B_IDLE: begin
@@ -84,16 +81,14 @@ module cachebus(
 						state <= B_READ;
 					end
 				end else if(wr && cs) begin
-					// 发出写请求. 如果命中Cache, 则更新数据.
+					// Request the write. The arbiter updates both caches at acceptance.
 					nwait <= 0;
 					cmd_req <= CMD_WRITE;
-					cache_update <= 1;
 					state <= B_WRITE;
 				end else begin
 					nwait <= 1;
 					cmd_req <= 0;
 					cache_invalid <= 0;
-					cache_update <= 0;
 				end
 			end
 
@@ -114,7 +109,6 @@ module cachebus(
 			end
 
 			B_WRITE: begin
-				cache_update <= 0;
 				if(cmd_ack) begin
 					nwait <= 1;
 					cmd_req <= 0;

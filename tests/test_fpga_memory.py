@@ -39,6 +39,24 @@ def omit_ack_reset(raw, ports):
     return raw[:start] + reset + raw[end:]
 
 
+def build_memory_model(inputs, target, bench):
+    target.mkdir()
+    (target / 'inputs.json').write_text(json.dumps({
+        name: hashlib.sha256(raw).hexdigest() for name, raw in inputs.items()
+    }, indent=2) + '\n')
+    for name, raw in inputs.items():
+        (target / name).write_bytes(declarations_first(raw))
+    binary = target / 'memory.vvp'
+    command = ['iverilog', '-g2012', '-s', 'tb', '-o', str(binary),
+               *[str(target / name) for name in MODULES], str(ROOT / 'tests' / bench)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    log = result.stdout + result.stderr
+    (target / 'compile.log').write_text(log)
+    if result.returncode:
+        raise RuntimeError(log)
+    return binary
+
+
 @unittest.skipUnless(shutil.which('iverilog') and shutil.which('vvp'), 'requires Icarus Verilog')
 class FPGAMemoryTests(unittest.TestCase):
     @classmethod
@@ -58,24 +76,12 @@ class FPGAMemoryTests(unittest.TestCase):
         if variant in self.variants:
             return self.variants[variant]
         target = self.target / variant
-        target.mkdir()
         inputs = dict(self.sources)
         if variant == 'baseline':
             inputs['memhub.v'] = self.baseline
         elif variant in ('omit-a', 'omit-b'):
             inputs['memhub.v'] = omit_ack_reset(inputs['memhub.v'], variant[-1])
-        (target / 'inputs.json').write_text(json.dumps({
-            name: hashlib.sha256(raw).hexdigest() for name, raw in inputs.items()
-        }, indent=2) + '\n')
-        for name, raw in inputs.items():
-            (target / name).write_bytes(declarations_first(raw))
-        binary = target / 'memory.vvp'
-        command = ['iverilog', '-g2012', '-s', 'tb', '-o', str(binary),
-                   *[str(target / name) for name in MODULES],
-                   str(ROOT / 'tests/fpga_memory_reset_tb.v')]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        (target / 'compile.log').write_text(result.stdout + result.stderr)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        binary = build_memory_model(inputs, target, 'fpga_memory_reset_tb.v')
         self.variants[variant] = binary
         return binary
 

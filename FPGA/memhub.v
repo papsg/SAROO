@@ -59,11 +59,13 @@ module memhub(
 
 	wire[ 1:0] cmd_req_a;
 	wire cache_invalid_a;
-	wire cache_update_a;
+	// Both caches observe the accepted SDRAM write in the same issue order.
+	// The arbiter holds these command fields through cmd_ack.
+	wire cache_write = cmd_ack && cmd_req[0];
 
 	cachebus busa(reset, clk,
 		cs_a, rd_a, wr_a, nwait_a, addr_a, wdata_a, rdata_a,
-		cmd_req_a, cmd_ack_a, cache_invalid_a, cache_update_a,
+		cmd_req_a, cmd_ack_a, cache_invalid_a,
 		cache_addr_a, cache_data1d_a, cache_valid_a
 	);
 
@@ -74,8 +76,7 @@ module memhub(
 
 	cacheblk _cha(reset, clk,
 		cache_addr_a, cache_data1d_a, cache_valid_a, data_valid_a, cmd_dout,
-		cache_update_a, mask_a, addr_a, wdata_a,
-		cache_update_b, mask_b, addr_b, wdata_b,
+		cache_write, cmd_mask, cmd_addr, cmd_din,
 		cache_invalid_a, addr_a
 	);
 
@@ -86,11 +87,10 @@ module memhub(
 
 	wire[ 1:0] cmd_req_b;
 	wire cache_invalid_b;
-	wire cache_update_b;
 
 	cachebus busb(reset, clk,
 		cs_b, rd_b, wr_b, nwait_b, addr_b, wdata_b, rdata_b,
-		cmd_req_b, cmd_ack_b, cache_invalid_b, cache_update_b,
+		cmd_req_b, cmd_ack_b, cache_invalid_b,
 		cache_addr_b, cache_data1d_b, cache_valid_b
 	);
 
@@ -102,8 +102,7 @@ module memhub(
 
 	cacheblk _chb(reset, clk,
 		cache_addr_b, cache_data1d_b, cache_valid_b, data_valid_b, cmd_dout,
-		cache_update_b, mask_b, addr_b, wdata_b,
-		cache_update_a, mask_a, addr_a, wdata_a,
+		cache_write, cmd_mask, cmd_addr, cmd_din,
 		cache_invalid_b, addr_b
 	);
 
