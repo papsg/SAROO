@@ -34,6 +34,7 @@ class CDDriveTests(unittest.TestCase):
         code+=function(raw,b'int init_cdblock(')
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         code+=function(raw,b'int get_subcode(')
+        code+=function(raw,b'int finish_directory(')
         (cls.target/'drive.inc').write_bytes(code)
         (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
         dispatch = function(raw, b'void cdc_cmd_process(')
@@ -61,8 +62,11 @@ class CDDriveTests(unittest.TestCase):
             b'if(pause_active) {\n'+active+b'\n} else {\n'+restart+b'\n}\n_restart_wait: '+exits+b'return;\n}\n')
         guard=b'';start=main.find(b'        if (cdb.play_type == PLAYTYPE_SECTOR &&')
         if start>=0:guard=main[start:main.index(b'        int was_directory =',start)]
+        loop_start=main.index(b'\t\twhile(cdb.fad<cdb.play_fad_end){')
+        loop=main[loop_start:main.index(b'\n',loop_start)]
         start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
-        (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+b'read_calls++;return 1;\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n}\n')
+        (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+loop+
+            b'\nread_calls++;return 1;}\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n}\n')
         start=main.index(b'\t\t\tcdb.play_fad_start = track_to_fad(0x0100);');end=main.index(b'\n\t\t}',start)
         marker=b'            cdb.play_pos_types = 0;';prefix=main.rfind(marker,0,start)
         if prefix>=0 and not main[prefix+len(marker):start].strip():start=prefix
@@ -134,6 +138,11 @@ class CDDriveTests(unittest.TestCase):
     def test_abort_file_replaces_all_reply_words(self):self.run_case(36)
     def test_abort_file_preserves_reader_cache_and_buffers(self):self.run_case(37)
     def test_abort_file_timeout_and_late_ack_leave_reply_pending(self):self.run_case(38)
+    def test_file_range_nochg_play_uses_disc_default(self):self.run_case(39)
+    def test_file_range_seek_compares_disc_default(self):self.run_case(40)
+    def test_file_range_refused_or_timed_out_commands_preserve_worker_bounds(self):self.run_case(41)
+    def test_file_range_media_retry_uses_current_disc(self):self.run_case(42)
+    def test_file_range_work_bounds_and_background_play_controls(self):self.run_case(43)
 
 
 if __name__=='__main__':unittest.main()

@@ -110,3 +110,24 @@ the port. The tests check 144 reply cases, both worker pause paths,
 and retained filter, buffer and cache state. Both CD profiles pass
 186 methods. The GNU MCU App loads 63,228 bytes with 2,308 bytes of ITCM
 space. Physical command and interrupt timing remain unqualified.
+
+## Use the disc playback range after file access
+
+Adapted from paps-g `0b8d2172` (MCU-CDC-031). File and directory operations
+keep their numeric worker bounds and mark the retained PLAY range as the
+disc default. A PLAY with unchanged endpoints then uses the first sector
+and lead-out of the current disc. An explicit SEEK also uses those disc
+bounds when deciding whether to raise PEND. Successful PLAY publishes the
+resolved range and endpoint forms. WAIT and refusal leave file ownership
+and its bounds intact. The port uses the existing position parser and one
+bit in the existing endpoint byte.
+[ST-162-062094, §6.2.3(3), printed p. 53](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=41),
+[§8.2.2 No. 2.1, printed p. 82](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=70).
+
+Run the drive fixture with `-k file_range` and point `SAROO_CDC_DRIVE_DIR`
+at the parent to observe the wrong PLAY range, SEEK event and disc-retry
+range. The failed-handoff, worker-bound and background-audio controls pass
+on both revisions. The port covers 168 PLAY and 132 SEEK combinations
+across active, completed, aborted and initialized file work. Both CD
+profiles pass 191 methods. The GNU MCU App loads 63,276 bytes with
+2,260 bytes of ITCM space. Physical game playback remains unqualified.

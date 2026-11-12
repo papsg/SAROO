@@ -496,7 +496,7 @@ static void retained_form_failure(void)
 static void replacement_types(void)
 {
     ready();cdb.play_pos_types=5;
-    start_file_play(0,150,1,PLAYTYPE_FILE);assert(!cdb.play_pos_types);
+    start_file_play(0,150,1,PLAYTYPE_FILE);assert(cdb.play_pos_types==PLAY_RANGE_FILE);
     request(0xffffff,0x800001,0);assert(!play_cd() && (reply[0]>>8)!=STAT_REJECT);
     assert(cdb.play_pos_types==8);check_owners();
     ready();cdb.play_pos_types=5;background_start(0);assert(!cdb.play_pos_types);
@@ -1066,6 +1066,134 @@ static void abort_timeout(void)
     }
 }
 
+static void begin_file_work(int kind)
+{
+    ready();
+    pause_active = 1;
+    start_file_play(2, 250, 10, kind);
+    cdb.rdir_state = 2;
+    cdb.cdir_pfnum = 9;
+    assert(cdb.fad == 250 && cdb.play_fad_start == 250 && cdb.play_fad_end == 260);
+    assert(cdb.filter[2].fad == 250 && cdb.filter[2].range == 10);
+}
+
+static void file_transition(unsigned stage, int kind)
+{
+    if (stage == 1) {
+        cdb.fad = cdb.play_fad_end;
+        if (kind == PLAYTYPE_DIR) finish_directory(1);
+        else assert(!worker_step());
+        assert(!cdb.play_type && !read_calls);
+    } else if (stage == 2) {
+        assert(abort_file() == HIRQ_EFLS);
+    } else if (stage >= 3) {
+        cdb.cr1 = (u16[]){0, 1, 0x80}[stage - 3];
+        int events = cdb.cr1 == 1 ? HIRQ_EFLS | HIRQ_ECPY | HIRQ_ESEL | HIRQ_EHST : 0;
+        assert(init_cdblock() == events);
+    }
+}
+
+static void file_nochg_play(void)
+{
+    const u32 positions[][4] = {
+        {0xffffff, 0xffffff, 150, 700}, {0xffffff, 0x201, 150, 400},
+        {0xffffff, 0x800020, 150, 182}, {0x800258, 0xffffff, 600, 700},
+        {0x201, 0xffffff, 350, 700}, {0, 0xffffff, 150, 700},
+        {0xffffff, 0, 150, 700}
+    };
+    for (int kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        for (unsigned stage = 0; stage < 6; stage++) {
+            for (unsigned mode = 0; mode <= 0x80; mode += 0x80) {
+                for (unsigned p = 0; p < sizeof positions / sizeof *positions; p++) {
+                    begin_file_work(kind);
+                    file_transition(stage, kind);
+                    FILTER filters[MAX_SELECTORS];
+                    memcpy(filters, cdb.filter, sizeof filters);
+                    request(positions[p][0], positions[p][1], mode);
+                    assert(!play_cd());
+                    assert(cdb.play_fad_start == positions[p][2] && cdb.play_fad_end == positions[p][3]);
+                    assert(cdb.play_type == PLAYTYPE_SECTOR && !cdb.pause_request && cdb.play_pos_types < 16);
+                    assert(!memcmp(filters, cdb.filter, sizeof filters));
+                    request(0xffffff, 0xffffff, 0x80);
+                    assert(!play_cd() && cdb.play_fad_start == positions[p][2] && cdb.play_fad_end == positions[p][3]);
+                }
+            }
+        }
+    }
+}
+
+static void file_range_seek(void)
+{
+    const u32 positions[] = {0x800000, 0x800001, 0x8000c7, 0x8000fa, 0x800103,
+                             0x800104, 0x800258, 0x8002bc, 0x8fffff, 0, 0xffffff};
+    for (int kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        for (unsigned stage = 0; stage < 6; stage++) {
+            for (unsigned p = 0; p < sizeof positions / sizeof *positions; p++) {
+                begin_file_work(kind);
+                file_transition(stage, kind);
+                u8 saved = cdb.play_pos_types;
+                request(positions[p], 0, 0);
+                assert(seek_cd() == (p == 7 || p == 8 ? HIRQ_PEND : 0));
+                assert(cdb.play_fad_start == 250 && cdb.play_fad_end == 260 && cdb.play_pos_types == saved);
+                request(0xffffff, 0xffffff, 0);
+                assert(!play_cd() && cdb.play_fad_start == 150 && cdb.play_fad_end == 700);
+            }
+        }
+    }
+}
+
+static void file_range_wait(void)
+{
+    for (int kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        for (unsigned seeking = 0; seeking < 2; seeking++) {
+            begin_file_work(kind);
+            u8 saved = cdb.play_pos_types;
+            waits = 0;
+            request(0x8000c8, 0x201, 0);
+            assert(!play_cd() && reply[0] >> 8 == STAT_REJECT && !waits && cdb.play_type == kind);
+            acknowledge_after = -1;
+            request(seeking ? 0x8000c8 : 0xffffff, 0xffffff, 0);
+            assert(!(seeking ? seek_cd() : play_cd()));
+            assert(waits == 500 && reply[0] >> 8 == (STAT_WAIT | cdb.status));
+            assert(cdb.play_type == kind && cdb.play_fad_start == 250 && cdb.play_fad_end == 260);
+            assert(cdb.play_pos_types == saved);
+            worker_pause_step();
+            assert(!cdb.play_type && !cdb.pause_request);
+            assert(cdb.play_fad_start == 250 && cdb.play_fad_end == 260 && cdb.play_pos_types == saved);
+        }
+    }
+}
+
+static void file_range_media(void)
+{
+    begin_file_work(PLAYTYPE_FILE);
+    file_transition(2, PLAYTYPE_FILE);
+    cdb.track_num = 0;
+    request(0xffffff, 0xffffff, 0);
+    assert(!play_cd() && reply[0] >> 8 == STAT_REJECT);
+    assert(cdb.play_fad_start == 250 && cdb.play_fad_end == 260);
+    request(0, 0, 0);
+    assert(!seek_cd() && cdb.status == STAT_STANDBY);
+    cdb.track_num = 1;
+    media[0].fad_end = 899;
+    request(0xffffff, 0xffffff, 0);
+    assert(!play_cd() && cdb.play_fad_start == 150 && cdb.play_fad_end == 900);
+}
+
+static void file_range_controls(void)
+{
+    for (int kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        begin_file_work(kind);
+        get_cd_status();
+        assert(cdb.play_type == kind && cdb.play_fad_start == 250 && cdb.play_fad_end == 260);
+        file_transition(1, kind);
+        assert(cdb.play_fad_start == 250 && cdb.play_fad_end == 260);
+        background_start(0);
+        request(0xffffff, 0xffffff, 0);
+        assert(!play_cd() && cdb.play_fad_start == 150 && cdb.play_fad_end == 300);
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1095,6 +1223,11 @@ int main(int argc,char **argv)
     case 36:abort_reply();break;
     case 37:abort_cache();break;
     case 38:abort_timeout();break;
+    case 39:file_nochg_play();break;
+    case 40:file_range_seek();break;
+    case 41:file_range_wait();break;
+    case 42:file_range_media();break;
+    case 43:file_range_controls();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

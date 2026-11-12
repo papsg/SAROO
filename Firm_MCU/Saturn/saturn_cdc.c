@@ -817,7 +817,7 @@ static void set_drive_position(u32 fad)
 /* Incoming positions are 24-bit. Normalized FADs lose their original form. */
 static unsigned retained_position_type(u32 position, unsigned previous)
 {
-    return position == 0xffffff ? previous :
+    return position == 0xffffff ? previous & 3 :
            !position ? 0 : (position >> 23) + 1;
 }
 
@@ -826,15 +826,18 @@ int play_cd(void)
     u32 start_pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     u32 end_pos = ((u32)(cdb.cr3&255)<<16) | cdb.cr4;
     unsigned mode = cdb.cr3>>8;
-    if (!get_track_info(0xffff)) { set_status(STAT_REJECT); return 0; }
-    unsigned types = retained_position_type(start_pos, cdb.play_pos_types & 3) |
+    TRACK_INFO *last = get_track_info(0xffff);
+    if (!last) { set_status(STAT_REJECT); return 0; }
+    unsigned types = retained_position_type(start_pos, cdb.play_pos_types) |
                      (retained_position_type(end_pos, cdb.play_pos_types >> 2) << 2);
     if (((types | (types >> 2)) & 3) == 3) { set_status(STAT_REJECT); return 0; }
-    u32 start = start_pos == 0xffffff ? cdb.play_fad_start : drive_position(start_pos, 0);
-    u32 end = cdb.play_fad_end;
+    u32 leadout = last->fad_end + 1;
+    int file_range = cdb.play_pos_types & PLAY_RANGE_FILE;
+    u32 start = file_range ? 150 : cdb.play_fad_start;
+    u32 end = file_range ? leadout : cdb.play_fad_end;
+    if (start_pos != 0xffffff) start = drive_position(start_pos, 0);
     if (end_pos != 0xffffff) {
         if (end_pos & 0x800000) {
-            u32 leadout = cdb.tracks[cdb.track_num-1].fad_end+1;
             end = start + (end_pos & 0x7fffff);
             if (end > leadout) end = leadout;
         } else end = drive_position(end_pos, 1);
@@ -898,9 +901,12 @@ int seek_cd(void)
           cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
     /* Acknowledge the drive command with BUSY. Status queries see the settled state. */
     set_report(STAT_BUSY);
-    if (explicit_seek && cdb.repcnt >= cdb.max_repeat && outside_play_range())
-        return HIRQ_PEND;
-    return 0;
+    if (!explicit_seek || cdb.repcnt < cdb.max_repeat) return 0;
+    if (cdb.play_pos_types & PLAY_RANGE_FILE) {
+        TRACK_INFO *last = get_track_info(0xffff);
+        return !last || cdb.fad < 150 || cdb.fad >= last->fad_end + 1 ? HIRQ_PEND : 0;
+    }
+    return outside_play_range() ? HIRQ_PEND : 0;
 }
 
 // 0x12 [SR]
@@ -1750,7 +1756,7 @@ static void start_file_play(int selnum, u32 fad, u32 sectors, int type)
 {
     free_partition(&cdb.part[selnum]);
     set_file_selector(selnum, fad, sectors);
-    cdb.play_pos_types = 0;
+    cdb.play_pos_types = PLAY_RANGE_FILE;
     cdb.repcnt = 0;
     cdb.max_repeat = 0;
     /* Commands already paused. Internal directory phases must retain a new

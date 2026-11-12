@@ -54,7 +54,6 @@ static void fs_unlock(void) { abort(); }
 static int disk_reidentify(void) { abort(); }
 static int load_disc(int disc, int start_save) { abort(); }
 static void unload_disc(void) { abort(); }
-static int finish_directory(int success) { abort(); }
 static int handle_diread(void) { abort(); }
 static void advance_file_unit(void) { abort(); }
 static void set_peri_report(void) {}

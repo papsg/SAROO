@@ -104,6 +104,9 @@
 #define PLAYTYPE_FILE   2
 #define PLAYTYPE_DIR    3
 
+/* File work owns the numeric bounds. The retained PLAY range is disc-default. */
+#define PLAY_RANGE_FILE 0x10
+
 
 #define SSCMD_PRINTF   0x0001
 #define SSCMD_LISTDISC 0x0002
@@ -286,7 +289,7 @@ typedef struct
 	u8  has_subrw;
 	u8  subrw_wp;
 	u8  subrw_rp;
-	u8  play_pos_types; /* Two bits per retained endpoint: default/track/FAD. */
+	u8  play_pos_types; /* Two endpoint types in bits 0 through 3, or PLAY_RANGE_FILE. */
 
 	int play_type;
 	int play_wait;
