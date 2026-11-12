@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from test_cdc_copy import copy_source
+from cdc_reply_source import bswap_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -16,8 +17,11 @@ ROOT=Path(__file__).resolve().parents[1]
 class CDBoundsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        raw=Path(os.environ.get('SAROO_CDC_BOUNDS_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_cdc.c')).read_bytes()
-        header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+        source = Path(os.environ.get('SAROO_CDC_BOUNDS_SOURCE', ROOT/'Firm_MCU/Saturn/saturn_cdc.c'))
+        raw = source.read_bytes()
+        sibling = source.with_name('cdc.h')
+        header = Path(os.environ.get('SAROO_CDC_BOUNDS_HEADER',
+                         sibling if sibling.is_file() else ROOT/'Firm_MCU/Saturn/cdc.h')).read_bytes()
         build=ROOT/'tests/build/cdc-bounds';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
         def function(signature):
@@ -25,6 +29,9 @@ class CDBoundsTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(',b'disconnect_filter_input(')))
         code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
+        file_fifo = b'static __attribute__((noinline)) void fill_file_info_fifo('
+        if file_fifo in raw:
+            code += bswap_source(header, b'') + function(file_fifo)
         code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',b'int get_toc_info(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',
             b'int get_filter_connection(',b'int get_sector_num(',b'int cal_actual_size(',b'int get_actual_size(',
@@ -41,9 +48,11 @@ class CDBoundsTests(unittest.TestCase):
         code+=b''.join(function(sig) for sig in (b'static __attribute__((noinline)) void start_directory_read(',
             b'int change_dir(',b'int read_dir(',b'int read_file('))
         (cls.target/'bounds.inc').write_bytes(code)
-        (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
+        layout = b'#define TEST_AXI_FILE_INFO 1\n' if b'FILE_INFO *fi;' in header else b''
+        (cls.target/'types.h').write_bytes(layout +
+            header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'cdc.h':header}
-        for name in ('cdc_copy.c','test_cdc_copy.py','cdc_bounds.c','test_cdc_bounds.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        for name in ('cdc_copy.c','test_cdc_copy.py','cdc_bounds.c','test_cdc_bounds.py','cdc_reply_source.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')

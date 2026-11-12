@@ -38,7 +38,7 @@ static void ready(unsigned sel,u32 bytes,u32 fid)
 {
     setup(0,200);file_pause_hook=NULL;boundary_log_hook=NULL;fixture_log_mask=0;
     cdb.cdir_lba=100;cdb.cdir_size=bytes;cdb.rdir_state=3;
-    cdb.cdir_pfid=fid;cdb.cdir_pfnum=0;cdb.FINFO=(u8*)finfo;
+    cdb.cdir_pfid=fid;cdb.cdir_pfnum=0;legacy_file_info_wire(finfo);
     cdb.filter[sel].c_true=255;cdb.filter[sel].c_false=255;
     cdb.cr3=sel<<8|(fid>>16);cdb.cr4=fid;
     assert(read_dir()==0 && cdb.play_type==PLAYTYPE_DIR && cdb.dir_filter==sel);
@@ -136,7 +136,7 @@ static void malformed(void)
 static void descriptors(void)
 {
     for(unsigned kind=0;kind<10;kind++) {
-        setup(0,200);file_pause_hook=NULL;cdb.cr3=5<<8|255;cdb.cr4=65535;cdb.FINFO=(u8*)finfo;
+        setup(0,200);file_pause_hook=NULL;cdb.cr3=5<<8|255;cdb.cr4=65535;legacy_file_info_wire(finfo);
         assert(change_dir()==0 && cdb.rdir_state==1 && cdb.dir_filter==5);
         memset(sector,0,2048);memcpy(sector+1,"CD001",5);sector[6]=1;
         if(kind==0){sector[0]=0;assert(feed()==1 && cdb.fad==167 && cdb.filter[5].range==2);}
@@ -152,19 +152,50 @@ static void descriptors(void)
         assert(cdb.block_free==200);
     }
 }
+static void check_file_words(unsigned first, const u8 expected[12])
+{
+    for (unsigned k = 0; k < 6; ++k)
+        assert(fifo_output[first + k] == ((u16)expected[2*k + 1] << 8 | expected[2*k]));
+}
+
 static void queries(void)
 {
-    setup(0,200);cdb.FINFO=(u8*)finfo;cdb.rdir_state=3;cdb.cdir_pfid=65536;cdb.cdir_pfnum=254;
-    for(unsigned i=0;i<256;i++)cdb.fi[i]=(FILE_INFO){.lba=1000+i,.size=2049+i,.unit=3,.gap=2,.fid=4,.attr=5};
+    setup(0,200);legacy_file_info_wire(finfo);cdb.rdir_state=3;cdb.cdir_pfid=65536;cdb.cdir_pfnum=254;
+    for (unsigned i = 0; i < 256; ++i)
+        cdb.fi[i] = (FILE_INFO){.lba=0x123400+i*0x101, .size=0x1020304+i*0x10203,
+                               .unit=1+(i&15), .gap=i>>4, .fid=i, .attr=i^0x5a};
+    FILE_INFO snapshot[256];
+    memcpy(snapshot, cdb.fi, sizeof(snapshot));
     const u32 ids[]={0,1,65536,65789,2,65535,65790,0xffffff};
     for(unsigned j=0;j<8;j++) {
         u32 fid=ids[j];cdb.cr3=fid>>16;cdb.cr4=fid;fifo_words=0;
+        fifo_rcnt=0xffff; st_control=0x0200 | STIRQ_CMD; st_status=0x1234;
+        check_fifo_publication=1;
         int result=get_file_info();
-        if(j>=4 && j<=6){assert(!result && reply[0]==STAT_REJECT<<8);continue;}
+        check_fifo_publication=0;
+        if (j>=4 && j<=6) {
+            assert(!result && reply[0]==STAT_REJECT<<8 && !fifo_words);
+            assert(fifo_rcnt==0xffff && st_control==(0x0200 | STIRQ_CMD) && st_status==0x1234);
+            continue;
+        }
         unsigned index=fid==0xffffff?2:fid<2?fid:fid-65536+2;
         unsigned count=fid==0xffffff?254:1;
-        assert(result==HIRQ_DRDY && reply[1]==count*6 && finfo[0]==bswap32(cdb.fi[index].lba+150));
-        while(!cdb.trans_finish)trans_handle();fifo_status=0;assert(end_trans()==HIRQ_EHST);
+        assert(result==HIRQ_DRDY && reply[0]==(0x4000 | cdb.status<<8) && reply[1]==count*6 && !reply[2] && !reply[3]);
+        assert(fifo_words==count*6 && fifo_rcnt==0 && st_control==(STIRQ_DAT | STIRQ_CMD) && st_status==STIRQ_DAT);
+        for (unsigned i = 0; i < count; ++i) {
+            const FILE_INFO *f = &snapshot[index+i];
+            const u32 fad = f->lba + 150, size = f->size;
+            const u8 expected[12] = {fad>>24, fad>>16, fad>>8, fad, size>>24, size>>16, size>>8, size,
+                                     f->gap, f->unit, f->fid, f->attr & 0xfa};
+            check_file_words(i*6, expected);
+        }
+        assert(!memcmp(snapshot, cdb.fi, sizeof(snapshot)));
+        CDBLOCK before;
+        memcpy(&before, &cdb, sizeof(before));
+        assert(!get_file_info() && reply[0]==(STAT_WAIT|cdb.status)<<8);
+        assert(!memcmp(&before, &cdb, sizeof(before)) && fifo_words==count*6);
+        while(!cdb.trans_finish)trans_handle();
+        fifo_status=0;assert(end_trans()==HIRQ_EHST && reply[1]==count*6);
     }
     cdb.play_type=PLAYTYPE_DIR;
     for(unsigned j=0;j<5;j++) {
@@ -312,6 +343,26 @@ static void span_controls(void)
         check_owners();
     }
 }
+_Alignas(8) static u8 cd_memory[0x76000];
+#define TEST_CD_MEMORY ((uintptr_t)cd_memory)
+#include "directory-startup.inc"
+
+static void directory_startup(void)
+{
+    memset(cd_memory, 0xa5, sizeof(cd_memory));
+    ss_sw_init();
+    u8 *after_pool = cd_memory + 200 * 2352;
+    assert(cdb.block[0].data == cd_memory && cdb.block[199].data + 2352 == after_pool);
+    assert((u8 *)cdb.TOC == after_pool + 3072 && (u8 *)cdb.SUBH == after_pool + 3488);
+#ifdef TEST_AXI_FILE_INFO
+    assert((u8 *)cdb.fi == after_pool && (u8 *)(cdb.fi + 256) == (u8 *)cdb.TOC);
+#else
+    assert(cdb.FINFO == after_pool);
+#endif
+    assert(!cdb.rdir_state && !cdb.cdir_pfnum && !cdb.trans_type);
+    for (unsigned i = 0; i < 3072; ++i) assert(after_pool[i] == 0xa5);
+}
+
 int main(int argc,char **argv)
 {
 
@@ -319,6 +370,11 @@ int main(int argc,char **argv)
     case 0:extents();break;case 1:pages();break;case 2:malformed();break;case 3:descriptors();break;
     case 4:queries();break;case 5:file_reads();break;case 6:aborts();break;case 7:preemption();break;
     case 8:pauses();break;case 9:logging();break;case 10:span_controls();break;
+    case 11:directory_startup();break;
     default:abort();}
+#ifdef TEST_AXI_FILE_INFO
+    if (cdb.fi == directory_memory.table)
+        assert(directory_memory.before == 0x76543210 && directory_memory.after == 0x76543210);
+#endif
     puts("pass: actual streamed parser, commands, routes and worker steps");return 0;
 }

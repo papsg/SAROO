@@ -3,15 +3,37 @@
 #include "cdc_copy.c"
 #undef main
 
+#ifdef TEST_AXI_FILE_INFO
+static struct { u32 before; FILE_INFO table[256]; u32 after; } directory_memory;
+
+static void bounds_setup(unsigned source_count, unsigned free_count)
+{
+    setup(source_count, free_count);
+    directory_memory.before = directory_memory.after = 0x76543210;
+    memset(directory_memory.table, 0, sizeof(directory_memory.table));
+    cdb.fi = directory_memory.table;
+}
+#define setup bounds_setup
+#endif
+
+static inline __attribute__((unused)) void legacy_file_info_wire(void *wire)
+{
+#ifdef TEST_AXI_FILE_INFO
+    (void)wire;
+#else
+    cdb.FINFO = wire;
+#endif
+}
+
 static int old_numblocks,min_num;
 static u16 fifo_status,fifo_rcnt;
 static u16 fifo_output[MAX_BLOCKS*1176];
 static unsigned fifo_words,wake_count,track_count;
-static int check_toc_fifo;
+static int check_fifo_publication;
 static u16 *fifo_slot(void)
 {
     assert(!irq_depth && fifo_words<sizeof fifo_output/sizeof *fifo_output);
-    if (check_toc_fifo) {
+    if (check_fifo_publication) {
         assert(!fifo_rcnt && !(st_control & (0x0200 | STIRQ_DAT)));
         assert(st_status == 0x1234);
     }
@@ -240,9 +262,9 @@ static void toc_transfer(int absent)
     st_status = 0x1234;
     fifo_rcnt = 0x8888;
     fifo_words = 0;
-    check_toc_fifo = 1;
+    check_fifo_publication = 1;
     assert(get_toc_info() == HIRQ_DRDY);
-    check_toc_fifo = 0;
+    check_fifo_publication = 0;
     assert(reply[0] == ((cdb.status << 8) | 0x4000));
     assert(reply[1] == 204 && !reply[2] && !reply[3]);
     assert(cdb.trans_type == TRANS_TOC && cdb.trans_size == 408 && !cdb.trans_finish);

@@ -19,11 +19,13 @@ class CDDirectoryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source=Path(os.environ.get('SAROO_CDC_DIRECTORY_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_cdc.c'))
-        main_source=Path(os.environ.get('SAROO_CDC_DIRECTORY_MAIN',ROOT/'Firm_MCU/Saturn/saturn_main.c'))
+        sibling = source.with_name('saturn_main.c')
+        main_source = Path(os.environ.get('SAROO_CDC_DIRECTORY_MAIN',
+                              sibling if sibling.is_file() else ROOT/'Firm_MCU/Saturn/saturn_main.c'))
         with patch.dict(os.environ,{'SAROO_CDC_BOUNDS_SOURCE':str(source)}):
             bounds.CDBoundsTests.setUpClass()
         raw=source.read_bytes();main=main_source.read_bytes()
-        header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
+        header=(bounds.CDBoundsTests.target/'cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-directory';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
         def function(data,signature):
@@ -40,7 +42,11 @@ class CDDirectoryTests(unittest.TestCase):
             code += function(main, b'static __attribute__((noinline)) void log_play_end(')
         else:
             code += b'#define finish_read finish_directory\n'
-        (cls.target/'directory.inc').write_bytes(bswap_source(header, main) + code)
+        if b'void fill_file_info_fifo(' not in raw:
+            code = bswap_source(header, main) + code
+        (cls.target/'directory.inc').write_bytes(code)
+        init = function(main, b'void ss_sw_init(').replace(b'0x2400a000', b'TEST_CD_MEMORY')
+        (cls.target/'directory-startup.inc').write_bytes(init)
         start=main.index(b'\t\t\t\tretv = filter_sector(')
         end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.',start)
         (cls.target/'dispatch.inc').write_bytes(b'static int dispatch(BLOCK wblk) {\nint retv;\n'+
@@ -109,6 +115,7 @@ class CDDirectoryTests(unittest.TestCase):
     def test_atomic_pause_and_pending_descriptor_transition(self):self.run_case(8)
     def test_bounded_readonly_names_and_preserved_traces(self):self.run_case(9)
     def test_wide_extent_arithmetic_and_state_preserving_refusals(self):self.run_case(10)
+    def test_startup_places_directory_reservation_between_sector_pool_and_toc(self):self.run_case(11)
 
 
 if __name__=='__main__':unittest.main()

@@ -281,3 +281,47 @@ qualification is asserted. No PRs, USB integration or new runtime diagnostics
 are introduced; private sources, research branches and Saturn/installed firmware
 remain untouched. The public porting ledger records commits and preservation
 audits, using public attribution and noreply identities.
+
+## Reuse the CD directory reservation
+
+Adapted from paps-g `556a6a29` (AUD-RES-005). SAROO previously held
+256 native directory records in DTCM, serialized them into an AXI
+scratch buffer, then copied that buffer into the FPGA FIFO. The
+native table now occupies the existing 3,072-byte reservation
+at `0x2407cd80`, immediately before the TOC at `0x2407d980`.
+There is no second table.
+
+The directory worker publishes a complete page before the command
+task accepts Get File Information. The command checks the file ID
+and count, then writes the same six halfwords per record directly
+to the FIFO before publishing data ready. FIFO reset, word count,
+busy replies, and DataEnd behavior are preserved. An all-files
+reply fits at 1,524 words in the [2,048-word FPGA FIFO](../FPGA/cdcfifo.v).
+
+[Sega ST-162-062094 §6.2.1, printed p. 52](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=40)
+describes the self, parent and 254 ordinary entries.
+[§7.2.6, printed p. 72](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=60)
+defines the file information fields.
+[§8.2.8, No. 8.4, printed p. 100](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=88)
+defines single-file and all-files requests.
+
+```sh
+make -C tests check-cdc-command-buffer
+SAROO_CDC_PROFILE=release SAROO_FIRMWARE_SAVE_PROFILE=release \
+  make -C tests check-cdc-command-buffer
+```
+
+The parent and port pass 227 CD methods; the port also passes O2.
+The fixtures compare all FIFO words for single and 254-entry replies,
+including byte lanes and the XA attribute mask, and verify register
+publication, refusals, busy ownership, and startup memory placement.
+For a source override, keep the matching `cdc.h` and
+`saturn_main.c` alongside the selected `saturn_cdc.c`.
+The original directory regression fixture still reproduces six old
+failures and passes its valid control.
+
+The linked CD state shrinks from 8,152 to 5,080 bytes; static DTCM
+falls 53,816 → 50,744 bytes. The App image shrinks by 16 bytes to
+64,680, with 856 bytes free. The comparison measures code, memory,
+and modeled FIFO output. Board throughput and game behavior remain
+unmeasured.

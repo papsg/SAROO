@@ -56,10 +56,11 @@ static void attributes(void)
         u8 p[48];xa_record(p,1,14,iso,xa,iso^xa);FILE_INFO fi;
         assert(read_directory_record(&fi,p,48)==48);
         assert(fi.attr==((iso&2)|(xa&0xf8)|1) && fi.fid==(iso^xa));
-        setup(0,200);cdb.rdir_state=3;cdb.cdir_pfid=2;cdb.cdir_pfnum=1;cdb.fi[2]=fi;cdb.FINFO=(u8*)finfo;
+        setup(0,200);cdb.rdir_state=3;cdb.cdir_pfid=2;cdb.cdir_pfnum=1;cdb.fi[2]=fi;legacy_file_info_wire(finfo);
         cdb.cr3=0;cdb.cr4=2;fifo_words=0;fifo_status=0;assert(get_file_info()==HIRQ_DRDY);
         const u8 expected[12]={0,0,0,250,0,0,8,0,0,0,iso^xa,(iso&2)|(xa&0xf8)};
-        assert(!memcmp(finfo,expected,12));
+        assert(fifo_words == 6);
+        check_file_words(0, expected);
         while(!cdb.trans_finish)trans_handle();fifo_status=0;assert(end_trans()==HIRQ_EHST);
     }
 }

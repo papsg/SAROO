@@ -19,7 +19,9 @@ class CDXATests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source=Path(os.environ.get('SAROO_CDC_XA_SOURCE',ROOT/'Firm_MCU/Saturn/saturn_cdc.c'))
-        main_source=Path(os.environ.get('SAROO_CDC_XA_MAIN',ROOT/'Firm_MCU/Saturn/saturn_main.c'))
+        sibling = source.with_name('saturn_main.c')
+        main_source = Path(os.environ.get('SAROO_CDC_XA_MAIN',
+                              sibling if sibling.is_file() else ROOT/'Firm_MCU/Saturn/saturn_main.c'))
         with patch.dict(os.environ,{'SAROO_CDC_DIRECTORY_SOURCE':str(source),'SAROO_CDC_DIRECTORY_MAIN':str(main_source)}):
             directory.CDDirectoryTests.setUpClass()
         build=ROOT/'tests/build/cdc-xa';build.mkdir(parents=True,exist_ok=True)

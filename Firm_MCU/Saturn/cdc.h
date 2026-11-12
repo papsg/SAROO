@@ -257,7 +257,7 @@ typedef struct
 
 	// 扇区数据传输
 	u8 trans_part_index;    // 要传输哪个分区的数据
-	u8 trans_block_start;   // Host-transfer head's pool index
+	u8 trans_block_start;   /* Sector pool head or file-info table slot. */
 	u8 trans_bk;            // GET queued count; PUT remaining count
 	u8 trans_block_end;     // Admitted GET/GETDEL sector count
 	BLOCK *trans_block;
@@ -285,7 +285,7 @@ typedef struct
 	u32 root_lba;           // 根目录的LBA地址
 	u32 root_size;          /* Exact root-directory byte length. */
 
-	u8 *FINFO;
+	FILE_INFO *fi;          /* Native records in the AXI CD metadata area. */
 
 
 ////// ISO相关 ////////////////////////////////////////////////
@@ -316,7 +316,6 @@ typedef struct
 	FILTER filter[MAX_SELECTORS];
 	PARTITION part[MAX_SELECTORS];
 	BLOCK block[MAX_BLOCKS];
-	FILE_INFO fi[256];
 
 	FIL subcode_fp; /* Keep the file object behind the CD controls and tables. */
 

@@ -198,6 +198,23 @@ void fill_fifo(u8 *addr, int size)
 	}
 }
 
+/* File information is complete when the command task admits this transfer.
+ * Emit the existing byte order as little-endian FIFO halfwords. */
+static __attribute__((noinline)) void fill_file_info_fifo(unsigned start, unsigned count)
+{
+    for (unsigned i = 0; i < count; ++i) {
+        const FILE_INFO *fi = &cdb.fi[start + i];
+        u32 word = bswap32(fi->lba + 150);
+        FIFO_DATA = (u16)word;
+        FIFO_DATA = (u16)(word >> 16);
+        word = bswap32(fi->size);
+        FIFO_DATA = (u16)word;
+        FIFO_DATA = (u16)(word >> 16);
+        FIFO_DATA = ((u16)fi->unit << 8) | fi->gap;
+        FIFO_DATA = ((u16)(fi->attr & 0xfa) << 8) | fi->fid;
+    }
+}
+
 static int min_num;
 
 /* Call only with a validated partition; resolve independent range sentinels. */
@@ -220,6 +237,7 @@ static int sector_transfer_size(const BLOCK *block)
 void trans_start(void)
 {
 	u8 *dp = NULL;
+	unsigned file_count = 0;
 
 	min_num = 40960;
 	cdb.cdwnum = 0;
@@ -247,12 +265,9 @@ void trans_start(void)
 	}else if(cdb.trans_type==TRANS_TOC){
 		dp = (u8*)cdb.TOC;
 		cdb.trans_size = 102*4;
-	}else if(cdb.trans_type==TRANS_FINFO_ALL){
-		dp = (u8*)cdb.FINFO;
-		cdb.trans_size = cdb.cdir_pfnum*12;
-	}else if(cdb.trans_type==TRANS_FINFO_ONE){
-		dp = (u8*)cdb.FINFO;
-		cdb.trans_size = 12;
+	}else if(cdb.trans_type==TRANS_FINFO_ALL || cdb.trans_type==TRANS_FINFO_ONE){
+		file_count = cdb.trans_type==TRANS_FINFO_ALL ? cdb.cdir_pfnum : 1;
+		cdb.trans_size = file_count*12;
 	}else if(cdb.trans_type==TRANS_SUBQ){
 		dp = cdb.SUBH;
 		cdb.trans_size = 10;
@@ -274,6 +289,8 @@ void trans_start(void)
 	ST_CTRL &= ~0x0200;
     if (cdb.trans_type == TRANS_TOC && (cdb.status == STAT_OPEN || cdb.status == STAT_NODISC)) {
         for (int words = cdb.trans_size / 2; words; words--) FIFO_DATA = 0xffff;
+    } else if (file_count) {
+        fill_file_info_fifo(cdb.trans_block_start, file_count);
     } else {
         fill_fifo(dp, cdb.trans_size);
     }
@@ -1932,13 +1949,7 @@ int get_file_info(void)
     if (cdb.rdir_state != 3 || index < 0 || !count || count > 254) {
         set_status(STAT_REJECT); return 0;
     }
-    for (int i = 0; i < count; i++) {
-        FILE_INFO *fi = &cdb.fi[index+i];
-        u8 *out = cdb.FINFO+i*12;
-        *(u32*)(out+0) = bswap32(fi->lba+150);
-        *(u32*)(out+4) = bswap32(fi->size);
-        out[8] = fi->gap; out[9] = fi->unit; out[10] = fi->fid; out[11] = fi->attr & 0xfa;
-    }
+    cdb.trans_block_start = index;
     cdb.trans_type = fid == 0xffffff ? TRANS_FINFO_ALL : TRANS_FINFO_ONE;
     trans_start();
     SSCR1 = 0x4000 | (cdb.status<<8);

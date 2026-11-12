@@ -247,7 +247,8 @@ static void fixed_replies_and_fifo_flags(void)
     const unsigned types[]={TRANS_TOC,TRANS_FINFO_ALL,TRANS_FINFO_ONE,TRANS_SUBQ,TRANS_SUBRW};
     const unsigned words[]={204,1524,6,5,12};
     for(unsigned t=0;t<5;t++)for(unsigned high=0;high<2;high++) {
-        setup(0,200);cdb.TOC=toc;cdb.FINFO=(u8*)info;cdb.SUBH=sub;cdb.subrw_buf=sub;cdb.cdir_pfnum=254;
+        setup(0,200);cdb.TOC=toc;legacy_file_info_wire(info);cdb.SUBH=sub;cdb.subrw_buf=sub;cdb.cdir_pfnum=254;
+        cdb.trans_block_start=2;
         cdb.trans_type=types[t];fifo_words=0;trans_start();assert(fifo_words==words[t]);
         fifo_status=(high?0xf000:0)|words[t];
         assert(end_trans()==HIRQ_EHST && result_words()==words[t] && fifo_words==words[t]);check_owners();
@@ -263,7 +264,7 @@ static void fixed_replies_and_fifo_flags(void)
 static void zero_idle_and_retained_put_controls(void)
 {
     static u8 info[12];
-    setup(0,200);cdb.FINFO=info;cdb.cdir_pfnum=0;cdb.trans_type=TRANS_FINFO_ALL;
+    setup(0,200);legacy_file_info_wire(info);cdb.cdir_pfnum=0;cdb.trans_type=TRANS_FINFO_ALL;
     fifo_words=0;trans_start();assert(!fifo_words && !cdb.trans_size);
     assert(end_trans()==HIRQ_EHST && result_words()==0 && !cdb.trans_type);check_owners();
     assert(end_trans()==HIRQ_EHST && result_words()==0xffffff);trans_handle();assert(!fifo_words);

@@ -1084,7 +1084,8 @@ void ss_sw_init(void)
 
 	u8 *info_buf = (u8*)0x2400a000+MAX_BLOCKS*2352; // 0x72d80
 
-	cdb.FINFO = (u8*)(info_buf+0x00000);
+	_Static_assert(256 * sizeof(FILE_INFO) == 0x0c00, "Directory table must end at TOC");
+	cdb.fi   = (FILE_INFO*)info_buf;
 	cdb.TOC  = (u32*)(info_buf+0x00c00);
 	cdb.SUBH  = (u8*)(info_buf+0x00da0);
     _Static_assert(0x0e00 + 100*sizeof(TRACK_INFO) + 2*1536 <=
