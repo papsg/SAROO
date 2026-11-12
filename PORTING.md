@@ -2139,3 +2139,13 @@ pacing remain unqualified.
    O2. The pinned SH-2 build changes one image byte and retains
    81,380 code/data bytes with 24,064 bytes of body space.
    [Upstream references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#validate-the-startup-language-id)
+
+2. **Fully clipped GIF frames — published**
+   [`eb134b0`](https://github.com/papsg/SAROO/commit/eb134b072c46fa9561e0933ef16a1b2c1565665f).
+   Adapted from paps-g `a3a14724` (SATURN-MENU-011). Four parent
+   cases submit invalid counts and 13 controls pass. The port
+   passes 17 display scenarios and all nine cover/display methods
+   under sanitizers and O2. The SH-2 menu links 81,396 code/data
+   bytes with 24,048 bytes of body space. The actual SCU and VDP
+   behavior remains unqualified.
+   [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#skip-row-dma-for-a-fully-clipped-gif)
