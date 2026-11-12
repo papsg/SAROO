@@ -82,3 +82,32 @@ events in that trace. Both CD profiles pass 207 methods. The
 GNU MCU App links 64,460 load bytes with 1,076 bytes of ITCM
 space. Physical bus timing and cold-start game behavior remain
 unqualified.
+
+## Protect an unanswered menu CD command
+
+Adapted from paps-g `b782c9b7` (SATURN-CD-003). The menu checks
+CMOK before clearing events or writing any command word. If CMOK
+is clear, it returns the existing local error value `-2` for
+non-admission. A response timeout still returns `-3`. The old
+command owns the registers until it publishes its reply. A later
+caller can try again once CMOK returns. Original-drive command
+retirement is the prerequisite for takeover to present a ready bit.
+[Sega CD Communication Interface ST-162-062094, §3.1 HIRQREQ,
+printed p. 28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16),
+[§7.2.6 command return codes, printed p. 63](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=51).
+
+```sh
+make -C tests check-menu-safety
+SAROO_MENU_CD_PROFILE=release make -C tests check-menu-safety
+```
+
+Point `SAROO_MENU_CD_SOURCE` at the parent `Firm_Saturn` directory
+and run `test_menu_cd_transfer.py` to reproduce both admission
+failures. The other 16 methods pass. The port checks 65,536 busy
+states across two wait masks. It also checks a timed-out command,
+an attempted retry, its late reply and the distinct next response.
+The broader menu checks cover modeled physical/virtual startup,
+player, boot and recovery paths. The group passes 90 methods in
+both runs, with the CD methods exercised under sanitizers and O2.
+The pinned menu links 81,396 code/data bytes with 24,048 bytes of
+body space. Physical CD and game behavior remain unqualified.

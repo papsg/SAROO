@@ -66,6 +66,9 @@ int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *cmdname)
 
 	//printk("\ncdc_cmd: %04x %04x %04x %04x  %s\n", cmd->cr1, cmd->cr2, cmd->cr3, cmd->cr4, cmdname);
 
+	/* A response timeout leaves the previous command in flight. */
+	if(!(HIRQ & HIRQ_CMOK)) return -2;
+
 	clear_hirq(wait|HIRQ_CMOK);
 
 	CR1 = cmd->cr1;

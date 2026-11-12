@@ -21,10 +21,10 @@ static int no_pend, diagnostics;
 static void printk(const char *fmt, ...) { (void)fmt; diagnostics++; }
 static void clear_hirq(int bits) { HIRQ &= ~bits; }
 static int wait_hirq(int bits) {
-    (void)bits;
-    waits++;
-    CR1 = response;
-    return waits == wait_failure ? -3 : 0;
+    if (++waits == wait_failure) return -3;
+    if (bits == HIRQ_CMOK) CR1 = response;
+    HIRQ |= bits;
+    return 0;
 }
 static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name) {
     (void)wait; (void)cmd; (void)name;
@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
     memset(payload+96, 'G', 32);
     if(n<=4) {
         CDCMD cmd={0}, resp={0};
+        HIRQ = HIRQ_CMOK;
         if(n==0) wait_failure=1;
         if(n==1) wait_failure=2;
         if(n==2) response=0xff00;

@@ -93,6 +93,53 @@ static void test_end_success(void)
     }
 }
 
+/* Admission cases adapted from paps-g b782c9b7. */
+static void test_busy_admission(void)
+{
+    const int waits[] = {0, HIRQ_DRDY};
+    CDCMD request = {0x6300, 0, 0, 1};
+    const CDCMD untouched = {0x1234, 0x5678, 0x9abc, 0xdef0};
+    for (unsigned i = 0; i < sizeof waits / sizeof *waits; ++i) {
+        for (unsigned flags = 0; flags <= UINT16_MAX; flags += 2) {
+            HIRQ = flags;
+            CR1 = 0x1234; CR2 = 0x2345; CR3 = 0x3456; CR4 = 0x4567;
+            calls = ready_calls = 0;
+            CDCMD response = untouched;
+            assert(cdc_cmd(waits[i], &request, &response, "busy") == -2);
+            assert(HIRQ == flags && !calls && !ready_calls);
+            assert(CR1 == 0x1234 && CR2 == 0x2345 && CR3 == 0x3456 && CR4 == 0x4567);
+            assert(!memcmp(&response, &untouched, sizeof response));
+        }
+    }
+}
+
+static void test_timeout_retry(void)
+{
+    CDCMD first = {0x6300, 0, 0, 1}, second = {0x0600, 0, 0, 0};
+    const CDCMD untouched = {0x1234, 0x5678, 0x9abc, 0xdef0};
+    CDCMD response = untouched;
+    HIRQ = 0x0281;
+    first_timeout = -3;
+    assert(cdc_cmd(0, &first, &response, "first") == -3);
+    assert(HIRQ == 0x0280 && calls == 1 && !ready_calls);
+    assert(cdc_cmd(0, &second, &response, "retry") == -2);
+    assert(CR1 == 0x6300 && !CR2 && !CR3 && CR4 == 1);
+    assert(HIRQ == 0x0280 && calls == 1 && !ready_calls);
+    assert(!memcmp(&response, &untouched, sizeof response));
+
+    /* A late response releases the register bank. The next reply is distinct. */
+    CR1 = 0x4100; CR2 = 0x3333; CR3 = 0x4444; CR4 = 0;
+    HIRQ |= HIRQ_CMOK;
+    calls = 0;
+    direct_end = 1;
+    first_timeout = 0;
+    reply_status = 0x0100;
+    reply_words = 0x12345;
+    assert(!cdc_cmd(0, &second, &response, "retry"));
+    assert(response.cr1 == 0x0101 && response.cr2 == 0x2345);
+    assert(!response.cr3 && !response.cr4 && HIRQ == 0x0281 && calls == 1 && !ready_calls);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -100,6 +147,10 @@ int main(int argc, char **argv)
         test_end_errors();
     } else if(!strcmp(argv[1], "end-success")) {
         test_end_success();
+    } else if(!strcmp(argv[1], "busy-command")) {
+        test_busy_admission();
+    } else if(!strcmp(argv[1], "timeout-retry")) {
+        test_timeout_retry();
     } else if(!strcmp(argv[1], "cleanup")) {
         for(unsigned failure=0; failure<2; ++failure) {
             first_timeout=0; ready_timeout=-3; cleanup_timeout=failure ? -3 : 0;

@@ -119,6 +119,12 @@ class MenuCDTransferTests(unittest.TestCase):
     def test_other_commands_skip_transfer_cleanup(self):
         self.scenario('ordinary', 'commands')
 
+    def test_busy_command_preserves_registers_events_and_response(self):
+        self.scenario('busy-command', 'commands')
+
+    def test_late_reply_allows_admission_after_timeout(self):
+        self.scenario('timeout-retry', 'commands')
+
 
 if __name__ == '__main__':
     unittest.main()
