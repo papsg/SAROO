@@ -75,6 +75,14 @@ class FatFsSeekTests(unittest.TestCase):
         for value in (512, 8, 9, 16, 31, 32, 63, 127, 255, 272, 287, 288, 319, 383, 511):
             with self.subTest(value=value): self.invoke('mount', value)
 
+    def test_mount_fat32_extent_arithmetic_and_valid_controls(self):
+        for value in range(6):
+            with self.subTest(value=value): self.invoke('mount-fat-extent', value)
+
+    def test_mount_exfat_extent_and_minimum_fat_length(self):
+        for value in range(5):
+            with self.subTest(value=value): self.invoke('mount-exfat-extent', value)
+
     def test_exfat_bitmap_rejects_missing_backing_before_allocation(self):
         for kind in ('short-chain', 'short-length', 'over-length', 'fragmented',
                      'fat-span', 'outside-heap', 'large-heap'):

@@ -120,3 +120,35 @@ App links 64,808 load bytes, with 728 bytes of ITCM space and 59,456
 static DTCM bytes. All 13 enabled BootLoader C units compile. Recovery
 requires the same mounted medium and power to stay on; the tests do
 not qualify power-loss recovery, card replacement, or physical SD I/O.
+
+## Validate FAT geometry before mount
+
+Adapted from paps-g `8da2769d` (AUD-MCU-009/029). In classic FAT the
+reserved sectors, all FAT copies and the fixed root directory are
+counted at full width before calculating the first data sector.
+The volume must leave space for data and its last LBA must fit the
+configured address type. For exFAT the FAT must start after both boot
+regions and cover every cluster entry, including the two reserved
+entries. The existing FAT-to-heap and bitmap backing checks remain.
+
+Microsoft's *FAT: General Overview of On-Disk Format*, v1.03,
+“FAT Data Structure” and “FAT Type Determination,” printed pp. 13–15,
+defines the per-copy FAT count and the full sum used to locate the data
+region. [Microsoft exFAT §3.1.6, FatOffset](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#316-fatoffset-field)
+and [§3.1.7, FatLength](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#317-fatlength-field)
+give the start and minimum length for the exFAT table.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+```
+
+The exact parent mounts five of the malformed geometries. The port
+rejects them without data-area I/O, still refuses an overlapping
+FAT and heap, and passes all five valid controls. Controls include the
+last representable classic FAT LBA, one and two FATs, and allocation
+with an exact-size exFAT table. All 32 filesystem and Unicode methods
+pass in both profiles. The GNU MCU App links 64,872 load bytes,
+with 664 bytes of ITCM space and unchanged static DTCM. These checks
+cover declared filesystem geometry; physical media capacity and I/O
+remain outside this test.

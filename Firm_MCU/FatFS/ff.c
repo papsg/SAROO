@@ -3664,7 +3664,9 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		   the bitmap. The heap product can exceed the LBA width. */
 		fat_offset = ld_dword(fs->win + BPB_FatOfsEx);
 		heap_offset = ld_dword(fs->win + BPB_DataOfsEx);
-		if (heap_offset >= volume_sectors ||
+		if (fat_offset < 24 ||
+			fs->fsize < (nclst + 1) / (SS(fs) / 4) + 1 ||
+			heap_offset >= volume_sectors ||
 			(QWORD)nclst * fs->csize > volume_sectors - heap_offset ||
 			fat_offset >= heap_offset || fs->fsize > heap_offset - fat_offset) {
 			return FR_NO_FILESYSTEM;
@@ -3720,7 +3722,6 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 		fs->n_fats = fs->win[BPB_NumFATs];				/* Number of FATs */
 		if (fs->n_fats != 1 && fs->n_fats != 2) return FR_NO_FILESYSTEM;	/* (Must be 1 or 2) */
-		fasize *= fs->n_fats;							/* Number of sectors for FAT area */
 
 		fs->csize = fs->win[BPB_SecPerClus];			/* Cluster size */
 		if (fs->csize == 0 || (fs->csize & (fs->csize - 1))) return FR_NO_FILESYSTEM;	/* (Must be power of 2) */
@@ -3735,8 +3736,12 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		if (nrsv == 0) return FR_NO_FILESYSTEM;			/* (Must not be 0) */
 
 		/* Determine the FAT sub type */
-		sysect = nrsv + fasize + fs->n_rootdir / (SS(fs) / SZDIRE);	/* RSV + FAT + DIR */
-		if (tsect < sysect) return FR_NO_FILESYSTEM;	/* (Invalid volume size) */
+		QWORD metadata = (QWORD)nrsv + (QWORD)fasize * fs->n_fats
+			+ fs->n_rootdir / (SS(fs) / SZDIRE);
+		/* Leave room for data and keep the last sector representable. */
+		if (metadata >= tsect || (LBA_t)(tsect - 1) > (LBA_t)-1 - bsect) return FR_NO_FILESYSTEM;
+		sysect = (DWORD)metadata;
+		fasize *= fs->n_fats;	/* Complete FAT area now fits. */
 		nclst = (tsect - sysect) / fs->csize;			/* Number of clusters */
 		if (nclst == 0) return FR_NO_FILESYSTEM;		/* (Invalid volume size) */
 		fmt = 0;

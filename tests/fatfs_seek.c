@@ -9,6 +9,7 @@
 #include <pthread.h>
 static FILE *disk;
 static LBA_t sectors;
+static LBA_t boot_alias;
 static unsigned reads,writes,syncs,failures;
 static LBA_t fault_sector;
 static UINT fault_prefix;
@@ -30,7 +31,9 @@ DSTATUS disk_initialize(BYTE drive) { return drive?STA_NOINIT:0; }
 DSTATUS disk_status(BYTE drive) { return drive?STA_NOINIT:0; }
 DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 {
-    assert(!drive && count && sector+count<=sectors);reads++;
+    /* One synthetic partition boot sector near the LBA limit. */
+    if (boot_alias && sector == boot_alias) { assert(count == 1); sector = 1; }
+    assert(!drive && count && sector<sectors && count<=sectors-sector);reads++;
     if (reads == fail_read) {
         failures++;
         return RES_ERROR;
@@ -470,6 +473,17 @@ static void set_exfat_link(LBA_t fat, DWORD cluster, DWORD next)
     assert(disk_write(0, table, sector, 1) == RES_OK);
 }
 
+static void write_exfat_boot(BYTE *boot, LBA_t base)
+{
+    uint32_t checksum = 0;
+    for (unsigned i = 0; i < 11 * 512; ++i)
+        if (i != 106 && i != 107 && i != 112)
+            checksum = ((checksum >> 1) | (checksum << 31)) + boot[i];
+    for (unsigned i = 11 * 512; i < 12 * 512; i += 4)
+        store_little(boot + i, checksum, 4);
+    assert(disk_write(0, boot, base, 12) == RES_OK);
+}
+
 static void set_bitmap_boot_geometry(int fat_span, int large_heap)
 {
     for (LBA_t base = 0; base <= 12; base += 12) {
@@ -480,13 +494,7 @@ static void set_bitmap_boot_geometry(int fat_span, int large_heap)
             store_little(boot + 84, 0, 4);
         if (large_heap)
             boot[109] = 6;
-        uint32_t checksum = 0;
-        for (unsigned i = 0; i < 11 * 512; ++i)
-            if (i != 106 && i != 107 && i != 112)
-                checksum = ((checksum >> 1) | (checksum << 31)) + boot[i];
-        for (unsigned i = 11 * 512; i < sizeof boot; i += 4)
-            store_little(boot + i, checksum, 4);
-        assert(disk_write(0, boot, base, 12) == RES_OK);
+        write_exfat_boot(boot, base);
     }
 }
 
@@ -592,6 +600,91 @@ static void bitmap_case(const char *kind, unsigned value)
             assert(reads == 1);
     }
     assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
+/* Adapted from paps-g 8da2769d. Check admission before any data-area I/O. */
+static void fat_mount_extent(unsigned which)
+{
+    enum { FAT_COUNT_WRAP, RESERVED_WRAP, END_WRAP, END_EXACT, ONE_FAT, TWO_FATS };
+    assert(which <= TWO_FATS);
+    const DWORD volume = 131072;
+    BYTE boot[512] = {0}, mbr[512] = {0};
+    unsigned fats = which == FAT_COUNT_WRAP || which == TWO_FATS ? 2 : 1;
+    DWORD length = which == FAT_COUNT_WRAP ? 0x80000400 :
+                   which == RESERVED_WRAP ? 0xfffffff0 : 1024;
+    boot[0] = 0xeb; boot[2] = 0x90;
+    store_little(boot + 11, 512, 2);
+    boot[13] = 1;
+    store_little(boot + 14, 32, 2);
+    boot[16] = fats;
+    boot[21] = 0xf8;
+    store_little(boot + 32, volume, 4);
+    store_little(boot + 36, length, 4);
+    store_little(boot + 44, 2, 4);
+    memcpy(boot + 82, "FAT32   ", 8);
+    store_little(boot + 510, 0xaa55, 2);
+    if (which == END_WRAP || which == END_EXACT) {
+        boot_alias = UINT32_MAX - volume + 1 + (which == END_WRAP);
+        mbr[450] = 0x0c;
+        store_little(mbr + 454, boot_alias, 4);
+        store_little(mbr + 458, volume, 4);
+        store_little(mbr + 510, 0xaa55, 2);
+        assert(disk_write(0, mbr, 0, 1) == RES_OK);
+    }
+    assert(disk_write(0, boot, !!boot_alias, 1) == RES_OK);
+    reads = writes = 0;
+    FATFS fs;
+    FRESULT result = f_mount(&fs, "0:", 1);
+    printf("FAT32 case %u: result %u, reads %u\n", which, result, reads);
+    assert(!writes && reads == 1u + !!boot_alias);
+    if (which < END_EXACT) assert(result == FR_NO_FILESYSTEM && !fs.fs_type);
+    else {
+        assert(result == FR_OK && fs.fs_type == FS_FAT32 && fs.volbase == boot_alias);
+        assert(fs.fatbase == boot_alias + 32 && fs.database == fs.fatbase + length*fats);
+        assert(fs.n_fatent == volume - 32 - length*fats + 2);
+    }
+    assert(!f_mount(NULL, "0:", 0));
+}
+
+static void exfat_mount_extent(unsigned which)
+{
+    enum { SHORT_FAT, EARLY_FAT, FAT_HEAP_OVERLAP, EXACT_FAT, FORMATTED_FAT };
+    assert(which <= FORMATTED_FAT);
+    format_volume(FM_EXFAT, 1, 512);
+    FATFS fs;
+    assert(!f_mount(&fs, "0:", 1) && fs.fs_type == FS_EXFAT && !fs.volbase);
+    assert(!f_mount(NULL, "0:", 0));
+    DWORD minimum = (fs.n_fatent + 127) / 128;
+    assert(minimum > 1 && fs.fsize >= minimum && fs.fatbase >= 24);
+    for (LBA_t base = 0; base <= 12; base += 12) {
+        BYTE boot[12 * 512];
+        assert(disk_read(0, boot, base, 11) == RES_OK);
+        if (which == EARLY_FAT) store_little(boot + 80, 23, 4);
+        if (which == SHORT_FAT || which == EXACT_FAT)
+            store_little(boot + 84, minimum - (which == SHORT_FAT), 4);
+        if (which == FAT_HEAP_OVERLAP)
+            store_little(boot + 84, fs.database - fs.fatbase + 1, 4);
+        write_exfat_boot(boot, base);
+    }
+    if (which == EARLY_FAT) {
+        /* The invalid layout claims a backup boot sector as its FAT. */
+        BYTE first[512];
+        assert(disk_read(0, first, fs.fatbase, 1) == RES_OK);
+        assert(disk_write(0, first, 23, 1) == RES_OK);
+    }
+    reads = writes = 0;
+    FRESULT result = f_mount(&fs, "0:", 1);
+    printf("exFAT case %u: result %u, reads %u\n", which, result, reads);
+    if (which < EXACT_FAT) assert(result == FR_NO_FILESYSTEM && !fs.fs_type && reads == 1 && !writes);
+    else {
+        BYTE expected[] = {0x42, 0x7e};
+        assert(result == FR_OK && fs.fs_type == FS_EXFAT);
+        if (which == EXACT_FAT) assert(fs.fsize == minimum);
+        create_file("/DATA.BIN", expected, sizeof expected);
+        assert(!f_mount(NULL, "0:", 0) && !f_mount(&fs, "0:", 1));
+        verify_file("/DATA.BIN", expected, sizeof expected);
+    }
+    assert(!f_mount(NULL, "0:", 0));
 }
 
 /* Adapted from paps-g b483124c. Change only the on-disk size of an
@@ -726,6 +819,10 @@ int main(int argc,char **argv)
         BYTE type = !strcmp(name, "fat12") ? FS_FAT12 : !strcmp(name, "fat16") ? FS_FAT16 :
                     !strcmp(name, "fat32") ? FS_FAT32 : FS_EXFAT;
         readonly_seek_case(type, (unsigned)value);
+    } else if (!strcmp(argv[2], "mount-fat-extent")) {
+        fat_mount_extent((unsigned)value);
+    } else if (!strcmp(argv[2], "mount-exfat-extent")) {
+        exfat_mount_extent((unsigned)value);
     } else if (!strncmp(argv[2], "bitmap-", 7)) {
         bitmap_case(argv[2] + 7, (unsigned)value);
     } else if (!strncmp(argv[2], "metadata-", 9)) {
