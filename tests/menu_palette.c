@@ -31,6 +31,74 @@ static volatile u16 VDP1_REG_EWDR, VDP1_REG_EWLR, VDP1_REG_EWRR;
 #define VDP2_REGISTER_BASE ((uintptr_t)registers)
 #define VDP1_RAM ((uintptr_t)vdp1_ram)
 
+static unsigned scanline, samples, enable_writes, irq_locks, status_register;
+static unsigned fbtest_calls;
+static u16 latched, mode_during_fbtest;
+enum raster_fault { RASTER_NORMAL, RASTER_STALLED, RASTER_SKIP, RASTER_SHIFT };
+static enum raster_fault raster_fault;
+static int llen, pos_x, pos_y, text_color;
+static void (*printk_putc)(int);
+
+static void conio_putc(int ch) { (void)ch; }
+
+void fbtest(void)
+{
+    mode_during_fbtest = TVMD;
+    ++fbtest_calls;
+}
+
+#ifdef TEST_DISPLAY_COUNTER
+static unsigned read_display(unsigned address)
+{
+    switch (address) {
+    case 0x25f80000: return TVMD;
+    case 0x25f80002:
+        if (!(EXTEN & 0x0200))
+            latched = scanline >= 245 ? scanline + 249 : scanline;
+        return EXTEN;
+    case 0x25f8000a:
+        assert(++samples <= 2 * 65536);
+        if (raster_fault != RASTER_STALLED)
+            scanline = (scanline + (raster_fault == RASTER_SKIP && scanline == 241 ? 2 : 1)) % 263;
+        return latched;
+    default:
+        assert(0);
+        return 0;
+    }
+}
+
+static void enable_display(unsigned address, unsigned value)
+{
+    assert(address == 0x25f80000 && TVMD == 0x0010 && value == 0x8010);
+    assert(scanline >= 240 && scanline < 262 && (status_register & 0xf0) == 0xf0);
+    assert(latched == 242 || latched == 243);
+    TVMD = value;
+    ++enable_writes;
+}
+
+static unsigned lock_display(void)
+{
+    unsigned saved = status_register;
+    assert(saved == 0x371);
+    status_register |= 0xf0;
+    ++irq_locks;
+    if (raster_fault == RASTER_SHIFT) scanline = 0;
+    return saved;
+}
+
+static void unlock_display(unsigned saved)
+{
+    assert(status_register == (saved | 0xf0));
+    status_register = saved;
+}
+
+#define SAROO_VDP2_READ16(address) read_display(address)
+#define SAROO_VDP2_WRITE16(address,value) enable_display(address,value)
+#define SAROO_VDP2_IRQ_LOCK() lock_display()
+#define SAROO_VDP2_IRQ_UNLOCK(saved) unlock_display(saved)
+#include "vdp2_display.h"
+#endif
+
 #include "slogo.h"
 #include "palette.inc"
 
@@ -47,6 +115,12 @@ static void seed(int logo)
 {
     memset(vram.data, 0xa5, sizeof(vram.data));
     memset(registers, 0xa5, sizeof(registers));
+    TVSTAT = VBLANK; /* The flag is forced high while display is off. */
+    EXTEN = 0x0300;  /* Previous latch configuration. */
+    scanline = samples = enable_writes = irq_locks = fbtest_calls = 0;
+    status_register = 0x371;
+    latched = mode_during_fbtest = 0;
+    raster_fault = RASTER_NORMAL;
     for (unsigned i = 0; i < 1024; ++i) cram.data[i] = initial_color(i);
     vram.before = cram.before = 0x12345678;
     vram.after = cram.after = 0x87654321;
@@ -74,7 +148,7 @@ static void startup(int logo)
     /* Reseed every entry on each call: stale high text colors must be cleared. */
     for (int repeat = 0; repeat < 2; ++repeat) {
         seed(logo);
-        vdp_init();
+        conio_init();
         text_bank();
         for (unsigned i = 256; i < 1024; ++i)
             assert(cram.data[i] == initial_color(i));
@@ -164,6 +238,75 @@ static void cover_bank(void)
     guards();
 }
 
+static void ntsc_display(void)
+{
+    for (unsigned line = 0; line < 263; ++line) {
+        seed(0);
+        scanline = line;
+        conio_init();
+        assert(fbtest_calls == 1 && mode_during_fbtest == 0x0010);
+        assert(TVMD == 0x8010 && EXTEN == 0 && enable_writes == 1);
+        assert(samples > 0 && irq_locks == 1 && status_register == 0x371);
+    }
+}
+
+static void pal_display(void)
+{
+    seed(0);
+    TVSTAT = PAL | VBLANK;
+    conio_init();
+    assert(fbtest_calls == 1 && mode_during_fbtest == 0x8010);
+    assert(TVMD == 0x8010 && EXTEN == 0x0300);
+    assert(!samples && !enable_writes && !irq_locks && status_register == 0x371);
+}
+
+static void retry_display(void)
+{
+    seed(0);
+    scanline = 242;
+    raster_fault = RASTER_STALLED;
+    conio_init();
+    assert(TVMD == 0x0010 && !enable_writes && !irq_locks);
+#ifdef TEST_DISPLAY_COUNTER
+    assert(samples == 65536);
+    samples = 0;
+    raster_fault = RASTER_NORMAL;
+    vdp_display_service();
+    assert(TVMD == 0x8010 && enable_writes == 1 && irq_locks == 1);
+    unsigned previous_samples = samples;
+    vdp_display_service();
+    assert(samples == previous_samples && enable_writes == 1 && irq_locks == 1);
+    assert(status_register == 0x371);
+#endif
+}
+
+static void refuse_display(void)
+{
+    seed(0);
+    vdp_init();
+    assert(TVMD == 0x0010 && EXTEN == 0);
+#ifdef TEST_DISPLAY_COUNTER
+    for (unsigned owner = 0x0100; owner <= 0x0200; owner += 0x0100) {
+        EXTEN = owner;
+        vdp_display_service();
+        assert(TVMD == 0x0010 && EXTEN == owner && !samples);
+    }
+    EXTEN = 0;
+    TVMD = 0x0040;
+    vdp_display_service();
+    assert(TVMD == 0x0040 && !samples && !enable_writes && !irq_locks);
+    TVMD = 0x0010;
+    raster_fault = RASTER_SKIP;
+    vdp_display_service();
+    assert(TVMD == 0x0010 && !enable_writes && !irq_locks);
+    assert(samples == 65536);
+    raster_fault = RASTER_SHIFT;
+    samples = 0;
+    vdp_display_service();
+    assert(TVMD == 0x0010 && !enable_writes && irq_locks && status_register == 0x371);
+#endif
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -173,6 +316,10 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "vram-cycles")) vram_cycles();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();
+    else if (!strcmp(argv[1], "ntsc")) ntsc_display();
+    else if (!strcmp(argv[1], "pal")) pal_display();
+    else if (!strcmp(argv[1], "retry")) retry_display();
+    else if (!strcmp(argv[1], "refuse")) refuse_display();
     else return 2;
     printf("%s: pass\n", argv[1]);
     return 0;

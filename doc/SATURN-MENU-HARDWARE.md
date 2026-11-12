@@ -109,3 +109,39 @@ The complete menu uses 84,324 code/data bytes, up 16, with the same
 488,770-byte image and 9,488-byte static BSS. Linked disassembly contains
 the A-bank values and all eight word writes. Physical arbitration and
 visible redraw behavior remain unqualified.
+
+## Enable the NTSC menu display during measured blanking
+
+SSR-002, adapted from paps-g `370d5cbd` and the qualified counter helper
+from `4d51eeae`. This supersedes the flag-only admission from `8cf9992e`.
+The parent enables immediately after initializing video memory. Sega requires
+the display-off to display-on transition during vertical blanking.
+`TVSTAT.VBLANK` reads as set throughout display-off, so the flag alone cannot
+identify that window.
+
+See [Sega VDP2 User's Manual ST-058-R2-060194, §2.4, printed p. 16](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=34),
+[§2.5, printed p. 19](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=37),
+and [Technical Bulletin 37, items 3 and 6, PDF pp. 116–117](https://antime.kapsi.fi/sega/files/Sattechs.pdf#page=116).
+
+On NTSC the menu prepares the 240-line off mode and selects the local latch.
+The retained helper observes a new field and adjacent counter progression.
+It masks interrupts, checks the current mode, latch ownership and fresh line,
+then enables at counter line 242 or 243 and restores the full status register.
+The attempt has a finite sample budget. The menu idle service can retry when
+the counter resumes. Placing the retry there confines it to the menu and
+binary browser. PAL retains the public baseline startup and latch ownership
+while PAL phase qualification remains open.
+
+Both [palette test profiles](#initialize-the-vdp1-erase-rectangle) pass all
+ten methods. The parent fails three NTSC cases and passes seven controls,
+including PAL legacy startup. The NTSC model covers every one of 263 starting
+lines, skipped and stationary counters, foreign ownership and a phase change
+before the locked write. Eleven peripheral and nine cover controls pass.
+The linked menu uses 84,628 code/data bytes, up 304, with 20,568 bytes of
+body margin. The target disassembly verifies the mask, fresh counter read,
+word write and status-register restore in the two menu call paths.
+
+Historical NTSC RAM captures yielded 660 samples and observed the 240-line
+enable at line 242. They support the retained counter algorithm. The public
+integration has host and linked-image validation. Physical validation of
+this public build and PAL qualification remain open.

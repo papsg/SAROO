@@ -10,6 +10,7 @@
 
 #include "main.h"
 #include "vdp2.h"
+#include "vdp2_display.h"
 
 /******************************************************************************/
 
@@ -82,6 +83,12 @@ void logo_trans(void)
 #endif
 }
 
+static void vdp_display_service(void)
+{
+	if (TVMD == 0x0010 && !(TVSTAT & PAL))
+		(void)saroo_vdp2_display_enable(0x0010);
+}
+
 void vdp_init(void)
 {
 	unsigned int i;
@@ -98,7 +105,9 @@ void vdp_init(void)
  	VDP1_REG_EWLR = (0 << 9) | 0;
 	VDP1_REG_EWRR = 0x0200; /* Eight pixels in one line in 16-bit mode. */
 
-	TVMD = 0x0000;
+	unsigned pal = TVSTAT & PAL;
+	TVMD = pal ? 0x0000 : 0x0010;
+	if (!pal) EXTEN = 0; /* Menu-owned local counter latch. */
 
 	RAMCTL = 0x2300;
 	/* Two bitmap fetches, then idle before linked CPU access to VRAM-A. */
@@ -142,7 +151,7 @@ void vdp_init(void)
 	// Enable NBG0
 	BGON = 0x0001;
 
-	TVMD = 0x8010;
+	if (pal) TVMD = 0x8010; /* Preserve the existing PAL startup. */
 }
 
 
@@ -160,6 +169,7 @@ void conio_init(void)
 
 	void fbtest();
 	fbtest();
+	vdp_display_service();
 }
 
 
@@ -655,6 +665,7 @@ static u32 stimer_end;
 
 void menu_timer(MENU_DESC *menu)
 {
+	vdp_display_service();
 
 	if(sel_state==0){
 		if(sel_oob==0)

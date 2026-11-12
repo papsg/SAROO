@@ -54,6 +54,7 @@ $(EXE)	: $(OBJ)
 	$(call ECHO_CMD, "RM     ", tmp.bin,  rm -f tmp.bin)
 
 $(OBJ): main.h smpc.h vdp2.h font_latin.h
+obj/conio.o: vdp2_display.h
 
 # This custom formatter has different capacity/return semantics from libc.
 obj/printk.o: FLAGS += -fno-builtin
