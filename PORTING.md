@@ -2386,3 +2386,9 @@ The public working tree is clean. The private checkout matches its starting HEAD
 - `18ed08a6` with the `b483124c` growth prerequisite (paps-g, AUD-MCU-023/024/025/026) → [c2a1561](https://github.com/papsg/SAROO/commit/c2a156123790c69da8bf3a5e03f61dd2546abbea) on `main`. Clears free directory clusters before allocation and retains one bounded recovery record for exFAT growth and name changes.
 - The exact parent fails 78 of 214 directory cases. The port passes all 284 cases in both profiles, including long names, split parent headers, partial writes, retryable allocation and name retirement, and valid classic FAT controls. Both filesystem suites pass 30 methods.
 - The GNU MCU App links 64,808 load bytes with 728 bytes of ITCM space and 59,456 static DTCM bytes. All 13 enabled BootLoader C units compile. Physical media, power-loss recovery and a full BootLoader link remain unqualified. [Attribution, exFAT references and reproduction](https://github.com/papsg/SAROO/blob/c2a156123790c69da8bf3a5e03f61dd2546abbea/doc/STARTUP-CD-STORAGE-AUDIT.md#recover-directory-updates-after-storage-errors).
+
+### FAT mount geometry
+
+- `8da2769d` (paps-g, AUD-MCU-009/029) → [3fb78c7](https://github.com/papsg/SAROO/commit/3fb78c79c98f7473cac993cb7ea2fc6e5c0da7fe) on `main`. Validate classic FAT arithmetic and the complete exFAT table before following the mounted layout.
+- The exact parent mounts five invalid geometries. The port passes all 11 geometry cases and both 32-method filesystem runs, including valid endpoint, one/two FAT and exFAT allocation controls.
+- The GNU MCU App links 64,872 load bytes with 664 bytes of ITCM space and unchanged static DTCM. The checks cover declared geometry with a host block device. [Attribution, Microsoft FAT and exFAT references, and reproduction](https://github.com/papsg/SAROO/blob/3fb78c79c98f7473cac993cb7ea2fc6e5c0da7fe/doc/STARTUP-CD-STORAGE-AUDIT.md#validate-fat-geometry-before-mount).
