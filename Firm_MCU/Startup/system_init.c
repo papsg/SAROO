@@ -11,6 +11,11 @@ uint32_t SystemCoreClock = 400000000;
 
 void SystemInit (void)
 {
+	/* ES0392 §2.2.10 limits AXI SRAM read issuing on revisions Y and W. */
+	if ((DBGMCU->IDCODE >> 16) == 0x1003U) {
+		*((__IO uint32_t *)0x51008108U) |= 1U;
+	}
+
 #ifdef BOOT
 	/* enable CP10/CP11 (FPU) */
 	SCB->CPACR = 0x00f00000;

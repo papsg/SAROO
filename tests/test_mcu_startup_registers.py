@@ -3,6 +3,9 @@
 import os
 from pathlib import Path
 import re
+import shlex
+import subprocess
+import tempfile
 import unittest
 
 
@@ -41,3 +44,49 @@ class FMCConfigurationTests(unittest.TestCase):
         self.assertEqual((value>>8) & 255, 6)        # data setup
         self.assertEqual((value>>4) & 15, 1)         # address hold
         self.assertEqual(value & 15, 2)             # address setup
+
+
+# Adapted from paps-g cb70560a. Exercise both public SystemInit variants.
+class AXIStartupTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        path = Path(os.environ.get('SAROO_SYSTEM_INIT_SOURCE', ROOT / 'Firm_MCU/Startup/system_init.c'))
+        body = path.read_bytes()
+        start = body.index(b'void SystemInit (void)')
+        end = body.index(b'\n}', start) + 2
+        body = body[start:end]
+        body = body.replace(b'((__IO uint32_t *)0x51008108U)', b'axi_target()')
+        body = body.replace(b'(uint32_t)&__Vectors', b'(uint32_t)(uintptr_t)&__Vectors')
+        temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temporary.cleanup)
+        target = Path(temporary.name)
+        (target / 'system-init.inc').write_bytes(body)
+        flags = ['-O2'] if os.environ.get('SAROO_STARTUP_PROFILE') == 'release' else [
+            '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+        cls.binaries = {}
+        for kind, defines in (('app', []), ('boot', ['-DBOOT'])):
+            out = target / kind
+            build = subprocess.run([*shlex.split(os.environ.get('CXX', 'c++')), '-std=c++17',
+                                    '-Wall', '-Wextra', '-Werror', *flags, *defines,
+                                    '-I', target, ROOT / 'tests/mcu_startup.cpp', '-o', out],
+                                   capture_output=True, text=True, timeout=30)
+            if build.returncode:
+                raise RuntimeError(build.stderr)
+            cls.binaries[kind] = out
+
+    def check_revision(self, revision, expected):
+        for kind, binary in self.binaries.items():
+            for device in (0x450, 0x7450):
+                for register in (0, 2, 3, 0xa5000002):
+                    with self.subTest(build=kind, revision=revision, device=device, register=register):
+                        result = subprocess.run([binary, str((revision << 16) | device),
+                                                 str(register), str(expected)],
+                                                capture_output=True, text=True, timeout=5)
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_affected_yw_revision_updates_axi_before_startup(self):
+        self.check_revision(0x1003, 1)
+
+    def test_other_revisions_leave_axi_register_untouched(self):
+        for revision in (0x1001, 0x2001, 0x2003, 0xffff):
+            self.check_revision(revision, 0)

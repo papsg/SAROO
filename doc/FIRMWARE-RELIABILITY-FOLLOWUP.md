@@ -271,3 +271,35 @@ timing controls. All three checks pass with the correction. The
 bit 7. The GNU App load matches byte for byte because it inherits
 the boot configuration. The source and image checks establish the
 register contract. No physical failure is attributed to this bit.
+
+## Limit AXI SRAM read issuing on STM32 revisions Y and W
+
+Adapted from paps-g `cb70560a` (STM32-AXI-001). On Y/W silicon,
+concurrent reads with delayed acceptance can return incorrect AXI
+SRAM data. ST prescribes setting target 7's read issuing override
+to allow one outstanding read. Revisions X and V do not have this
+erratum. [ST ES0392 Rev. 15 Table 2 and §2.2.10, pp. 13–14](https://www.st.com/resource/en/errata_sheet/es0392-stm32h742xig-stm32h743xig-stm32h750xb-stm32h753xi-device-errata-stmicroelectronics.pdf) ·
+[STM32 RM0433 Rev. 8 p. 118, AXI_TARGx_FN_MOD](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=118).
+
+Both public targets use `Startup/system_init.c`. At entry to
+`SystemInit`, check `DBGMCU_IDCODE.REV_ID` for `0x1003` and set
+`READ_ISS_OVERRIDE` at `0x51008108` while preserving the other
+register bits. Both reset handlers call this function before
+the rest of firmware startup.
+
+```sh
+make -C tests check-mcu-startup
+SAROO_STARTUP_PROFILE=release make -C tests check-mcu-startup
+# Set SAROO_SYSTEM_INIT_SOURCE to the parent's Startup/system_init.c
+# and select -k AXIStartupTests to reproduce the original omission.
+```
+
+The parent fails all 16 affected revision cases and passes all
+64 other revision cases. The port passes all 80 in both profiles.
+The fixture runs the actual App and BootLoader startup bodies with
+modeled registers and verifies that the update precedes clock and
+vector setup. Both linked images contain the revision comparison and
+conditional read, OR and write. Each adds 36 load bytes. The GNU App
+uses 65,208 bytes with 328 free and unchanged static DTCM. The GNU
+BootLoader uses 29,000 bytes. This verifies the code and ST contract.
+No physical Y/W silicon result is attributed to this public build.
