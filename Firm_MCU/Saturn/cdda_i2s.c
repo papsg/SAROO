@@ -25,8 +25,10 @@
 _Static_assert((ABUF_NUM & (ABUF_NUM-1)) == 0, "Audio ring must be a power of two");
 _Static_assert(ABUF_SILENCE+ABUF_BYTES <= 0x30020000u, "Audio must stay in SRAM1");
 
-enum { AUDIO_IDLE, AUDIO_PLAYING, AUDIO_STOPPING, AUDIO_RECOVER, AUDIO_STARTING, AUDIO_INIT, AUDIO_SUSPENDING };
+enum { AUDIO_IDLE, AUDIO_PLAYING, AUDIO_STOPPING, AUDIO_RECOVER, AUDIO_STARTING,
+       AUDIO_INIT, AUDIO_SUSPENDING, AUDIO_CANCELING, AUDIO_CANCELING_INIT };
 static volatile u32 awp, arp;
+static volatile unsigned audio_copying;
 static volatile int aplay;
 /* Only real TIM7 update events consume suspend grace intervals. */
 static volatile unsigned audio_suspend_wait;
@@ -118,7 +120,14 @@ static void audio_dma_arm(u32 left, u32 active)
 static void audio_start(unsigned minimum)
 {
     if (aplay != AUDIO_IDLE || awp-arp < minimum) return;
-    if (DMA1_Stream1->CR & 1u) { aplay=AUDIO_STOPPING; audio_retry(100); return; }
+    if (DMA1_Stream1->CR & 1u) {
+        aplay = AUDIO_STOPPING;
+        if (SPI2->CR1 & AUDIO_I2S_CSTART) {
+            aplay = AUDIO_SUSPENDING;
+            audio_suspend();
+        } else audio_retry(100);
+        return;
+    }
     SPI2->IFCR = AUDIO_I2S_CLEAR;
     aplay = AUDIO_STARTING;
     audio_dma_arm(0, 0);
@@ -128,13 +137,35 @@ static void audio_start(unsigned minimum)
     audio_service();
 }
 
+/* Old FIFO words may finish. Retire the SRAM queue only after DMA and
+ * any in-progress producer copy have released it. The DMA residue supplies
+ * the stereo parity for the first quiet transfer. */
+static __attribute__((noinline)) void audio_retire_to_silence(void)
+{
+    if (audio_copying) return; /* The publishing caller will finish retirement. */
+    DMA1_Stream1->CR &= ~1u;
+    if (DMA1_Stream1->CR & 1u) { audio_retry(100); return; }
+    u32 left = DMA1_Stream1->NDTR;
+    awp = arp = 0;
+    aplay = SPI2->CR1 & AUDIO_I2S_CSTART ? AUDIO_PLAYING : AUDIO_STARTING;
+    audio_dma_arm(left, ABUF_SILENCE);
+    audio_service();
+    if (spi2_dma_notify) spi2_dma_notify();
+}
+
 static void audio_service(void)
 {
-    if (aplay == AUDIO_INIT) {
+    if (aplay == AUDIO_CANCELING) {
+        audio_retire_to_silence();
+    } else if (aplay == AUDIO_INIT || aplay == AUDIO_CANCELING_INIT) {
+        int cancel = aplay == AUDIO_CANCELING_INIT;
+        if (cancel && audio_copying) return;
         DMA1_Stream1->CR &= ~1u;
         if (DMA1_Stream1->CR & 1u) { audio_retry(100); return; }
+        if (cancel) awp = arp = 0;
         audio_configure();
-        audio_start(2);
+        audio_start(0); /* Start with valid silence before the first CDDA request. */
+        if (cancel && spi2_dma_notify) spi2_dma_notify();
     } else if (aplay == AUDIO_RECOVER) {
         u32 cr = DMA1_Stream1->CR;
         if ((cr & 1u) || (DMA1->LISR & (AUDIO_DMA_TC | AUDIO_DMA_ERROR))) {
@@ -154,7 +185,7 @@ static void audio_service(void)
             ((SPI2->CR1 & AUDIO_I2S_CSTART) || !(SPI2->SR & AUDIO_I2S_SUSP))) {
             return;
         }
-        if (audio_stop()) audio_start(1);
+        if (audio_stop()) audio_start(0);
     } else if (aplay == AUDIO_STARTING) {
         if (!(SPI2->SR & SPI_SR_TXP)) {
             aplay = AUDIO_PLAYING;
@@ -164,24 +195,6 @@ static void audio_service(void)
     } else if (aplay == AUDIO_PLAYING) {
         if (!(SPI2->SR & SPI_SR_UDR)) {
             SPI2->IER = SPI_IER_UDRIE;
-            u32 cr = DMA1_Stream1->CR;
-            if (!(cr & AUDIO_DMA_DBM)) return; /* Residual TC owns its rearm. */
-            u32 ct = cr & AUDIO_DMA_CT;
-            u32 left = DMA1_Stream1->NDTR;
-            if (DMA1->LISR & (AUDIO_DMA_TC | AUDIO_DMA_ERROR)) {
-                audio_retry(4);
-                return;
-            }
-            u32 active = ct ? DMA1_Stream1->M1AR : DMA1_Stream1->M0AR;
-            if (active == ABUF_SILENCE && awp != arp) {
-                /* Sixteen quiet samples establish that the preceding FIFO tail
-                 * is gone. Leave sixteen more for the frame-aligned suspend;
-                 * once suspended, even a delayed retry cannot consume the bank. */
-                if (left < ABUF_WORDS-16 && left > AUDIO_PUBLISH_GUARD) {
-                    aplay = AUDIO_SUSPENDING;
-                    audio_suspend();
-                } else if (left >= ABUF_WORDS-16) audio_retry(40);
-            }
         } else {
             /* TXP=0 with the one-sample threshold proves the FIFO is full.
              * Do not re-enable UDRIE until its asynchronous clear is visible. */
@@ -250,10 +263,6 @@ void DMA1_Stream1_IRQHandler(void)
         if (aplay == AUDIO_RECOVER || !(cr & AUDIO_DMA_DBM)) {
             aplay = AUDIO_RECOVER;
             audio_service();
-        } else if (*done == ABUF_SILENCE && active == ABUF_SILENCE && awp == arp) {
-            /* A whole quiet bank proves the final valid FIFO tail has left. */
-            aplay = AUDIO_SUSPENDING;
-            audio_suspend();
         } else {
             u32 next = arp + (active != ABUF_SILENCE);
             *done = next != awp ? (u32)audio_slot(next) : ABUF_SILENCE;
@@ -266,6 +275,16 @@ static void audio_publish_next(void)
 {
     if (aplay != AUDIO_PLAYING && aplay != AUDIO_STARTING) return;
     u32 cr = DMA1_Stream1->CR;
+    /* A stopped, exhausted quiet stream can be rearmed on demand. Pending
+     * completion/error and any payload bank still belong to the DMA IRQ. */
+    if (!(cr & 1u) && !DMA1_Stream1->NDTR &&
+        DMA1_Stream1->M0AR == ABUF_SILENCE && DMA1_Stream1->M1AR == ABUF_SILENCE &&
+        !(DMA1->LISR & (AUDIO_DMA_TC | AUDIO_DMA_ERROR))) {
+        SPI2->IER = 0;
+        aplay = AUDIO_RECOVER;
+        audio_service();
+        return;
+    }
     if (!(cr & AUDIO_DMA_DBM)) return; /* Normal-mode addresses are protected. */
     u32 ct = cr & AUDIO_DMA_CT;
     u32 left = DMA1_Stream1->NDTR;
@@ -292,15 +311,57 @@ void spi2_flush(void)
     restore_irq(key);
 }
 
+static inline int audio_cancel_pending(void)
+{
+    int state = aplay;
+    return state == AUDIO_CANCELING || state == AUDIO_CANCELING_INIT;
+}
+
+void spi2_cancel(void)
+{
+    int key = disable_irq();
+    if (!audio_cancel_pending()) {
+        if (aplay == AUDIO_INIT) {
+            /* A startup stop can still be pending. Configure I2S before
+             * starting the quiet link, even when its queued data is retired. */
+            aplay = AUDIO_CANCELING_INIT;
+            audio_service();
+        } else if (!audio_copying && awp == arp &&
+                   DMA1_Stream1->M0AR == ABUF_SILENCE && DMA1_Stream1->M1AR == ABUF_SILENCE) {
+            awp = arp = 0;
+        } else {
+            SPI2->IER = 0;
+            audio_suspend_wait = 0;
+            aplay = AUDIO_CANCELING;
+            audio_service();
+        }
+    }
+    restore_irq(key);
+}
+
 int fill_audio_buffer(u8 *data)
 {
-    if (awp-arp == ABUF_NUM) return -1;
-    memcpy32(audio_slot(awp), data, ABUF_BYTES);
-    __DMB(); /* Publish only after every SRAM payload store is visible to DMA. */
     int key = disable_irq();
+    if (audio_copying || audio_cancel_pending() || awp-arp == ABUF_NUM) {
+        restore_irq(key);
+        return -1;
+    }
+    audio_copying = 1;
+    u8 *slot = audio_slot(awp);
+    restore_irq(key);
+
+    memcpy32(slot, data, ABUF_BYTES);
+    __DMB(); /* Publish only after every SRAM payload store is visible to DMA. */
+
+    key = disable_irq();
+    audio_copying = 0;
+    if (audio_cancel_pending()) {
+        audio_service();
+        restore_irq(key);
+        return -1;
+    }
     awp++;
     audio_publish_next();
-    audio_start(2);
     int count = awp-arp;
     restore_irq(key);
     return count;

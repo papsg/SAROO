@@ -204,3 +204,64 @@ Game mixer state is not altered. Related historical upstream reports
 proof of these root causes or resolution. Historical private builds/game results
 belong to their exact cohorts; they do not qualify this public GNU port.
 Nothing is installed, and physical timing/audio/game/MDK acceptance remains open.
+
+## Retire CD audio while keeping the I2S link running
+
+Adapted from paps-g `30f343ff` (AUD-MCU-030), the frame-boundary work
+in `2617a839`, and the selected continuity policy in `fb0bf193`.
+The previous public checkpoint established safe shutdown and retained
+that behavior as its default. When a CD command replaced the reader,
+already queued sectors could still play ahead of the replacement.
+
+The disk task now records whether its current reader admitted CD audio.
+Replacement and terminal failure retire that queue, even if the cursor
+has moved to a data track or lookup has already dropped it. A retained
+reader keeps its queue, and a naturally completed request drains its
+accepted audio. The caller also reserves its slot through the copy, so
+a retirement that interrupts a producer cannot reuse that slot early.
+
+Retirement waits for DMA to acknowledge the stop before releasing the
+ring. It leaves the I2S serializer and its staged FIFO words active.
+The number of DMA transfers remaining determines whether a single zero
+word must complete a stereo pair before the next silent bank. Startup
+and ordinary idle send valid zero PCM using the existing silence sector.
+If retirement occurs during a delayed initial DMA stop, it completes the
+peripheral configuration before starting that stream. The existing
+frame-aligned stop and bounded timer fallback remain available for
+recovery. Publication can also recover an exhausted, stopped quiet
+stream when no completion or error IRQ owns it.
+
+[ST RM0433 Rev. 8](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+§15.3.16 p. 651 describes DMA suspension and EN acknowledgement, and
+§15.5.6 p. 662 defines NDTR. §50.9.8 p. 2205 and §50.9.10 p. 2208
+describe frame completion, FIFO order and the effect of clearing SPE.
+[Sega ST-162-062094 §8.2.2, Nos. 2.1–2.2, printed pp. 82–83](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=70)
+defines the CD play, seek and pause commands. The earlier
+[Sega external audio reference and related reports](#later-policy-and-hardware-limits)
+give receiver and symptom context.
+
+```sh
+make -C tests check-audio check-cdc-command-buffer
+SAROO_AUDIO_PROFILE=release make -C tests check-audio
+python3 -B -m unittest discover -s tests -p test_mcu_save_disc.py -v
+```
+
+To reproduce the parent failure, use the current audio fixture with
+`SAROO_AUDIO_SOURCE` and `SAROO_AUDIO_MAIN` pointing at the parent's
+`cdda_i2s.c` and `saturn_main.c`, and select `-k reader_replacement`.
+The parent retains queued sectors after acknowledging replacement.
+The port passes 42 audio methods in both profiles, all 227 CD/CUE
+methods and the 13 disc/save-session checks. The DMA model checks
+3,528 cancellation positions, exact staged old samples and fresh
+payload, delayed disable and copy ownership, startup cancellation,
+retained readers, and stopped quiet stream recovery. The compiler
+fixture has no physical bus, receiver or game.
+
+Idle PCM accounts for 176,400 DMA bytes and 75 normal bank completions
+per second. New PCM may wait for a quiet bank plus the existing guard
+and FIFO. The GNU App adds 368 load bytes (65,048 used, 488 free) and
+eight static DTCM bytes. The 32 payload slots and 77,616-byte SRAM1
+reservation retain their sizes. The private shutdown trial reproduced
+static and the later private continuity build passed its Die Hard
+Arcade trial. This port verifies the public source and build with
+host models. The public build has no physical audio or MDK result.

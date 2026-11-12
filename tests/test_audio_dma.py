@@ -40,8 +40,22 @@ class AudioDMATests(unittest.TestCase):
         build = ROOT / 'tests/build/audio-dma'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
-        (cls.target / 'audio.inc').write_bytes(code)
+        continuity = b'void spi2_cancel(' in raw
+        cls.continuity = continuity
+        (cls.target / 'audio.inc').write_bytes(f'#define TEST_LINK_CONTINUITY {int(continuity)}\n'.encode() + code)
         (cls.target / 'audio-worker.inc').write_bytes(worker_code)
+        start = worker.index(b'static int acknowledge_drive_request(')
+        handoff = worker[start:worker.index(b'\n}', start) + 2]
+        helper = b'static void retire_cdda('
+        if helper in worker:
+            start = worker.index(helper)
+            handoff = worker[start:worker.index(b'\n}', start) + 2] + b'\n' + handoff
+        (cls.target / 'audio-ack.inc').write_bytes(handoff)
+        start = worker.index(b'\n_read_error:')
+        errors = worker[start:worker.index(b'\n}', start)].rstrip()
+        if not errors.endswith(b'\n\t}'):
+            raise ValueError('Expected the disk worker loop to end after the error paths')
+        (cls.target / 'audio-error.inc').write_bytes(errors[:-3])
         inputs = {'cdda_i2s.c': raw, 'saturn_main.c': worker, 'audio_dma.cpp': (ROOT / 'tests/audio_dma.cpp').read_bytes(),
                   'test_audio_dma.py': Path(__file__).read_bytes()}
         for name, data in inputs.items():
@@ -65,8 +79,10 @@ class AudioDMATests(unittest.TestCase):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2) + '\n')
 
     def run_case(self, case):
+        if case >= 38 and not self.continuity:
+            self.skipTest('The parent has no clock-preserving cancellation or quiet link')
         result = subprocess.run([str(self.binary), str(case)], capture_output=True,
-                                timeout=120 if case == 30 else 30, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
+                                timeout=120 if case in (30, 38) else 30, env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
         (self.target / f'case-{case}.log').write_bytes(result.stdout + result.stderr)
         self.results.append({'case': case, 'returncode': result.returncode})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -84,8 +100,8 @@ class AudioDMATests(unittest.TestCase):
     def test_guard_miss_takes_transfer_error_recovery_without_unsafe_read(self):self.run_case(9)
     def test_initial_dma_stop_can_finish_asynchronously(self):self.run_case(10)
 
-    def test_near_boundary_publication_avoids_a_full_silent_sector(self):self.run_case(11)
-    def test_new_data_can_resume_inside_an_already_silent_bank(self):self.run_case(12)
+    def test_near_boundary_publication_has_bounded_latency(self):self.run_case(11)
+    def test_new_data_resumes_while_the_quiet_link_runs(self):self.run_case(12)
     def test_pending_completion_cannot_publish_from_a_stale_read_position(self):self.run_case(13)
     def test_delayed_stop_preserves_data_published_during_its_retry(self):self.run_case(14)
 
@@ -114,11 +130,17 @@ class AudioDMATests(unittest.TestCase):
     def test_quiet_bank_error_resumes_promptly_on_the_correct_stereo_channel(self):self.run_case(32)
 
 
-    def test_quiet_stop_finishes_frame_and_stale_irqs_preserve_deadline(self):self.run_case(33)
-    def test_stalled_quiet_suspend_uses_two_real_timer_updates(self):self.run_case(34)
+    def test_recovery_stop_finishes_frame_and_stale_irqs_preserve_deadline(self):self.run_case(33)
+    def test_stalled_recovery_suspend_uses_two_real_timer_updates(self):self.run_case(34)
 
     def test_completion_arriving_between_irq_snapshot_and_clear_is_retained(self):self.run_case(35)
     def test_error_arriving_between_irq_snapshot_and_clear_is_retained(self):self.run_case(36)
+
+    def test_reader_replacement_and_failure_keep_only_staged_old_audio(self):self.run_case(37)
+    def test_cancellation_preserves_stereo_phase_at_every_position(self):self.run_case(38)
+    def test_pending_cancel_waits_for_dma_and_an_in_progress_copy(self):self.run_case(39)
+    def test_startup_and_idle_send_valid_silence(self):self.run_case(40)
+    def test_publication_recovers_an_exhausted_quiet_stream(self):self.run_case(41)
 
 if __name__ == '__main__':
     unittest.main()

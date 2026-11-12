@@ -82,6 +82,7 @@ static void restore_irq(int old)
 }
 static void set_pause_ok(void) { assert(!pause_irq_mask);pause_acks++; }
 #define SSLOG(...) ((void)0)
+static inline __attribute__((unused)) void retire_cdda(void) {}
 #include "pause-ack.inc"
 static void pause_worker(void)
 {

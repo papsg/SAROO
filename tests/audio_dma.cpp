@@ -259,26 +259,65 @@ static void check_output(){
     if(actual!=accepted){std::fprintf(stderr,"sample count expected=%zu actual=%zu discarded=%u\n",accepted.size(),actual.size(),discarded);}
     assert(actual==accepted);assert(!unsafe_reads && !discarded);
 }
-static void drain(){
-    spi2_flush();
-    for(unsigned i=0;i<40000 && (aplay!=AUDIO_IDLE || awp!=arp);i++){step(1);}
-    assert(aplay==AUDIO_IDLE && awp==arp);assert(!(stream.CR.value&1) && !(spi.CR1.value&1));
+static bool drained()
+{
+    if (!TEST_LINK_CONTINUITY) return aplay == AUDIO_IDLE && awp == arp;
+    return aplay == AUDIO_PLAYING && (spi.CR1.value & 0x201) == 0x201 &&
+           (stream.CR.value & 1) && awp == arp &&
+           std::none_of(fifo.begin(), fifo.end(), [](Sample s) { return s.tag >= 0; });
+}
+
+static void drain_without_flush()
+{
+    for (unsigned i = 0; i < 40000 && !drained(); ++i) step(1);
+    assert(drained());
+    if (!TEST_LINK_CONTINUITY) assert(!(stream.CR.value & 1) && !(spi.CR1.value & 1));
     check_output();
+}
+
+static void drain()
+{
+    spi2_flush();
+    drain_without_flush();
+}
+
+/* Keep payload-relative offsets for checks that inject a fault at a specific
+ * DMA word. The continuous link sends one initial quiet bank. */
+static void align_payload_start()
+{
+    if (!TEST_LINK_CONTINUITY) return;
+    for (unsigned i = 0; i < 2 * ABUF_WORDS &&
+         (fifo.empty() || fifo.front().tag < 0); ++i) step(1);
+    assert(!fifo.empty() && fifo.front().tag >= 0 && fifo.front().word == 0);
+    assert(fifo.size() == 8 && stream.NDTR.value == ABUF_WORDS - 8);
+}
+
+static void begin_recovery_suspend()
+{
+    if (!TEST_LINK_CONTINUITY) return;
+    /* Inject a stale active DMA stream on a restart. Ordinary idle playback
+     * under continuity has no reason to request a suspension. */
+    assert(aplay == AUDIO_PLAYING && (stream.CR.value & 1));
+    aplay = AUDIO_IDLE;
+    audio_start(0);
+    assert(aplay == AUDIO_SUSPENDING);
 }
 static void init_case(){
     constexpr unsigned bits[]={5,6,8,11};
     for(unsigned comb=0;comb<16;comb++){
         reset_model();for(unsigned b=0;b<4;b++)if(comb&(1u<<b))spi.SR.value|=1u<<bits[b];
-        spi2_init();assert(!(spi.SR.value&0x960));assert(aplay==AUDIO_IDLE);assert(!(spi.CR1.value&1));
+        spi2_init();assert(!(spi.SR.value&0x960));
+        assert(aplay == (TEST_LINK_CONTINUITY ? AUDIO_PLAYING : AUDIO_IDLE));
+        assert(bool(spi.CR1.value & 1) == bool(TEST_LINK_CONTINUITY));
         assert(spi.I2SCFGR.value==0x02040015 && timer.PSC.value==1999 && timer.ARR.value==99);
         assert(publish(1)==1 && publish(2)==2);drain();
     }
 }
 static void full_case(){reset_model();spi2_init();for(int i=0;i<32;i++)assert(publish(i)==i+1);assert(publish(33)==-1);assert(awp-arp==32);drain();}
 static void wrap_case(){reset_model();spi2_init();awp=arp=UINT32_MAX-10;for(int round=0;round<5;round++){for(int i=0;i<32;i++)assert(publish(round*32+i)==i+1);drain();}}
-static void low_water(){reset_model();spi2_init();publish(1);publish(2);step(1176);assert(arp==1);step(1176);assert(arp==2);assert(!unsafe_reads);drain();}
+static void low_water(){reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176);assert(arp==1);step(1176);assert(arp==2);assert(!unsafe_reads);drain();}
 static void late_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(1176);assert(arp==1);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176);assert(arp==1);
     step(600);assert(dma.LISR.value&0x400); // HTIF must not suppress a valid late publication.
     assert(publish(3)>=1);drain();
     unsigned gap=0;bool began=false,finished=false;
@@ -287,8 +326,12 @@ static void late_case(){
 }
 static void copy_progress(){step(2352);}
 static void copy_case(){reset_model();spi2_init();publish(1);publish(2);copy_hook=copy_progress;publish(3);copy_hook=nullptr;drain();}
-static void single_case(){reset_model();spi2_init();publish(1);assert(aplay==AUDIO_IDLE);drain();}
-static void startup_stall(){reset_model();spi2_init();bus_stalled=true;publish(1);publish(2);assert(aplay==AUDIO_STARTING && !(spi.CR1.value&0x200));for(int i=0;i<3;i++)fire_timer();assert(timer_irqs==3);bus_stalled=false;fire_timer();assert(aplay==AUDIO_PLAYING);drain();}
+static void single_case(){
+    reset_model();spi2_init();publish(1);
+    assert(aplay == (TEST_LINK_CONTINUITY ? AUDIO_PLAYING : AUDIO_IDLE));
+    drain();
+}
+static void startup_stall(){reset_model();bus_stalled=true;spi2_init();publish(1);publish(2);assert(aplay==AUDIO_STARTING && !(spi.CR1.value&0x200));for(int i=0;i<3;i++)fire_timer();assert(timer_irqs==3);bus_stalled=false;fire_timer();assert(aplay==AUDIO_PLAYING);drain();}
 static void underrun_case(){
     reset_model();spi2_init();for(int i=0;i<8;i++)publish(i);step(100);bus_stalled=true;step(20);assert(spi.SR.value&0x20);assert(underrun_irqs==1);assert(!(spi.IER.value&0x20));
     for(int i=0;i<3;i++){step(88);fire_timer();}assert(underrun_irqs==1);
@@ -296,47 +339,50 @@ static void underrun_case(){
 }
 static void guard_race(int id){if(id==20){read_hook=nullptr;step(unsigned(stream.NDTR.value),false);}}
 static void guard_miss(){
-    reset_model();spi2_init();publish(1);publish(2);step(1176);read_hook=guard_race;publish(3);read_hook=nullptr;run_irqs();
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176);read_hook=guard_race;publish(3);read_hook=nullptr;run_irqs();
     assert(active_writes==1 && aplay==AUDIO_RECOVER && !unsafe_reads);
-    step(2);fire_timer();for(unsigned i=0;i<40000 && (aplay!=AUDIO_IDLE || awp!=arp);i++){step(1);}
-    assert(aplay==AUDIO_IDLE && awp==arp && !unsafe_reads);
-    assert(!output.empty() && output.back().tag==-1);check_output();
+    step(2);fire_timer();drain_without_flush();
+    assert(!unsafe_reads);
 }
-static void init_stop_stall(){reset_model();stream.CR.value=1;have_preload=true;preload={0,-1,0};cursor=quiet_base+2;hold_disable=true;spi2_init();assert(aplay==AUDIO_INIT && !(spi.CR1.value&1));for(int i=0;i<3;i++)fire_timer();assert(aplay==AUDIO_INIT);hold_disable=false;fire_timer();assert(aplay==AUDIO_IDLE);publish(1);drain();}
+static void init_stop_stall(){reset_model();stream.CR.value=1;have_preload=true;preload={0,-1,0};cursor=quiet_base+2;hold_disable=true;spi2_init();assert(aplay==AUDIO_INIT && !(spi.CR1.value&1));for(int i=0;i<3;i++)fire_timer();assert(aplay==AUDIO_INIT);hold_disable=false;fire_timer();assert(aplay==(TEST_LINK_CONTINUITY ? AUDIO_PLAYING : AUDIO_IDLE));publish(1);drain();}
 static void near_boundary_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(1176);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176);
     while(stream.NDTR.value>16)step(1);
     auto before=output.size();auto began=model_time;publish(3);
-    while(aplay!=AUDIO_IDLE || awp!=arp){step(1);assert(model_time-began<50000000);}
+    while(!drained()){step(1);assert(model_time-began<50000000);}
     check_output();
     unsigned quiet=0;for(size_t i=before;i<output.size() && output[i].tag!=3;i++)if(output[i].tag<0)quiet++;
     std::printf("near-boundary quiet halfwords=%u (model %.3fms)\n",quiet,quiet*1000.0/88200);
     uint64_t end=0,start=0;for(auto x:output){if(x.tag==2)end=x.at;if(x.tag==3 && !start)start=x.at;}
     auto gap=start-end-5000;
     std::printf("complete boundary gap including stopped clock=%.3fus\n",gap/441.0);
-    assert(gap<441*500); // Include pauses, not just transmitted zero words.
-    assert(quiet<50);
+    const auto bank_bound = uint64_t(ABUF_WORDS + AUDIO_PUBLISH_GUARD + 8) * 5000;
+    assert(gap <= (TEST_LINK_CONTINUITY ? bank_bound : 441u * 500u));
+    assert(quiet <= (TEST_LINK_CONTINUITY ? ABUF_WORDS + 8 : 49));
 }
 static void quiet_resume_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(2352+200);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(2352+200);
     assert(arp==awp && aplay==AUDIO_PLAYING);
     auto before=output.size();auto began=model_time;publish(3);
-    while(aplay!=AUDIO_IDLE || awp!=arp){step(1);assert(model_time-began<50000000);}
+    while(!drained()){step(1);assert(model_time-began<50000000);}
     check_output();unsigned quiet=0;
     for(size_t i=before;i<output.size() && output[i].tag!=3;i++)if(output[i].tag<0)quiet++;
     std::printf("mid-silence resume halfwords=%u (model %.3fms)\n",quiet,quiet*1000.0/88200);
     uint64_t first=0;for(auto x:output)if(x.tag==3){first=x.at;break;}
     std::printf("publish-to-resume including stopped clock=%.3fus\n",(first-began)/441.0);
-    assert(first-began<441*200);
-    assert(quiet<20);
+    const auto bank_bound = uint64_t(ABUF_WORDS + AUDIO_PUBLISH_GUARD + 8) * 5000;
+    assert(first-began <= (TEST_LINK_CONTINUITY ? bank_bound : 441u * 200u));
+    assert(quiet <= (TEST_LINK_CONTINUITY ? ABUF_WORDS + 8 : 19));
 }
 static void pending_completion_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(1176,false);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176,false);
     assert((dma.LISR.value&0x800) && arp==0);publish(3);run_irqs();drain();
 }
 static void stop_retry_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(2352);
-    hold_disable=true;step(1176);assert(aplay==AUDIO_SUSPENDING);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(2352);
+    hold_disable=true;step(1176);
+    begin_recovery_suspend();
+    assert(aplay==AUDIO_SUSPENDING);
     step(2); /* Let the healthy stereo frame finish before delayed DMA stop. */
     assert(!(spi.CR1.value&0x200));
     for(int i=0;i<3;i++)fire_timer();
@@ -344,7 +390,7 @@ static void stop_retry_case(){
     publish(3);hold_disable=false;fire_timer();drain();
 }
 static void stopped_clock_recovery(){
-    reset_model();spi2_init();publish(1);publish(2);step(1176);read_hook=guard_race;publish(3);read_hook=nullptr;run_irqs();
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(1176);read_hook=guard_race;publish(3);read_hook=nullptr;run_irqs();
     clock_stalled=true;unsigned before=timer_irqs;step(882);
     assert(timer_irqs-before<=12 && !unsafe_reads);
     clock_stalled=false;drain();
@@ -353,14 +399,16 @@ static void restart_flags_case(){
     constexpr unsigned bits[]={5,6,8,11};
     reset_model();spi2_init();
     for(unsigned repetition=0;repetition<50;repetition++){
+        if (TEST_LINK_CONTINUITY) reset_model();
         unsigned comb=repetition%16;for(unsigned b=0;b<4;b++)if(comb&(1u<<b))spi.SR.value|=1u<<bits[b];
+        if (TEST_LINK_CONTINUITY) spi2_init();
         publish(repetition*2);publish(repetition*2+1);
         assert(!(spi.SR.value&0x960) && aplay==AUDIO_PLAYING);
         drain();
     }
 }
 static void partial_transfer_error(){
-    reset_model();spi2_init();publish(1);publish(2);step(200);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(200);
     stream.CR.value&=~uintptr_t(1);have_preload=false;dma.LISR.value|=0x200;run_irqs();
     drain();
     std::printf("exact payload continuation; hardware repeated %u modeled halfwords during fault\n",repeated_words);
@@ -368,8 +416,14 @@ static void partial_transfer_error(){
 // The actual worker admission/flush branch, before its pacing delay.
 constexpr int PLAYTYPE_SECTOR=1, PLAYTYPE_FILE=2, PLAYTYPE_DIR=3;
 struct { int mode; } worker_track;
-struct { int play_type,play_wait; u32 fad,play_fad_end,repcnt,max_repeat; decltype(worker_track)*play_track; } cdb;
+struct {
+    int play_type, play_wait;
+    u32 fad, play_fad_end, repcnt, max_repeat;
+    decltype(worker_track) *play_track;
+    int pause_request = 0, status = 0;
+} cdb;
 struct { u8 *data; u32 fad; } wblk={input,0};
+static unsigned cdda_reader_audio;
 static void publish_subrw(u32 fad){assert(fad==cdb.fad);}
 static void counted_worker_flush(){worker_flushes++;spi2_flush();}
 static void worker_tail(){
@@ -385,15 +439,17 @@ static void worker_final_case(){
     for(bool final:{false,true})for(bool repeats:{false,true}){
         reset_model();spi2_init();worker_track.mode=mode;
         cdb={kind,0,150,final?151u:152u,0,repeats?1u:0u,&worker_track};
-        input_tag=40;worker_tail();
+        input_tag=40;cdda_reader_audio=0;worker_tail();
         bool audio=kind==PLAYTYPE_SECTOR && mode==3;
         assert(awp==unsigned(audio));
+        if (TEST_LINK_CONTINUITY) assert(cdda_reader_audio==unsigned(audio));
         assert(worker_flushes==unsigned(audio && final && !repeats));
-        assert((aplay==AUDIO_PLAYING)==(audio && final && !repeats));
+        if (!TEST_LINK_CONTINUITY) assert((aplay==AUDIO_PLAYING)==(audio && final && !repeats));
     }
     reset_model();spi2_init();for(int i=0;i<32;i++)publish(i);
     worker_track.mode=3;cdb={PLAYTYPE_SECTOR,0,150,151,0,0,&worker_track};
-    worker_tail();assert(cdb.play_wait==1 && awp==32 && !worker_flushes);drain();
+    cdda_reader_audio=0;worker_tail();
+    assert(cdb.play_wait==1 && awp==32 && !worker_flushes && !cdda_reader_audio);drain();
 }
 static void quiet_tail_case(){
     reset_model();spi2_init();publish(1);publish(2);
@@ -404,7 +460,7 @@ static void quiet_tail_case(){
 static void fifo_warning_completion_case(){
     // A warning alone, on either side of completion, and coalesced with TC.
     for(unsigned words:{0u,200u,1167u,1168u,1176u,2344u}){
-        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);
+        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();
         if(words){step(words-1);step(1,false);}dma.LISR.value|=0x40;
         auto old_read=arp;bool completion=(dma.LISR.value&0x800)!=0;
         run_irqs();
@@ -415,7 +471,7 @@ static void fifo_warning_completion_case(){
     }
 }
 static void fifo_warning_startup_case(){
-    reset_model();spi2_init();bus_stalled=true;publish(1);publish(2);
+    reset_model();bus_stalled=true;spi2_init();publish(1);publish(2);
     assert((dma.LISR.value&0x40) && (stream.CR.value&1));
     run_irqs();assert(aplay==AUDIO_STARTING && !(spi.CR1.value&0x200));
     for(int i=0;i<3;i++)fire_timer();
@@ -426,7 +482,7 @@ static void fifo_warning_stall_case(){
     // Short stalls retain the FIFO's valid tail; longer ones also exercise
     // independent I2S UDR handling. Stall across both DBM bank boundaries.
     for(unsigned start:{200u,1167u,2343u})for(unsigned duration:{2u,6u,20u}){
-        reset_model();spi2_init();for(int i=0;i<6;i++)publish(i);
+        reset_model();spi2_init();for(int i=0;i<6;i++)publish(i);align_payload_start();
         step(start);bus_stalled=true;step(duration);
         assert((dma.LISR.value&0x40) || (dma.LISR.value&0x800));
         assert(aplay==AUDIO_PLAYING && (stream.CR.value&1));
@@ -443,19 +499,19 @@ static void residual_transfer_case(){
     // Both stereo phases, before/at/after either bank switch and sequence wrap.
     for(unsigned start:{0u,1u,2u,199u,200u,201u,1166u,1167u,1168u,1169u,2343u,2344u,2345u}){
         reset_model();spi2_init();awp=arp=UINT32_MAX-1;
-        for(int i=0;i<4;i++)publish(i);step(start);inject_transfer_error();drain();
+        for(int i=0;i<4;i++)publish(i);align_payload_start();step(start);inject_transfer_error();drain();
     }
 }
 static void latched_underrun_error_case(){
     for(unsigned start:{1155u,1156u,1157u,2331u,2332u,2333u}){
-        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);
+        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();
         step(start);bus_stalled=true;step(20);assert(spi.SR.value&0x20);
         bus_stalled=false;dma_feed();assert(fifo.size()==8);
         inject_transfer_error();drain(); // UDR does not prove a refilled FIFO empty.
     }
 }
 static void repeated_residual_case(){
-    reset_model();spi2_init();for(int i=0;i<32;i++)publish(i);step(201);inject_transfer_error();
+    reset_model();spi2_init();for(int i=0;i<32;i++)publish(i);align_payload_start();step(201);inject_transfer_error();
     for(unsigned n=0;n<3;n++){
         while(!(stream.CR.value&1))step(1);
         step(21+n);inject_transfer_error();
@@ -464,13 +520,13 @@ static void repeated_residual_case(){
 }
 static void pending_error_completion_case(){
     for(unsigned start:{1168u,2344u}){
-        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);
+        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();
         step(start-1);step(1,false);assert(dma.LISR.value&0x800);
         inject_transfer_error();drain();
     }
 }
 static void permanent_transfer_error_case(){
-    reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);step(201);
+    reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();step(201);
     permanent_dma_fault=true;inject_transfer_error();
     unsigned irq_before=irq_calls;step(882);
     assert(irq_calls-irq_before<25 && !unsafe_reads && !discarded);
@@ -478,7 +534,10 @@ static void permanent_transfer_error_case(){
 }
 static void residual_startup_case(){
     for(unsigned words:{1u,2u,7u}){
-        reset_model();spi2_init();bus_stalled=true;publish(1);publish(2);
+        reset_model();bus_stalled=true;
+        if (TEST_LINK_CONTINUITY) { stream.CR.value=1; hold_disable=true; }
+        spi2_init();publish(1);publish(2);
+        if (TEST_LINK_CONTINUITY) { hold_disable=false; fire_timer(); }
         assert(aplay==AUDIO_STARTING);
         // Some accepted peripheral writes precede a source-side error before
         // CSTART. Transfer only the prefetched words admitted by the model.
@@ -490,7 +549,7 @@ static void residual_startup_case(){
 }
 static void residual_publication_case(){
     for(bool second:{false,true}){
-        reset_model();spi2_init();publish(1);if(second)publish(2);else spi2_flush();
+        reset_model();spi2_init();publish(1);if(second)publish(2);else spi2_flush();align_payload_start();
         step(201);inject_transfer_error();while(!(stream.CR.value&1))step(1);
         assert(!(stream.CR.value&(1u<<18)));
         publish(3);publish(4);assert(!active_writes);drain();
@@ -499,7 +558,7 @@ static void residual_publication_case(){
 static void every_residual_count_case(){
     std::array<bool,1177> observed{};
     for(unsigned cut=0;cut<1176;cut++){
-        reset_model();spi2_init();publish(1);publish(2);step(cut);
+        reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(cut);
         observed[stream.NDTR.value]=true;inject_transfer_error();drain();
     }
     for(unsigned left=1;left<=1176;left++)assert(observed[left]);
@@ -508,7 +567,7 @@ static void delayed_error_disable_case(){
     // A pending destination beat may finish before EN acknowledges stop. The
     // timer cannot configure that stream or erase its late completion flag.
     for(bool completes:{false,true}){
-        reset_model();spi2_init();publish(1);publish(2);
+        reset_model();spi2_init();publish(1);publish(2);align_payload_start();
         step(completes?1167:201);bus_stalled=true;
         dma.LISR.value|=0x200;run_irqs();assert(aplay==AUDIO_RECOVER);
         for(int n=0;n<3;n++)fire_timer();assert(aplay==AUDIO_RECOVER && (stream.CR.value&1));
@@ -521,11 +580,12 @@ static void delayed_error_disable_case(){
 }
 static void quiet_error_phase_case(){
     for(unsigned position:{2344u,2345u,2346u,2347u,2352u,2353u,2552u,2553u,3499u,3500u}){
-        reset_model();spi2_init();publish(1);publish(2);step(position);
+        reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(position);
         assert(arp==awp && aplay==AUDIO_PLAYING);
         inject_transfer_error();publish(3);publish(4);auto began=model_time;drain();
         uint64_t resumed=0;for(auto x:output)if(x.tag==3){resumed=x.at;break;}
-        assert(resumed && resumed-began<441*1500); // Includes 1ms fault retry.
+        const auto bound = uint64_t(ABUF_WORDS + AUDIO_PUBLISH_GUARD + 8) * 5000 + 441000;
+        assert(resumed && resumed-began <= (TEST_LINK_CONTINUITY ? bound : 441u * 1500u));
     }
 }
 // A hardware completion/error may arrive after LISR is read but before W1C.
@@ -537,7 +597,7 @@ static void completion_during_irq_snapshot(int id){
 }
 static void late_completion_snapshot_case(){
     for(unsigned position:{1167u,2343u}){
-        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);step(position);
+        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();step(position);
         assert(stream.NDTR.value==1);bus_stalled=true;dma.LISR.value|=0x200;
         read_hook=completion_during_irq_snapshot;run_irqs();read_hook=nullptr;
         drain();
@@ -550,7 +610,7 @@ static void error_during_irq_snapshot(int id){
 }
 static void late_error_snapshot_case(){
     for(unsigned position:{1168u,2344u}){
-        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);
+        reset_model();spi2_init();for(int i=0;i<4;i++)publish(i);align_payload_start();
         step(position-1);step(1,false); /* Only the final beat delays its IRQ. */
         assert(dma.LISR.value&0x800);
         read_hook=error_during_irq_snapshot;run_irqs();read_hook=nullptr;
@@ -560,7 +620,12 @@ static void late_error_snapshot_case(){
 // Only actual timer updates may advance a pending suspend deadline.
 static void quiet_suspend_stale_case(){
     reset_model();spi2_init();publish(1);publish(2);
-    for(unsigned n=0;n<6000 && aplay!=AUDIO_SUSPENDING;n++)step(1);
+    if (TEST_LINK_CONTINUITY) {
+        drain_without_flush();
+        begin_recovery_suspend();
+    } else {
+        for(unsigned n=0;n<6000 && aplay!=AUDIO_SUSPENDING;n++)step(1);
+    }
     assert(aplay==AUDIO_SUSPENDING && (spi.CR1.value&0x200));
     auto deadline=timer_left;auto arr=timer.ARR.value;auto cnt=timer.CNT.value;
     for(unsigned n=0;n<4;n++){
@@ -573,13 +638,15 @@ static void quiet_suspend_stale_case(){
     spi.SR.value&=~uintptr_t(0x800);SPI2_IRQHandler();
     assert(aplay==AUDIO_SUSPENDING && (spi.CR1.value&1));
     spi.SR.value|=0x800;SPI2_IRQHandler();
-    assert(aplay==AUDIO_IDLE && !(stream.CR.value&1) && !(spi.CR1.value&1));
-    assert(!forced_stops);check_output();
+    assert(drained() && !forced_stops && healthy_stops == 1);
+    check_output();
 }
 static void quiet_stalled_suspend_case(){
-    reset_model();spi2_init();publish(1);publish(2);step(2352+200);
+    reset_model();spi2_init();publish(1);publish(2);align_payload_start();step(2352+200);
     assert(arp==awp && aplay==AUDIO_PLAYING);
-    clock_stalled=true;publish(3);fire_timer();
+    begin_recovery_suspend();
+    clock_stalled=true;publish(3);
+    if (!TEST_LINK_CONTINUITY) fire_timer();
     assert(aplay==AUDIO_SUSPENDING && (spi.CR1.value&0x200));
     auto deadline=timer_left;
     for(unsigned n=0;n<5;n++){
@@ -590,6 +657,167 @@ static void quiet_stalled_suspend_case(){
     fire_timer();assert(forced_stops==1 && (aplay==AUDIO_PLAYING || aplay==AUDIO_STARTING));
     clock_stalled=false;drain();assert(!unsafe_reads);
 }
+
+/* Adapted from paps-g 30f343ff and fb0bf193. Use the actual public handoff
+ * and terminal branches with the same DMA/FIFO model as ordinary playback. */
+constexpr int STAT_PAUSE=1, STAT_ERROR=9;
+static unsigned pause_acks;
+static void invalidate_directory() {}
+static void set_pause_ok(){assert(!mask);++pause_acks;}
+static void log_play_end() {}
+static void set_peri_report() {}
+static int finish_read(int valid){
+    assert(!valid);cdb.status=STAT_ERROR;cdb.play_type=0;cdb.play_track=nullptr;return 0;
+}
+#define SSLOG(...) ((void)0)
+#include "audio-ack.inc"
+#undef SSLOG
+static void worker_error(bool timer_error){
+    if (timer_error) goto _delay_error;
+    else goto _read_error;
+#include "audio-error.inc"
+_restart_wait:;
+}
+
+static void start_session(){
+    reset_model();spi2_init();awp=arp=UINT32_MAX-1;
+    for (int tag=1; tag<=4; ++tag) assert(publish(tag)==tag);
+    align_payload_start();
+}
+
+static void keep_staged_tail(){
+    accepted.clear();
+    for (auto s:output) if (s.tag>=0) accepted.emplace_back(s.tag,s.word);
+    for (auto s:fifo) if (s.tag>=0) accepted.emplace_back(s.tag,s.word);
+}
+
+static void check_replacement(unsigned expected_wakes){
+    assert(awp==0 && arp==0 && wakeups==expected_wakes);
+    assert((spi.CR1.value&0x201)==0x201 && !suspend_requested);
+    assert(!forced_stops && !healthy_stops && !active_writes);
+    assert(publish(100)==1 && publish(101)==2);
+    drain_without_flush();
+}
+
+static void worker_retirement(){
+    for (int reason=0;reason<3;++reason) {
+        start_session();step(199);
+        // Replacement can arrive on the next data track. A failed lookup
+        // can already have dropped the cursor. Neither changes ownership.
+        worker_track.mode=1;cdb={PLAYTYPE_SECTOR,0,150,180,0,0,reason==1?nullptr:&worker_track};
+        cdda_reader_audio=1;
+        pause_acks=0;
+        keep_staged_tail();
+        unsigned before=wakeups;
+        if (reason==0) {
+            cdb.pause_request=1;
+            assert(!acknowledge_drive_request() && pause_acks==1 && !cdb.pause_request);
+        } else worker_error(reason==2);
+        assert(!cdb.play_type);
+        check_replacement(before+1);
+        assert(!cdda_reader_audio);
+    }
+
+    start_session();step(199);
+    cdda_reader_audio=1;
+    worker_track.mode=3;cdb={PLAYTYPE_SECTOR,0,150,180,0,0,&worker_track};
+    pause_acks=0;cdb.pause_request=-PLAYTYPE_SECTOR;
+    const auto write=awp, read=arp;
+    assert(acknowledge_drive_request() && pause_acks==1 && !cdb.pause_request);
+    assert(cdb.play_type==PLAYTYPE_SECTOR && awp==write && arp==read && cdda_reader_audio);
+    drain();
+}
+
+#if TEST_LINK_CONTINUITY
+static void cancel_all_phases(){
+    for (unsigned position=0; position<3*ABUF_WORDS; ++position) {
+        start_session();step(position);
+        keep_staged_tail();
+        unsigned before=wakeups;
+        spi2_cancel();
+        for (int n=0;n<3;++n) { spi2_cancel();SPI2_IRQHandler();TIM7_IRQHandler(); }
+        check_replacement(before+1);
+    }
+}
+
+static void interrupt_copy(){
+    assert(!mask);
+    spi2_cancel();
+    assert(aplay==AUDIO_CANCELING && fill_audio_buffer(input)==-1);
+}
+
+static void pending_retirement(){
+    for (unsigned phase:{0u,1u,199u,200u,1167u,1168u}) {
+        start_session();step(phase);
+        hold_disable=true;
+        const auto write=awp, before=wakeups;
+        spi2_cancel();
+        for (int n=0;n<3;++n) {
+            assert(aplay==AUDIO_CANCELING && (stream.CR.value&1) && (spi.CR1.value&0x201)==0x201);
+            assert(fill_audio_buffer(input)==-1 && awp==write && wakeups==before);
+            spi2_cancel();fire_timer();
+        }
+        keep_staged_tail();hold_disable=false;fire_timer();
+        check_replacement(before+1);
+    }
+    start_session();step(199);keep_staged_tail();
+    const auto before=wakeups;
+    copy_hook=interrupt_copy;
+    assert(publish(99)==-1);
+    copy_hook=nullptr;
+    check_replacement(before+1);
+
+    reset_model();bus_stalled=true;spi2_init();
+    assert(aplay==AUDIO_STARTING && !(spi.CR1.value&0x200));
+    assert(publish(1)==1 && publish(2)==2);
+    hold_disable=true;
+    spi2_cancel();
+    assert(aplay==AUDIO_CANCELING && fill_audio_buffer(input)==-1 && !wakeups);
+    keep_staged_tail();hold_disable=bus_stalled=false;
+    fire_timer();check_replacement(1);
+
+    reset_model();bus_stalled=hold_disable=true;stream.CR.value=1;
+    spi2_init();assert(aplay==AUDIO_INIT);
+    assert(publish(1)==1 && publish(2)==2);
+    spi2_cancel();assert(fill_audio_buffer(input)==-1);
+    hold_disable=false;fire_timer();
+    assert(spi.CFG1.value==0x00008000 && spi.I2SCFGR.value==0x02040015);
+    keep_staged_tail();bus_stalled=false;fire_timer();
+    check_replacement(1);
+
+    start_session();step(201);keep_staged_tail();
+    unsigned previous=wakeups;
+    clock_stalled=true;spi2_cancel();
+    assert(wakeups==previous+1 && awp==0 && arp==0);
+    step(200);
+    clock_stalled=false;check_replacement(previous+1);
+}
+
+static void continuous_idle(){
+    reset_model();spi2_init();step(2*88200);
+    assert(drained() && output.size()==2*88200 && !repeated_words);
+    for (auto s:output) assert(s.tag<0 && !s.value);
+    assert(!suspend_requested && !forced_stops && !healthy_stops && !wakeups);
+    for (int n=0;n<8;++n) spi2_cancel();
+    assert(!wakeups && drained());
+}
+
+static void quiet_rearm(){
+    reset_model();spi2_init();step(2*ABUF_WORDS);
+    assert(drained() && stream.M0AR.value==quiet_base && stream.M1AR.value==quiet_base);
+    stream.CR.value&=~uintptr_t(1);stream.NDTR.value=0;dma.LISR.value=0;have_preload=false;
+    step(16);assert(spi.SR.value&SPI_SR_UDR);
+    assert(publish(1)==1 && publish(2)==2);
+    drain_without_flush();
+    assert(!healthy_stops && !forced_stops);
+}
+#endif
+
 int main(int argc,char **argv){assert(argc==2);switch(std::atoi(argv[1])){
+case 37:worker_retirement();break;
+#if TEST_LINK_CONTINUITY
+case 38:cancel_all_phases();break;case 39:pending_retirement();break;
+case 40:continuous_idle();break;case 41:quiet_rearm();break;
+#endif
 case 35:late_completion_snapshot_case();break;case 36:late_error_snapshot_case();break;case 33:quiet_suspend_stale_case();break;case 34:quiet_stalled_suspend_case();break;case 0:init_case();break;case 1:full_case();break;case 2:wrap_case();break;case 3:low_water();break;case 4:late_case();break;case 5:copy_case();break;case 6:single_case();break;case 7:startup_stall();break;case 8:underrun_case();break;case 9:guard_miss();break;case 10:init_stop_stall();break;case 11:near_boundary_case();break;case 12:quiet_resume_case();break;case 13:pending_completion_case();break;case 14:stop_retry_case();break;case 15:stopped_clock_recovery();break;case 16:restart_flags_case();break;case 17:partial_transfer_error();break;case 18:quiet_tail_case();break;case 19:worker_final_case();break;case 20:fifo_warning_completion_case();break;case 21:fifo_warning_startup_case();break;case 22:fifo_warning_stall_case();break;case 23:residual_transfer_case();break;case 24:latched_underrun_error_case();break;case 25:repeated_residual_case();break;case 26:pending_error_completion_case();break;case 27:permanent_transfer_error_case();break;case 28:residual_startup_case();break;case 29:residual_publication_case();break;case 30:every_residual_count_case();break;case 31:delayed_error_disable_case();break;case 32:quiet_error_phase_case();break;default:assert(false);}
 std::puts("pass");}

@@ -342,6 +342,18 @@ __attribute__((noinline)) int outside_play_range(void)
     return cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end;
 }
 
+/* Only the disk task changes this ownership. The track cursor can already
+ * point at data (or be unavailable) when that reader is retired. */
+static unsigned cdda_reader_audio;
+
+static void retire_cdda(void)
+{
+    if (cdda_reader_audio) {
+        cdda_reader_audio = 0;
+        spi2_cancel();
+    }
+}
+
 static int acknowledge_drive_request(void)
 {
     /* A timed-out request can be replaced by command service. Decide against
@@ -356,7 +368,10 @@ static int acknowledge_drive_request(void)
     }
     cdb.pause_request = 0;
     restore_irq(irqs);
-    if (!keep_reader) SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
+    if (!keep_reader) {
+        retire_cdda();
+        SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
+    }
     set_pause_ok();
     return keep_reader;
 }
@@ -492,6 +507,7 @@ _play_checkpoint:
 					cdb.play_wait = 1;
 					goto _restart_wait;
 				}
+                cdda_reader_audio = 1;
                 publish_subrw(wblk.fad);
                 if (cdb.fad+1 == cdb.play_fad_end && cdb.repcnt >= cdb.max_repeat)
                     spi2_flush();
@@ -555,6 +571,7 @@ _play_end:
 					}
 					HIRQ = HIRQ_PEND;
 					cdb.index = 0;
+                    cdda_reader_audio = 0; /* Accepted audio drains on natural completion. */
                     /* The command task may preempt as soon as it sees idle. */
                     __asm__ volatile ("" ::: "memory");
 					cdb.play_type = 0;
@@ -577,12 +594,14 @@ _idle_wait:
         goto _restart_wait;
 
 _read_error:
+        retire_cdda();
         log_play_end();
         set_peri_report();
         finish_read(0);
         goto _restart_wait;
 
 _delay_error:
+        retire_cdda();
         cdb.play_wait = 0;
         if (cdb.play_type == PLAYTYPE_DIR) {
             finish_read(0);

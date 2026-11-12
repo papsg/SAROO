@@ -13,6 +13,8 @@ typedef uint32_t u32;
 typedef int32_t s32;
 #include "types.h"
 static CDBLOCK cdb;
+static unsigned cdda_reader_audio;
+static inline __attribute__((unused)) void retire_cdda(void) { cdda_reader_audio = 0; }
 static u8 sector_bytes[MAX_BLOCKS][2352];
 static u16 reply[4], hirq, hirq_clear, st_control,st_status;
 #undef SSCR1

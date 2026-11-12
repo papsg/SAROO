@@ -82,6 +82,7 @@ static int filter_sector(TRACK_INFO *t, BLOCK *b)
 static int handle_diread(void) { directory_count = count(); return 2; }
 static void finish_read(int valid) { assert(!valid); directory_count = count(); }
 static void advance_file_unit(void) { abort(); }
+static unsigned cdda_reader_audio __attribute__((unused));
 #include "producer.inc"
 
 static void ready(unsigned rp, unsigned packs, unsigned decode, int audio)
