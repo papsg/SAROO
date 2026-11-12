@@ -1,6 +1,7 @@
-/* Adapted from paps-g 77b8f027 and dca425eb.
+/* Adapted from paps-g 77b8f027, dca425eb and 39a45215.
  * Model buffered PSC, one-pulse mode and IRQ delivery for the actual CD timer
  * functions. Physical peripheral latency and RTX scheduling are outside the model. */
+#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstdint>
@@ -23,6 +24,14 @@ static bool enabled[2], pending[2], masked, barrier;
 static uint32_t apb_reset = 0x80000000;
 static unsigned resets, releases, software_irqs, tokens, drains;
 static uint64_t elapsed_cycles;
+static constexpr uint64_t cycles_per_tick = 200000000u / OS_TICK_FREQ;
+static uint64_t completion_at, pause_at = UINT64_MAX, hint_at = UINT64_MAX, hint_period;
+static uint64_t tick_phase;
+static uint32_t tick_base;
+static unsigned hint_count;
+static bool deliver_late_irq;
+static int pause_kind;
+static struct { int pause_request; } cdb;
 static Completion completion;
 
 #if CD_TIMER_LEGACY
@@ -73,6 +82,10 @@ struct TimerRegister {
         } else {
             r[reg] = value & (bank == CD_TIM2 && (reg == ARR || reg == CNT)
                               ? UINT32_MAX : UINT16_MAX);
+            if (reg == CR1 && (value & TIM_CR1_CEN)) {
+                completion_at = elapsed_cycles +
+                    (uint64_t(r[ARR]) + 1 - r[CNT]) * (active_psc[bank] + 1);
+            }
         }
     }
 };
@@ -110,6 +123,17 @@ static constexpr int osOK = 0, osErrorTimeout = -2;
 static unsigned sem_cd_timer, sem_wait_irq, sem_wait_disc, sem_wait_pause, mutex_fs;
 #define sem_tim6 sem_cd_timer
 static unsigned allocation_failure, allocations, live_semaphores;
+static unsigned worker_tokens;
+
+static unsigned timer_semaphore()
+{
+    return CD_TIMER_SHARED ? sem_wait_disc : sem_cd_timer;
+}
+
+static uint32_t osKernelGetTickCount()
+{
+    return tick_base + uint32_t((elapsed_cycles + tick_phase) / cycles_per_tick);
+}
 
 static unsigned osSemaphoreNew(unsigned maximum, unsigned initial, void *attributes)
 {
@@ -127,45 +151,70 @@ static void osSemaphoreDelete(unsigned id)
 
 static unsigned osMutexNew(void *attributes)
 {
-    assert(!attributes && allocations == 4);
+    assert(!attributes && allocations == (CD_TIMER_SHARED ? 3u : 4u));
     return ++allocations == allocation_failure ? 0 : allocations;
 }
 
 static int osSemaphoreRelease(unsigned id)
 {
-    assert(id && id == sem_cd_timer && !tokens);
+    assert(id && (id == timer_semaphore() || id == sem_wait_disc));
+    auto &ready = id == timer_semaphore() ? tokens : worker_tokens;
+    if (ready) return -1;
     ++releases;
-    ++tokens;
+    ++ready;
     return osOK;
 }
 
+static void disk_task_wakeup() { osSemaphoreRelease(sem_wait_disc); }
+
 static int osSemaphoreAcquire(unsigned id, uint32_t timeout)
 {
-    assert(id && id == sem_cd_timer);
+    assert(id && id == timer_semaphore());
     assert(BOOT_APB1_CLOCKS & (cd_bank == CD_TIM2 ? 1u : 16u));
     auto &r = regs[cd_bank];
-    if (!timeout) {
+    if (deliver_late_irq) {
+        assert(pending[cd_bank] && (r[CR1] & TIM_CR1_CEN));
+        dispatch(cd_bank);
+        deliver_late_irq = false;
+    }
+    if (!timeout && !CD_TIMER_SHARED) {
         assert(!pending[cd_bank] && !(r[SR] & TIM_SR_UIF) && !(r[CR1] & TIM_CR1_CEN));
         ++drains;
         if (!tokens) return osErrorTimeout;
-    } else if (completion != Normal) {
-        assert(timeout != osWaitForever);
-        if (completion != Missing) update(cd_bank, false, completion == Posted);
-        return osErrorTimeout;
-    } else if (!tokens) {
-        assert((r[CR1] & TIM_CR1_CEN) && enabled[cd_bank]);
-        assert(r[ARR] && "counter is blocked at reload zero");
-        uint64_t cycles = (uint64_t(r[ARR]) + 1 - r[CNT]) * (active_psc[cd_bank] + 1);
-        if (timeout != osWaitForever) {
-            assert(timeout >= 2);
-            assert(uint64_t(timeout - 2) * (200000000u / OS_TICK_FREQ) >= cycles);
-        }
-        elapsed_cycles += cycles;
-        update(cd_bank, false);
     }
-    assert(tokens == 1);
-    --tokens;
-    return osOK;
+    uint64_t deadline = elapsed_cycles;
+    if (timeout == osWaitForever) deadline = UINT64_MAX;
+    else if (timeout) {
+        deadline += uint64_t(timeout) * cycles_per_tick -
+                    (elapsed_cycles + tick_phase) % cycles_per_tick;
+    }
+    for (;;) {
+        // Posted models a completion delivered just as the wait expires.
+        if (tokens && (!timeout || completion != Posted)) {
+            --tokens;
+            return osOK;
+        }
+        if (elapsed_cycles == deadline) return osErrorTimeout;
+        uint64_t timer = (r[CR1] & TIM_CR1_CEN) && completion != Missing
+                        ? completion_at : UINT64_MAX;
+        auto next = std::min({deadline, timer, pause_at, hint_at});
+        assert(next >= elapsed_cycles && next != UINT64_MAX);
+        elapsed_cycles = next;
+        if (next == timer) {
+            assert(enabled[cd_bank] && r[ARR]);
+            update(cd_bank, false, completion != Pending);
+        }
+        if (next == pause_at) {
+            cdb.pause_request = pause_kind;
+            pause_at = UINT64_MAX;
+            disk_task_wakeup();
+        }
+        if (next == hint_at) {
+            ++hint_count;
+            hint_at = hint_period ? hint_at + hint_period : UINT64_MAX;
+            disk_task_wakeup();
+        }
+    }
 }
 
 static int disable_irq()
@@ -194,7 +243,7 @@ static void restore_irq(int previous)
 
 static void NVIC_EnableIRQ(int irq)
 {
-    assert(sem_cd_timer && (irq == TIM2_IRQn || irq == TIM6_DAC_IRQn));
+    assert(timer_semaphore() && (irq == TIM2_IRQn || irq == TIM6_DAC_IRQn));
     Bank bank = irq == TIM2_IRQn ? CD_TIM2 : CD_TIM6;
     enabled[bank] = true;
     dispatch(bank);
@@ -269,8 +318,10 @@ int main(int argc, char **argv)
             assert(resets == 17u && apb_reset == 0x80000000u);
             assert(!regs[CD_TIM6][CR1] && !regs[CD_TIM6][DIER] && !enabled[CD_TIM6]);
             assert(enabled[CD_TIM2] && regs[CD_TIM2][CR1] == (TIM_CR1_OPM | TIM_CR1_URS));
-            assert(allocations == 5 && live_semaphores == 30 && mutex_fs == 5);
-            assert(sem_wait_irq == 1 && sem_wait_disc == 2 && sem_wait_pause == 3 && sem_cd_timer == 4);
+            assert(allocations == (CD_TIMER_SHARED ? 4u : 5u) && mutex_fs == allocations);
+            assert(live_semaphores == (CD_TIMER_SHARED ? 14u : 30u));
+            assert(sem_wait_irq == 1 && sem_wait_disc == 2 && sem_wait_pause == 3);
+            assert(sem_cd_timer == (CD_TIMER_SHARED ? 0u : 4u));
         } else if (!std::strcmp(test, "stale")) {
             CD_IRQ();
             assert(!releases && !tokens);
@@ -280,8 +331,56 @@ int main(int argc, char **argv)
             completion = !std::strcmp(argv[2], "missing") ? Missing :
                          !std::strcmp(argv[2], "pending") ? Pending : Posted;
             assert(wait(13500) == -1);
-            assert(!masked && !tokens && !pending[cd_bank] && drains == 1);
+            assert(!masked && !pending[cd_bank] && drains == (CD_TIMER_SHARED ? 0u : 1u));
+            assert(tokens == unsigned(CD_TIMER_SHARED && completion == Posted));
             assert(releases == unsigned(completion == Posted));
+            completion = Normal;
+            interval(13500);
+        } else if (!std::strcmp(test, "pause")) {
+            assert(argc == 3);
+            pause_kind = std::atoi(argv[2]);
+            pause_at = cycles_per_tick * 3 + 1;
+            uint64_t expected = pause_at;
+            assert(wait(INT_MAX) == 0);
+            assert(elapsed_cycles == expected && cdb.pause_request == pause_kind);
+            assert(!(regs[cd_bank][CR1] & TIM_CR1_CEN) && !tokens);
+            // A request already pending must leave the timer unarmed.
+            const auto previous_period = completion_at;
+            assert(wait(13500) == 0 && completion_at == previous_period);
+            cdb.pause_request = 0;
+            interval(13500);
+        } else if (!std::strcmp(test, "hints")) {
+            disk_task_wakeup();
+            hint_at = 3000;
+            hint_period = 500000;
+            auto before = elapsed_cycles;
+            assert(wait(13500) == 0 && elapsed_cycles - before == 2702000);
+            assert(hint_count == 6 && !tokens && !(regs[cd_bank][CR1] & TIM_CR1_CEN));
+            hint_at = UINT64_MAX;
+            interval(10000);
+            if (CD_TIMER_SHARED) {
+                completion = Pending;
+                pause_kind = 1;
+                pause_at = elapsed_cycles + 2002001;
+                assert(wait(10000) == 0 && pending[cd_bank] && cdb.pause_request);
+                cdb.pause_request = 0;
+                completion = Normal;
+                deliver_late_irq = true;
+                before = elapsed_cycles;
+                assert(wait(10000) == 0 && elapsed_cycles - before == 2002000);
+                assert(!pending[cd_bank] && !tokens && !deliver_late_irq);
+            }
+        } else if (!std::strcmp(test, "deadline")) {
+            tick_base = UINT32_MAX - 1;
+            tick_phase = cycles_per_tick - 5;
+            hint_at = 1;
+            hint_period = cycles_per_tick / 3;
+            completion = Missing;
+            assert(wait(13500) == -1);
+            assert(elapsed_cycles == cycles_per_tick * 4 - tick_phase);
+            assert(hint_count >= 9 && osKernelGetTickCount() == 2);
+            assert(!tokens && !(regs[cd_bank][CR1] & TIM_CR1_CEN));
+            hint_at = UINT64_MAX;
             completion = Normal;
             interval(13500);
         } else {

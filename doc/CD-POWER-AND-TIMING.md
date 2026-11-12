@@ -109,11 +109,12 @@ printed pp. 1633–1635](https://www.st.com/resource/en/reference_manual/rm0433-
 [§§39.4.14–39.4.15, printed pp. 1694–1695](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1694).
 
 The public port releases partially allocated synchronization objects
-before CD initialization on failure. If a timer wait fails, it stops
-the timer, clears pending completion and drains any late token before
-publishing the existing CD error status. A subsequent command can
-retry. Directory work uses the existing directory failure response.
-The independent TIM7 audio recovery timer retains its handler.
+before CD initialization on failure. Its original dedicated timer
+wait stopped the timer, cleared pending completion and drained the
+timer token before publishing the CD error. The shared worker wait
+preserves the error response and lets pending drive requests wake
+TIM2 pacing. The independent TIM7 audio recovery timer retains its
+handler. [CD pacing and handoff follow-up](SAVE-CD-RESET-OWNERSHIP.md#wake-cd-pacing-for-drive-handoff).
 
 ```sh
 python3 -B -m unittest discover -s tests -p test_cd_pacing_timer.py -v

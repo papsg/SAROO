@@ -17,6 +17,8 @@ class CDPacingTimerTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_CD_TIMER_SOURCE', ROOT / 'Firm_MCU/Saturn'))
         raw = (source / 'saturn_main.c').read_bytes()
         legacy = b'void TIM2_IRQHandler(void)' not in raw
+        shared = not legacy and b'osSemaphoreAcquire(sem_wait_disc, remaining' in raw
+        cls.allocations = 4 if shared else 5
         signatures = (
             (b'void TIM6_DAC_IRQHandler(void)', b'void hw_delay(int us)', b'void tim6_init(void)')
             if legacy else
@@ -50,7 +52,7 @@ class CDPacingTimerTests(unittest.TestCase):
         command = [
             *shlex.split(os.environ.get('CXX', 'c++')), '-std=c++17', '-g', '-Wall', '-Wextra',
             '-Werror', '-Wno-unused-function', '-Wno-unused-variable', *flags,
-            f'-DCD_TIMER_LEGACY={int(legacy)}', '-I', str(cls.target),
+            f'-DCD_TIMER_LEGACY={int(legacy)}', f'-DCD_TIMER_SHARED={int(shared)}', '-I', str(cls.target),
             str(ROOT / 'tests/cd_pacing_timer.cpp'), '-o', str(cls.binary)
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
@@ -92,9 +94,20 @@ class CDPacingTimerTests(unittest.TestCase):
                 self.run_case('timeout', race)
 
     def test_sync_objects_retire_cleanly_on_each_allocation_failure(self):
-        for allocation in range(1, 6):
+        for allocation in range(1, self.allocations + 1):
             with self.subTest(allocation=allocation):
                 self.run_case('allocation', str(allocation))
+
+    def test_pause_wakes_long_delay_and_preserves_retry(self):
+        for request in ('1', '-2'):
+            with self.subTest(request=request):
+                self.run_case('pause', request)
+
+    def test_unrelated_notifications_and_late_irqs_cannot_shorten_wait(self):
+        self.run_case('hints')
+
+    def test_absolute_deadline_survives_tick_wrap_and_repeated_wakes(self):
+        self.run_case('deadline')
 
 
 if __name__ == '__main__':

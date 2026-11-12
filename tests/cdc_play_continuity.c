@@ -12,6 +12,8 @@ static int worker_at_gate, request_waiting, acknowledged, command_returned, work
 static int ack_status, ack_type, initial_status, lookup_error, read_error, finish_after;
 static int sem_calls, play_delay, sector_delay, seek_delays, last_read_status;
 static int delay_failure, delay_calls, filtered, queued;
+static int delay_request, delay_request_at, audio_depth, filter_result, accepted;
+static int resume_end, hirq_at_ack, filtered_at_ack, queued_at_ack;
 static int error_reports, reported_reader;
 static int replace_on_eof, eof_publications, lookup_calls;
 static u32 ack_fad, last_read_fad;
@@ -58,7 +60,7 @@ static int disk_reidentify(void) { abort(); }
 static int load_disc(int disc, int start_save) { abort(); }
 static void unload_disc(void) { abort(); }
 static int handle_diread(void) { abort(); }
-static void advance_file_unit(void) { abort(); }
+static void advance_file_unit(void) { assert(!cdb.file_unit); }
 static void set_peri_report(void)
 {
     if (cdb.status == STAT_ERROR) {
@@ -72,13 +74,14 @@ static int fill_audio_buffer(const u8 *data)
 {
     assert(data == sector_bytes[0]);
     queued++;
-    return 5;
+    return audio_depth;
 }
 static int filter_sector(TRACK_INFO *track, BLOCK *block)
 {
     assert(track == cdb.play_track && block->data == sector_bytes[0]);
     filtered++;
-    return 0;
+    accepted += filter_result == 0;
+    return filter_result;
 }
 
 static int osSemaphoreAcquire(int semaphore, int ticks)
@@ -127,7 +130,9 @@ static int get_sector(int fad, BLOCK *block)
 static int worker_delay(int ticks)
 {
     if (ticks == play_delay) seek_delays++;
-    return ++delay_calls == delay_failure ? -1 : 0;
+    ++delay_calls;
+    if (delay_calls == delay_request_at) cdb.pause_request = delay_request;
+    return delay_calls == delay_failure ? -1 : 0;
 }
 
 static void eof_release_probe(void)
@@ -167,6 +172,9 @@ static void prepare(u32 fad, int audio, int status)
     worker_at_gate = request_waiting = acknowledged = command_returned = worker_finished = 0;
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
     delay_failure = delay_calls = filtered = queued = sector_delay = pend_delay = 0;
+    delay_request = delay_request_at = filter_result = accepted = resume_end = 0;
+    hirq_at_ack = filtered_at_ack = queued_at_ack = 0;
+    audio_depth = 5;
     lookup_error = error_reports = reported_reader = 0;
     replace_on_eof = eof_publications = lookup_calls = 0;
     ack_fad = last_read_fad = 0;
@@ -400,6 +408,85 @@ static void eof_release(void)
     assert(hirq == HIRQ_PEND && read_calls == 1 && filtered == 1);
 }
 
+static void acknowledge_delayed_request(void)
+{
+    ack_fad = cdb.fad;
+    ack_type = cdb.play_type;
+    hirq_at_ack = hirq;
+    filtered_at_ack = filtered;
+    queued_at_ack = queued;
+    filter_result = 0;
+    if (resume_end) cdb.play_fad_end = resume_end;
+}
+
+static void delay_handoff(int stage, int retained)
+{
+    drive_ack_hook = acknowledge_delayed_request;
+    delay_request_at = stage;
+    delay_request = retained ? -PLAYTYPE_SECTOR : 1;
+}
+
+static void seek_handoff(void)
+{
+    for (int stage = 1; stage <= 2; stage++)
+        for (int retained = 0; retained <= 1; retained++) {
+            prepare(150, 0, STAT_PAUSE);
+            delay_handoff(stage, retained);
+            run_worker(NULL);
+            assert(delay_calls == stage && pause_signals == 1 && ack_fad == 150);
+            assert(!cdb.pause_request && !hirq);
+            assert(ack_type == (retained ? PLAYTYPE_SECTOR : 0));
+            assert(read_calls == (unsigned)retained);
+            if (retained) assert(last_read_fad == 150 && last_read_status == STAT_PLAY);
+        }
+}
+
+static void eof_handoff(void)
+{
+    for (int stage = 1; stage <= 2; stage++)
+        for (int mode = 0; mode < 3; mode++) {
+            int retained = mode == 2;
+            prepare(250, 0, STAT_PLAY);
+            if (mode == 1) cdb.play_type = PLAYTYPE_FILE;
+            cdb.play_fad_end = 251;
+            cdb.index = 4;
+            pend_delay = 2000;
+            finish_after = retained ? 2 : 0;
+            if (retained) resume_end = 252;
+            delay_handoff(stage, retained);
+            run_worker(NULL);
+            assert(delay_calls == stage && pause_signals == 1 && ack_fad == 251);
+            assert(!cdb.pause_request && !(hirq_at_ack & (HIRQ_EFLS | HIRQ_PEND)));
+            assert(!(hirq & (HIRQ_EFLS | HIRQ_PEND)) && cdb.index == 4);
+            assert(ack_type == (retained ? PLAYTYPE_SECTOR : 0));
+            assert(read_calls == 1u + retained && filtered == 1 && accepted == 1);
+            if (retained) assert(last_read_fad == 251 && last_read_status == STAT_PLAY);
+        }
+}
+
+static void sector_handoff(void)
+{
+    for (int path = 0; path < 4; path++)
+        for (int retained = 0; retained <= 1; retained++) {
+            int audio = path == 1 || path == 2;
+            int full = path == 3;
+            prepare(250, audio, STAT_PLAY);
+            audio_depth = path == 1 ? 4 : 5;
+            filter_result = full ? 2 : 0;
+            sector_delay = 2000;
+            finish_after = retained ? (full ? 3 : 2) : 0;
+            delay_handoff(1, retained);
+            run_worker(NULL);
+            assert(!cdb.pause_request && pause_signals == 1);
+            assert(ack_type == (retained ? PLAYTYPE_SECTOR : 0));
+            assert(ack_fad == (full ? 250u : 251u));
+            assert(filtered_at_ack == !audio && queued_at_ack == audio);
+            assert(cdb.fad == (full && !retained ? 250u : 251u));
+            assert(read_calls == 1u + retained * (full ? 2 : 1));
+            assert(accepted == (!audio && (!full || retained)) && queued == audio);
+        }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -425,6 +512,9 @@ int main(int argc, char **argv)
     else if (!strcmp(test, "input-terminal")) failed_input_terminal();
     else if (!strcmp(test, "idle-wake")) idle_wake();
     else if (!strcmp(test, "eof-release")) eof_release();
+    else if (!strcmp(test, "seek-handoff")) seek_handoff();
+    else if (!strcmp(test, "eof-handoff")) eof_handoff();
+    else if (!strcmp(test, "sector-handoff")) sector_handoff();
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);

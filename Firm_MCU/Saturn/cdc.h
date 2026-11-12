@@ -206,8 +206,6 @@ typedef struct
 	u16 cr3;
 	u16 cr4;
 
-	// 有200个扇区缓存
-	BLOCK block[MAX_BLOCKS];
 	u8 block_free;
 
 	// CD接口对应的过滤器.
@@ -216,12 +214,6 @@ typedef struct
 	// 认证状态
 	u8 saturn_auth;
 	u8 mpeg_auth;
-
-
-	// 有24个过滤器. 每个过滤器对应一个缓存分区
-	FILTER filter[MAX_SELECTORS];
-	PARTITION part[MAX_SELECTORS];
-
 
 
 ////// 状态与cdreport
@@ -270,7 +262,6 @@ typedef struct
 	u32 root_lba;           // 根目录的LBA地址
 	u32 root_size;          /* Exact root-directory byte length. */
 
-	FILE_INFO fi[256];
 	u8 *FINFO;
 
 
@@ -299,6 +290,12 @@ typedef struct
 	int pause_request;
 	int max_repeat;
 	TRACK_INFO *play_track;
+
+	/* Keep frequently used controls within short load/store offsets. */
+	FILTER filter[MAX_SELECTORS];
+	PARTITION part[MAX_SELECTORS];
+	BLOCK block[MAX_BLOCKS];
+	FILE_INFO fi[256];
 
 }CDBLOCK;
 

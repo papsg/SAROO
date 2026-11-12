@@ -463,8 +463,10 @@ _restart_nowait:
 				{
 					cdb.status = STAT_BUSY;
 					if (hw_delay(10000)) goto _delay_error;
+					if (cdb.pause_request) goto _restart_nowait;
 					cdb.status = STAT_SEEK;
 					if (hw_delay(calc_delay)) goto _delay_error;
+					if (cdb.pause_request) goto _restart_nowait;
 				}
 				delayed_start = 1;
 			}
@@ -544,15 +546,16 @@ _play_end:
         /* A pending range update may extend the old endpoint. */
         if (cdb.pause_request) goto _play_checkpoint;
         if (cdb.play_type && outside_play_range()) {
-			// 本次play结束
-			cdb.play_track = NULL;
 			{
 				if(cdb.repcnt>=cdb.max_repeat || cdb.play_fad_start>=cdb.play_fad_end){
 					if(pend_delay){
 						if (hw_delay(pend_delay)) goto _delay_error;
+						if (cdb.pause_request) goto _restart_nowait;
 						cdb.status = STAT_BUSY;
 						if (hw_delay(pend_delay)) goto _delay_error;
+						if (cdb.pause_request) goto _restart_nowait;
 					}
+					cdb.play_track = NULL;
 					cdb.status = STAT_PAUSE;
 					if(cdb.play_type==PLAYTYPE_FILE){
 						HIRQ = HIRQ_EFLS;
@@ -563,6 +566,7 @@ _play_end:
                     __asm__ volatile ("" ::: "memory");
 					cdb.play_type = 0;
 				}else{
+					cdb.play_track = NULL;
 					if(cdb.repcnt<14)
 						cdb.repcnt += 1;
 					cdb.old_fad = cdb.fad;
@@ -948,11 +952,9 @@ void EXTI1_IRQHandler(void)
 
 /******************************************************************************/
 
-static osSemaphoreId_t sem_cd_timer;
-
 static int cd_sync_init(void)
 {
-    osSemaphoreId_t sems[4];
+    osSemaphoreId_t sems[3];
     osMutexId_t mutex;
     unsigned count = 0;
     while (count < sizeof sems / sizeof *sems) {
@@ -966,7 +968,6 @@ static int cd_sync_init(void)
     sem_wait_irq = sems[0];
     sem_wait_disc = sems[1];
     sem_wait_pause = sems[2];
-    sem_cd_timer = sems[3];
     mutex_fs = mutex;
     return 0;
 
@@ -979,11 +980,12 @@ void TIM2_IRQHandler(void)
 {
     if (!(TIM2->SR & TIM_SR_UIF)) return;
     TIM2->SR = 0;
-    osSemaphoreRelease(sem_cd_timer);
+    disk_task_wakeup();
 }
 
 static int hw_delay(int us)
 {
+    if (cdb.pause_request) return 0;
     unsigned ticks = us > 0 ? ((unsigned)us + 9u) / 10u : 2u;
     /* URS stays set. UG loads PSC and clears the counter without an IRQ. */
     TIM2->ARR = ticks;
@@ -991,17 +993,27 @@ static int hw_delay(int us)
     TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS | TIM_CR1_CEN;
 
     /* Allow for the inclusive period, tick phase and an extra scheduler tick. */
-    unsigned timeout = (uint64_t)ticks * OS_TICK_FREQ / 100000u + 3u;
-    if (osSemaphoreAcquire(sem_cd_timer, timeout) == osOK) return 0;
+    uint32_t deadline = osKernelGetTickCount() + (uint64_t)ticks * OS_TICK_FREQ / 100000u + 3u;
+    for (;;) {
+        int32_t remaining = (int32_t)(deadline - osKernelGetTickCount());
+        int result = osSemaphoreAcquire(sem_wait_disc, remaining > 0 ? remaining : 0);
+        if (cdb.pause_request) {
+            TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS;
+            return 0;
+        }
+        if (result != osOK) break;
+        /* A worker notification only completes the delay once TIM2 stops. */
+        if (!(TIM2->CR1 & TIM_CR1_CEN)) return 0;
+        if (remaining <= 0) break;
+    }
 
-    /* A late completion belongs to this wait. Retire it before reusing TIM2. */
+    /* Retire a failed period without consuming a pending worker notification. */
     int irqs = disable_irq();
     TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS;
     TIM2->SR = 0;
     __DSB();
     NVIC_ClearPendingIRQ(TIM2_IRQn);
     restore_irq(irqs);
-    osSemaphoreAcquire(sem_cd_timer, 0);
     return -1;
 }
 

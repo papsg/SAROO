@@ -82,6 +82,15 @@ class CDPlayContinuityTests(unittest.TestCase):
     def test_reader_releases_ownership_after_its_last_index_store(self):
         self.run_case('eof-release')
 
+    def test_seek_delays_yield_to_pending_handoff(self):
+        self.run_case('seek-handoff')
+
+    def test_both_pend_delays_yield_before_terminal_publication(self):
+        self.run_case('eof-handoff')
+
+    def test_delayed_sector_keeps_data_and_audio_retirement_order(self):
+        self.run_case('sector-handoff')
+
 
 if __name__ == '__main__':
     unittest.main()

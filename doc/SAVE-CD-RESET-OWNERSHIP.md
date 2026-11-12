@@ -111,3 +111,47 @@ then services it at the next checkpoint. Both CD profiles pass
 211 methods, including ordinary pause and directory controls.
 The GNU MCU App links 64,556 load bytes with 980 bytes of ITCM
 space. The preemption sequence is a host model.
+
+## Wake CD pacing for drive handoff
+
+Adapted from paps-g `39a45215` (MCU-CDC-038). Drive commands used
+to wake the worker on a different semaphore from the one it used
+for TIM2 pacing. At the largest supported delay, the worker could
+stay asleep past the command's handoff budget.
+
+Timer completion and handoff now wake the worker through the same
+semaphore. An ordinary wake still requires the one-pulse counter
+to have stopped. A pending drive request cancels pacing. An
+absolute RTX deadline bounds a missing completion, including when
+unrelated wakes arrive or the tick counter wraps. On timeout the
+worker stops TIM2 and clears pending completion, preserving any
+queued worker wake for its next wait.
+
+Both startup and end-of-play waits re-enter command admission on
+cancellation. A retained reader can resume in PLAY, even after the
+second end delay had published BUSY. The worker still finishes
+an admitted sector before its next checkpoint. Buffer-full data
+can retry from the same FAD, and queued audio advances once.
+[STM32H750 reference manual RM0433 Rev 8, §§39.3.1–39.3.2,
+printed pp. 1633–1635](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1633),
+[§39.4.1, CR1, printed pp. 1676–1677](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=1676),
+[CMSIS-RTOS2 kernel tick API](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__KernelCtrl.html).
+
+Both host profiles pass 217 CD methods. Against the parent, the
+timer fixture reproduces two waits that miss handoff, and the
+actual worker fixture reproduces missed startup and PEND checkpoints.
+The other 24 methods in those two fixtures pass. The port checks
+late interrupts, missing completion, tick wrap, both audio wait
+lengths, and a full-buffer retry. These are host scheduling and
+register models.
+
+The GNU MCU App used 64,556 load bytes before this change and
+64,636 with the wait change alone. Moving the MCU-private CD
+control fields ahead of the fixed tables reduces the final link
+to 63,628 bytes, leaving 1,908 bytes of ITCM space. The rearrangement
+keeps the 8,168-byte structure, table capacities, and static RAM
+totals. Of 737 matched compiler-reported direct frames, three
+shrink and the rest are unchanged against the timer-only link.
+The delay routine itself uses 24 bytes of direct stack, up from
+16 before the timer change. This measures link and compiler
+resources. Physical timing and game behavior remain unqualified.
