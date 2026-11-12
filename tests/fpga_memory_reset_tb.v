@@ -1,4 +1,4 @@
-// Adapted from paps-g e345a327. SDRAM command and byte-mask scoreboard.
+// Adapted from paps-g e345a327 and eefa5aca. SDRAM command and byte-mask scoreboard.
 `timescale 1ns/1ps
 /* The four production modules use only declaration-order normalization. The scoreboard records emitted WRITE
  * commands; it does not model physical SDRAM or Saturn bus timing. */
@@ -65,7 +65,9 @@ module tb;
             while ((p==0 ? wait_a : wait_b)!==1'b1 && cycles<25000) begin
                 tick();cycles=cycles+1;
             end
-            if (cycles==25000) $fatal(1,"write never completed");
+            if (cycles==25000)
+                $fatal(1,"write never completed: state=%0d ref_ack=%b ref_count=%0d",
+                       dut._tsd.m_state,dut._tsd.ref_ack,dut._tsd.ref_count);
             if (completed!=expected_count || issued[a[8:1]]!==expected)
                 $fatal(1,"port %0d acknowledged before its WRITE command: count %0d/%0d data %h/%h",
                        p,completed,expected_count,issued[a[8:1]],expected);
@@ -78,7 +80,7 @@ module tb;
         if (!$value$plusargs("port=%d",port)) port=0;
         if (!$value$plusargs("phase=%d",phase)) phase=0;
         if (!$value$plusargs("mask=%d",write_mask)) write_mask=0;
-        if(port<0 || port>1 || phase<0 || phase>3 || write_mask<0 || write_mask>3)
+        if(port<0 || port>1 || phase<0 || phase>5 || write_mask<0 || write_mask>3)
             $fatal(1,"invalid fixture selection");
         for(i=0;i<256;i=i+1) issued[i]=16'h1111;
         #1;reset=0;repeat(2) tick();@(negedge clk);reset=1;
@@ -89,6 +91,15 @@ module tb;
             while (dut.cmd_req!==2'b01) tick();
         end else if (phase==2) begin
             finish_write(port,26'h20,16'h1234,1);
+        end else if (phase==4 || phase==5) begin
+            finish_write(port,26'h20,16'h1234,1);
+            if (phase==4) begin
+                while (dut._tsd.ref_ack!==1'b1) tick();
+            end else begin
+                while ({sd_cs,sd_ras,sd_cas,sd_we}!==4'b0001) tick();
+                if (dut._tsd.ref_ack!==0)
+                    $fatal(1,"refresh issue did not retire its acknowledgment");
+            end
         end else begin
             while (dut.cmd_ack!==1'b1) tick();
         end

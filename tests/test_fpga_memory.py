@@ -14,10 +14,13 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('memhub.v', 'cachebus.v', 'cacheblk.v', 'tsdram.v')
 EARLY_ACK = 'acknowledged before its WRITE command'
+REFRESH_STALL = 'write never completed: state=0 ref_ack=1 ref_count=781'
 
 
 def declarations_first(raw):
-    """Put uninitialized declarations before use for Icarus."""
+    """Put declarations before use for Icarus, keeping net assignments in place."""
+    raw = re.sub(rb'^(\twire\s+)(\w+)\s*=\s*([^;\n]+);\n',
+                 rb'\1\2;\n\tassign \2 = \3;\n', raw, flags=re.M)
     pattern = rb'^\t(?:wire|reg)[^=;\n]+;\n'
     declarations = re.findall(pattern, raw, re.M)
     body = re.sub(pattern, b'', raw, flags=re.M)
@@ -37,6 +40,18 @@ def omit_ack_reset(raw, ports):
             raise ValueError(f'Unexpected reset of port {port}')
         reset = reset.replace(assignment, b'')
     return raw[:start] + reset + raw[end:]
+
+
+def retain_refresh_ack_on_reset(raw):
+    decoded = b'\twire ref_ack = m_state == M_REFERSH;\n'
+    if raw.count(decoded) != 1:
+        raise ValueError('Unexpected refresh acknowledgment decode')
+    return raw.replace(decoded, b'''\treg ref_ack;
+\talways @(posedge clk) begin
+\t\tif (reset && m_state == M_IDLE && ref_req) ref_ack <= 1'b1;
+\t\telse if (reset && m_state == M_REFERSH) ref_ack <= 1'b0;
+\tend
+''')
 
 
 def build_memory_model(inputs, target, bench):
@@ -71,6 +86,9 @@ class FPGAMemoryTests(unittest.TestCase):
             cls.baseline = (Path(baseline) / 'memhub.v').read_bytes()
         else:
             cls.baseline = omit_ack_reset(cls.sources['memhub.v'], 'ab')
+        refresh = os.environ.get('SAROO_FPGA_REFRESH_BASELINE')
+        cls.refresh_baseline = ((Path(refresh) / 'tsdram.v').read_bytes() if refresh
+                                else retain_refresh_ack_on_reset(cls.sources['tsdram.v']))
 
     def build(self, variant):
         if variant in self.variants:
@@ -79,29 +97,31 @@ class FPGAMemoryTests(unittest.TestCase):
         inputs = dict(self.sources)
         if variant == 'baseline':
             inputs['memhub.v'] = self.baseline
+        elif variant == 'refresh-baseline':
+            inputs['tsdram.v'] = self.refresh_baseline
         elif variant in ('omit-a', 'omit-b'):
             inputs['memhub.v'] = omit_ack_reset(inputs['memhub.v'], variant[-1])
         binary = build_memory_model(inputs, target, 'fpga_memory_reset_tb.v')
         self.variants[variant] = binary
         return binary
 
-    def check_case(self, variant, port, phase, mask=0, premature=False):
+    def check_case(self, variant, port, phase, mask=0, failure=None):
         with self.subTest(variant=variant, port=port, phase=phase, mask=mask):
             binary = self.build(variant)
             result = subprocess.run(['vvp', str(binary), f'+port={port}',
                                      f'+phase={phase}', f'+mask={mask}'],
                                     capture_output=True, text=True, timeout=20)
             output = result.stdout + result.stderr
-            if premature:
+            if failure:
                 self.assertNotEqual(result.returncode, 0, output)
-                self.assertIn(EARLY_ACK, output)
+                self.assertIn(failure, output)
             else:
                 self.assertEqual(result.returncode, 0, output)
                 self.assertIn('new writes await their own command', output)
 
     def test_original_reset_can_release_an_unissued_write_on_both_ports(self):
         for port in (0, 1):
-            self.check_case('baseline', port, 0, premature=True)
+            self.check_case('baseline', port, 0, failure=EARLY_ACK)
 
     def test_other_original_reset_phases_are_valid_controls(self):
         for port in (0, 1):
@@ -116,8 +136,19 @@ class FPGAMemoryTests(unittest.TestCase):
 
     def test_each_reset_bit_is_required(self):
         for port, variant in enumerate(('omit-a', 'omit-b')):
-            self.check_case(variant, port, 0, premature=True)
+            self.check_case(variant, port, 0, failure=EARLY_ACK)
             self.check_case(variant, port ^ 1, 0)
+
+    def test_retained_refresh_ack_stalls_before_issue_but_adjacent_phase_passes(self):
+        for port in (0, 1):
+            self.check_case('refresh-baseline', port, 4, failure=REFRESH_STALL)
+            self.check_case('refresh-baseline', port, 5)
+
+    def test_both_ports_resume_after_either_refresh_phase(self):
+        for port in (0, 1):
+            for phase in (4, 5):
+                for mask in range(4):
+                    self.check_case('corrected', port, phase, mask)
 
 
 if __name__ == '__main__':

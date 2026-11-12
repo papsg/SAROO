@@ -38,3 +38,36 @@ both builds. All 21 reported constrained timing checks pass. The
 comparison uses the same 18 project inputs as the fitted public
 baseline, with changes in the three cache/arbiter source files.
 [Offline Quartus build instructions](../tools/README.md#original-fpga-project-comparison).
+
+## Clear refresh acknowledgment on reset
+
+Adapted from paps-g `eefa5aca` (FPGA-REFRESH-001). The SDRAM controller
+asserts `ref_ack` when it accepts refresh, then clears it when it issues
+the refresh command. A reset between those steps used to leave
+`ref_ack` high. That made the counter reload the normal refresh
+interval on every clock and kept the controller in power-on startup.
+The public port derives the one-clock acknowledgment from the state
+entered at refresh acceptance. Reset goes to the power-on state,
+clearing the acknowledgment along with it. The controller still uses
+its normal startup count and refresh interval. A separate register
+with an explicit reset passed simulation and missed the reported
+setup requirement by 0.202 ns in its full fit. That candidate was
+discarded.
+[Original v0.8 refresh counter and controller](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/tsdram.v#L130-L201).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_memory.py -v
+```
+
+Set `SAROO_FPGA_REFRESH_BASELINE` to the preceding checkout's `FPGA`
+directory to compare its exact controller. Reset before refresh issue
+stalls both parent ports. Reset just after issue passes on both. The
+corrected RTL passes all 48 port, phase and byte-mask combinations
+across refresh and memory-command reset. The 416 accepted-write
+controls pass as well. The fixtures model the FPGA reset input
+and emitted SDRAM commands. Physical power-on timing remains
+unqualified.
+
+The selected fit uses 1,413 logic elements and 813 registers. All
+21 reported constrained checks pass. The memory bits, pins and
+clock configuration match the preceding cache-write fit.

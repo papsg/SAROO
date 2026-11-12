@@ -171,7 +171,6 @@ module tsdram(
 	reg[ 3:0] m_count;
 	reg m_cke;
 	reg m_oe;
-	reg ref_ack;
 	reg cmd_ack;
 
 	localparam  M_POR=0,
@@ -183,6 +182,9 @@ module tsdram(
 				M_READ_END=6,
 				M_WRITE=7,
 				M_WRITE_WAIT=8;
+
+	// Accepting a refresh enters this state for one clock. Reset leaves it.
+	wire ref_ack = m_state == M_REFERSH;
 
 
 	always @(negedge reset or posedge clk)
@@ -221,7 +223,6 @@ module tsdram(
 				m_dqm <= 2'b11;
 				m_oe <= 0;
 				if(ref_req) begin
-					ref_ack <= 1'b1;
 					m_state <= M_REFERSH;
 				end else if(cmd_req==2'b10) begin
 					m_state <= M_ACTIVE;
@@ -251,7 +252,6 @@ module tsdram(
 			end
 
 			M_REFERSH: begin
-				ref_ack <= 1'b0;
 				m_cmd <= 4'b0001;
 				m_count <= tRFC[3:0];
 				m_state <= M_WAIT;
