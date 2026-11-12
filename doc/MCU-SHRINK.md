@@ -313,3 +313,32 @@ also passes the O2 profile. The GNU App image shrinks by 64 bytes to
 64,664, with 872 bytes free and unchanged static DTCM. The direct
 `get_file_info` frame drops from 48 to 24 bytes. This establishes the
 linked size and reply values; no physical timing gain is claimed.
+
+## Store CUE subindices in 24 bits
+
+Adapted from paps-g `c39ce448` (AUD-RES-003). The existing CUE parser
+already bounds stored frame addresses to 24 bits and the pool to
+2,048 entries. Each entry now uses a 16-bit low part and an eight-bit
+high part. The separate arrays keep every low part aligned. Parser
+ordering, the track base/sentinel, binary search, and drive start and
+exclusive end positions are preserved.
+
+[Sega ST-162-062094 §7.2.6, CdcPos 6.4, printed pp. 65–66](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=53)
+documents track/index positions and their endpoint rules.
+[§7.2.3, printed p. 58](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=46)
+shows the three-byte FAD in the TOC. These describe the external
+contract; the split arrays are SAROO's internal representation.
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release SAROO_FIRMWARE_SAVE_PROFILE=release`.
+All 226 methods pass under ASan/UBSan and O2. The parent and port
+also pass the seven CUE layout methods with the same fixture.
+The cases cover filling the 2,048 slots, refusing the next slot,
+preserving the live table during preview, and parsing and reading
+indexed sectors across 64 Ki and near the 24-bit limit.
+
+The linked table shrinks from 8,192 to 6,144 bytes. Static DTCM
+falls 55,864 → 53,816 bytes. The App image grows 32 bytes to
+64,696 (840 bytes free). The direct subindex search frame grows
+by four bytes to 20. This verifies results and memory use; it
+does not measure physical playback timing.

@@ -767,11 +767,11 @@ static u32 drive_position(u32 position, int ending)
     if (!index) index = ending ? 99 : 1;
     TRACK_INFO *tk = &cdb.tracks[track-1];
     if (ending) {
-        if (index < (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX(tk)[index-1];
+        if (index < (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX_VALUE(tk, index-1);
         return tk->fad_end+1;
     }
     if (index <= 1) return tk->fad_start;
-    if (index <= (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX(tk)[index-2];
+    if (index <= (unsigned)tk->max_index && tk->index_base) return TRACK_INDEX_VALUE(tk, index-2);
     return track < (unsigned)cdb.track_num ? cdb.tracks[track].fad_start : leadout;
 }
 

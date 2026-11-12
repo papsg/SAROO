@@ -68,10 +68,9 @@ u8 track_subindex(const TRACK_INFO *tk, u32 fad)
 {
     if (fad < tk->fad_start) return 0;
     unsigned low = 1, high = tk->max_index;
-    const int *indices = TRACK_INDEX(tk);
-    if (indices) while (low < high) {
+    if (tk->index_base) while (low < high) {
         unsigned mid = (low + high) / 2;
-        if (fad >= (u32)indices[mid-1]) low = mid + 1;
+        if (fad >= TRACK_INDEX_VALUE(tk, mid-1)) low = mid + 1;
         else high = mid;
     }
     return low;
@@ -86,7 +85,7 @@ u32 track_to_fad(u16 track_index)
     if (index <= 1) return tk->fad_start;
     if (index > (unsigned)tk->max_index) return tk->fad_end;
     if (!tk->index_base) return 0xffffffffu;
-    return TRACK_INDEX(tk)[index-2];
+    return TRACK_INDEX_VALUE(tk, index-2);
 }
 
 int fad_to_track(u32 fad)

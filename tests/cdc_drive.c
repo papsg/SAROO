@@ -61,8 +61,8 @@ static u16 *const drive_hirq = &hirq;
 #include "phase.inc"
 #include "background.inc"
 
-int index_table[2048];
 #include "track_fixture.h"
+TEST_INDEX_TABLE;
 static TRACK_INFO *media;
 static int indices[3][2] = {{200,250},{400,450},{600,650}};
 static void ready(void)

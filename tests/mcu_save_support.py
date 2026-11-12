@@ -82,7 +82,8 @@ class MCUSaveTest(unittest.TestCase):
         if cls.fixture in ('runtime', 'extents', 'reopen', 'disc', 'cue', 'header', 'owner'):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
-            end = header.index(b'typedef struct', header.index(b'}TRACK_INFO;'))
+            last = b'} SUBINDEX_TABLE;' if b'} SUBINDEX_TABLE;' in header else b'}TRACK_INFO;'
+            end = header.index(b'typedef struct', header.index(last))
             (cls.target / 'track-layout.h').write_bytes(header[start:end])
             (cls.target / 'track-limit.h').write_bytes(b'\n'.join(
                 line for line in header.splitlines() if line.startswith((b'#define MAX_TRACKS', b'#define PLAYTYPE_')))+b'\n')

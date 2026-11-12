@@ -98,7 +98,7 @@ static void large(void) {
     buf_fad_end=0;large_clip=1;b.data=NULL;assert(get_sector(151,&b)<0 && !buf_fad_end && !b.data);
 }
 static void generated_gaps(void) {
-#ifdef TRACK_INDEX
+#if defined(TRACK_INDEX) || defined(TRACK_INDEX_VALUE)
     FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2352,8,1);assert(!f_close(&fp));
     assert(!cue_open(&track_fp[0],"/D/a.bin",FA_READ));cdb.track_num=1;
     cdb.tracks[0]=(TRACK_INFO){.fp=&track_fp[0],.fad_0=150,.fad_start=155,.fad_end=162,.file_offset=2*2352,.pregap=3,.postgap=2,.max_index=1};

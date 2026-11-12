@@ -8,7 +8,7 @@
 /******************************************************************************/
 
 FIL track_fp[100];
-int index_table[2048];
+SUBINDEX_TABLE index_table;
 int current_index;
 
 int sort_mode = 0;
@@ -153,9 +153,9 @@ static int cue_time(char *text)
     return fad;
 }
 
-static int cue_last_index(TRACK_INFO *tk)
+static u32 cue_last_index(const TRACK_INFO *tk)
 {
-    return tk->max_index > 1 ? TRACK_INDEX(tk)[tk->max_index-2] : tk->fad_start;
+    return tk->max_index > 1 ? TRACK_INDEX_VALUE(tk, tk->max_index-2) : tk->fad_start;
 }
 
 /* Finish stored sectors before adding unbacked postgap frames. */
@@ -319,7 +319,7 @@ int parse_cue(char *fname, u8 *ipbuf)
                     current_index == 2048 || delta > 0xffffffu - tk->fad_start) goto failed;
                 u32 fad = tk->fad_start + delta;
                 if (fad <= cue_last_index(tk)) goto failed;
-                index_table[current_index++] = fad;
+                subindex_store(current_index++, fad);
                 tk->max_index = index;
             }
         }

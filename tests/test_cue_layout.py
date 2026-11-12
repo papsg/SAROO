@@ -22,5 +22,8 @@ class CueLayoutTests(MCUSaveTest):
         for n in range(5):
             with self.subTest(n=n):self.run_case(['gap-pool',n])
     def test_existing_99_track_read_control(self):self.run_case(['tracks',0])
+    def test_full_width_indices_reach_parser_reader_and_position_lookup(self):
+        for n in range(3):
+            with self.subTest(n=n):self.run_case(['high-indices',n])
 
 if __name__=='__main__':unittest.main()

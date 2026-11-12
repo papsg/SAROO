@@ -17,7 +17,8 @@ _Alignas(4) static u8 payload[MAX_BLOCKS][2352], disc_bytes[0x8000];
 static u8 *sector_buffer=disc_bytes;
 static u32 buf_fad_start,buf_fad_end,buf_fad_offset,buf_fad_size;
 static u8 buf_subcode_mode;
-int index_table[2048];
+#include "track_fixture.h"
+TEST_INDEX_TABLE;
 static u16 fifo_input[4*2352/2], fifo_status, st_control, st_status, hirq, reply[4];
 static unsigned fifo_words,fifo_pos,prefix_bytes;
 static int irq_depth,min_num;

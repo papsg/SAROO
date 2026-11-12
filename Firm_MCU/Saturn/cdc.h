@@ -189,8 +189,26 @@ typedef struct
 _Static_assert(sizeof(void*) != 4 || sizeof(TRACK_INFO) == 32, "Unexpected ARM track layout");
 /* Zero means absent; otherwise index_base-1 is an offset in the existing pool.
  * Offset2048 may be retained only when no higher index is dereferenced. */
-extern int index_table[2048];
-#define TRACK_INDEX(tk) ((tk)->index_base ? &index_table[(tk)->index_base-1] : NULL)
+typedef struct
+{
+    u16 low[2048];
+    u8 high[2048];
+} SUBINDEX_TABLE;
+_Static_assert(sizeof(SUBINDEX_TABLE) == 6144, "Unexpected subindex layout");
+extern SUBINDEX_TABLE index_table;
+
+static inline u32 subindex_value(unsigned index)
+{
+    return index_table.low[index] | ((u32)index_table.high[index] << 16);
+}
+
+static inline void subindex_store(unsigned index, u32 fad)
+{
+    index_table.low[index] = (u16)fad;
+    index_table.high[index] = (u8)(fad >> 16);
+}
+
+#define TRACK_INDEX_VALUE(tk, offset) subindex_value((unsigned)(tk)->index_base - 1 + (offset))
 #define TRACK_SIZE(tk) ((tk)->sector_size)
 #define TRACK_CTRL(tk) ((tk)->mode == 3 ? 0x01 : 0x41)
 

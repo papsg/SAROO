@@ -98,9 +98,11 @@ static void gap_pool(int value) {
     if(value==4) {
         const char *cue="FILE \"a.bin\" BINARY\nTRACK 01 AUDIO\nPREGAP 00:00:03\nINDEX 00 00:00:00\nINDEX 01 00:00:02\n";
         create(cue_name,cue,strlen(cue));current_index=2047;
-        for(unsigned i=0;i<2048;i++)index_table[i]=i*13;
+        for (unsigned i = 0; i < 2048; i++) TEST_INDEX_WRITE(i, i * 8193u);
+        TEST_INDEX_WRITE(2047, 0xffffffu);
         u8 out[256];assert(!parse_cue((char*)cue_name,out) && current_index==2047 && !handles_count);
-        for(unsigned i=0;i<2048;i++)assert(index_table[i]==(int)i*13);
+        for (unsigned i = 0; i < 2047; i++) assert(TEST_INDEX_READ(i) == i * 8193u);
+        assert(TEST_INDEX_READ(2047) == 0xffffffu);
         for(unsigned i=0;i<256;i++)assert(out[i]==byte_at(3,i+16));
         return;
     }
@@ -129,11 +131,36 @@ static void gap_pool(int value) {
         assert(!unload_disc());
     }
 }
+static void high_indices(unsigned sample)
+{
+    const unsigned starts[] = {0xfffe, 0x100fe, 0xfffff8};
+    assert(sample < sizeof(starts) / sizeof(starts[0]));
+    const unsigned start = starts[sample], gap = start - 154;
+    FIL fp;
+    start_file(&fp, "/D/a.bin");
+    append_frames(&fp, 2352, 9, 1);
+    assert(f_close(&fp) == FR_OK);
+    char cue[512];
+    snprintf(cue, sizeof(cue),
+             "FILE \"a.bin\" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n"
+             "TRACK 02 AUDIO\nPREGAP %u:%02u:%02u\nINDEX 01 00:00:04\n"
+             "INDEX 02 00:00:05\nINDEX 03 00:00:07\n",
+             gap / 4500, gap / 75 % 60, gap % 75);
+    load(cue);
+    assert(cdb.tracks[1].fad_start == start && cdb.tracks[1].fad_end == start + 4);
+    assert(current_index == 2 && TEST_INDEX_READ(0) == start + 1 && TEST_INDEX_READ(1) == start + 3);
+    assert(track_to_fad(0x202) == start + 1 && track_to_fad(0x203) == start + 3);
+    for (unsigned i = 0; i < 5; i++)
+        expect(start + i, 2352, 5 + i, 2, i == 0 ? 1 : i < 3 ? 2 : 3);
+    assert(!unload_disc());
+}
+
 int main(int argc,char **argv) {
     assert(argc==4);disk=fopen(argv[1],"r+b");assert(disk);FATFS fs;assert(!f_mount(&fs,"0:",1));assert(!f_mkdir("/D"));
     memset(&text_space,0xa5,sizeof text_space);memset(&paths,0xa5,sizeof paths);
     int value=atoi(argv[3]);const char *test=argv[2];
     if(!strcmp(test,"mixed"))mixed(value);else if(!strcmp(test,"gaps"))gaps();else if(!strcmp(test,"first"))first(value);
-    else if(!strcmp(test,"tracks"))tracks();else if(!strcmp(test,"bad-gap"))bad_gap(value);else {assert(!strcmp(test,"gap-pool"));gap_pool(value);}
+    else if(!strcmp(test,"tracks"))tracks();else if(!strcmp(test,"bad-gap"))bad_gap(value);
+    else if(!strcmp(test,"high-indices"))high_indices((unsigned)value);else {assert(!strcmp(test,"gap-pool"));gap_pool(value);}
     guards();assert(!lock_depth && !fclose(disk));puts("pass: actual CUE parser, reader, TOC and full index pool");return 0;
 }

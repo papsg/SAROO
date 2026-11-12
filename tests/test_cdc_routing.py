@@ -34,6 +34,7 @@ class CDRoutingTests(unittest.TestCase):
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
         for name in ('cdc_copy.c','test_cdc_copy.py','cdc_routing.c','test_cdc_routing.py','test_cdc_sector_input.py'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        inputs['track_fixture.h']=(ROOT/'tests/track_fixture.h').read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')

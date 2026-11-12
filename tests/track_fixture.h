@@ -17,10 +17,19 @@ static inline void test_track_mode(TRACK_INFO *tk, unsigned mode) {
     assert(mode>=1 && mode<=3); tk->mode=mode;
 }
 #endif
+#ifdef TRACK_INDEX_VALUE
+#define TEST_INDEX_TABLE SUBINDEX_TABLE index_table
+#define TEST_INDEX_READ(i) subindex_value(i)
+#define TEST_INDEX_WRITE(i, v) subindex_store(i, v)
+#else
+#define TEST_INDEX_TABLE int index_table[2048]
+#define TEST_INDEX_READ(i) ((u32)index_table[i])
+#define TEST_INDEX_WRITE(i, v) (index_table[i] = (v))
+#endif
 static inline void test_track_indices(TRACK_INFO *tk, int *values, unsigned base) {
-#ifdef TRACK_INDEX
+#if defined(TRACK_INDEX) || defined(TRACK_INDEX_VALUE)
     tk->index_base=values?base+1:0;
-    if (values) for (unsigned n=0;n+1<tk->max_index;n++) index_table[base+n]=values[n];
+    if (values) for (unsigned n=0;n+1<tk->max_index;n++) TEST_INDEX_WRITE(base+n, values[n]);
 #else
     (void)base; tk->index=values;
 #endif

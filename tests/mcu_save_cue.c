@@ -9,7 +9,7 @@ typedef uint16_t u16;
 #include "track_fixture.h"
 #include "track-limit.h"
 static FIL track_fp[100];
-int index_table[2048];
+TEST_INDEX_TABLE;
 static int current_index;
 #define MAX_BLOCKS 200
 #define STAT_NODISC 7
@@ -157,7 +157,7 @@ static void valid(int value)
     assert(cdb.tracks[0].fad_start==150);
     if(value==1)assert(cdb.tracks[0].fad_end==224 && cdb.tracks[1].fad_0==225 && cdb.tracks[1].fad_start==300 && cdb.tracks[1].fad_end==449 && cdb.tracks[1].file_offset==150*2352);
     if(value==2)assert(cdb.tracks[0].fad_end==449 && cdb.tracks[1].fad_0==450 && cdb.tracks[1].fad_start==600 && cdb.tracks[1].fad_end==749);
-    if(value==3)assert(current_index==2 && cdb.tracks[0].max_index==3 && index_table[0]==160 && index_table[1]==170);
+    if(value==3)assert(current_index==2 && cdb.tracks[0].max_index==3 && TEST_INDEX_READ(0)==160 && TEST_INDEX_READ(1)==170);
     if(value==5)assert(cdb.tracks[98].fad_start==29550 && cdb.tracks[98].fad_end==29849);
     assert(bswap32(cdb.TOC[99])==((value==5?0x01u:0x41u)<<24|0x010000u));
     assert((bswap32(cdb.TOC[100])&0x00ff0000)==(unsigned)cdb.track_num<<16);
