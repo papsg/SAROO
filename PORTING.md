@@ -2270,3 +2270,9 @@ behavior remain unqualified.
 - GNU MCU App: 63,628 load bytes with 1,908 bytes of ITCM space. Menu code/data: 82,052 bytes, 608 above the parent. BSS grows four bytes. The pre-v1 MCU still cannot distinguish live and retired untagged STARTUP/SELECT values. Physical reset behavior remains unqualified. [Implementation and primary references](https://github.com/papsg/SAROO/blob/db18718454003f3a0a914fb17317e733e4013176/doc/SAVE-CD-RESET-OWNERSHIP.md#preserve-an-in-flight-mailbox-across-saturn-reset).
 
 - Full-suite integration follow-up [cc1a6f6](https://github.com/papsg/SAROO/commit/cc1a6f6b3a39cb52fc5aa4abaf60cc6357972da4) models idle command admission in the save-owner fixture after `db18718`. All nine owner methods pass with sanitizers and O2. Firmware source and artifacts are identical to the hot-reset checkpoint.
+
+### Final verification
+
+The six production checkpoints and the archive-owner fixture follow-up are published on [`main` at cc1a6f6](https://github.com/papsg/SAROO/commit/cc1a6f6b3a39cb52fc5aa4abaf60cc6357972da4). The full `make -C tests check` run passed from a clean archive of that commit, with 798 Python passes, one Windows-only skip, 18 Rust passes and the native language check. The separate linked menu clock run passed 48 cases.
+
+The exact archive rebuild reproduced the previous MCU ELF and menu ELF/image byte for byte. The GNU MCU App verifies 166 vectors, links 63,628 load bytes and leaves 1,908 bytes of ITCM. The menu links 82,052 code/data bytes and retains 23,388 bytes of body margin. All 56 MCU and 36 menu repository source hashes match. The public working tree is clean and the private reference checkout matches its baseline. Physical Saturn and game qualification remain open. [Attribution, primary references and reproduction details](https://github.com/papsg/SAROO/blob/cc1a6f6b3a39cb52fc5aa4abaf60cc6357972da4/doc/SAVE-CD-RESET-OWNERSHIP.md).
