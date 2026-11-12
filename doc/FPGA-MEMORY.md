@@ -71,3 +71,52 @@ unqualified.
 The selected fit uses 1,413 logic elements and 813 registers. All
 21 reported constrained checks pass. The memory bits, pins and
 clock configuration match the preceding cache-write fit.
+
+## Wait for the requested cache word
+
+Adapted from paps-g `6b156a19` (FPGA-CACHE-002). The old controller
+completed a read as soon as the cache line address matched. During a
+four-word fill, this could return data from the previous line before
+the requested word arrived. At the reset tag, it could return old data
+even with every valid bit cleared.
+[v0.8 read decision](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/cachebus.v#L74-L85),
+[v0.8 cache block reset and fill](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/cacheblk.v#L74-L94).
+
+A matching valid word still completes immediately. A matching line
+with its requested word pending uses the existing wait state to finish
+that fill. A completely invalid line takes the ordinary miss path.
+This relies on the accepted-write port preserving fill validity
+when it updates the data in both caches.
+[Accepted-write prerequisite](https://github.com/papsg/SAROO/commit/36174aca6fa36a89b7739592e96b4bbc773b7666).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_cache_read.py -v
+# Set SAROO_FPGA_CACHE_READ_SOURCE to the parent checkout's FPGA directory.
+# On the parent, select -k regressions for the stale reads or -k controls
+# for warm hits and ordinary misses.
+```
+
+Both ports on the exact parent return `0x9013` in place of `0x9023`
+during a partial fill and `0x9010` in place of `0xc401` at the reset
+tag. All four targeted valid controls pass. The port passes 200
+distinct read scenarios over both ports, all words, and multiple
+request spacings. Valid words complete without a new wait and the
+read count confirms that a partial fill shares the original burst.
+The command-count control detects a third SDRAM read on each port
+when a test variant refetches the missing word.
+The 416 accepted-write scenarios and six memory reset methods also pass.
+[Public parent](https://github.com/papsg/SAROO/commit/a9a64b32fe8fa4bdcf99c8338ad57786b64b9c23).
+
+The reset-tag address exceeds the low 16 MiB exposed by both ports
+in the v0.8 top-level design. The partial-fill test uses low addresses
+and short module-level request spacing. The fixture models SDRAM
+command and data flow. Physical request spacing and game effects
+remain unqualified.
+[v0.8 address mapping](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v#L674-L712).
+
+The complete five-stage Quartus build passes all 21 reported
+constrained checks. Logic elements increase from 1,413 to 1,435.
+Both fits use 813 registers and 32,768 memory bits. The lowest
+reported setup slack goes from 0.968 ns to 1.093 ns. The compiler,
+clock constraints and 17 other project inputs match the parent.
+[Offline Quartus build instructions](../tools/README.md#original-fpga-project-comparison).

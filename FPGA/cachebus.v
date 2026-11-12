@@ -70,9 +70,14 @@ module cachebus(
 			case(state)
 			B_IDLE: begin
 				if(rd && cs) begin
-					if(addr[25:3]==cache_addr) begin
-						// Cache命中.
-						rdata <= cache_data[addr[2:1]];
+					if(addr[25:3]==cache_addr && |cache_valid) begin
+						if(cache_valid[addr[2:1]]) begin
+							rdata <= cache_data[addr[2:1]];
+						end else begin
+							// Let the current fill deliver this word.
+							nwait <= 0;
+							state <= B_WAITDATA;
+						end
 					end else begin
 						// Cache未命中, 发出读请求.
 						nwait <= 0;

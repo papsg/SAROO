@@ -159,6 +159,7 @@ check-host-tools:
 	cargo test --locked --manifest-path ../tools/Cargo.toml --workspace
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_memory.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_cache.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_cache_read.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v
