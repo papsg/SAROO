@@ -440,6 +440,7 @@ int main(void)
 
 	memset(&attr, 0, sizeof(attr));
 	attr.priority = osPriorityHigh;
+	attr.stack_size = 512;  /* Permanent allocation; see the RTX common pool. */
 	osThreadNew(led_task, NULL, &attr);
 
 	osKernelStart();

@@ -44,7 +44,8 @@
 //   <i> Defines the combined global dynamic memory size.
 //   <i> Default: 4096
 #ifndef OS_DYNAMIC_MEM_SIZE
-#define OS_DYNAMIC_MEM_SIZE         32768
+// Remove only the 3584 bytes saved by the permanent LED stack (4096 -> 512).
+#define OS_DYNAMIC_MEM_SIZE         29184
 #endif
  
 //   <o>Kernel Tick Frequency [Hz] <1-1000000>

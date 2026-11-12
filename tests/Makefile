@@ -45,6 +45,7 @@ check-gif:
 .PHONY: check-mcu-shrink
 check-mcu-shrink:
 	$(PYTHON) -B -m unittest discover -s . -p test_rtx_profile.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_rtx_pool.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_image_suffix.py -v
 
 .PHONY: check-file-transfer

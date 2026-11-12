@@ -237,3 +237,57 @@ headroom and 60,208 bytes of static DTCM. The range and mode setters'
 direct compiler frames each fall from 16 to 8 bytes. The other 729
 matched frames keep their sizes. Physical timing and peak stack usage
 remain unmeasured.
+
+## Size the permanent LED stack and common RTX pool
+
+Adapted from paps-g `7ec67882` and `e4953e40`
+(AUD-RES-008 and AUD-RES-017). App and BootLoader create the LED thread
+once before starting the kernel. It now requests 512 bytes instead of
+inheriting 4,096. Its priority, semaphore, delays and GPIO writes are
+unchanged. Both builds still leave the default stack at 4,096 bytes.
+
+Both thread stacks come from the common pool. The allocator rounds
+blocks to eight bytes with an eight-byte header, so the permanent LED
+block shrinks from 4,104 to 520 bytes. The pool reserves exactly those
+3,584 fewer bytes (32,768 → 29,184). Every hole after the LED stack
+retains its size. That preserves admission for later allocations,
+including the public `scan_dir` path, which holds a 256-byte filename
+and a `FILINFO` for every recursion level. The smaller private pool
+target is not used here.
+
+[CMSIS-RTOS2 thread management, `osThreadAttr_t::stack_size`](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__ThreadMgmt.html#aacbc9a219f2d6870e9ce89bb93f975c9)
+describes the byte-sized stack request. The pinned RTX
+[thread creation](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_thread.c#L652-L700)
+and [allocator](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_memory.c#L102-L165)
+establish the pool and block accounting. See the public
+[recursive directory path](../Firm_MCU/FatFS/file_utils.c).
+
+In both linked GNU targets, the LED task has a 40-byte frame and its
+largest wrapper contributes 16 bytes. The wrappers' callees on the
+thread stack add no frame. Add 104 bytes for the extended exception
+frame, 96 for RTX's saved core and high floating-point registers,
+four for alignment and four for the guard word. The result is 264
+bytes and 248 bytes of margin within the request. See Arm *Cortex-M7
+Devices Generic User Guide*, DUI 0646C, §2.3.7 pp. 2-24–2-25 and
+[the pinned RTX context save](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/GCC/irq_cm4f.S).
+This is a linked bound for the thread stack; neither physical peak
+use nor the separate handler stack is measured.
+
+With a completed [GNU App build](../tools/README.md#original-mcu-app-compilelink-check)
+and QEMU installed, run:
+
+```sh
+SAROO_RTX_BUILD="$PWD/tests/build/mcu-link-check" \
+  SAROO_ARM_CC=/path/to/arm-none-eabi-gcc make -C tests check-mcu-shrink
+```
+
+The fixture drives the startup requests through the pinned Arm
+allocator, compares nested directory allocations, frees, reused
+holes and exhaustion, and catches a 20 KiB pool control losing
+admission. It does not start the scheduler. GNU App static DTCM
+falls 59,448 → 55,864 bytes and the image grows 16 bytes to 64,728.
+The GNU BootLoader comparison of the 13 enabled C units and common
+startup/RTX providers also saves 3,584 bytes of static DTCM, adds
+eight load bytes (28,704 total), and retains all 166 vectors. Both
+are compile/link checks; the MDK image and installed firmware remain
+unqualified.
