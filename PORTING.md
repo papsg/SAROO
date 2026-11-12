@@ -2470,3 +2470,13 @@ The public checkout is clean. Private checkout fingerprints match for HEAD, bran
 - [x] `8345fa51` (MCU-FMC-001): [`623efc6`](https://github.com/papsg/SAROO/commit/623efc6bfe047478da6350d75c342b5d35ad5c1a) — [set the required FMC reserved bit](https://github.com/papsg/SAROO/blob/623efc6bfe047478da6350d75c342b5d35ad5c1a/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#set-the-required-fmc-reserved-bit-during-boot). Parent fails the reserved-bit check, mode and timing controls pass. All three checks pass on the port. The linked 28,964-byte GNU BootLoader differs at one byte, and the GNU App load is byte-identical. Verified against ST RM0433 Tables 184–185.
 
 - [x] `cb70560a` (STM32-AXI-001): [`31e917f`](https://github.com/papsg/SAROO/commit/31e917fb70288310cbe3e9a6782a4ccadc2a2010) — [limit AXI SRAM read issuing on Y and W](https://github.com/papsg/SAROO/blob/31e917fb70288310cbe3e9a6782a4ccadc2a2010/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#limit-axi-sram-read-issuing-on-stm32-revisions-y-and-w). The parent fails 16 affected cases, and 64 other revision controls pass. Both current 80-case profiles pass. Linked App and BootLoader verify the early conditional register update. GNU App 65,208 load bytes, 328 free, with unchanged static DTCM. No physical Y/W result for the public build.
+
+### Final verification for storage and startup series
+
+All six checkpoints landed in order through [`31e917f`](https://github.com/papsg/SAROO/commit/31e917fb70288310cbe3e9a6782a4ccadc2a2010). The links above record the original changes, their references, and the public adaptations.
+
+The full `make -j6 -C tests check` passes on the archived published tree with all 676 tracked files matched. It passes 900 Python methods and 18 Rust tests, with one Windows-only fixture skipped. The final GNU App and BootLoader loads reproduce their verified candidate bytes. The App uses 65,208 bytes with 328 free and 50,752 static DTCM bytes. The BootLoader uses 29,000 bytes, and both builds retain 166 vectors. The stock menu binary and ELF match the previous build. All 48 linked menu clock cases pass.
+
+All 18 final FPGA project inputs match the completed Quartus fit. The design passes all 21 constrained checks with minimum setup and hold slacks of 1.076 and 0.168 ns. The RTL tests cover the FC1 pair, power-on sequencing, collisions and full-row refresh after signal loss. External bus timing and physical behavior of the public build remain unqualified. The issue #349 hardware result belongs to the historical development build.
+
+Public main is clean and synced. The private checkout fingerprints match for HEAD, branch, status, refs including the stash, and tracked diff. The Saturn was untouched. No PR, USB change or runtime diagnostic was added.
