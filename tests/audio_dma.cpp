@@ -247,8 +247,14 @@ static void fire_timer(){
     if(timer.CR1.value&1){timer.CR1.value&=~uintptr_t(1);timer.SR.value|=1;timer_pending=(timer.DIER.value&1)!=0;}
     run_irqs();
 }
+static void prepare_input(int tag)
+{
+    input_tag=tag;
+    for(unsigned i=0;i<1176;i++){uint16_t v=uint16_t((tag*53+i*7)^0x55aa);std::memcpy(input+i*2,&v,2);}
+}
+
 static int publish(int tag){
-    input_tag=tag;for(unsigned i=0;i<1176;i++){uint16_t v=uint16_t((tag*53+i*7)^0x55aa);std::memcpy(input+i*2,&v,2);}
+    prepare_input(tag);
     int count=fill_audio_buffer(input);
     if(count>=0)for(unsigned i=0;i<1176;i++)accepted.push_back({tag,i});
     return count;
@@ -413,7 +419,7 @@ static void partial_transfer_error(){
     drain();
     std::printf("exact payload continuation; hardware repeated %u modeled halfwords during fault\n",repeated_words);
 }
-// The actual worker admission/flush branch, before its pacing delay.
+// The actual worker audio admission, flush and pacing branch.
 constexpr int PLAYTYPE_SECTOR=1, PLAYTYPE_FILE=2, PLAYTYPE_DIR=3;
 struct { int mode; } worker_track;
 struct {
@@ -424,6 +430,12 @@ struct {
 } cdb;
 struct { u8 *data; u32 fad; } wblk={input,0};
 static unsigned cdda_reader_audio;
+static u8 buf_subcode_mode;
+static unsigned worker_wakeups, delay_calls, delay_ticks;
+static bool timer_fails, delay_error;
+static void disk_task_wakeup(){++worker_wakeups;}
+#include "audio-notify.inc"
+static int hw_delay(unsigned ticks){++delay_calls;delay_ticks=ticks;return timer_fails;}
 static void publish_subrw(u32 fad){assert(fad==cdb.fad);}
 static void counted_worker_flush(){worker_flushes++;spi2_flush();}
 static void worker_tail(){
@@ -432,7 +444,10 @@ static void worker_tail(){
 #include "audio-worker.inc"
 #undef spi2_flush
     }
-_restart_wait:;
+_restart_wait:
+    return;
+_delay_error:
+    delay_error=true;
 }
 static void worker_final_case(){
     for(int kind:{PLAYTYPE_SECTOR,PLAYTYPE_FILE,PLAYTYPE_DIR})for(int mode:{1,3})
@@ -793,6 +808,44 @@ static void pending_retirement(){
     clock_stalled=false;check_replacement(previous+1);
 }
 
+/* Adapted from paps-g ddb07367. Drive the real producer through refusal
+ * and the real completion callback before retrying the same FAD. */
+static void worker_pacing()
+{
+    reset_model();spi2_init();spi2_dma_notify=disk_task_notify;
+    buf_subcode_mode=0;delay_calls=worker_wakeups=0;timer_fails=delay_error=false;
+    worker_track.mode=3;cdb={PLAYTYPE_SECTOR,0,150,1000,0,0,&worker_track};
+    for (int tag=0;tag<32;++tag) {
+        prepare_input(tag);worker_tail();
+        assert(!delay_calls && !delay_error && !cdb.play_wait);
+        for (unsigned word=0;word<ABUF_WORDS;++word) accepted.emplace_back(tag,word);
+        ++cdb.fad;
+    }
+    assert(awp-arp==32);
+    auto before=cdb.fad;
+    prepare_input(32);worker_tail();
+    assert(cdb.play_wait && cdb.fad==before && awp-arp==32 && !worker_wakeups && !delay_calls);
+    for (unsigned i=0;i<2*ABUF_WORDS && !worker_wakeups;++i) step(1);
+    assert(!cdb.play_wait && worker_wakeups==1 && awp-arp==31);
+    worker_tail();
+    assert(!cdb.play_wait && awp-arp==32 && !delay_calls);
+    for (unsigned word=0;word<ABUF_WORDS;++word) accepted.emplace_back(32,word);
+    drain_without_flush();
+
+    for (unsigned depth:{4u,5u}) for (bool fail:{false,true}) {
+        reset_model();spi2_init();buf_subcode_mode=1;
+        delay_calls=delay_ticks=0;timer_fails=fail;delay_error=false;
+        cdb={PLAYTYPE_SECTOR,0,150,1000,0,0,&worker_track};
+        for (unsigned i=1;i<depth;++i) assert(publish(i)==int(i));
+        prepare_input(100);worker_tail();
+        assert(delay_calls==1 && delay_ticks==(depth==4 ? 10000u : 13500u));
+        assert(delay_error==fail && !cdb.play_wait && awp-arp==depth);
+        for (unsigned word=0;word<ABUF_WORDS;++word) accepted.emplace_back(100,word);
+        drain_without_flush();
+    }
+    buf_subcode_mode=0;timer_fails=false;
+}
+
 static void continuous_idle(){
     reset_model();spi2_init();step(2*88200);
     assert(drained() && output.size()==2*88200 && !repeated_words);
@@ -817,7 +870,7 @@ int main(int argc,char **argv){assert(argc==2);switch(std::atoi(argv[1])){
 case 37:worker_retirement();break;
 #if TEST_LINK_CONTINUITY
 case 38:cancel_all_phases();break;case 39:pending_retirement();break;
-case 40:continuous_idle();break;case 41:quiet_rearm();break;
+case 40:continuous_idle();break;case 41:quiet_rearm();break;case 42:worker_pacing();break;
 #endif
 case 35:late_completion_snapshot_case();break;case 36:late_error_snapshot_case();break;case 33:quiet_suspend_stale_case();break;case 34:quiet_stalled_suspend_case();break;case 0:init_case();break;case 1:full_case();break;case 2:wrap_case();break;case 3:low_water();break;case 4:late_case();break;case 5:copy_case();break;case 6:single_case();break;case 7:startup_stall();break;case 8:underrun_case();break;case 9:guard_miss();break;case 10:init_stop_stall();break;case 11:near_boundary_case();break;case 12:quiet_resume_case();break;case 13:pending_completion_case();break;case 14:stop_retry_case();break;case 15:stopped_clock_recovery();break;case 16:restart_flags_case();break;case 17:partial_transfer_error();break;case 18:quiet_tail_case();break;case 19:worker_final_case();break;case 20:fifo_warning_completion_case();break;case 21:fifo_warning_startup_case();break;case 22:fifo_warning_stall_case();break;case 23:residual_transfer_case();break;case 24:latched_underrun_error_case();break;case 25:repeated_residual_case();break;case 26:pending_error_completion_case();break;case 27:permanent_transfer_error_case();break;case 28:residual_startup_case();break;case 29:residual_publication_case();break;case 30:every_residual_count_case();break;case 31:delayed_error_disable_case();break;case 32:quiet_error_phase_case();break;default:assert(false);}
 std::puts("pass");}

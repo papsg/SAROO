@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shlex
 import subprocess
 import tempfile
@@ -31,12 +30,7 @@ class AudioDMATests(unittest.TestCase):
         worker = Path(os.environ.get('SAROO_AUDIO_MAIN', ROOT / 'Firm_MCU/Saturn/saturn_main.c')).read_bytes()
         marker = b'if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3)'
         begin = worker.rindex(marker, 0, worker.index(b'int asize = fill_audio_buffer'))
-        worker_tail = worker[begin:]
-        # Stop before either the old split delay or the checked timer call.
-        pacing = re.search(rb'^[ \t]*if\s*\(\s*(?:asize\s*<=|hw_delay\s*\()', worker_tail, re.M)
-        if pacing is None:
-            raise ValueError('Audio admission fixture needs a CD pacing boundary')
-        worker_code = worker_tail[:pacing.start()]
+        worker_code = worker[begin:worker.index(b'\n\t\t\t}else\n', begin)]
         build = ROOT / 'tests/build/audio-dma'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
@@ -44,6 +38,8 @@ class AudioDMATests(unittest.TestCase):
         cls.continuity = continuity
         (cls.target / 'audio.inc').write_bytes(f'#define TEST_LINK_CONTINUITY {int(continuity)}\n'.encode() + code)
         (cls.target / 'audio-worker.inc').write_bytes(worker_code)
+        start = worker.index(b'static void disk_task_notify(void)')
+        (cls.target / 'audio-notify.inc').write_bytes(worker[start:worker.index(b'\n}', start) + 2])
         start = worker.index(b'static int acknowledge_drive_request(')
         handoff = worker[start:worker.index(b'\n}', start) + 2]
         helper = b'static void retire_cdda('
@@ -141,6 +137,7 @@ class AudioDMATests(unittest.TestCase):
     def test_pending_cancel_waits_for_dma_and_an_in_progress_copy(self):self.run_case(39)
     def test_startup_and_idle_send_valid_silence(self):self.run_case(40)
     def test_publication_recovers_an_exhausted_quiet_stream(self):self.run_case(41)
+    def test_plain_cdda_uses_queue_room_and_sidecars_keep_timer_errors(self):self.run_case(42)
 
 if __name__ == '__main__':
     unittest.main()

@@ -511,7 +511,9 @@ _play_checkpoint:
                 publish_subrw(wblk.fad);
                 if (cdb.fad+1 == cdb.play_fad_end && cdb.repcnt >= cdb.max_repeat)
                     spi2_flush();
-				if (hw_delay(asize <= 4 ? 10000 : 13500)) goto _delay_error;
+                /* Pace enabled R-W delivery. Plain CDDA waits for DMA room. */
+                if (buf_subcode_mode && hw_delay(asize <= 4 ? 10000 : 13500))
+                    goto _delay_error;
 			}else
 			{
 				//printk("filter sector %08x...\n", cdb.fad);

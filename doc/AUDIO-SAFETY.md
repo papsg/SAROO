@@ -265,3 +265,39 @@ reservation retain their sizes. The private shutdown trial reproduced
 static and the later private continuity build passed its Die Hard
 Arcade trial. This port verifies the public source and build with
 host models. The public build has no physical audio or MDK result.
+
+## Pace plain CD audio by queue room
+
+Adapted from paps-g `ddb07367` (AUD-MCU-031). Upstream v0.9
+[`83020513`](https://github.com/tpunix/SAROO/commit/83020513f07b69f45f098dfd68746f2a6adabf20)
+also gates the fixed delay on subcode for ordinary playback. This port uses
+the established reader's subcode snapshot and does not import scan support.
+
+A CD audio sector lasts about 13,333 µs. The old 13,500 µs wait at depths
+above four exceeded that budget before any file I/O or copying. Plain
+audio now fills the queue, stops on a full admission refusal and retries
+the same frame address after a completion makes room. Enabled R–W
+delivery keeps the existing 10,000/13,500 µs waits and timer error path,
+so an SD burst cannot outrun the existing subcode history.
+[ECMA-130, 2nd ed., §21, printed p. 18](https://www.ecma-international.org/wp-content/uploads/ECMA-130_2nd_edition_june_1996.pdf)
+gives 75 sections per second. [Sega ST-162-062094 §3.2 p. 29 and
+§7.2.5 p. 62](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=17)
+describes timed subcode access and four R–W packs per sector. It does not
+specify the SAROO producer delay. The queued frame address may lead the
+audible stream by more when the queue is full.
+
+```sh
+make -C tests check-audio check-cdc-command-buffer
+SAROO_AUDIO_PROFILE=release make -C tests check-audio
+```
+
+With the current fixture and `SAROO_AUDIO_MAIN` set to the parent's
+`saturn_main.c`, select `-k plain_cdda_uses_queue_room` to reproduce the unwanted delay.
+The candidate fills all 32 slots, refuses the next sector without advancing
+it, wakes on a real payload completion, retries and delivers exact PCM.
+Sidecar depths four and five and timer failure retain their original
+behavior. All 43 audio checks pass in each profile and all 227 CD/CUE
+checks pass. The GNU App adds 16 load bytes (65,064 used, 472 free);
+static DTCM and the audio workspace are unchanged. This verifies the
+software mechanism and does not attribute a particular game symptom to it
+or establish physical timing, synchronization or MDK equivalence.
