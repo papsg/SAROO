@@ -136,3 +136,25 @@ boot caller fixture checks both the asynchronous wait and the EFLS
 acknowledgment mask. Both menu runs pass 93 methods. The pinned menu
 links 81,428 code/data bytes with 24,016 bytes of body space. Actual
 BIOS and game execution remain unqualified.
+
+## Acknowledge the old disc change before BIOS initialization
+
+Adapted from paps-g `200a447b` (SATURN-CD-003). The initialization
+callback invalidates the old BIOS state and clears DCHG before its
+first CD command. The earlier media notification belongs to the
+disc state being replaced. A notification arriving during any
+initialization command remains pending. The MCU's Get Hardware
+Information handler only supplies a reply and command readiness.
+[Sega CD Communication Interface ST-162-062094, §3.1 HIRQREQ,
+printed p. 28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16),
+[§8.2.1 No. 1.4 Get Hardware Information, printed p. 77](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=65),
+[v0.8 boot initialization](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/game_load.c).
+
+Run `test_menu_cd_initialization.py` with `SAROO_MENU_CD_SOURCE`
+pointing at the parent to reproduce the stale flag at the first
+command. Nine controls pass. The port checks all 65,536 initial
+HIRQ states and 25 injected later changes across the five command
+stages, including failure returns. Both menu runs pass 95 methods.
+The pinned menu links 81,444 code/data bytes with 24,000 bytes of
+body space. Physical disc timing and BIOS/game acceptance remain
+unqualified.

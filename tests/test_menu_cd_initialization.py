@@ -72,6 +72,12 @@ class MenuCDInitializationTests(unittest.TestCase):
     def test_virtual_boot_refuses_failed_takeover_before_initialization(self):
         self.scenario('virtual-power')
 
+    def test_old_disc_change_is_acknowledged_before_first_command(self):
+        self.scenario('old-disc-change')
+
+    def test_later_disc_change_survives_each_initialization_stage(self):
+        self.scenario('later-disc-change')
+
 
 if __name__ == '__main__':
     unittest.main()

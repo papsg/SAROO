@@ -20,6 +20,8 @@ static int off_result, on_result, player_init_calls;
 static int auth_result=2, read_result, rom_result, boot_admitted;
 static struct { int op, result; } expected[8];
 static unsigned used, next;
+static unsigned flags_before_abort;
+static int change_during;
 
 static void reset(void)
 {
@@ -28,6 +30,8 @@ static void reset(void)
     auth_result=2;read_result=rom_result=0;cr1=STATUS_PAUSE<<8;
     off_result=on_result=player_init_calls=0;cr_reads=HIRQ=0;
     bios_state[0]=0x12345678;bios_state[1]=0xabcdef01;
+    flags_before_abort=0;
+    change_during=-1;
 }
 static void expect(int op, int result)
 {
@@ -37,6 +41,8 @@ static void expect(int op, int result)
 static int operation(int op)
 {
     assert(next<used && expected[next].op==op);
+    if(op==ABORT) flags_before_abort=HIRQ;
+    if((int)next==change_during) HIRQ|=HIRQ_DCHG;
     return expected[next++].result;
 }
 static void script(int failure, int error)
@@ -49,6 +55,11 @@ static void script(int failure, int error)
     }
 }
 static void printk(const char *format, ...) { (void)format; }
+static __attribute__((unused)) void clear_hirq(int mask)
+{
+    assert(mask==HIRQ_DCHG && !next && !bios_state[0] && !bios_state[1]);
+    HIRQ&=~mask;
+}
 static int cdc_abort_file(void) { return operation(ABORT); }
 static int cdc_end_trans(int *count) { assert(!count);return operation(END); }
 static int cdc_reset_selector(int flags,int number)
@@ -171,6 +182,35 @@ static void virtual_power(void)
         assert(bios_state[0] == 0x12345678 && bios_state[1] == 0xabcdef01);
     }
 }
+
+/* Media notification cases adapted from paps-g 200a447b. */
+static void old_disc_change(void)
+{
+    for (unsigned flags=0; flags<=UINT16_MAX; flags++) {
+        reset();
+        script(-1,0);
+        HIRQ=flags;
+        assert(!my_bios_loadcd_init() && next==used);
+        assert(flags_before_abort==(flags & ~HIRQ_DCHG));
+        assert(HIRQ==flags_before_abort);
+    }
+}
+
+static void later_disc_change(void)
+{
+    const int errors[]={0,-2,-3,-5,-6};
+    for (int stage=0; stage<5; stage++) {
+        for (unsigned e=0; e<sizeof errors/sizeof *errors; e++) {
+            reset();
+            script(errors[e] ? stage : -1,errors[e]);
+            HIRQ=0x0251;
+            change_during=stage;
+            assert(my_bios_loadcd_init()==errors[e] && next==used);
+            assert(flags_before_abort==0x0251 && HIRQ==(0x0251 | HIRQ_DCHG));
+        }
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -182,6 +222,8 @@ int main(int argc,char **argv)
     else if(!strcmp(argv[1],"media")) media();
     else if(!strcmp(argv[1],"power-retry")) power_retry();
     else if(!strcmp(argv[1],"virtual-power")) virtual_power();
+    else if(!strcmp(argv[1],"old-disc-change")) old_disc_change();
+    else if(!strcmp(argv[1],"later-disc-change")) later_disc_change();
     else assert(0);
     return 0;
 }

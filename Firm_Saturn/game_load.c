@@ -356,6 +356,9 @@ int my_bios_loadcd_init(void)
 	*(u32*)(0x06000278) = 0;
 	*(u32*)(0x0600027c) = 0;
 
+	/* Retire the previous notification before starting initialization.
+	 * A disc change during the following commands must remain visible. */
+	clear_hirq(HIRQ_DCHG);
 	int retv = cdc_abort_file();
 	if(retv) return retv;
 	retv = cdc_end_trans(NULL);
@@ -365,7 +368,6 @@ int my_bios_loadcd_init(void)
 	retv = cdc_set_size(0);
 	if(retv) return retv;
 
-	// This is needed for Yabause: Clear the diskChange flag.
 	return cdc_get_hwinfo(NULL);
 }
 
