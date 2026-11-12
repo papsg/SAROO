@@ -563,7 +563,7 @@ void lang_init(void)
 		//printk("%2d: %08x %s\n", i, lang_str[i].hash, lang_str[i].str);
 	}
 
-	if(lang_id>=lang_nr)
+	if(lang_id<0 || lang_id>=lang_nr)
 		lang_id = 0;
 	lang_cur = lang_list[lang_id];
 }

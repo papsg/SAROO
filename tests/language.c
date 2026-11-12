@@ -1,5 +1,6 @@
 /* Host regression for the actual menu language module. No Saturn I/O. */
 #include <assert.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +11,17 @@
 typedef uint8_t u8;
 typedef uint32_t u32;
 #include "../Firm_Saturn/language.c"
+
+/* Startup metadata cases adapted from paps-g 1ad9fb40. */
+static void startup_language(int supplied, char ***languages, int count)
+{
+    int selected = supplied >= 0 && supplied < count ? supplied : 0;
+    lang_id = supplied;
+    lang_init();
+    assert(lang_id == selected && lang_cur == languages[selected]);
+    lang_next();
+    assert(lang_id == (selected + 1) % count);
+}
 
 int main(void)
 {
@@ -54,5 +66,11 @@ int main(void)
     printf("%u language IDs, %u translated lookups, repeated initialization, "
            "selection/wrap, copied keys and unknown-label controls passed.\n",
            count, lookups);
+    const int wider[] = {INT_MIN, -65536, 65536, INT_MAX};
+    for (unsigned i = 0; i < sizeof(wider)/sizeof(wider[0]); ++i)
+        startup_language(wider[i], expected, (int)count);
+    for (int id = INT16_MIN; id <= INT16_MAX; ++id)
+        startup_language(id, expected, (int)count);
+    puts("65,540 signed startup IDs preserve valid selections or fall back safely.");
     return 0;
 }
