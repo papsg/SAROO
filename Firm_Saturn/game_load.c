@@ -28,6 +28,7 @@ static int ipstat = -1;
 
 static int cdp_auth(void)
 {
+    if (ipstat == -2) goto power_reset;
 	if(ipstat<0){
 		ipstat = 0;
 	}
@@ -48,10 +49,10 @@ static int cdp_auth(void)
 	}
 
 	if(ipstat==0){
-		// 复位cdblock
-		// Reset cdblock
-		cdblock_off();
-		cdblock_on(0);
+power_reset:
+        /* Keep the power retry pending until both commands complete. */
+        ipstat = -2;
+        if (cdblock_off() || cdblock_on(0)) return -1;
 		ipstat = 1;
 	}else if(ipstat==1){
 		// 等待cdblock进入工作状态
@@ -205,6 +206,7 @@ static int cdp_read_ip(void)
 
 static int cdp_init(void)
 {
+    if (disc_type && ipstat == -2) return 0;
 	printk("\ncdp_init! HIRQ=%04x STAT=%04x\n", HIRQ, CR1);
 
 	if(disc_type==0){
@@ -490,6 +492,11 @@ static void read_1st(void)
 int bios_cd_cmd(int type)
 {
 	int retv, ip_size;
+
+    if (!(type & 0x7f)) {
+        retv = cdblock_off();
+        if (retv) return retv;
+    }
 
 	use_sys_bup = (type&0x80)>>7;
 	use_sys_load = 0;

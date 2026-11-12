@@ -8,11 +8,15 @@ typedef uint8_t u8;
 typedef uint32_t u32;
 enum { STATUS_PAUSE=1, STATUS_OPEN=6, STATUS_NODISC=7, STATUS_RETRY=8 };
 enum { ABORT, END, RESET, SIZE, HW };
-static unsigned CR1;
+static unsigned cr1, cr_reads, HIRQ;
+static unsigned *read_cr1(void) { cr_reads++; return &cr1; }
+#define CR1 (*read_cr1())
+#define HIRQ_DCHG 0x20
 static u32 bios_state[2];
 static char game_id[17]="TEST_GAME";
 static int ipstat, use_sys_bup, use_sys_load, disc_type;
 static int off_calls, on_calls, auth_calls, read_calls, rom_calls, players;
+static int off_result, on_result, player_init_calls;
 static int auth_result=2, read_result, rom_result, boot_admitted;
 static struct { int op, result; } expected[8];
 static unsigned used, next;
@@ -21,7 +25,8 @@ static void reset(void)
 {
     used=next=0; off_calls=on_calls=auth_calls=read_calls=rom_calls=players=0;
     boot_admitted=0;
-    auth_result=2;read_result=rom_result=0;CR1=STATUS_PAUSE<<8;
+    auth_result=2;read_result=rom_result=0;cr1=STATUS_PAUSE<<8;
+    off_result=on_result=player_init_calls=0;cr_reads=HIRQ=0;
     bios_state[0]=0x12345678;bios_state[1]=0xabcdef01;
 }
 static void expect(int op, int result)
@@ -51,8 +56,9 @@ static int cdc_reset_selector(int flags,int number)
 static int cdc_set_size(int mode) { assert(!mode);return operation(SIZE); }
 static int cdc_get_hwinfo(int *status)
 { int result=operation(HW);if(!result && status)*status=0x1234;return result; }
-static void cdblock_off(void) { ++off_calls; }
-static void cdblock_on(int wait) { assert(!wait && off_calls==on_calls+1);++on_calls; }
+static int cdblock_off(void) { ++off_calls; return off_result; }
+static int cdblock_on(int wait) { assert(!wait && off_calls>on_calls);++on_calls;return on_result; }
+static int bios_player_init(void) { ++player_init_calls; return 17; }
 static int jhl_auth_hack(int delay) { assert(delay==100000);++auth_calls;return auth_result; }
 static int my_bios_loadcd_read(void) { ++read_calls;return read_result; }
 static void my_cdplayer(void) { ++players; }
@@ -125,6 +131,46 @@ static void media(void)
         assert(cdp_auth()==1 && ipstat==1 && off_calls==1 && on_calls==1 && !read_calls);
     }
 }
+
+static void power_retry(void)
+{
+    const unsigned stale[] = {STATUS_OPEN, STATUS_NODISC, STATUS_RETRY, STATUS_PAUSE};
+    for (unsigned i = 0; i < sizeof stale / sizeof *stale; i++) {
+        for (int fail_on = 0; fail_on < 2; fail_on++) {
+            reset();
+            ipstat = 0;
+            disc_type = 4;
+            off_result = fail_on ? 0 : -3;
+            on_result = fail_on ? -1 : 0;
+            assert(cdp_auth() == -1 && ipstat == -2);
+            assert(off_calls == 1 && on_calls == fail_on && cr_reads == 1);
+            cr1 = stale[i] << 8;
+            HIRQ = HIRQ_DCHG;
+            assert(!cdp_init() && ipstat == -2 && cr_reads == 1);
+            off_result = on_result = 0;
+            assert(cdp_auth() == 1 && ipstat == 1 && cr_reads == 1);
+            assert(off_calls == 2 && on_calls == fail_on + 1 && !auth_calls && !read_calls);
+        }
+    }
+    reset();
+    disc_type = 0;
+    ipstat = -2;
+    assert(cdp_init() == 17 && player_init_calls == 1);
+}
+
+static void virtual_power(void)
+{
+    for (int type = 0; type <= 0x80; type += 0x80) {
+        reset();
+        off_result = -3;
+        use_sys_bup = 3;
+        use_sys_load = 4;
+        disc_type = 2;
+        assert(bios_cd_cmd(type) == -3 && off_calls == 1 && !next && !boot_admitted);
+        assert(use_sys_bup == 3 && use_sys_load == 4 && disc_type == 2);
+        assert(bios_state[0] == 0x12345678 && bios_state[1] == 0xabcdef01);
+    }
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -134,6 +180,8 @@ int main(int argc,char **argv)
     else if(!strcmp(argv[1],"auth-errors")) auth_errors();
     else if(!strcmp(argv[1],"auth-healthy")) auth_healthy();
     else if(!strcmp(argv[1],"media")) media();
+    else if(!strcmp(argv[1],"power-retry")) power_retry();
+    else if(!strcmp(argv[1],"virtual-power")) virtual_power();
     else assert(0);
     return 0;
 }

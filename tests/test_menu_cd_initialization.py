@@ -18,6 +18,7 @@ class MenuCDInitializationTests(unittest.TestCase):
         code = code.replace(b'(u32*)(0x06000278)', b'&bios_state[0]')
         code = code.replace(b'(u32*)(0x0600027c)', b'&bios_state[1]')
         code += function(load, 'cdp_auth')
+        code += function(load, 'cdp_init').replace(b'(void*)0x1904', b'bios_player_init')
         launch = function(load, 'bios_cd_cmd')
         launch = launch.replace(b'(const char *)0x06002020', b'game_id')
         # Keep the actual startup admission through the ROM preflight.
@@ -64,6 +65,12 @@ class MenuCDInitializationTests(unittest.TestCase):
 
     def test_open_or_missing_media_clears_every_player_stage(self):
         self.scenario('media')
+
+    def test_failed_power_retries_before_reading_cd_status(self):
+        self.scenario('power-retry')
+
+    def test_virtual_boot_refuses_failed_takeover_before_initialization(self):
+        self.scenario('virtual-power')
 
 
 if __name__ == '__main__':

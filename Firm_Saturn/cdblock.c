@@ -895,30 +895,49 @@ int cdc_read_sector(int fad, int size, u8 *buf)
 }
 
 
-void cdblock_on(int wait)
+/* Bound both SF waits with one firmware deadline. */
+static int cdblock_power(int cmd)
 {
-	int cdstat;
-	int cr1, cr2, cr3, cr4;
+    printk("SMPC_CMD(%02x) ...\n", cmd);
+    u32 deadline = get_timer() + MS2TICK(1000);
+    while (SF & 1) {
+        if (timer_reached(get_timer(), deadline)) return -3;
+    }
 
-	SS_CTRL = CS0_RAM4M;
-	smpc_cmd(CDON);
+    /* Release the CD interface before the physical drive powers on. */
+    if (cmd == CDON) SS_CTRL = CS0_RAM4M;
+    SF = 1;
+    COMREG = cmd;
+    while (SF & 1) {
+        if (timer_reached(get_timer(), deadline)) return -3;
+    }
+    if (OREG31 != cmd) return -1;
 
-	if(wait){
-		do{
-			cr1 = CR1;
-			cr2 = CR2;
-			cr3 = CR3;
-			cr4 = CR4;
-			cdstat = (cr1>>8)&0x0f;
-		}while(cdstat==0);
-	}
+    if (cmd == CDOFF) SS_CTRL = SAROO_EN | CS0_RAM4M;
+    printk("    done. SS=%02x\n", SR);
+    return 0;
+}
+
+int cdblock_on(int wait)
+{
+    int result = cdblock_power(CDON);
+    if (result || !wait) return result;
+
+    u32 deadline = get_timer() + MS2TICK(10000);
+    for (;;) {
+        int status = (CR1 >> 8) & 0x0f;
+        (void)CR2;
+        (void)CR3;
+        (void)CR4;
+        if (status) return 0;
+        if (timer_reached(get_timer(), deadline)) return -3;
+    }
 }
 
 
-void cdblock_off(void)
+int cdblock_off(void)
 {
-	smpc_cmd(CDOFF);
-	SS_CTRL = SAROO_EN | CS0_RAM4M;
+    return cdblock_power(CDOFF);
 }
 
 

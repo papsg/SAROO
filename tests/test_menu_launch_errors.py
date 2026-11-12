@@ -14,7 +14,9 @@ class MenuLaunchErrorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source = Path(os.environ.get('SAROO_MENU_LAUNCH_SOURCE', ROOT / 'Firm_Saturn'))
-        code = function((source / 'main.c').read_bytes(), 'sel_handle')
+        main = (source / 'main.c').read_bytes()
+        code = function(main, 'menu_cd_power') if b'int menu_cd_power(' in main else b''
+        code += function(main, 'sel_handle')
         header = (source / 'main.h').read_bytes()
         names = (b'MENU_ITEMS', b'MENU_EXIT', b'SSCMD_LOADDISC', b'PAD_UP', b'PAD_DOWN',
                  b'PAD_LT', b'PAD_RT', b'PAD_A', b'PAD_Z', b'PAD_LEFT', b'PAD_C',
@@ -52,6 +54,9 @@ class MenuLaunchErrorTests(unittest.TestCase):
 
     def test_player_launch_preserves_every_reply_and_failed_handoff_state(self):
         self.check_button('Z')
+
+    def test_selection_checks_cd_power_before_starting_dependent_work(self):
+        self.check_button('power')
 
 
 if __name__ == '__main__':

@@ -354,18 +354,11 @@ void pad_init(void)
 
 /**********************************************************/
 
-int smpc_cmd(int cmd)
+static int menu_cd_power(MENU_DESC *menu, int physical, int wait)
 {
-	printk("SMPC_CMD(%02x) ...\n", cmd);
-	// wait busy state
-	while(SF&0x01);
-
-	SF = 0x01;
-	COMREG = cmd;
-	while(SF&0x01);
-
-	printk("    done. SS=%02x\n", SR);
-	return SR;
+    int result = physical ? cdblock_on(wait) : cdblock_off();
+    if (result) menu_error(menu, TT("游戏启动失败! %d"), result);
+    return result;
 }
 
 /**********************************************************/
@@ -1071,6 +1064,7 @@ static int sel_handle(int ctrl)
 				menu_error(menu, TT("游戏启动失败! %d"), retv);
 			}
 		}else{
+            if (menu_cd_power(menu, 0, 0)) return 0;
 			menu_status(menu, TT("加载文件中......"));
 			retv = run_binary(index, 1);
 			if(retv){
@@ -1080,6 +1074,7 @@ static int sel_handle(int ctrl)
 	}else if(BUTTON_DOWN(ctrl, PAD_Z)){
 		int index = page*MENU_ITEMS + menu->current;
 		int retv;
+        if (menu_cd_power(menu, sel_mode != 0, 0)) return 0;
 
 		if(sel_mode==0){
 			int index = page*MENU_ITEMS + menu->current;
@@ -1097,7 +1092,6 @@ static int sel_handle(int ctrl)
             }
 		}else{
 			menu_status(menu, TT("加载文件中......"));
-			cdblock_on(0);
 			retv = run_binary(index, 1);
 			if(retv){
 				menu_error(menu, TT("文件加载失败! %d"), retv);
@@ -1238,7 +1232,7 @@ int main_handle(int ctrl)
 		select_category();
 		return MENU_RESTART;
 	}else if(index==1){
-		cdblock_on(0);
+        if (menu_cd_power(&main_menu, 1, 0)) return 0;
 		use_sys_bup = 1;
 		use_sys_load = 1;
 		my_cdplayer();
@@ -1246,12 +1240,12 @@ int main_handle(int ctrl)
 	}else if(index==2){
 		int type = 4;
 		menu_status(&main_menu, TT("检查光盘中......"));
-		cdblock_on(1);
+        if (menu_cd_power(&main_menu, 1, 1)) return 0;
 		//int retv = cdblock_check();
 		int retv = jhl_auth_hack(100000);
 		if(retv<0){
 			menu_status(&main_menu, TT("未发现光盘!"));
-			cdblock_off();
+            menu_cd_power(&main_menu, 0, 0);
 			return 0;
 		}else if(retv==1){
 			// 是Audio CD
@@ -1267,7 +1261,7 @@ int main_handle(int ctrl)
 			retv = jhl_auth_hack(100000);
 			if(retv!=2){
 				menu_error(&main_menu, TT("不是游戏光盘!%d"), retv);
-				cdblock_off();
+                menu_cd_power(&main_menu, 0, 0);
 				return 0;
 			}
 			type = 2;
@@ -1275,7 +1269,7 @@ int main_handle(int ctrl)
 			// 是数据CD
 			// Is data CD
 			menu_error(&main_menu, TT("不是游戏光盘!%d"), retv);
-			cdblock_off();
+            menu_cd_power(&main_menu, 0, 0);
 			return 0;
 		}
 
@@ -1291,7 +1285,7 @@ int main_handle(int ctrl)
 		retv = bios_cd_cmd(type);
 		if(retv){
 			menu_error(&main_menu, TT("游戏启动失败! %d"), retv);
-			cdblock_off();
+            menu_cd_power(&main_menu, 0, 0);
 		}
 		return 0;
 	}else if(index==3){
@@ -1475,7 +1469,8 @@ int _main(void)
 		printk_putc = NULL;
 	}
 
-	cdblock_off();
+    /* Keep the menu available. Each virtual launch verifies CD takeover. */
+    cdblock_off();
 
 	if((debug_flag&0x0003)==0x0003){
 		sci_shell();

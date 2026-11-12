@@ -193,8 +193,8 @@ int cdc_abort_file(void);
 
 void cdc_dump(int count);
 void show_selector(int id);
-void cdblock_on(int wait);
-void cdblock_off(void);
+int cdblock_on(int wait);
+int cdblock_off(void);
 int cdblock_check(void);
 
 
@@ -270,8 +270,6 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch);
 int pad_read(void);
 void pad_suspend(void);
 void pad_resume(void);
-
-int smpc_cmd(int cmd);
 
 /*****************************************************************************/
 

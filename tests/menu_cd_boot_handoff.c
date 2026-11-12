@@ -55,6 +55,7 @@ static void reset(int type, int fail, int result)
     snapshot();
 }
 static void printk(const char *format, ...) { (void)format; }
+static __attribute__((unused)) int cdblock_off(void) { return 0; }
 static int my_bios_loadcd_init(void) { return operation(INIT); }
 static int my_bios_loadcd_read(void) { return operation(IP); }
 static int prepare_game_rom(const char *id)

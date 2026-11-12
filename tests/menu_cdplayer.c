@@ -65,6 +65,7 @@ static void cdc_trans_data(u8 *buf, int length) {
     memcpy(buf, payload, length);
 }
 static int my_bios_loadcd_init(void) { return 0; }
+static __attribute__((unused)) int cdblock_off(void) { return 0; }
 static void my_cdplayer(void) { players++; player_mode=use_sys_load; }
 static int rom_result, rom_checks;
 static __attribute__((unused)) int prepare_game_rom(const char *id)
