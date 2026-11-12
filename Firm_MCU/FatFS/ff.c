@@ -5267,6 +5267,7 @@ FRESULT f_unlink (
 						if (fs->fs_type == FS_EXFAT) {
 							sdj.obj.objsize = obj.objsize;
 							sdj.obj.stat = obj.stat;
+							sdj.obj.n_frag = 0;
 						}
 #endif
 						res = dir_sdi(&sdj, 0);

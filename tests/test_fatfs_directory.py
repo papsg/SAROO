@@ -61,3 +61,28 @@ class FatFsDirectoryTests(unittest.TestCase):
             for fault in ('none', 'clear'):
                 with self.subTest(layout=layout, fault=fault):
                     self.case(layout, 1, fault)
+
+
+class FatFsUnlinkTests(unittest.TestCase):
+    fixture_name = 'fatfs-unlink'
+    fixture_sources = FatFsDirectoryTests.fixture_sources
+    extra_cflags = ('-ftrivial-auto-var-init=pattern',)
+    setUpClass = classmethod(support.FatFsSeekTests.setUpClass.__func__)
+    tearDownClass = classmethod(support.FatFsSeekTests.tearDownClass.__func__)
+    case = FatFsDirectoryTests.case
+
+    def test_late_child_refuses_deletion_on_fragmented_exfat(self):
+        for cluster in (1, 4):
+            with self.subTest(cluster=cluster):
+                self.case('unlink-late', cluster)
+
+    def test_empty_fragmented_exfat_releases_both_clusters(self):
+        for cluster in (1, 4):
+            with self.subTest(cluster=cluster):
+                self.case('unlink-empty', cluster)
+
+    def test_existing_children_in_other_layouts_are_preserved(self):
+        for layout in ('unlink-first', 'unlink-contiguous', 'unlink-fat32'):
+            with self.subTest(layout=layout):
+                self.case(layout, 1)
+        self.case('unlink-fat32-empty', 1)

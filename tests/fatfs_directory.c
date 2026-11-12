@@ -283,6 +283,75 @@ static void classic_case(const char *layout)
     assert(!f_mount(NULL, "0:", 0));
 }
 
+/* Adapted from paps-g 72ac7fab. Keep a live child beyond the first cluster
+ * and verify both its contents and the directory allocation after remount. */
+static void unlink_case(const char *layout, unsigned csize)
+{
+    int exfat = strcmp(layout, "unlink-fat32") != 0 &&
+                strcmp(layout, "unlink-fat32-empty") != 0;
+    int contiguous = !strcmp(layout, "unlink-contiguous");
+    int empty = !strcmp(layout, "unlink-empty") || !strcmp(layout, "unlink-fat32-empty");
+    int first_live = !strcmp(layout, "unlink-first");
+    unsigned bytes = csize*512;
+    unsigned early = exfat ? (csize*16 + 2)/3 : csize*16 - 2;
+    unsigned total = early + 2;
+    char path[32];
+    FATFS fs, *mounted;
+    DWORD before, after;
+    FILINFO info;
+
+    format_volume(exfat ? FM_EXFAT : FM_FAT32, 1, bytes);
+    assert(!f_mount(&fs, "0:", 1) && fs.fs_type == (exfat ? FS_EXFAT : FS_FAT32));
+    assert(fs.csize == csize && !f_mkdir("/TEST"));
+    if (!contiguous) create_file("/BLOCK.BIN", payload, bytes);
+    for (unsigned i = 0; i < total; i++) {
+        snprintf(path, sizeof path, "/TEST/K%07u", i);
+        create_file(path, payload, i == total-1 ? 512 : 0);
+    }
+    if (contiguous) create_file("/BLOCK.BIN", payload, bytes);
+    if (!first_live)
+        for (unsigned i = 0; i < (empty ? total : early); i++) {
+            snprintf(path, sizeof path, "/TEST/K%07u", i);
+            assert(!f_unlink(path));
+        }
+    snprintf(path, sizeof path, "/TEST/K%07u", total-1);
+    assert(entries("/TEST") == (empty ? 0 : first_live ? total : 2));
+
+    DIR dir;
+    assert(!f_opendir(&dir, "/TEST"));
+    DWORD start = dir.obj.sclust;
+    if (exfat) assert(dir.obj.stat == (contiguous ? 2 : 0) && dir.obj.objsize == 2*bytes);
+    DWORD next = contiguous ? start+1 : fat_word(&fs, start);
+    assert(next >= 2 && next < fs.n_fatent && (next == start+1) == contiguous);
+    assert(!f_closedir(&dir));
+
+    assert(!f_mount(NULL, "0:", 0) && !f_mount(&fs, "0:", 1));
+    if (!empty) verify_file(path, payload, 512);
+    assert(!f_getfree("0:", &before, &mounted) && mounted == &fs);
+    unsigned before_writes = writes;
+    FRESULT result = f_unlink("/TEST");
+    unsigned deletion_writes = writes-before_writes;
+    assert(!f_mount(NULL, "0:", 0) && !f_mount(&fs, "0:", 1));
+    FRESULT child = f_stat(path, &info);
+    assert(!f_getfree("0:", &after, &mounted));
+    printf("operation I/O: 0 %u 0, unlink %u, child %u, free %lu -> %lu\n",
+           deletion_writes, result, child, (unsigned long)before, (unsigned long)after);
+    if (empty) {
+        assert(result == FR_OK && child == FR_NO_PATH && after == before+2);
+    } else {
+        assert(result == FR_DENIED && child == FR_OK && after == before && !deletion_writes);
+        if (exfat) {
+            unsigned active;
+            assert(exfat_directory(&fs, "/TEST", &active) == 2);
+        } else {
+            assert(fat_word(&fs, start) == next);
+        }
+        verify_file(path, payload, 512);
+    }
+    verify_file("/BLOCK.BIN", payload, bytes);
+    assert(!f_mount(NULL, "0:", 0));
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 6);
@@ -292,7 +361,8 @@ int main(int argc, char **argv)
     sectors = ftello(disk)/512;
     fault = argv[4]; ordinal = (unsigned)atoi(argv[5]);
     for (unsigned i = 0; i < sizeof payload; i++) payload[i] = pattern(i + 31);
-    if (!strncmp(argv[2], "fat", 3)) classic_case(argv[2]);
+    if (!strncmp(argv[2], "unlink-", 7)) unlink_case(argv[2], (unsigned)atoi(argv[3]));
+    else if (!strncmp(argv[2], "fat", 3)) classic_case(argv[2]);
     else exfat_case(argv[2], (unsigned)atoi(argv[3]));
     assert(!fclose(disk));
     return 0;

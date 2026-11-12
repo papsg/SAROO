@@ -121,6 +121,43 @@ static DTCM bytes. All 13 enabled BootLoader C units compile. Recovery
 requires the same mounted medium and power to stay on; the tests do
 not qualify power-loss recovery, card replacement, or physical SD I/O.
 
+## Preserve live children when deleting an exFAT directory
+
+Adapted from paps-g `72ac7fab` (AUD-MCU-047). FatFs checks whether a
+directory is empty before deleting it. The temporary directory object
+left its deferred fragment count uninitialized. A nonzero stack value
+could make a fragmented exFAT directory look as though its chain ended
+at the first cluster. If that cluster had only inactive entries, the
+check could miss live children and release the directory's clusters.
+[FatFs `f_unlink`](https://elm-chan.org/fsw/ff/doc/unlink.html) ·
+[Microsoft exFAT Specification §6.3.4.2, NoFatChain](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#6342-nofatchain).
+
+Initialize the fragment count to zero when opening the on-disk
+directory for this check. Its existing chain state and size still
+determine whether to read the FAT. The stock callers use this API to
+remove their update files. The directory regression exercises the
+callable FatFs API directly.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+```
+
+To reproduce the parent failure, point `SAROO_FATFS_SOURCE` at its
+`ff.c` and run `test_fatfs_directory.py` through unittest discovery
+with `-k FatFsUnlinkTests`. The fixture builds actual FatFs with
+pattern-initialized automatic variables to make stale stack data
+deterministic. The parent removes live children in both fragmented
+exFAT cases. The corrected source refuses both requests without
+writes. Empty directories are still deleted, and the first-cluster,
+contiguous and FAT32 controls pass. The fixture checks retained
+contents and allocation after remount. Both 38-method runs pass.
+
+The GNU App retains 64,960 load bytes and 576 bytes of headroom.
+The linked `f_unlink` grows by two bytes, which fit in the existing
+layout. The GNU BootLoader load grows by four bytes and links all
+166 vectors. These checks use synthetic media and compiled sources.
+
 ## Validate FAT geometry before mount
 
 Adapted from paps-g `8da2769d` (AUD-MCU-009/029). In classic FAT the
