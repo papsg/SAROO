@@ -2398,3 +2398,9 @@ The public working tree is clean. The private checkout matches its starting HEAD
 - `1206dfc8` (paps-g, AUD-RES-012) → [e897dd4](https://github.com/papsg/SAROO/commit/e897dd407c09876e12943dcc6ec5970a4e1735ac) on `main`. Remove the unused previous-FAD field and the excluded delay experiment.
 - The exact parent and port pass all 223 CD/CUE methods; both port profiles pass. Drive timing controls, repeat, pause, file and subcode behavior remain covered.
 - The GNU MCU App saves 64 load bytes to 64,808, with 728 bytes of ITCM space, and eight static DTCM bytes. The linked CD object shrinks from 8,160 to 8,152 bytes. Physical timing remains unmeasured. [Attribution, Sega references and reproduction](https://github.com/papsg/SAROO/blob/e897dd407c09876e12943dcc6ec5970a4e1735ac/doc/STARTUP-CD-STORAGE-AUDIT.md#remove-unused-cd-position-history).
+
+### Shared CD partition updates
+
+- `fb924aac` (paps-g, AUD-RES-011/004) → [9f36b43](https://github.com/papsg/SAROO/commit/9f36b43beba9aaa4a956e7ffe011ec585b07a8f5) on `main`. Remove unused byte totals and share the append path, keeping the last destination and the list under the same outer mask.
+- The exact parent and the port pass 224 CD/CUE methods; both port profiles pass. The new test checks masked publication across all 24 partitions. The separate historical directory fixture uses its matching header and retains six reproduced failures and one valid control.
+- The GNU MCU App links 64,680 load bytes with 856 bytes of ITCM space and 59,448 static DTCM bytes. Compact records save 96 static bytes but add 80 load bytes; a separate locked helper adds 16 load bytes. Physical timing remains unmeasured. [Attribution, Sega and Arm references, and reproduction](https://github.com/papsg/SAROO/blob/9f36b43beba9aaa4a956e7ffe011ec585b07a8f5/doc/STARTUP-CD-STORAGE-AUDIT.md#simplify-cd-partition-updates).
