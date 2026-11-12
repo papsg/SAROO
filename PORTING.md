@@ -11,7 +11,7 @@ related requests and relevant primary documentation are credited in commits and 
 USB integration, custom diagnostics and private patch-application machinery
 are excluded. This solo-maintainer workflow was authorized by the owner.
 
-Last updated: 2026-11-09.
+Last updated: 2026-11-11.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
@@ -2028,3 +2028,23 @@ Saturn was left untouched.
    bytes of ITCM space. Physical tray transitions and multi-session
    behavior remain unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#return-unavailable-toc-and-session-metadata)
+
+### CD playback and media state final verification
+
+The six direct checkpoints are published through
+[`932a0d2`](https://github.com/papsg/SAROO/commit/932a0d2cadfa359e3515713564dd288a88fe8512). Both CD
+profiles pass 196 methods. The full `make -C tests check` run passes
+740 Python methods, 18 Rust checks and the native language check. The
+Windows-only CD+G replacement fixture is skipped on macOS.
+
+The published source reproduces both ELFs and the SH-2 menu image.
+All 36 tracked menu inputs and 56 tracked MCU inputs match the build
+receipts. The 488,770-byte menu contains 80,836 code/data bytes and
+9,244 BSS bytes with 24,608 bytes of body space. The GNU MCU App loads
+63,308 bytes with 2,228 bytes of ITCM space and 60,216 bytes of static
+DTCM.
+
+The private checkout's HEAD, branch, refs, stash and worktree status
+match the initial read-only snapshot. Validation was on the host.
+Physical disc timing, audio behavior and game compatibility remain
+unqualified. [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md)
