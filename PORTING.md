@@ -2256,3 +2256,9 @@ behavior remain unqualified.
 - `c6dc9847` (paps-g, MCU-CDC-037) → [9bee114](https://github.com/papsg/SAROO/commit/9bee11499cfd7301df601486485fd73c888b3289) on `main`.
 - Reuses the ordinary pause guard. The parent lost a replacement command in the new fixture and passed its other 46 drive methods. The port services both requests and passes 211 CD methods in each host profile.
 - GNU MCU App: 64,556 load bytes, 980 bytes free in ITCM. The modeled command-preemption boundary still needs physical qualification. [Implementation and primary references](https://github.com/papsg/SAROO/blob/9bee11499cfd7301df601486485fd73c888b3289/doc/SAVE-CD-RESET-OWNERSHIP.md#acknowledge-retained-play-as-one-operation).
+
+### CD pacing and handoff
+
+- `39a45215` (paps-g, MCU-CDC-038) → [137caf5](https://github.com/papsg/SAROO/commit/137caf52f453731ac9eb26e5f5bec376ef31db40) on `main`.
+- The parent timer misses both modeled long-wait handoffs. The actual worker parent also misses its seek and PEND handoff checkpoints. All 217 CD methods pass under sanitizers and O2 after the port.
+- GNU MCU App: 64,636 load bytes before the layout change and 63,628 after it, leaving 1,908 bytes of ITCM. The layout preserves static RAM and capacities, and three of 737 matched direct frames shrink. Physical timing remains unqualified. [Implementation and primary references](https://github.com/papsg/SAROO/blob/137caf52f453731ac9eb26e5f5bec376ef31db40/doc/SAVE-CD-RESET-OWNERSHIP.md#wake-cd-pacing-for-drive-handoff).
