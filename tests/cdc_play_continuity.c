@@ -9,9 +9,10 @@ static enum checkpoint gate_at;
 static pthread_mutex_t gate = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
 static int worker_at_gate, request_waiting, acknowledged, command_returned, worker_finished;
-static int ack_status, ack_type, initial_status, read_error, finish_after;
+static int ack_status, ack_type, initial_status, lookup_error, read_error, finish_after;
 static int sem_calls, play_delay, sector_delay, seek_delays, last_read_status;
 static int delay_failure, delay_calls, filtered, queued;
+static int error_reports, reported_reader;
 static u32 ack_fad, last_read_fad;
 static jmp_buf worker_exit;
 
@@ -57,7 +58,13 @@ static int load_disc(int disc, int start_save) { abort(); }
 static void unload_disc(void) { abort(); }
 static int handle_diread(void) { abort(); }
 static void advance_file_unit(void) { abort(); }
-static void set_peri_report(void) {}
+static void set_peri_report(void)
+{
+    if (cdb.status == STAT_ERROR) {
+        error_reports++;
+        reported_reader = cdb.play_type;
+    }
+}
 static void led_event(int event) { assert(event == 1); }
 static void spi2_flush(void) {}
 static int fill_audio_buffer(const u8 *data)
@@ -76,15 +83,32 @@ static int filter_sector(TRACK_INFO *track, BLOCK *block)
 static int osSemaphoreAcquire(int semaphore, int ticks)
 {
     assert(semaphore == sem_wait_disc && ticks >= 1);
-    if (sem_calls++) longjmp(worker_exit, 1);
+    if (sem_calls++) {
+        if (sem_calls == 2 && cdb.pause_request) return 0;
+        longjmp(worker_exit, 1);
+    }
     cdb.status = initial_status;
     if (gate_at == STARTUP) wait_for_command();
     return 0;
 }
 
+static int fail_sector(int result)
+{
+    cdb.status = STAT_ERROR;
+    if (!HAS_FAILED_READ_RETIREMENT && cdb.play_type != PLAYTYPE_DIR) {
+        cdb.play_type = 0;
+        cdb.play_track = NULL;
+    }
+    return result;
+}
+
 static int get_sector(int fad, BLOCK *block)
 {
     if (!block) {
+        if (lookup_error) {
+            cdb.play_track = NULL;
+            return fail_sector(-1);
+        }
         if (!cdb.play_track) set_drive_position(fad);
         return 0;
     }
@@ -92,12 +116,7 @@ static int get_sector(int fad, BLOCK *block)
     last_read_status = cdb.status;
     read_calls++;
     if (gate_at == FIRST_READ && read_calls == 1) wait_for_command();
-    if (read_error) {
-        cdb.status = STAT_ERROR;
-        cdb.play_type = 0;
-        cdb.play_track = NULL;
-        return -2;
-    }
+    if (read_error) return fail_sector(-2);
     if (read_calls == (unsigned)finish_after) longjmp(worker_exit, 1);
     block->data = sector_bytes[0];
     return 0;
@@ -138,6 +157,7 @@ static void prepare(u32 fad, int audio, int status)
     worker_at_gate = request_waiting = acknowledged = command_returned = worker_finished = 0;
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
     delay_failure = delay_calls = filtered = queued = sector_delay = pend_delay = 0;
+    lookup_error = error_reports = reported_reader = 0;
     ack_fad = last_read_fad = 0;
     finish_after = 1;
 }
@@ -248,6 +268,8 @@ static void failed_reader(void)
     assert(cdb.play_type == PLAYTYPE_SECTOR && cdb.fad == 249 && cdb.play_fad_end == 349);
     finish_update(worker);
     assert(read_calls == 1 && !(hirq & HIRQ_PEND) && !cdb.pause_request);
+    if (HAS_FAILED_READ_RETIREMENT)
+        assert(error_reports == 1 && reported_reader == PLAYTYPE_SECTOR);
 }
 
 static void replacement(void)
@@ -308,6 +330,35 @@ static void timer_failure(void)
     assert(!cdb.rdir_state && !cdb.cdir_pfnum && hirq == HIRQ_EFLS);
 }
 
+/* Adapted from the terminal-ownership cases in paps-g c3bfa9ef. */
+static void failed_input_terminal(void)
+{
+    for (int kind = PLAYTYPE_SECTOR; kind <= PLAYTYPE_DIR; ++kind) {
+        for (int startup = 0; startup <= 1; ++startup) {
+            prepare(250, 0, STAT_PLAY);
+            cdb.play_type = kind;
+            cdb.rdir_state = 2;
+            cdb.cdir_pfnum = 7;
+            cdb.max_repeat = 3;
+            cdb.repcnt = 1;
+            cdb.pause_request = 0;
+            int free_before = cdb.block_free;
+            PARTITION partition = cdb.part[0];
+            lookup_error = startup;
+            read_error = !startup;
+            run_worker(NULL);
+            assert(error_reports == 1 && reported_reader == kind);
+            assert(cdb.status == STAT_ERROR && !cdb.play_type && !cdb.play_track);
+            assert(hirq == (kind == PLAYTYPE_SECTOR ? 0 : HIRQ_EFLS));
+            assert(cdb.fad == 250 && cdb.repcnt == 1 && read_calls == (unsigned)!startup);
+            assert(!filtered && !queued && cdb.block_free == free_before);
+            assert(!memcmp(&cdb.part[0], &partition, sizeof partition));
+            assert(cdb.rdir_state == (kind == PLAYTYPE_DIR ? 0 : 2));
+            assert(cdb.cdir_pfnum == (kind == PLAYTYPE_DIR ? 0 : 7));
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -330,6 +381,7 @@ int main(int argc, char **argv)
     else if (!strcmp(test, "error")) failed_reader();
     else if (!strcmp(test, "replace")) replacement();
     else if (!strcmp(test, "timer")) timer_failure();
+    else if (!strcmp(test, "input-terminal")) failed_input_terminal();
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);

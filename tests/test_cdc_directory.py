@@ -27,23 +27,35 @@ class CDDirectoryTests(unittest.TestCase):
         def function(data,signature):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
+        retired = b'int finish_read(' in raw
         code=b''.join(function(raw,sig) for sig in (
             b'static u32 isonum_733(',b'static int read_directory_record(',
-            b'int finish_directory(',b'static __attribute__((noinline)) void log_directory_record(',
+            b'int finish_read(' if retired else b'int finish_directory(',
+            b'static __attribute__((noinline)) void log_directory_record(',
             b'static int fill_fileinfo(',b'int handle_diread(',b'int get_file_scope(',
             b'int get_file_info(',b'int abort_file(',b'int filter_sector('))
+        if retired:
+            code += function(main, b'static __attribute__((noinline)) void log_play_end(')
+        else:
+            code += b'#define finish_read finish_directory\n'
         (cls.target/'directory.inc').write_bytes(code)
         start=main.index(b'\t\t\t\tretv = filter_sector(')
         end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.old_fad',start)
         (cls.target/'dispatch.inc').write_bytes(b'static int dispatch(BLOCK wblk) {\nint retv;\n'+
             main[start:end]+b'\nreturn 1;\n_restart_wait: return 0;\n_restart_nowait: return 2;\n}\n')
-        start=main.index(b'            int reading_directory =')
+        if retired:
+            error_start = main.index(b'\n_read_error:')
+            error_exit = main[error_start:main.index(b'\n_delay_error:',error_start)]
+            start=main.index(b'            retv = get_sector(cdb.fad, &wblk);')
+        else:
+            error_exit = b''
+            start=main.index(b'            int reading_directory =')
         end=main.index(b'\n\t\t\tled_event(',start)
         code=b'static int input_error_step(void) {\nint retv; BLOCK wblk;\ndo {\n'
-        code+=main[start:end]+b'\nreturn 1;\n} while (0);\nreturn 2;\n_restart_wait: return 0;\n}\n'
-        start=main.index(b'        int was_directory =')
+        code+=main[start:end]+b'\nreturn 1;\n} while (0);\nreturn 2;\n'+error_exit+b'\n_restart_wait: return 0;\n}\n'
+        start=main.index(b'        if (cdb.play_type && get_sector(' if retired else b'        int was_directory =')
         end=main.index(b'\n\n\t\tif(cdb.play_fad_start',start)
-        code+=b'static int initial_error_step(void) {\n'+main[start:end]+b'\nreturn 1;\n_restart_wait: return 0;\n}\n'
+        code+=b'static int initial_error_step(void) {\n'+main[start:end]+b'\nreturn 1;\n'+error_exit+b'\n_restart_wait: return 0;\n}\n'
         (cls.target/'input-error.inc').write_bytes(code)
         (cls.target/'pause.inc').write_bytes(function(main,b'static void acknowledge_disc_pause('))
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main}

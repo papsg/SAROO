@@ -1080,7 +1080,7 @@ static void file_transition(unsigned stage, int kind)
 {
     if (stage == 1) {
         cdb.fad = cdb.play_fad_end;
-        if (kind == PLAYTYPE_DIR) finish_directory(1);
+        if (kind == PLAYTYPE_DIR) finish_read(1);
         else assert(!worker_step());
         assert(!cdb.play_type && !read_calls);
     } else if (stage == 2) {

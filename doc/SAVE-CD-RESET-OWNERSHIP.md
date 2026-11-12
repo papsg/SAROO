@@ -40,3 +40,34 @@ compares archive contents through read-only handles. The paired owner
 and reopen groups each pass nine methods in both profiles. The GNU MCU
 App links 64,572 load bytes with 964 bytes of ITCM space. The generated
 filesystems and faults are host evidence.
+
+## Report CD input failure before retiring the reader
+
+Adapted from paps-g `c3bfa9ef` (MCU-CDC-035). A failed track lookup,
+seek, or sector read leaves the active reader in place while the
+worker reports the error. Both lookup at startup and sector input
+have a terminal error exit. Retirement updates the old reader's
+state under the IRQ guard. File and directory reads signal EFLS.
+Sector and audio failures leave PEND clear and skip repeat handling.
+Existing buffered sectors, ordinary file metadata, and a pending
+command handoff survive the failure. A directory failure clears
+its incomplete directory state.
+[Sega CD Communication Interface ST-162-062094, §3.1 HIRQREQ,
+printed p. 28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16),
+[§6.2.2–6.2.3 file access, printed pp. 52–53](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=40).
+
+```sh
+make -C tests check-cdc-command-buffer
+SAROO_CDC_PROFILE=release make -C tests check-cdc-command-buffer
+```
+
+Run the current sector-input and PLAY-continuity fixtures with the
+parent sources. Five input methods reproduce early release and
+one worker method reproduces missing terminal reporting under the
+old owner. The other 12 methods pass. The candidate exercises
+startup and active failures for sector, file and directory work,
+and a new PLAY waiting for a failed worker to retire. The
+directory fixture checks preemption after publication. Both CD
+profiles pass 208 methods. The GNU MCU App links 64,572 load
+bytes with 964 bytes of ITCM space. Physical event timing and
+game behavior remain unqualified.

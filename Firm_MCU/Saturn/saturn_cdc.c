@@ -1718,18 +1718,22 @@ void invalidate_directory(void)
     cdb.cdir_drend = 0;
 }
 
-int finish_directory(int valid)
+/* Retire a directory or a failed input only after terminal reporting. */
+int finish_read(int valid)
 {
     if (valid) {
         SSLOG(_FILEIO, "  cdir_pfid=%d fnum=%d\n", cdb.cdir_pfid, cdb.cdir_pfnum);
     }
     int irqs = disable_irq();
-    if (valid) cdb.rdir_state = 3;
-    else invalidate_directory();
+    int reader = cdb.play_type;
+    if (reader == PLAYTYPE_DIR) {
+        if (valid) cdb.rdir_state = 3;
+        else invalidate_directory();
+    }
     cdb.status = valid ? STAT_PAUSE : STAT_ERROR;
-    cdb.play_type = 0;
     cdb.play_track = NULL;
-    HIRQ = HIRQ_EFLS;
+    if (reader == PLAYTYPE_FILE || reader == PLAYTYPE_DIR) HIRQ = HIRQ_EFLS;
+    cdb.play_type = 0;
     restore_irq(irqs);
     return 0;
 }
@@ -1829,13 +1833,13 @@ int handle_diread(void)
     int sel = cdb.dir_filter;
     if (cdb.play_type != PLAYTYPE_DIR) return 0;
     if (sel >= MAX_SELECTORS || cdb.cddev_filter != sel ||
-        cdb.filter[sel].c_true != sel) return finish_directory(0);
+        cdb.filter[sel].c_true != sel) return finish_read(0);
     int irqs = disable_irq();
     PARTITION *pt = &cdb.part[sel];
     BLOCK *blk = pt->head;
     if (!blk || blk->fad != cdb.fad) {
         restore_irq(irqs);
-        return finish_directory(0);
+        return finish_read(0);
     }
     disconnect_partition_output(pt);
     unlink_block(pt, NULL, blk);
@@ -1880,7 +1884,7 @@ int handle_diread(void)
         start_directory_read(sel);
         return 2;
     }
-    if (result <= 0) return finish_directory(result == 0);
+    if (result <= 0) return finish_read(result == 0);
     return 1;
 }
 

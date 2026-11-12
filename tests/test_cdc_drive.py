@@ -36,7 +36,13 @@ class CDDriveTests(unittest.TestCase):
         code+=function(raw,b'int init_cdblock(')
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         code+=function(raw,b'int get_subcode(')
-        code+=function(raw,b'int finish_directory(')
+        retired = b'int finish_read(' in raw
+        if retired:
+            code += function(raw, b'int finish_read(')
+            code += function(main, b'static __attribute__((noinline)) void log_play_end(')
+        else:
+            code += function(raw, b'int finish_directory(') + b'#define finish_read finish_directory\n'
+        code += f'#define HAS_FAILED_READ_RETIREMENT {int(retired)}\n'.encode()
         (cls.target/'drive.inc').write_bytes(code)
         (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
         dispatch = function(raw, b'void cdc_cmd_process(')
@@ -63,10 +69,11 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'pause-worker.inc').write_bytes(ack+b'\nstatic void worker_pause_step(void) {\n'+locals_+
             b'if(pause_active) {\n'+active+b'\n} else {\n'+restart+b'\n}\n_restart_wait: '+exits+b'return;\n}\n')
         guard=b'';start=main.find(b'        if (cdb.play_type == PLAYTYPE_SECTOR &&')
-        if start>=0:guard=main[start:main.index(b'        int was_directory =',start)]
+        if start>=0:
+            guard=main[start:main.index(b'\n',main.index(b'goto _play_end;',start))]
         loop_start=main.index(b'\t\twhile(cdb.fad<cdb.play_fad_end){')
         loop=main[loop_start:main.index(b'\n',loop_start)]
-        start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
+        start=main.index(b'\n_play_end:')+len(b'\n_play_end:');end=main.index(b'\n\t\tset_peri_report();',start)
         (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+loop+
             b'\nread_calls++;return 1;}\n_play_end:\n'+main[start:end]+
             b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n_delay_error: abort();\n}\n')

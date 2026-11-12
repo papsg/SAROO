@@ -10,7 +10,11 @@ static void memcpy32(void *out,const void *in,unsigned count) { assert(!irq_dept
 #include "directory.inc"
 #undef pause_drive
 #include "dispatch.inc"
-static int failed_sector(int fad,BLOCK *blk) { (void)fad;return blk?-2:-1; }
+static int failed_sector(int fad,BLOCK *blk) { (void)fad;cdb.status=STAT_ERROR;return blk?-2:-1; }
+static __attribute__((unused)) void set_peri_report(void)
+{
+    assert(cdb.status==STAT_ERROR && cdb.play_type==PLAYTYPE_DIR);
+}
 #define get_sector failed_sector
 #include "input-error.inc"
 #undef get_sector
@@ -237,7 +241,7 @@ static void preemption(void)
     irq_restore_hook=steal_public;
     assert(handle_diread()==0 && cdb.rdir_state==3 && cdb.fi[0].lba==1000);
     assert(cdb.block_free==199 && cdb.part[1].numblocks==1);check_owners();
-    irq_restore_hook=next_directory;assert(finish_directory(1)==0);
+    irq_restore_hook=next_directory;assert(finish_read(1)==0);
     assert(cdb.play_type==PLAYTYPE_DIR && cdb.dir_filter==4 && cdb.play_track==&directory_track);
     irq_restore_hook=next_after_error;assert(input_error_step()==0);
     assert(cdb.play_type==PLAYTYPE_DIR && cdb.dir_filter==4 && cdb.play_track==&directory_track);

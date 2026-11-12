@@ -440,7 +440,7 @@ void load_cover(int index);
 
 /* Retire unfinished directory metadata before worker ownership is released. */
 void invalidate_directory(void);
-int finish_directory(int valid);
+int finish_read(int valid);
 
 /* Skip the next physical interleave gap after consuming a file sector. */
 void advance_file_unit(void);

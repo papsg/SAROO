@@ -67,6 +67,9 @@ class CDPlayContinuityTests(unittest.TestCase):
     def test_timer_failure_stops_reader_without_publishing_completion(self):
         self.run_case('timer')
 
+    def test_failed_input_reports_under_old_owner_and_terminates_file_access(self):
+        self.run_case('input-terminal')
+
 
 if __name__ == '__main__':
     unittest.main()

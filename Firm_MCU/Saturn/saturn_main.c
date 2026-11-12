@@ -200,7 +200,6 @@ int get_sector(int fad, BLOCK *wblk)
         if (!cdb.play_track) {
             SSLOG(_DTASK, "play_track not found!\n");
             cdb.status = STAT_ERROR;
-            if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
             return -1;
         }
         cdb.subrw_wp = cdb.subrw_rp;
@@ -299,7 +298,6 @@ int get_sector(int fad, BLOCK *wblk)
 read_error:
     SSLOG(_DTASK, "f_read error!\n");
     cdb.status = STAT_ERROR;
-    if (cdb.play_type != PLAYTYPE_DIR) cdb.play_type = 0;
     buf_fad_end = 0;
     return -2;
 }
@@ -371,6 +369,12 @@ static int acknowledge_drive_request(void)
     return 0;
 }
 
+static __attribute__((noinline)) void log_play_end(void)
+{
+    SSLOG(_DTASK, "\nplay end! fad=%08x end=%08x repcnt=%d maxrep=%d play_type=%d\n",
+          cdb.fad, cdb.play_fad_end, cdb.repcnt, cdb.max_repeat, cdb.play_type);
+}
+
 void disk_task(void *arg)
 {
 	int retv;
@@ -438,11 +442,7 @@ _restart_nowait:
 		
         if (cdb.play_type == PLAYTYPE_SECTOR && outside_play_range()) goto _play_end;
 
-        int was_directory = cdb.play_type == PLAYTYPE_DIR;
-        if (get_sector(cdb.fad, NULL) && was_directory) {
-            finish_directory(0);
-            goto _restart_wait;
-        }
+        if (cdb.play_type && get_sector(cdb.fad, NULL)) goto _read_error;
 
 		if(cdb.play_fad_start==0 || cdb.play_type==0){
 			SSLOG(_DTASK, "play_task: play_type=%d! play_fad_start=%08x!\n", cdb.play_type, cdb.play_fad_start);
@@ -494,12 +494,8 @@ _play_checkpoint:
 				if (outside_play_range()) goto _play_end;
 			}
 
-            int reading_directory = cdb.play_type == PLAYTYPE_DIR;
             retv = get_sector(cdb.fad, &wblk);
-            if (retv) {
-                if (reading_directory) { finish_directory(0); goto _restart_wait; }
-                break;
-            }
+            if (retv) goto _read_error;
 			led_event(LEDEV_CSCT);
 			HIRQ = HIRQ_SCDQ;
 			set_peri_report();
@@ -537,7 +533,7 @@ _play_checkpoint:
 				}
                 if (cdb.play_type == PLAYTYPE_DIR) {
                     if (retv != 0) {
-                        finish_directory(0);
+                        finish_read(0);
                         goto _restart_wait;
                     }
                     int next = handle_diread();
@@ -552,8 +548,7 @@ _play_checkpoint:
 		}
 
 _play_end:
-		SSLOG(_DTASK, "\nplay end! fad=%08x end=%08x repcnt=%d maxrep=%d play_type=%d\n",
-				cdb.fad, cdb.play_fad_end, cdb.repcnt, cdb.max_repeat, cdb.play_type);
+		log_play_end();
 
         /* A pending range update may extend the old endpoint. */
         if (cdb.pause_request) goto _play_checkpoint;
@@ -588,10 +583,16 @@ _play_end:
 		set_peri_report();
 		goto _restart_wait;
 
+_read_error:
+        log_play_end();
+        set_peri_report();
+        finish_read(0);
+        goto _restart_wait;
+
 _delay_error:
         cdb.play_wait = 0;
         if (cdb.play_type == PLAYTYPE_DIR) {
-            finish_directory(0);
+            finish_read(0);
         } else {
             int irqs = disable_irq();
             cdb.status = STAT_ERROR;

@@ -36,7 +36,7 @@ class CDXATests(unittest.TestCase):
 
         dispatch = cls.target / 'dispatch.inc'
         dispatch.write_bytes(observe_hirq(dispatch.read_bytes()))
-        start = main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!')
+        start = main.index(b'\n_play_end:') + len(b'\n_play_end:')
         end = main.index(b'\n\t\tset_peri_report();', start)
         range_start = main.find(b'int outside_play_range(')
         range_helper = main[range_start:main.index(b'\n}', range_start)+2] if range_start >= 0 else b''

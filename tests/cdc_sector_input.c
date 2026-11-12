@@ -57,7 +57,7 @@ static void setup(unsigned size,unsigned offset,unsigned mode)
 static void failed(BLOCK *block,const BLOCK *before)
 {
     assert(!memcmp(block,before,sizeof *block) && !buf_fad_end && cdb.status==STAT_ERROR);
-    assert(!cdb.play_type && !locked && locks==unlocks && locks==1);
+    assert(cdb.play_type==PLAYTYPE_FILE && !locked && locks==unlocks && locks==1);
 }
 static void seek_errors(void)
 {
@@ -132,7 +132,7 @@ static void track_and_metadata_controls(void)
     setup(2048,0,1);assert(!get_sector(150,NULL) && !locks && !reads && !seeks);
     cdb.play_track=NULL;BLOCK block,before;memset(&block,0x5a,sizeof block);memcpy(&before,&block,sizeof before);
     assert(get_sector(150,&block)==-1 && lookups==1 && !locks && !reads && !seeks);
-    assert(!memcmp(&block,&before,sizeof block) && !cdb.play_type && cdb.status==STAT_ERROR);
+    assert(!memcmp(&block,&before,sizeof block) && cdb.play_type==PLAYTYPE_FILE && cdb.status==STAT_ERROR);
     setup(2048,0,1);tracks[1]=tracks[0];cdb.track_num=2;cdb.play_track=NULL;lookup_result=2;
     assert(!get_sector(150,NULL) && cdb.play_track==&tracks[1] && lookups==1 && !reads);
 }
