@@ -369,9 +369,11 @@ static void partial_transfer_error(){
 constexpr int PLAYTYPE_SECTOR=1, PLAYTYPE_FILE=2, PLAYTYPE_DIR=3;
 struct { int mode; } worker_track;
 struct { int play_type,play_wait; u32 fad,play_fad_end,repcnt,max_repeat; decltype(worker_track)*play_track; } cdb;
-struct { u8 *data; } wblk={input};
+struct { u8 *data; u32 fad; } wblk={input,0};
+static void publish_subrw(u32 fad){assert(fad==cdb.fad);}
 static void counted_worker_flush(){worker_flushes++;spi2_flush();}
 static void worker_tail(){
+    wblk.fad=cdb.fad;
 #define spi2_flush counted_worker_flush
 #include "audio-worker.inc"
 #undef spi2_flush
