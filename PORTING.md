@@ -2095,3 +2095,11 @@ unqualified. [Sega citations, attribution and reproduction](https://github.com/p
    TIM6/DAC is retired, and TIM4 and TIM7 remain linked.
    Physical timer latency and game pacing remain unqualified.
    [STM32 citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#use-tim2-for-cd-worker-pacing)
+
+The full run caught a stale audio fixture source boundary after the
+TIM2 port. The test-only follow-up
+[`81212bd`](https://github.com/papsg/SAROO/commit/81212bd69e1918e96166e574f907b2cd00b2fab4)
+recognizes both worker forms. It preserves the exact admission,
+backpressure and flush code in the extracted fixture. All 37 audio
+methods pass under sanitizers and O2, and the parent worker-flush
+control passes.
