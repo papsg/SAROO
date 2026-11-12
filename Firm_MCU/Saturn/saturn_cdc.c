@@ -2025,9 +2025,10 @@ int abort_file(void)
     SSLOG(_FILEIO, "abort_file\n");
     int directory = cdb.play_type == PLAYTYPE_DIR;
     if (directory || cdb.play_type == PLAYTYPE_FILE) {
-        if (pause_disc()) { set_status(STAT_WAIT|cdb.status); return 0; }
+        if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
         if (directory) invalidate_directory();
     }
+    set_report(cdb.status);
     return HIRQ_EFLS;
 }
 

@@ -91,3 +91,22 @@ file/directory replacement, timeout and reader failure. Both CD profiles
 pass 183 methods. The 13 disc/save handoff methods also pass. The GNU MCU App
 loads 63,228 bytes with 2,308 bytes of ITCM space. Physical scheduling,
 audio timing and game playback remain unqualified.
+
+## Return the complete file-abort response
+
+Adapted from paps-g `6deb9795` (MCU-CDC-029/030). A successful file-abort
+command publishes all four response words before raising EFLS. An active
+file or directory operation uses the bounded same-disc pause, which
+retains read-ahead data and the host's buffered sectors and selectors.
+Directory abort also clears the retained directory information. A timeout
+returns WAIT and leaves EFLS for an eventual successful command.
+[ST-162-062094, §8.2.8 No. 8.6, printed p. 101](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=89),
+[CD Communication Interface User's Manual, §8.1, command response conventions](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p08_10.htm).
+
+Run the drive fixture with `-k abort_file` and set `SAROO_CDC_DRIVE_DIR`
+to the parent to reproduce stale reply words and cache invalidation.
+The timeout and late-acknowledgment control passes on the parent and
+the port. The tests check 144 reply cases, both worker pause paths,
+and retained filter, buffer and cache state. Both CD profiles pass
+186 methods. The GNU MCU App loads 63,228 bytes with 2,308 bytes of ITCM
+space. Physical command and interrupt timing remain unqualified.

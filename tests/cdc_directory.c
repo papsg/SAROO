@@ -6,7 +6,9 @@
 #undef main
 static u32 bswap32(u32 x) { return __builtin_bswap32(x); }
 static void memcpy32(void *out,const void *in,unsigned count) { assert(!irq_depth);copied_bytes+=count;memcpy(out,in,count); }
+#define pause_drive pause_disc
 #include "directory.inc"
+#undef pause_drive
 #include "dispatch.inc"
 static int failed_sector(int fad,BLOCK *blk) { (void)fad;return blk?-2:-1; }
 #define get_sector failed_sector

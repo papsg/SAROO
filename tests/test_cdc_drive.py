@@ -38,11 +38,11 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
         dispatch = function(raw, b'void cdc_cmd_process(')
         cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
-                         for start in (b'case 0x00:', b'case 0x11:'))
+                         for start in (b'case 0x00:', b'case 0x11:', b'case 0x75:'))
         start = dispatch.index(b'switch(cmd){') + len(b'switch(cmd){')
         end = dispatch.index(b'if(cdb.block_free!=MAX_BLOCKS)', start)
-        code = function(raw, b'int get_cd_status(') + function(raw, b'char *cmd_str(')
-        (cls.target/'seek-dispatch.inc').write_bytes(code + dispatch[:start] + cases +
+        code = b''.join(function(raw, name) for name in (b'int get_cd_status(', b'int abort_file(', b'char *cmd_str('))
+        (cls.target/'drive-dispatch.inc').write_bytes(code + dispatch[:start] + cases +
                                                      b'default: abort();}\n' + dispatch[end:])
         start=main.index(b'_restart_nowait:')
         start=main.index(b'\t\tif(cdb.pause_request)',start)
@@ -131,6 +131,9 @@ class CDDriveTests(unittest.TestCase):
     def test_seek_dispatch_publishes_event_after_worker_handoff(self):self.run_case(33)
     def test_seek_busy_reply_and_following_settled_status(self):self.run_case(34)
     def test_seek_no_event_for_refusal_or_pending_repeat(self):self.run_case(35)
+    def test_abort_file_replaces_all_reply_words(self):self.run_case(36)
+    def test_abort_file_preserves_reader_cache_and_buffers(self):self.run_case(37)
+    def test_abort_file_timeout_and_late_ack_leave_reply_pending(self):self.run_case(38)
 
 
 if __name__=='__main__':unittest.main()

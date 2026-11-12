@@ -54,7 +54,7 @@ static u16 *const drive_hirq = &hirq;
 #define HIRQ (*drive_hirq)
 #undef SS_CTRL
 #define SS_CTRL ss_control
-#include "seek-dispatch.inc"
+#include "drive-dispatch.inc"
 #include "file-start.inc"
 #include "reset.inc"
 #include "phase.inc"
@@ -967,6 +967,105 @@ static void seek_event_controls(void)
     }
 }
 
+static void seed_abort(void)
+{
+    cdb.cr1 = 0x7519;
+    reply[0] = 0x7519;
+    reply[1] = 0x1234;
+    reply[2] = 0x5678;
+    reply[3] = 0x9abc;
+}
+
+static void abort_reply(void)
+{
+    const unsigned states[] = {STAT_PAUSE, STAT_PLAY, STAT_STANDBY, STAT_SEEK,
+                               STAT_SCAN, STAT_RETRY, STAT_ERROR, STAT_OPEN, STAT_NODISC};
+    for (unsigned s = 0; s < sizeof states / sizeof *states; s++) {
+        for (unsigned kind = 0; kind <= PLAYTYPE_DIR; kind++) {
+            for (unsigned buffered = 0; buffered < 2; buffered++) {
+                for (unsigned active = 0; active < 2; active++) {
+                    ready();
+                    if (!buffered) free_partition(&cdb.part[0]);
+                    cdb.status = states[s];
+                    cdb.play_type = kind;
+                    cdb.ctrladdr = 0x41;
+                    cdb.track = 2;
+                    cdb.index = 3;
+                    cdb.fad = 0x123456;
+                    cdb.options = 8;
+                    cdb.repcnt = 7;
+                    pause_active = active;
+                    acknowledge_after = active ? 500 : 1;
+                    seed_abort();
+                    cdc_cmd_process();
+                    int aborts_reader = kind == PLAYTYPE_FILE || kind == PLAYTYPE_DIR;
+                    unsigned status = aborts_reader ? STAT_PAUSE : states[s];
+                    assert(reply[0] == ((status << 8) | 0x87));
+                    assert(reply[1] == 0x4102 && reply[2] == 0x0312 && reply[3] == 0x3456);
+                    assert(hirq == (HIRQ_CMOK | HIRQ_EFLS | (buffered ? HIRQ_SCDQ : 0)));
+                    assert(!hirq_clear && !cdb.pause_request && cdb.status == (int)status);
+                    assert(waits == (aborts_reader ? (unsigned)acknowledge_after : 0));
+                    assert(cdb.play_type == (aborts_reader ? 0 : (int)kind));
+                }
+            }
+        }
+    }
+}
+
+static void abort_cache(void)
+{
+    for (unsigned kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        for (unsigned active = 0; active < 2; active++) {
+            ready();
+            pause_active = active;
+            cdb.play_type = kind;
+            cdb.rdir_state = 3;
+            cdb.cdir_pfnum = 9;
+            cdb.cdir_drend = 1;
+            cdb.play_pos_types = 5;
+            cdb.max_repeat = 5;
+            CDBLOCK before = cdb;
+            seed_abort();
+            cdc_cmd_process();
+            assert(buf_fad_start == 123 && buf_fad_end == 456);
+            assert(!memcmp(cdb.part, before.part, sizeof cdb.part));
+            assert(!memcmp(cdb.block, before.block, sizeof cdb.block));
+            assert(!memcmp(cdb.filter, before.filter, sizeof cdb.filter));
+            assert(cdb.block_free == before.block_free && cdb.cddev_filter == before.cddev_filter);
+            assert(cdb.play_fad_start == before.play_fad_start && cdb.play_fad_end == before.play_fad_end);
+            assert(cdb.max_repeat == before.max_repeat && cdb.play_pos_types == before.play_pos_types);
+            assert(cdb.rdir_state == (kind == PLAYTYPE_DIR ? 0 : 3));
+            assert(cdb.cdir_pfnum == (kind == PLAYTYPE_DIR ? 0 : 9));
+            assert(cdb.cdir_drend == (kind == PLAYTYPE_DIR ? 0 : 1));
+        }
+    }
+}
+
+static void abort_timeout(void)
+{
+    for (unsigned kind = PLAYTYPE_FILE; kind <= PLAYTYPE_DIR; kind++) {
+        ready();
+        cdb.status = STAT_PLAY;
+        cdb.play_type = kind;
+        cdb.rdir_state = 3;
+        cdb.cdir_pfnum = 9;
+        acknowledge_after = -1;
+        seed_abort();
+        cdc_cmd_process();
+        assert(waits == 500 && cdb.play_type == (int)kind && cdb.pause_request);
+        assert(reply[0] == (((STAT_WAIT | STAT_PLAY) << 8) | 0x19));
+        assert(reply[1] == 0x1234 && reply[2] == 0x5678 && reply[3] == 0x9abc);
+        assert(hirq == (HIRQ_CMOK | HIRQ_SCDQ) && !hirq_clear);
+        assert(cdb.rdir_state == 3 && cdb.cdir_pfnum == 9);
+        assert(buf_fad_start == 123 && buf_fad_end == 456);
+        u16 old_reply[4];
+        memcpy(old_reply, reply, sizeof old_reply);
+        worker_pause_step();
+        assert(!cdb.play_type && !cdb.pause_request && cdb.status == STAT_PAUSE);
+        assert(hirq == (HIRQ_CMOK | HIRQ_SCDQ) && !memcmp(reply, old_reply, sizeof reply));
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -993,6 +1092,9 @@ int main(int argc,char **argv)
     case 33:seek_handoff_event();break;
     case 34:seek_status_reply();break;
     case 35:seek_event_controls();break;
+    case 36:abort_reply();break;
+    case 37:abort_cache();break;
+    case 38:abort_timeout();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }
