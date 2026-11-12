@@ -2406,3 +2406,11 @@ The public working tree is clean. The private checkout matches its starting HEAD
 - The GNU MCU App links 64,680 load bytes with 856 bytes of ITCM space and 59,448 static DTCM bytes. Compact records save 96 static bytes but add 80 load bytes; a separate locked helper adds 16 load bytes. Physical timing remains unmeasured. [Attribution, Sega and Arm references, and reproduction](https://github.com/papsg/SAROO/blob/9f36b43beba9aaa4a956e7ffe011ec585b07a8f5/doc/STARTUP-CD-STORAGE-AUDIT.md#simplify-cd-partition-updates).
 
 - Full-suite fixture follow-up [081ec64](https://github.com/papsg/SAROO/commit/081ec64f9e6eca24020d4fd9d928ce5d7248f1af) models the FAD passed by the worker after `8bbed27`. The initial suite stopped at the host compile; both audio profiles now pass 37 methods. Production source and firmware bytes are unchanged.
+
+### Final verification
+
+All six production checkpoints and the audio fixture follow-up are published in order on [`main` at `081ec64`](https://github.com/papsg/SAROO/commit/081ec64f9e6eca24020d4fd9d928ce5d7248f1af). The final suite used an archive matching all 663 blobs of that commit. `make -j4 -C tests check` passed with 851 Python passes, one Windows-only skip, 18 Rust passes and the native language check. All 48 linked menu clock cases pass separately.
+
+The GNU MCU App reproduces the selected image byte for byte, binds all 56 repository MCU inputs and verifies 166 vectors. It links 64,680 load bytes with 856 bytes of ITCM space and 59,448 static DTCM bytes. All 13 enabled BootLoader C units compile with the original BOOT and RTE settings. The stock menu ELF and image match the prior build and all 36 menu inputs match. All 18 FPGA project inputs match the previous fit.
+
+The public worktrees are clean. The private checkout matches its starting branch, refs and worktree. No Saturn operation was performed. Physical playback, media behavior, power-loss recovery and a complete BootLoader link remain unqualified. [Attribution, specifications and reproduction](https://github.com/papsg/SAROO/blob/081ec64f9e6eca24020d4fd9d928ce5d7248f1af/doc/STARTUP-CD-STORAGE-AUDIT.md).
