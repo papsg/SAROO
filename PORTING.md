@@ -1997,3 +1997,13 @@ Saturn was left untouched.
    space. Physical scheduling, audio timing and game playback remain
    unqualified.
    [Sega and upstream citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#continue-playback-through-a-pickup-preserving-play)
+
+4. **File-abort reply and reader cache — published**
+   [`45a952d`](https://github.com/papsg/SAROO/commit/45a952dff5a4966081c389395867746d2c3a2048).
+   Adapted from paps-g `6deb9795` (MCU-CDC-029/030) using the
+   public same-disc pause. The parent leaves stale reply words and
+   invalidates read-ahead. The timeout and late-acknowledgment control
+   passes on both. Both CD profiles pass 186 methods. The GNU MCU App
+   loads 63,228 bytes with 2,308 bytes of ITCM space. Physical command
+   and interrupt timing remain unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#return-the-complete-file-abort-response)
