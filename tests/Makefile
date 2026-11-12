@@ -48,6 +48,12 @@ check-mcu-shrink:
 	$(PYTHON) -B -m unittest discover -s . -p test_rtx_pool.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_image_suffix.py -v
 
+check: check-mcu-startup
+
+.PHONY: check-mcu-startup
+check-mcu-startup:
+	$(PYTHON) -B -m unittest discover -s . -p test_mcu_startup_registers.py -v
+
 .PHONY: check-file-transfer
 check-file-transfer:
 	$(PYTHON) -B -m unittest discover -s . -p test_file_transfer.py -v

@@ -83,7 +83,7 @@ void device_init(void)
 	// 各种模式的优先级: ExtMode > MuxMode > Mode1/2
 	// PSRAM模式下, 单次写入会扩展为带BL信号的4次写入. 所以FMC只能选择FLASH模式.
 	// FMC_CS1: 0xc0000000
-	FMC_Bank1_R->BTCR[0]  = 0x8000b05b;
+	FMC_Bank1_R->BTCR[0]  = 0x8000b0db;
 	FMC_Bank1_R->BTCR[1]  = 0x00020612;
 
 	mpu_config();

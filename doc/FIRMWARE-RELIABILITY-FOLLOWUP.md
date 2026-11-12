@@ -247,3 +247,27 @@ the baseline reset failure, point `SAROO_ACK_MENU_DIR` and
 checkout and run the reset case in `test_save_ack.py`.
 Physical reset propagation, durability and recovery of a full running
 session remain unqualified.
+
+## Set the required FMC reserved bit during boot
+
+Adapted from paps-g `8345fa51` (MCU-FMC-001). The BootLoader sets up
+the cartridge FPGA's multiplexed NOR bus in `device_init`. The
+control value inherited from upstream clears FMC_BCR1 bit 7.
+ST specifies one for that reserved bit in muxed mode.
+[Upstream commit `4eef4054`](https://github.com/tpunix/SAROO/commit/4eef40541e2e3139e7cfdf57addf0de1ac2bc89f) ·
+[STM32 RM0433 Rev. 8 Tables 184–185, pp. 829–830](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=829).
+
+Change FMC_BCR1 from `0x8000b05b` to `0x8000b0db`. The 16-bit NOR
+mode, NWAIT configuration and FMC_BTR1 timing value stay the same.
+
+```sh
+make -C tests check-mcu-startup
+# For the parent, set SAROO_FMC_SOURCE to its Firm_MCU/Main/main.c.
+```
+
+The parent fails the reserved-bit check and passes the mode and
+timing controls. All three checks pass with the correction. The
+28,964-byte GNU BootLoader load differs at just the byte containing
+bit 7. The GNU App load matches byte for byte because it inherits
+the boot configuration. The source and image checks establish the
+register contract. No physical failure is attributed to this bit.
