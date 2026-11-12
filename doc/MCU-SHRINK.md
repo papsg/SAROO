@@ -291,3 +291,25 @@ startup/RTX providers also saves 3,584 bytes of static DTCM, adds
 eight load bytes (28,704 total), and retains all 166 vectors. Both
 are compile/link checks; the MDK image and installed firmware remain
 unqualified.
+
+## Inline the CD word byte swap
+
+Adapted from paps-g `fa0a8f9d` (AUD-RES-006). TOC construction,
+session lead-out decoding and the directory reply use the same
+32-bit byte reversal as before. They now use the compiler intrinsic
+at each caller. The GNU Cortex-M7 link emits seven `REV` instructions
+at those sites and removes all seven calls and the separate helper.
+
+Arm *Cortex-M7 Devices Generic User Guide*, DUI 0646C, §3.5.8
+p. 3-56 defines `REV`. Sega describes the relevant fields in
+[ST-162-062094 §7.2.3, printed p. 58 (TOC and session)](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=46)
+and [§7.2.6, printed p. 72 (file information)](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=60).
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. The parent and port pass the 225 methods,
+including an independent byte-order oracle for 65,536 words, the TOC,
+session and file replies, and CUE read and geometry controls. The port
+also passes the O2 profile. The GNU App image shrinks by 64 bytes to
+64,664, with 872 bytes free and unchanged static DTCM. The direct
+`get_file_info` frame drops from 48 to 24 bytes. This establishes the
+linked size and reply values; no physical timing gain is claimed.

@@ -4,7 +4,6 @@
 #define CDC_BOUNDS_MAIN bounds_fixture_main
 #include "cdc_bounds.c"
 #undef main
-static u32 bswap32(u32 x) { return __builtin_bswap32(x); }
 static void memcpy32(void *out,const void *in,unsigned count) { assert(!irq_depth);copied_bytes+=count;memcpy(out,in,count); }
 #define pause_drive pause_disc
 #include "directory.inc"

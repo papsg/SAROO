@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from cdc_reply_source import bswap_source
 import test_cdc_bounds as bounds
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ class CDDirectoryTests(unittest.TestCase):
         with patch.dict(os.environ,{'SAROO_CDC_BOUNDS_SOURCE':str(source)}):
             bounds.CDBoundsTests.setUpClass()
         raw=source.read_bytes();main=main_source.read_bytes()
+        header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-directory';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
         def function(data,signature):
@@ -38,7 +40,7 @@ class CDDirectoryTests(unittest.TestCase):
             code += function(main, b'static __attribute__((noinline)) void log_play_end(')
         else:
             code += b'#define finish_read finish_directory\n'
-        (cls.target/'directory.inc').write_bytes(code)
+        (cls.target/'directory.inc').write_bytes(bswap_source(header, main) + code)
         start=main.index(b'\t\t\t\tretv = filter_sector(')
         end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.',start)
         (cls.target/'dispatch.inc').write_bytes(b'static int dispatch(BLOCK wblk) {\nint retv;\n'+
@@ -68,11 +70,10 @@ class CDDirectoryTests(unittest.TestCase):
                  b'#define acknowledge_disc_pause acknowledge_drive_request\n')
         (cls.target/'pause.inc').write_bytes(pause)
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main}
-        for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py'):
+        for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py','cdc_reply_source.py'):
             inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('types.h','copy.inc','bounds.inc','ff.h','ffconf.h'):
             inputs[name]=(bounds.CDBoundsTests.target/name).read_bytes()
-        header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         inputs['cdc.h']=header
         inputs['types.h']+=header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')]
         for name,data in inputs.items(): (cls.target/name).write_bytes(data)

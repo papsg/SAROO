@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from menu_command_source import load_case
 from file_buffer_source import file_buffer_source
+from cdc_reply_source import bswap_source
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'tests/build/mcu-save'
@@ -240,7 +241,7 @@ class MCUSaveTest(unittest.TestCase):
                           lambda m: b'(TEST_GFX_BASE + 0x' + m[1] + b')', code)
             (cls.target / 'cover-display.inc').write_bytes(code)
         if cls.fixture in ('cue', 'header'):
-            harnesses += ['mcu_save_cue.c', 'test_mcu_save_cue.py']
+            harnesses += ['mcu_save_cue.c', 'test_mcu_save_cue.py', 'cdc_reply_source.py']
             if cls.fixture == 'header':
                 harnesses += ['mcu_save_header.c', 'test_mcu_save_header.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
@@ -255,8 +256,8 @@ class MCUSaveTest(unittest.TestCase):
             begin = data.index(b'static int game_dir(')
             (cls.target / 'load.inc').write_bytes(catalog_definitions + data[begin:data.index(b'int get_disc_ip(', begin)])
             (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])
-            begin = main.index(b'u32 bswap32('); end = main.index(b'u32 track_to_fad(', begin)
-            (cls.target / 'toc.inc').write_bytes(main[begin:end])
+            begin = main.index(b'void init_toc('); end = main.index(b'u32 track_to_fad(', begin)
+            (cls.target / 'toc.inc').write_bytes(bswap_source(header, main) + main[begin:end])
             begin = module.index(b'char *get_token('); end = module.index(b'\n}', module.index(b'char *get_line(', begin)) + 3
             (cls.target / 'token.inc').write_bytes(module[begin:end])
             if getattr(cls, 'reader_fixture', False):

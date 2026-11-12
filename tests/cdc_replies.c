@@ -89,6 +89,16 @@ static void session_replies(int absent)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "byteorder")) {
+        for (u32 i = 0; i <= 0xffff; ++i) {
+            const u32 word = (i << 16) | ((i * 257u + 53u) & 0xffffu);
+            const u8 expected[] = {word >> 24, word >> 16, word >> 8, word};
+            const u32 swapped = bswap32(word);
+            assert(!memcmp(&swapped, expected, sizeof(expected)));
+        }
+        puts("65536 CD words have the expected byte order");
+        return 0;
+    }
     if (argc == 2) {
         assert(!strcmp(argv[1], "unavailable") || !strcmp(argv[1], "valid"));
         session_replies(!strcmp(argv[1], "unavailable"));

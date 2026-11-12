@@ -399,7 +399,10 @@ TRACK_INFO *get_track_info(int tn);
 u8 track_subindex(const TRACK_INFO *tk, u32 fad);
 u32 track_to_fad(u16 track_index);
 int fad_to_track(u32 fad);
-u32 bswap32(u32 d);
+static inline __attribute__((always_inline)) u32 bswap32(u32 d)
+{
+	return __builtin_bswap32(d);
+}
 void init_toc(void);
 
 

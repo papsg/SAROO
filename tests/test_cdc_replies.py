@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from cdc_reply_source import command_reply_source
+from cdc_reply_source import bswap_source, command_reply_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +34,7 @@ class CDReplyTests(unittest.TestCase):
             code += function(selector)
         code += function(b'void set_status(') + function(b'BLOCK *find_block(')
         main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
-        code += function(b'TRACK_INFO *get_track_info(', main) + function(b'u32 bswap32(', main)
+        code += function(b'TRACK_INFO *get_track_info(', main) + bswap_source(header, main)
         names = ('get_hw_info', 'get_toc_info', 'get_session_info', 'open_tray', 'get_subcode',
                  'get_cdev_connect', 'get_last_buffer', 'get_filter_range',
                  'get_filter_subheader', 'get_filter_mode', 'get_filter_connection',
@@ -67,6 +67,9 @@ class CDReplyTests(unittest.TestCase):
 
     def test_complete_replies_keep_values_order_and_command_state(self):
         self.run_case([], '1179648 complete replies pass')
+
+    def test_cd_word_swap_preserves_wire_byte_order(self):
+        self.run_case(['byteorder'], '65536 CD words have the expected byte order')
 
     def test_session_unavailable_keeps_all_ones_for_every_selector(self):
         self.run_case(['unavailable'], '1024 session replies pass')
