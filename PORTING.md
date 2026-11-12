@@ -2193,3 +2193,27 @@ pacing remain unqualified.
    bytes with 24,000 bytes of body space. Physical disc and BIOS
    behavior remain unqualified.
    [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#acknowledge-the-old-disc-change-before-bios-initialization)
+
+### Menu startup, GIF display, and CD handoff final verification
+
+The six direct checkpoints are published through
+[`0d7459c`](https://github.com/papsg/SAROO/commit/0d7459ce4d74f3d24cada43dd22fe6737fb37b72).
+The final `make -C tests check` run passes 780 Python methods, 18 Rust
+checks, and the native language check. The Windows-only CD+G
+replacement fixture is skipped on macOS. Both focused menu runs
+pass 95 methods and both CD profiles pass 207 methods. The coupled
+host/Verilog case covers original-drive command retirement using the
+public FPGA register logic and actual MCU dispatcher output.
+
+The published source reproduces both ELFs and the SH-2 menu image.
+All 36 menu and 56 MCU input hashes match the receipts. The
+488,770-byte menu contains 81,444 code/data bytes and 9,244 BSS bytes
+with 24,000 bytes of body space. The linked ROM clock hook passes
+48 relocated cases. The GNU MCU App loads 64,460 bytes and retains
+1,076 bytes of ITCM space and 60,216 bytes of static DTCM.
+
+The public main worktree is clean. The private checkout's HEAD,
+branch, refs, stash, worktree status and diff match the initial
+read-only snapshot. Physical SCU timing, cold starts, and game
+behavior remain unqualified.
+[Citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md)
