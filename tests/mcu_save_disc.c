@@ -1,6 +1,7 @@
 /* Adapted from paps-g 82125993/cb3abf06; atomic publication follows c6dc9847. Actual save state/ISO/FatFs; scheduling and registers are stubs. */
 #include "coupled-harness.inc"
 #include "disc-api.h"
+#define PLAYTYPE_SECTOR 1
 #define PLAYTYPE_DIR 3
 #define STAT_PAUSE 1
 #define STAT_OPEN 6
@@ -9,7 +10,14 @@
 static int HIRQ;
 #include "track-layout.h"
 static FIL track_fp[100];
-static struct { int status,track_num,has_subrw,play_type,play_wait,pause_request,rdir_state,cdir_pfnum,cdir_drend; TRACK_INFO tracks[100]; TRACK_INFO *play_track; FIL subcode_fp; } cdb;
+static struct {
+    int status, track_num, has_subrw, play_type, play_wait, pause_request;
+    int rdir_state, cdir_pfnum, cdir_drend;
+    u32 fad, play_fad_start, play_fad_end;
+    TRACK_INFO tracks[100];
+    TRACK_INFO *play_track;
+    FIL subcode_fp;
+} cdb;
 static int current_index,category_current,total_disc=2,next_disc;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";
@@ -73,17 +81,19 @@ static void restore_irq(int old)
     if(!pause_irq_mask && pending_publication) { pending_publication=0;publish_new_request(); }
 }
 static void set_pause_ok(void) { assert(!pause_irq_mask);pause_acks++; }
+#define SSLOG(...) ((void)0)
 #include "pause-ack.inc"
 static void pause_worker(void)
 {
-#define SSLOG(...) ((void)0)
+    int retained_startup=0;
     if(pause_active) {
 #include "pause-active-worker.inc"
     } else {
 #include "pause-worker.inc"
     }
 #undef SSLOG
-_restart_wait: return;
+_restart_wait:
+_play_end: (void)retained_startup; return;
 }
 static void disk_task_wakeup(void) { assert(!pause_irq_mask);pause_wakes++; }
 static void wait_pause_ok(void)

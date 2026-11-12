@@ -350,6 +350,26 @@ static void acknowledge_disc_pause(void)
     set_pause_ok();
 }
 
+__attribute__((noinline)) int outside_play_range(void)
+{
+    return cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end;
+}
+
+static int acknowledge_drive_request(void)
+{
+    if (cdb.pause_request == -PLAYTYPE_SECTOR && cdb.play_type == PLAYTYPE_SECTOR) {
+        /* Command service has higher priority and publishes before this
+         * worker resumes. Check the reader kind here because I/O may fail
+         * between the request and this checkpoint. */
+        cdb.pause_request = 0;
+        set_pause_ok();
+        return 1;
+    }
+    SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
+    acknowledge_disc_pause();
+    return 0;
+}
+
 void disk_task(void *arg)
 {
 	int retv;
@@ -360,7 +380,7 @@ void disk_task(void *arg)
 
 	int wait_ticks = 10;
 	int play_wait_count = 0;
-	int lazy_play_state = 0;
+	int retained_startup;
 	while(1){
 _restart_wait:
 		wait_ticks = (cdb.play_wait || cdb.block_free!=MAX_BLOCKS)? 1: 2;
@@ -409,15 +429,13 @@ _restart_wait:
 		}
 
 _restart_nowait:
+		retained_startup = 0;
 		if(cdb.pause_request){
-			SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
-			acknowledge_disc_pause();
-			goto _restart_wait;
+			if (!acknowledge_drive_request()) goto _restart_wait;
+			retained_startup = 1;
 		}
 		
-        if (cdb.play_type == PLAYTYPE_SECTOR &&
-            (cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end ||
-             cdb.play_fad_start >= cdb.play_fad_end)) goto _play_end;
+        if (cdb.play_type == PLAYTYPE_SECTOR && outside_play_range()) goto _play_end;
 
         int was_directory = cdb.play_type == PLAYTYPE_DIR;
         if (get_sector(cdb.fad, NULL) && was_directory) {
@@ -440,7 +458,8 @@ _restart_nowait:
 		if(cdb.fad==0){
 			cdb.fad = cdb.play_fad_start;
 		}
-		if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_fad_start == cdb.fad){
+		int delayed_start = 0;
+		if(!retained_startup && cdb.play_type!=PLAYTYPE_FILE && cdb.play_fad_start == cdb.fad){
 			if(play_delay){
 				int calc_delay = play_delay;
 #if 0
@@ -455,22 +474,12 @@ _restart_nowait:
 					cdb.status = STAT_SEEK;
 					hw_delay(calc_delay);
 				}
-				lazy_play_state = 1;
+				delayed_start = 1;
 			}
 		}
 
 		int old_status = cdb.status;
-		if(play_delay){
-			// SEEK向PLAY状态转换，有一定的延迟。
-			if(lazy_play_state==1){
-				lazy_play_state = 2;
-			}else if(lazy_play_state==2){
-				cdb.status = STAT_PLAY;
-				lazy_play_state = 0;
-			}
-		}else{
-			cdb.status = STAT_PLAY;
-		}
+		if (!delayed_start) cdb.status = STAT_PLAY;
 		if(old_status!=cdb.status){
 			if(cdb.play_track->mode==3){
 				cdb.options = 0x00;
@@ -478,10 +487,10 @@ _restart_nowait:
 		}
 
 		while(cdb.fad<cdb.play_fad_end){
+_play_checkpoint:
 			if(cdb.pause_request){
-				SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
-				acknowledge_disc_pause();
-				goto _restart_wait;
+				if (!acknowledge_drive_request()) goto _restart_wait;
+				if (outside_play_range()) goto _play_end;
 			}
 
             int reading_directory = cdb.play_type == PLAYTYPE_DIR;
@@ -549,8 +558,9 @@ _play_end:
 		SSLOG(_DTASK, "\nplay end! fad=%08x end=%08x repcnt=%d maxrep=%d play_type=%d\n",
 				cdb.fad, cdb.play_fad_end, cdb.repcnt, cdb.max_repeat, cdb.play_type);
 
-		if(cdb.fad>=cdb.play_fad_end || cdb.fad<cdb.play_fad_start ||
-           cdb.play_fad_start>=cdb.play_fad_end){
+        /* A pending range update may extend the old endpoint. */
+        if (cdb.pause_request) goto _play_checkpoint;
+        if (cdb.play_type && outside_play_range()) {
 			// 本次play结束
 			cdb.play_track = NULL;
 			{
@@ -609,10 +619,10 @@ void wait_pause_ok(void)
 
 /* Explicit callers wait before replacing readers. Automatic changes run on
  * the producer itself and must not wait for their own acknowledgment. */
-int pause_drive(void)
+int synchronize_drive(int keep_sector)
 {
-    if (cdb.play_type) {
-        cdb.pause_request = 1;
+    if (cdb.play_type || cdb.pause_request) {
+        cdb.pause_request = keep_sector ? -PLAYTYPE_SECTOR : 1;
         cdb.play_wait = 0;
         disk_task_wakeup();
         for (int retries = 500; cdb.pause_request && retries; retries--)
@@ -620,6 +630,11 @@ int pause_drive(void)
         if (cdb.pause_request) return -1;
     }
     return 0;
+}
+
+int pause_drive(void)
+{
+    return synchronize_drive(0);
 }
 
 /* Replacing a reader invalidates its cache only after successful handoff. */

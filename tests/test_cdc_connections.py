@@ -38,6 +38,7 @@ class CDConnectionTests(unittest.TestCase):
             code += function(raw, b'static __attribute__((noinline)) FILTER *command_filter(')
         code += command_reply_source(raw)
         code += filter_reset_source(raw)
+        if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         code+=function(main,b'int pause_drive(')
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))
         table = raw.rfind(b'\n', 0, raw.index(b'sector_len_table[4]')) + 1

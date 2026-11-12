@@ -840,7 +840,7 @@ int play_cd(void)
         } else end = drive_position(end_pos, 1);
     }
     if (cdb.play_type) SSLOG(_CDRV, "play_cd: Send PAUSE request!\n");
-    if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    if (synchronize_drive(mode & 0x80)) { set_status(STAT_WAIT|cdb.status); return 0; }
     SSLOG(_CDRV, "play_cd: start=%08x end=%08x mode=%02x\n", start_pos, end_pos, mode);
     HIRQ_CLR = HIRQ_PEND;
     int repeat = (mode&0x7f) == 0x7f ? cdb.max_repeat : mode&15;
@@ -852,19 +852,15 @@ int play_cd(void)
     cdb.play_fad_start = start;
     cdb.play_fad_end = end;
     cdb.max_repeat = repeat;
-    /* Retain the existing explicit track/data restart used by Steam-Heart's. */
-    u32 pickup = cdb.fad == 0xffffffff ? 150 : cdb.fad;
-    if (!(mode&0x80)) pickup = start;
-    else if (start_pos && start_pos < 0x800000 && end_pos && end_pos < 0x800000) {
-        TRACK_INFO *tk = get_track_info(fad_to_track(start)<<8);
-        if (tk && tk->mode != 3) pickup = start;
+    if (cdb.play_type != PLAYTYPE_SECTOR) {
+        u32 pickup = cdb.fad == 0xffffffff ? 150 : cdb.fad;
+        if (!(mode & 0x80)) pickup = start;
+        set_drive_position(pickup);
+        cdb.options = 0x08;
+        cdb.play_wait = 0;
+        cdb.play_type = PLAYTYPE_SECTOR;
+        disk_task_wakeup();
     }
-    set_drive_position(pickup);
-    cdb.options = 0x08;
-    cdb.pause_request = 0;
-    cdb.play_wait = 0;
-    cdb.play_type = PLAYTYPE_SECTOR;
-    disk_task_wakeup();
     set_report(STAT_BUSY);
     return 0;
 }
@@ -902,8 +898,7 @@ int seek_cd(void)
           cdb.fad, cdb.track, cdb.index, cdb.ctrladdr, cdb.options);
     /* Acknowledge the drive command with BUSY. Status queries see the settled state. */
     set_report(STAT_BUSY);
-    if (explicit_seek && cdb.repcnt >= cdb.max_repeat &&
-        (cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end))
+    if (explicit_seek && cdb.repcnt >= cdb.max_repeat && outside_play_range())
         return HIRQ_PEND;
     return 0;
 }

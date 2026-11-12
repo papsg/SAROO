@@ -404,6 +404,8 @@ int list_disc(int cid, int show);
 int load_disc(int index, int start_save);
 int load_pcm(char *fname);
 int unload_disc(void);
+int outside_play_range(void);
+int synchronize_drive(int keep_sector);
 int pause_drive(void);
 int pause_disc(void);
 int get_disc_ip(int index, u8 *ipbuf);

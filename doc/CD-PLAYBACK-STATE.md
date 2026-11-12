@@ -53,3 +53,41 @@ acknowledgment paths with timeout and retry, and 56 status/position pairs.
 Both CD profiles pass 174 methods. The GNU MCU App loads 63,196 bytes
 with 2,340 bytes of ITCM space.
 Physical interrupt timing and actual game waits remain unqualified.
+
+## Continue playback through a pickup-preserving PLAY
+
+Adapted from paps-g `b8c71ee2` (MCU-CDC-026/027/028). The disk worker can
+acknowledge an update at the next read checkpoint and keep the current
+sector reader, pickup and audio state. It checks for an update before
+finishing the old range. A shorter range runs the ordinary end/repeat
+decision at the new bounds. A file or directory reader and a PLAY that
+moves the pickup use the existing pause and restart path. A paused reader
+resuming midrange enters PLAY even with the seek delay configured.
+[CD Communication Interface User's Manual, §4.2(3–4), table 4.5](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/cdif/hon/p04_10.htm),
+[ST-162-062094, §8.2.2 No. 2.1, printed p. 82](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=70).
+
+The port uses the public IRQ-protected idle publication for an actual pause.
+An update waits for worker acknowledgment before publishing settings. The
+worker checks the reader kind at acknowledgment because a read can fail
+while the command waits. A timeout leaves the old range and repeat settings
+in force. The public UART logger queues output without waiting for transmission,
+so command publication does not block on the log between acknowledgment
+and reply. The previous track-form restart and delayed status behavior were
+introduced as compatibility changes. Physical game behavior remains open.
+[Steam-Heart's change](https://github.com/tpunix/SAROO/commit/56f3e1d78d0ed30d06ee32d7112e8726dda2d6f8),
+[Delayed PLAY change](https://github.com/tpunix/SAROO/commit/eb27380af199deeab20db35bf78ba42dee7761a6).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_cdc_play_continuity.py -v
+SAROO_CDC_PROFILE=release python3 -B -m unittest discover -s tests -p test_cdc_play_continuity.py -v
+```
+
+Set `SAROO_CDC_DRIVE_DIR` to the parent's `Firm_MCU/Saturn` directory to
+reproduce eight failing methods and the valid delayed-start/read-error
+control. The fixture runs the real disk task and command handler with
+authored sectors and a host thread gate that models command-task preemption.
+It covers 64 active/old-end updates, shorter ranges, repeat, delayed resume,
+file/directory replacement, timeout and reader failure. Both CD profiles
+pass 183 methods. The 13 disc/save handoff methods also pass. The GNU MCU App
+loads 63,228 bytes with 2,308 bytes of ITCM space. Physical scheduling,
+audio timing and game playback remain unqualified.

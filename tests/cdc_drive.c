@@ -18,17 +18,24 @@ static unsigned wakeups, waits, read_calls;
 static int acknowledge_after;
 static int repeat_on_ack;
 static int pend_delay;
+static void (*drive_wait_hook)(void), (*drive_ack_hook)(void);
 static void hw_delay(int delay) { (void)delay; }
 static void disk_task_wakeup(void) { assert(!irq_depth);wakeups++; }
 static int pause_active;
 static unsigned pause_signals;
 static const CDBLOCK *pause_state;
 static u16 pause_control,pause_hirq,pause_clear;
-static void set_pause_ok(void) { assert(!irq_depth);pause_signals++; }
+static void set_pause_ok(void)
+{
+    assert(!irq_depth);
+    pause_signals++;
+    if (drive_ack_hook) drive_ack_hook();
+}
 #include "pause-worker.inc"
 static void wait_pause_ok(void)
 {
     waits++;assert(waits <= 501 && !irq_depth);
+    if (drive_wait_hook) { drive_wait_hook(); return; }
     if(pause_state) {
         assert(!memcmp(pause_state,&cdb,sizeof cdb));
         assert(st_control==pause_control && hirq==pause_hirq && hirq_clear==pause_clear);
@@ -73,6 +80,7 @@ static void ready(void)
     wakeups=waits=read_calls=0; acknowledge_after=1;
     pause_active=0;pause_signals=0;repeat_on_ack=0;
     pause_state=NULL;
+    drive_wait_hook=drive_ack_hook=NULL;
     hirq=hirq_clear=0;
     ss_control=0x8000;
 }
@@ -212,7 +220,7 @@ static void seek_resume(void)
         request(0xffffff,0xffffff,255);assert(!play_cd());
         assert(cdb.fad==(audio?400u:200u) && cdb.play_fad_start==150 && cdb.play_fad_end==700);
     }
-    ready();cdb.fad=250;request(0x101,0x101,128);assert(!play_cd());assert(cdb.fad==150);
+    ready();cdb.fad=250;request(0x101,0x101,128);assert(!play_cd());assert(cdb.fad==250);
     ready();cdb.fad=450;request(0x201,0x201,128);assert(!play_cd());assert(cdb.fad==450);
 }
 
@@ -457,7 +465,10 @@ static void retained_forms(void)
             if((expected_start|expected_end)==3) {
                 assert((reply[0]>>8)==STAT_REJECT && !waits && !wakeups && !hirq_clear);
                 assert(!memcmp(&before,&cdb,sizeof cdb));
-            } else assert((reply[0]>>8)!=STAT_REJECT && waits==1 && wakeups==2);
+            } else {
+                assert((reply[0]>>8)==STAT_BUSY && waits==1 && wakeups==1);
+                assert(cdb.play_type==PLAYTYPE_SECTOR && cdb.fad==before.fad && !cdb.pause_request);
+            }
         }
     }
 }

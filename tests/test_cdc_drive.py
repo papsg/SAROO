@@ -26,6 +26,7 @@ class CDDriveTests(unittest.TestCase):
             return data[start:data.index(b'\n}',start)+2]+b'\n'
         code=b''.join(function(main,sig) for sig in (b'TRACK_INFO *get_track_info(',b'u32 track_to_fad(',b'int fad_to_track('))
         if b'u8 track_subindex(' in main:code=function(main,b'u8 track_subindex(')+code
+        if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
         code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
         for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
@@ -34,6 +35,7 @@ class CDDriveTests(unittest.TestCase):
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         code+=function(raw,b'int get_subcode(')
         (cls.target/'drive.inc').write_bytes(code)
+        (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
         dispatch = function(raw, b'void cdc_cmd_process(')
         cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
                          for start in (b'case 0x00:', b'case 0x11:'))
@@ -50,11 +52,17 @@ class CDDriveTests(unittest.TestCase):
         end=main.index(b'\n\t\t\t}',start)+5
         active=main[start:end]
         ack=function(main,b'static void acknowledge_disc_pause(')
-        (cls.target/'pause-worker.inc').write_bytes(ack+b'\nstatic void worker_pause_step(void) {\nif(pause_active) {\n'+active+b'\n} else {\n'+restart+b'\n}\n_restart_wait: return;\n}\n')
+        new_worker=b'static int acknowledge_drive_request(' in main
+        if new_worker:
+            ack+=function(main,b'int outside_play_range(')+function(main,b'static int acknowledge_drive_request(')
+        locals_ = b'int retained_startup=0;\n' if new_worker else b''
+        exits = b'_play_end: (void)retained_startup;\n' if new_worker else b''
+        (cls.target/'pause-worker.inc').write_bytes(ack+b'\nstatic void worker_pause_step(void) {\n'+locals_+
+            b'if(pause_active) {\n'+active+b'\n} else {\n'+restart+b'\n}\n_restart_wait: '+exits+b'return;\n}\n')
         guard=b'';start=main.find(b'        if (cdb.play_type == PLAYTYPE_SECTOR &&')
         if start>=0:guard=main[start:main.index(b'        int was_directory =',start)]
         start=main.index(b'\t\tSSLOG(_DTASK, "\\nplay end!');end=main.index(b'\n\t\tset_peri_report();',start)
-        (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+b'read_calls++;return 1;\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n}\n')
+        (cls.target/'phase.inc').write_bytes(b'static int worker_step(void) {\n'+guard+b'read_calls++;return 1;\n_play_end:\n'+main[start:end]+b'\nreturn 0;\n_restart_nowait: return 2;\n_play_checkpoint: abort();\n}\n')
         start=main.index(b'\t\t\tcdb.play_fad_start = track_to_fad(0x0100);');end=main.index(b'\n\t\t}',start)
         marker=b'            cdb.play_pos_types = 0;';prefix=main.rfind(marker,0,start)
         if prefix>=0 and not main[prefix+len(marker):start].strip():start=prefix

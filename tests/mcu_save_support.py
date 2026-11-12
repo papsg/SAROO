@@ -129,6 +129,8 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
             if b'int pause_disc(void)' in main:
                 begin = main.index(b'int pause_drive(void)') if b'int pause_drive(void)' in main else main.index(b'int pause_disc(void)')
+                if b'int synchronize_drive(' in main:
+                    begin = main.index(b'int synchronize_drive(')
                 pause = main[begin:main.index(b'void cdc_delay(', begin)]
             else:
                 pause = b'static int pause_disc(void) { return 0; }\n'
@@ -137,6 +139,10 @@ class MCUSaveTest(unittest.TestCase):
             if b'static void acknowledge_disc_pause(void)' in main:
                 begin = main.index(b'static void acknowledge_disc_pause(void)')
                 ack = main[begin:main.index(b'\n}', begin)+2]
+                for signature in (b'int outside_play_range(', b'static int acknowledge_drive_request('):
+                    if signature in main:
+                        start = main.index(signature)
+                        ack += b'\n' + main[start:main.index(b'\n}', start)+2]
                 cdc = (source/'saturn_cdc.c').read_bytes(); inputs['Saturn/saturn_cdc.c']=cdc
                 if b'void invalidate_directory(' in cdc:
                     begin=cdc.index(b'void invalidate_directory(')
