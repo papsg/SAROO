@@ -2480,3 +2480,9 @@ The full `make -j6 -C tests check` passes on the archived published tree with al
 All 18 final FPGA project inputs match the completed Quartus fit. The design passes all 21 constrained checks with minimum setup and hold slacks of 1.076 and 0.168 ns. The RTL tests cover the FC1 pair, power-on sequencing, collisions and full-row refresh after signal loss. External bus timing and physical behavior of the public build remain unqualified. The issue #349 hardware result belongs to the historical development build.
 
 Public main is clean and synced. The private checkout fingerprints match for HEAD, branch, status, refs including the stash, and tracked diff. The Saturn was untouched. No PR, USB change or runtime diagnostic was added.
+
+## Saturn menu hardware series
+
+Six ordered stock-menu checkpoints after [`31e917f`](https://github.com/papsg/SAROO/commit/31e917fb70288310cbe3e9a6782a4ccadc2a2010). Each linked note records provenance, applicable Sega documentation, focused verification and hardware limits.
+
+- [x] `4b80469e` (SATURN-SCU-001) — [`0de8086`](https://github.com/papsg/SAROO/commit/0de808682cfb202f68fc6f9b7f22339fd35c853e), [correct level-1 SCU DMA status](https://github.com/papsg/SAROO/blob/0de808682cfb202f68fc6f9b7f22339fd35c853e/doc/SATURN-MENU-HARDWARE.md#correct-level-1-scu-dma-status). The parent fails two of 30 register scenarios. Both corrected profiles pass all 30. The linked 488,770-byte menu and 48 ROM clock controls pass. Current menu callers use levels 0 and 2.
