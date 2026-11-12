@@ -2071,3 +2071,14 @@ unqualified. [Sega citations, attribution and reproduction](https://github.com/p
    menu links 81,236 code/data bytes with 24,208 bytes of body
    space. Physical drive timing remains unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#bound-a-stalled-game-sector-read)
+
+3. **BIOS clock reset enable — published**
+   [`5eca24a`](https://github.com/papsg/SAROO/commit/5eca24a10ae7dc81eefcf40a1e9ad72604d92761).
+   Adapted from paps-g `cc2cafa2` and the clock-hook portion of
+   `ff3f9d2f` (SATURN-SMPC-005). Four parent methods fail and the
+   healthy BIOS/SCU control passes. Five focused methods pass both
+   profiles and 88 menu safety methods pass under sanitizers. The
+   linked 96-byte and 36-byte fragments pass 48 relocated checks.
+   The menu links 81,380 code/data bytes with 24,064 bytes of body
+   space. Physical reset behavior and BIOS variants remain unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#preserve-reset-enable-after-bios-clock-changes)
