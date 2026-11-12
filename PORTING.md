@@ -2217,3 +2217,17 @@ branch, refs, stash, worktree status and diff match the initial
 read-only snapshot. Physical SCU timing, cold starts, and game
 behavior remain unqualified.
 [Citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md)
+
+## Save archives, CD workers, and reset ownership
+
+1. **Live primary save archives — published**
+   [`d41a25a`](https://github.com/papsg/SAROO/commit/d41a25a5bb043236ea99dac9d68dae4a826e1cdd).
+   Adapted from paps-g `6b728c6d` (MCU-SAVE-003). The parent fails
+   12 filesystem/device subcases and passes six existing methods.
+   The port checks both archives on FAT32 and exFAT, including 72
+   conflicting named writes, alternate paths, directory boundaries,
+   read-only and reopen controls. The paired owner and reopen groups
+   each pass nine methods in both profiles. Both transfer runs pass
+   52 methods. The GNU MCU App links 64,572 load bytes and leaves
+   964 bytes of ITCM space. Physical SD behavior remains unqualified.
+   [FatFs references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#protect-live-primary-save-archives)
