@@ -237,7 +237,87 @@ int prepare_game_rom(const char *id)
 }
 
 
-__attribute__((aligned(4)))
+#ifdef __sh__
+/* ROM loading overwrites the menu. Both clock fragments fit the existing
+ * WRAM hook and the unused BIOS clock tail before the literal at 060006dc. */
+__asm__(
+".text\n"
+".align 2\n"
+".global _rom_reset_issue\n"
+".type _rom_reset_issue,@function\n"
+"_rom_reset_issue:\n"
+"\tmov.w 1f,r5\n"
+"\tmov.w @r1,r0\n"
+"\tswap.b r0,r0\n"
+"\ttst #2,r0\n"
+"\tbf 2f\n"
+"\tmov.w @(8,r1),r0\n"
+/* After CKCHG, VDP2 uses non-interlaced 320 mode. Accept lines 0..127;
+ * the fresh software latch and EXLTEN check also work with DISP clear. */
+"\ttst r5,r0\n"
+"\tbf 2f\n"
+"\tmov #1,r0\n"
+"\tmov.b r0,@r3\n"
+"\tadd #-68,r3\n"
+"\tmov.b r4,@r3\n"
+"\tadd #68,r3\n"
+"\tmov #0,r4\n"
+"2:\trts\n"
+"\tnop\n"
+"1:\t.word 0x0380\n"
+"\t.space 0x24-(.-_rom_reset_issue)\n"
+".size _rom_reset_issue,.-_rom_reset_issue\n"
+".align 2\n"
+".global _jump_06b0\n"
+".type _jump_06b0,@function\n"
+"_jump_06b0:\n"
+"\tsts.l pr,@-r15\n"
+"\tmov.w 1f,r1\n"
+"\tjsr @r1\n"
+"\tnop\n"
+"\tmov.l 3f,r2\n"
+"\tmov #19,r0\n"
+"\tmov.w 2f,r1\n"
+"\tjsr @r1\n"
+"\tmov.l r0,@(8,r2)\n"
+"\tmov.l 3f,r1\n"
+"\tmov.l 4f,r2\n"
+"\tmov.l r2,@r1\n"
+"\tmov #19,r0\n"
+"\tmov.l r0,@(8,r1)\n"
+"\tmov.l 5f,r3\n"
+"\tmov.l 6f,r1\n"
+"\tmov #1,r2\n"
+"\tshll8 r2\n"
+"\tshll16 r2\n"
+"\tmov #25,r4\n"
+"7:\tmov.b @r3,r0\n"
+"\ttst #1,r0\n"
+"\tbf 8f\n"
+"\ttst r4,r4\n"
+"\tbt 9f\n"
+/* BSR is relative to the two fixed WRAM destinations, not their menu
+ * storage addresses. The linked-code check executes the relocated bytes. */
+"\t.word 0xb000 | (((0x060006b8-(0x06000c80+(.-_jump_06b0)+4))/2)&0x0fff)\n"
+"\tnop\n"
+"8:\tdt r2\n"
+"\tbf 7b\n"
+"9:\tlds.l @r15+,pr\n"
+"\trts\n"
+"\tnop\n"
+"\t.align 2\n"
+"1:\t.word 0x04c8\n"
+"2:\t.word 0x1800\n"
+"3:\t.long 0x25fe00b0\n"
+"4:\t.long 0x34403440\n"
+"5:\t.long 0x20100063\n"
+"6:\t.long 0x25f80002\n"
+"\t.space 0x60-(.-_jump_06b0)\n"
+".size _jump_06b0,.-_jump_06b0\n"
+);
+extern void jump_06b0(void);
+extern void rom_reset_issue(void);
+#else
 void jump_06b0(void)
 {
 	void (*go)(void) = (void*)(0x04c8);
@@ -249,10 +329,9 @@ void jump_06b0(void)
 	*(u32*)(0x25fe00b0) = 0x34403440;
 	*(u32*)(0x25fe00b8) = 0x13;
 
-	SF = 1;
-	COMREG = 0x19;
-	while(SF&1);
+    (void)smpc_enable_reset(128);
 }
+#endif
 
 
 __attribute__((aligned(4)))
@@ -270,9 +349,12 @@ void card_init(void)
 {	
 	*(u32*)(0x06000358) = 0x7d600;
 	*(u32*)(0x0600026c) = 0x186c;
-	*(u32*)(0x06000320) = 0x6000c80;
 	memcpy((u8*)0x200000, jump_copy_code, 0x60);
-	memcpy((u8*)0x6000c80, jump_06b0, 0x60);	
+	memcpy((u8*)0x6000c80, jump_06b0, 0x60);
+#ifdef __sh__
+    memcpy((u8*)0x60006b8, rom_reset_issue, 0x24);
+#endif
+    *(u32*)(0x06000320) = 0x6000c80;
 }
 
 

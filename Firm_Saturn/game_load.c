@@ -452,9 +452,7 @@ static void my_06b0(void)
 
 	*(u32*)(0x25fe00b0) = 0x38803880;
 
-	SF = 1;
-	COMREG = 0x19;
-	while(SF&1);
+    (void)smpc_enable_reset(192);
 }
 
 

@@ -53,3 +53,37 @@ and without copied output, terminal status, wrap, and a read that makes
 progress across 27 seconds of modeled time. Both CD profiles pass 54
 methods. The SH-2 menu links 81,236 code/data bytes with 24,208 bytes of
 body space. Physical drive timing and game behavior remain unqualified.
+
+## Preserve reset enable after BIOS clock changes
+
+Adapted from paps-g `cc2cafa2` and the clock-hook portion of `ff3f9d2f`
+(SATURN-SMPC-005). Both BIOS clock hooks wait for an idle SMPC before
+issuing RESENAB, then wait for completion. Each hook uses one shared
+poll budget across admission and completion. It reads EXTEN to latch a
+fresh VDP2 counter and issues the command in an early scanline with
+external latching disabled. The check uses the latched counter when
+display output is disabled. Elapsed time varies with the clock and bus.
+[Sega System Program User's Manual, clock switching](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/prgg/sysg/prog/hon/p01_10.htm),
+[SMPC command issue and timing, printed pp. 13–14 and 17–19](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=23),
+[RESENAB, printed p. 33](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=43),
+[VDP2 User's Manual ST-058-R2-060194, §2.5, printed p. 19](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=37).
+
+The KOF95 and Ultraman cartridge hook retains its 96-byte WRAM slot.
+The 36-byte issue routine occupies the unused BIOS clock tail ending
+before `0x060006dc`. The installer copies both pieces before publishing
+the hook vector. The relocated code keeps the existing BIOS calls and
+SCU write order and uses only its own code, literals, and fixed MMIO.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_clock_reset.py -v
+python3 -B tests/check_menu_clock_sh2.py /path/to/ssfirm.elf
+```
+
+With `SAROO_MENU_CD_SOURCE` pointing at the parent, four host methods
+fail and the ordinary BIOS/SCU control passes. All five methods pass
+under sanitizers and O2. The linked SH-2 fragments pass 48 cases at
+their relocated addresses, covering register/stack preservation, the
+cross-fragment branch, line bounds and timeout behavior. The pinned
+menu links 81,380 code/data bytes with 24,064 bytes of body space.
+Physical SMPC timing, reset-button behavior and BIOS variants remain
+unqualified.

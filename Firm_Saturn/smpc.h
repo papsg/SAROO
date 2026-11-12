@@ -12,6 +12,7 @@
 #ifndef SMPC_H_
 #define SMPC_H_
 
+#include "vdp2.h"
 
 /******************************************************************************/
 
@@ -88,6 +89,23 @@
 #define NMIREQ      0x18
 #define RESENAB     0x19
 #define RESDISA     0x1a
+
+#define SMPC_RESET_POLL_BUDGET (1u << 24)
+
+static inline int smpc_enable_reset(unsigned line_limit)
+{
+    int command = RESENAB;
+    for (unsigned remaining = SMPC_RESET_POLL_BUDGET; remaining; remaining--) {
+        if (SF & 1) continue;
+        if (!command) return 0;
+        /* Reading EXTEN latches the counters when external latching is off. */
+        if ((EXTEN & 0x0200) || (VCNT & 0x03ff) >= line_limit) continue;
+        SF = 1;
+        COMREG = command;
+        command = 0;
+    }
+    return -3;
+}
 
 
 /******************************************************************************/
