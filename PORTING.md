@@ -2352,3 +2352,9 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-MCU-015) → [5ec3454](https://github.com/papsg/SAROO/commit/5ec3454818db6fc332c8e1154686b17f4fa1a499) on `main`. A read-only handle gets the existing internal-error result before the missing-chain branch can allocate.
 - The exact parent persists an allocation across FAT12, FAT16, FAT32 and exFAT in all 12 malformed cases. Both revisions pass 16 valid controls. The port passes all 24 FatFs methods in both profiles.
 - The GNU MCU App links 63,816 bytes, up 16, leaving 1,720 ITCM bytes. All 739 direct compiler frames and static DTCM match the parent. [Attribution, FatFs and exFAT references, and reproduction](https://github.com/papsg/SAROO/blob/5ec3454818db6fc332c8e1154686b17f4fa1a499/doc/STORAGE-AUDIT.md#refuse-allocation-during-a-read-only-seek).
+
+### FatFs and CD object layout
+
+- `b483124c` (paps-g, AUD-RES-007) → [79eedd3](https://github.com/papsg/SAROO/commit/79eedd31e50f1cb1a438721ef570e48ae11d68c5) on `main`. Use natural alignment to reduce FatFs object padding and move the subcode file behind the CD tables.
+- Linked ARM types measure 48 to 40 bytes for `FFOBJID`, 80 to 72 for `FIL` and `DIR`, and 8,168 to 8,160 for `CDBLOCK`. The rebuilt GNU App saves 112 load bytes to 63,704 and 832 static DTCM bytes to 59,368. Twenty-two direct frames shrink by 8 to 24 bytes.
+- The exact parent passes 217 CD methods. Both port profiles pass all 351 CD, FatFs and MCU save methods. All 13 enabled BootLoader C units compile with the original BOOT and RTE settings. Peak stack use and physical timing remain unqualified. [Attribution, Arm ABI and reproduction](https://github.com/papsg/SAROO/blob/79eedd31e50f1cb1a438721ef570e48ae11d68c5/doc/STORAGE-AUDIT.md#reduce-padding-in-fatfs-and-cd-state).
