@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -77,7 +79,9 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'reset.inc').write_bytes(function(raw,b'int reset_filter('))
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')]+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdc.h':header}
-        for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py','track_fixture.h'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        for name in ('cdc_drive.c','test_cdc_drive.py','cdc_copy.c','test_cdc_copy.py',
+                     'track_fixture.h','cd_shadow_tb.v'):inputs[name]=(ROOT/'tests'/name).read_bytes()
+        inputs['SSMaster.v']=(ROOT/'FPGA/SSMaster.v').read_bytes()
         for name in ('ff.h','ffconf.h'):inputs[name]=(ROOT/'Firm_MCU/FatFS'/name).read_bytes()
         for name,data in inputs.items():(cls.target/name).write_bytes(data)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(v).hexdigest() for n,v in inputs.items()},indent=2)+'\n')
@@ -99,6 +103,39 @@ class CDDriveTests(unittest.TestCase):
             env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
         self.results.append(dict(case=case,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr))
         self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('pass:',result.stdout)
+        return result.stdout
+
+    def test_original_drive_commands_retire_without_virtual_dispatch(self):
+        self.run_case(44)
+
+    @unittest.skipUnless(shutil.which('iverilog') and shutil.which('vvp'), 'requires Icarus Verilog')
+    def test_original_drive_shadow_request_and_mcu_mask_through_fpga(self):
+        mask = int(re.search(r'^shadow mask=(\d+)$', self.run_case(45), re.M)[1])
+        raw = (self.target / 'SSMaster.v').read_bytes()
+        start = raw.index(b'\treg[15:0] ss_hirq;')
+        hirq_and_irq = raw[start:raw.index(b'\treg st_irq_cmd;', start)]
+        start = raw.index(b'wire ss_reg_cs')
+        start = raw.index(b'\talways @(negedge NRESET or posedge mclk)', start)
+        control = raw[start:raw.index(b'\t// Saturn set and STM32 reset', start)]
+        decoders = re.findall(rb'^[ \t]*wire ss_(?:cdc_(?:cs|en)|reg_cs)\s*=.*;$', raw, re.M)
+        self.assertEqual(len(decoders), 3)
+        dut = self.target / 'cd-shadow.v'
+        dut.write_bytes(
+            b'module cd_shadow(input mclk,NRESET,st_wr_start,ss_wr_start,SS_CS2,\n'
+            b'input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] ST_AD,SS_DATA,\n'
+            b'output [15:0] value, output request,enabled);\nreg [15:0] ss_reg_ctrl;\n'
+            + b'\n'.join(decoders) + b'\n' + control + hirq_and_irq
+            + b'\nassign value=ss_hirq, request=st_irq_cdc, enabled=ss_cdc_en;\nendmodule\n')
+        bench = self.target / 'cd_shadow_tb.v'
+        binary = self.target / 'cd-shadow.vvp'
+        compile_result = subprocess.run(
+            ['iverilog', '-g2012', '-s', 'cd_shadow_tb', '-o', str(binary), str(dut), str(bench)],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(compile_result.returncode, 0, compile_result.stdout + compile_result.stderr)
+        result = subprocess.run(['vvp', str(binary), f'+mcu_mask={mask}'], capture_output=True,
+                                text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('pass: physical drive shadow', result.stdout)
 
     def test_track_helper_bounds_and_index_storage(self):self.run_case(0)
     def test_all_track_index_bytes_for_play_start_end_and_seek(self):self.run_case(1)

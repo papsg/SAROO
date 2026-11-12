@@ -53,3 +53,32 @@ frame after an invisible one. All nine cover/display methods pass
 under sanitizers and O2. The pinned menu links 81,396 code/data
 bytes with 24,048 bytes of body space. Physical SCU/VDP behavior
 remains unqualified.
+
+## Retire original-drive commands in the emulated registers
+
+Adapted from paps-g `4e024188` (MCU-CDC-034). The FPGA observes the
+Saturn's HIRQ clear and CR4 write while the physical drive owns the
+interface. The MCU command worker acknowledges the request. With
+emulation disabled, it now sets only CMOK in the emulated register
+through the FPGA's set-mask port and returns. Other pending events,
+command responses and asynchronous reader ownership are preserved.
+This prepares the register state for the later menu admission gate.
+[Sega CD Communication Interface ST-162-062094, §3.1 HIRQREQ,
+printed p. 28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=16),
+[v0.8 FPGA register logic](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_cdc_drive.py -v
+SAROO_CDC_PROFILE=release make -C tests check-cdc-command-buffer
+```
+
+Set `SAROO_CDC_DRIVE_DIR` to the parent `Firm_MCU/Saturn` directory
+to reproduce both failures. The parent passes 44 methods. The
+port covers 1,024 disabled-mode opcode/control cases with the
+production dispatcher, then uses the actual MCU mask with the
+stock FPGA decode, HIRQ, request and enable logic under Icarus
+Verilog. Takeover restores CMOK and preserves the unrelated
+events in that trace. Both CD profiles pass 207 methods. The
+GNU MCU App links 64,460 load bytes with 1,076 bytes of ITCM
+space. Physical bus timing and cold-start game behavior remain
+unqualified.

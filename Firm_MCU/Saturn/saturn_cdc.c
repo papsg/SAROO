@@ -2146,8 +2146,12 @@ void cdc_cmd_process(void)
 {
 	u32 cmd, hirq;
 
-	if((SS_CTRL&0x8000)==0)
-		return;
+    if ((SS_CTRL & 0x8000) == 0) {
+        /* The FPGA observes original-drive commands too. Restore only
+         * the emulated ready bit after the command worker retires one. */
+        HIRQ = HIRQ_CMOK;
+        return;
+    }
 
 	cmd = (cdb.cr1>>8)&0xff;
 

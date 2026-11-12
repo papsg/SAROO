@@ -949,19 +949,18 @@ static void seek_status_reply(void)
 
 static void seek_event_controls(void)
 {
-    for (unsigned kind = 0; kind < 6; kind++) {
-        const u32 targets[] = {0x8000c8, 0x80012c, 0, 0xffffff, 0x80012c, 0x80012c};
+    for (unsigned kind = 0; kind < 5; kind++) {
+        const u32 targets[] = {0x8000c8, 0x80012c, 0, 0xffffff, 0x80012c};
         ready();
         cdb.play_fad_start = 175;
         cdb.play_fad_end = 225;
         cdb.block_free = MAX_BLOCKS;
         if (kind == 1) cdb.max_repeat = 15;
         if (kind == 4) cdb.track_num = 0;
-        if (kind == 5) ss_control = 0;
         hirq = HIRQ_EHST | HIRQ_PEND;
         u16 prior_low = reply[0] & 255;
         dispatch_seek(targets[kind]);
-        assert(hirq == (kind == 5 ? (HIRQ_EHST | HIRQ_PEND) : HIRQ_CMOK));
+        assert(hirq == HIRQ_CMOK);
         assert(!hirq_clear);
         if (kind == 4) assert(reply[0] == ((STAT_REJECT << 8) | prior_low));
     }
@@ -1194,6 +1193,45 @@ static void file_range_controls(void)
     }
 }
 
+/* Actual dispatch and register mask, adapted from paps-g 4e024188. */
+static void original_drive_commands(void)
+{
+    const u16 disabled[] = {0, 0x0100, 0x3000, 0x7fff};
+    for (unsigned control = 0; control < sizeof disabled / sizeof *disabled; control++) {
+        for (unsigned opcode = 0; opcode < 256; opcode++) {
+            ready();
+            ss_control = disabled[control];
+            cdb.cr1 = (opcode << 8) | 0x5a;
+            cdb.cr2 = 0x1234;
+            cdb.cr3 = 0x5678;
+            cdb.cr4 = 0x9abc;
+            cdb.play_type = PLAYTYPE_SECTOR;
+            cdb.block_free = MAX_BLOCKS - 1;
+            CDBLOCK before = cdb;
+            u16 response[4];
+            memcpy(response, reply, sizeof response);
+            cdc_cmd_process();
+            assert(hirq == HIRQ_CMOK && !hirq_clear);
+            assert(!memcmp(&before, &cdb, sizeof cdb) && !memcmp(response, reply, sizeof response));
+            assert(!waits && !wakeups && buf_fad_start == 123 && buf_fad_end == 456);
+        }
+    }
+
+    ss_control = 0x8000;
+    cdb.cr1 = 0;
+    cdc_cmd_process();
+    assert(hirq == (HIRQ_CMOK | HIRQ_SCDQ) && (reply[0] >> 8) == cdb.status);
+}
+
+static void original_drive_mask(void)
+{
+    ready();
+    ss_control = 0x0100;
+    cdb.cr1 = 0x0100;
+    cdc_cmd_process();
+    printf("shadow mask=%u\n", (unsigned)hirq);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1228,6 +1266,8 @@ int main(int argc,char **argv)
     case 41:file_range_wait();break;
     case 42:file_range_media();break;
     case 43:file_range_controls();break;
+    case 44:original_drive_commands();break;
+    case 45:original_drive_mask();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }
