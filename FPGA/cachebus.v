@@ -4,7 +4,7 @@
 ///////////////////////////////////////////////////////
 
 module cachebus(
-	reset, clk,
+	reset, clk, cache_flush,
 	cs, rd, wr, nwait, addr, wdata, rdata,
 	cmd_req, cmd_ack, cache_invalid,
 	cache_addr, cache_data_1d, cache_valid
@@ -17,6 +17,7 @@ module cachebus(
 	// system
 	input reset;
 	input clk;
+	input cache_flush;
 
 	// bus input
 	input cs;
@@ -70,7 +71,8 @@ module cachebus(
 			case(state)
 			B_IDLE: begin
 				if(rd && cs) begin
-					if(addr[25:3]==cache_addr && |cache_valid) begin
+					// A new read cannot hit the old geometry on the flush edge.
+					if(!cache_flush && addr[25:3]==cache_addr && |cache_valid) begin
 						if(cache_valid[addr[2:1]]) begin
 							rdata <= cache_data[addr[2:1]];
 						end else begin

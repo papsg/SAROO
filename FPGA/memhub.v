@@ -52,6 +52,20 @@ module memhub(
 	input ext_refresh;
 	input [11:0] reg_sdram;
 
+	// Keep cache tags and accepted commands on the same physical address map.
+	reg[1:0] active_sdtype;
+	reg[2:0] read_words_pending;
+	wire geometry_switch;
+	wire[1:0] address_sdtype;
+	wire[25:0] physical_addr_a, physical_addr_b;
+	wire[11:0] active_reg_sdram;
+
+	assign address_sdtype = geometry_switch ? reg_sdram[11:10] : active_sdtype;
+	assign physical_addr_a = {addr_a[25] & (&address_sdtype),
+		addr_a[24] & address_sdtype[1], addr_a[23] & (|address_sdtype), addr_a[22:0]};
+	assign physical_addr_b = {addr_b[25] & (&address_sdtype),
+		addr_b[24] & address_sdtype[1], addr_b[23] & (|address_sdtype), addr_b[22:0]};
+	assign active_reg_sdram = {active_sdtype, reg_sdram[9:0]};
 
 ///////////////////////////////////////////////////////
 // bus A                                             //
@@ -63,8 +77,8 @@ module memhub(
 	// The arbiter holds these command fields through cmd_ack.
 	wire cache_write = cmd_ack && cmd_req[0];
 
-	cachebus busa(reset, clk,
-		cs_a, rd_a, wr_a, nwait_a, addr_a, wdata_a, rdata_a,
+	cachebus busa(reset, clk, geometry_switch,
+		cs_a, rd_a, wr_a, nwait_a, physical_addr_a, wdata_a, rdata_a,
 		cmd_req_a, cmd_ack_a, cache_invalid_a,
 		cache_addr_a, cache_data1d_a, cache_valid_a
 	);
@@ -77,7 +91,7 @@ module memhub(
 	cacheblk _cha(reset, clk,
 		cache_addr_a, cache_data1d_a, cache_valid_a, data_valid_a, cmd_dout,
 		cache_write, cmd_mask, cmd_addr, cmd_din,
-		cache_invalid_a, addr_a
+		cache_invalid_a | geometry_switch, physical_addr_a
 	);
 
 
@@ -88,8 +102,8 @@ module memhub(
 	wire[ 1:0] cmd_req_b;
 	wire cache_invalid_b;
 
-	cachebus busb(reset, clk,
-		cs_b, rd_b, wr_b, nwait_b, addr_b, wdata_b, rdata_b,
+	cachebus busb(reset, clk, geometry_switch,
+		cs_b, rd_b, wr_b, nwait_b, physical_addr_b, wdata_b, rdata_b,
 		cmd_req_b, cmd_ack_b, cache_invalid_b,
 		cache_addr_b, cache_data1d_b, cache_valid_b
 	);
@@ -103,7 +117,7 @@ module memhub(
 	cacheblk _chb(reset, clk,
 		cache_addr_b, cache_data1d_b, cache_valid_b, data_valid_b, cmd_dout,
 		cache_write, cmd_mask, cmd_addr, cmd_din,
-		cache_invalid_b, addr_b
+		cache_invalid_b | geometry_switch, physical_addr_b
 	);
 
 
@@ -124,6 +138,11 @@ module memhub(
 
 	localparam C_IDLE=0, C_WAITACK=1, C_END=2;
 
+	// Command ACK precedes the four read words. Do not change geometry
+	// or discard cache validity while any of that fill is still arriving.
+	assign geometry_switch = active_sdtype != reg_sdram[11:10] &&
+		state == C_IDLE && cmd_req == 0 && read_words_pending == 0;
+
 	always @(negedge reset or posedge clk)
 	begin
 		if(reset==0) begin
@@ -131,23 +150,25 @@ module memhub(
 			cmd_req <= 0;
 			cmd_ack_a <= 0;
 			cmd_ack_b <= 0;
+			active_sdtype <= 2'b11;
 		end else begin
+			if(geometry_switch) active_sdtype <= reg_sdram[11:10];
 			case(state)
 			C_IDLE: begin
 				if(cmd_req_a) begin
 					act_ab <= 1'b0;
 					cmd_req <= cmd_req_a;
 					cmd_mask <= mask_a;
-					cmd_addr[25:3] <= addr_a[25:3];
-					cmd_addr[2:0] <= (cmd_req_a[0])? addr_a[2:0] : 3'b0;
+					cmd_addr[25:3] <= physical_addr_a[25:3];
+					cmd_addr[2:0] <= (cmd_req_a[0])? physical_addr_a[2:0] : 3'b0;
 					cmd_din <= wdata_a;
 					state <= C_WAITACK;
 				end else if(cmd_req_b) begin
 					act_ab <= 1'b1;
 					cmd_req <= cmd_req_b;
 					cmd_mask <= mask_b;
-					cmd_addr[25:3] <= addr_b[25:3];
-					cmd_addr[2:0] <= (cmd_req_b[0])? addr_b[2:0] : 3'b0;
+					cmd_addr[25:3] <= physical_addr_b[25:3];
+					cmd_addr[2:0] <= (cmd_req_b[0])? physical_addr_b[2:0] : 3'b0;
 					cmd_din <= wdata_b;
 					state <= C_WAITACK;
 				end
@@ -188,10 +209,18 @@ module memhub(
 	wire sd_oe;
 
 	tsdram _tsd(
-		reset, clk, reg_sdram,
+		reset, clk, active_reg_sdram,
 		ext_refresh, cmd_req, cmd_ack, cmd_mask, cmd_addr, cmd_din, cmd_dout, data_valid,
 		sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data, sd_dout, sd_oe
 	);
+
+	always @(negedge reset or posedge clk)
+	begin
+		if(reset==0) read_words_pending <= 0;
+		else if(cmd_ack && cmd_req[1]) read_words_pending <= 3'd4;
+		else if(data_valid && read_words_pending)
+			read_words_pending <= read_words_pending-1'b1;
+	end
 
 	assign sd_data = (sd_oe)? sd_dout : 16'hzzzz;
 

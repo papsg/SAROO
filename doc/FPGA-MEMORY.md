@@ -161,3 +161,51 @@ elements increase from 1,435 to 1,450; registers (813), memory bits
 slack goes from 1.093 ns to 1.103 ns. Only the SDRAM controller changes
 among the 18 project inputs.
 [Offline Quartus build instructions](../tools/README.md#original-fpga-project-comparison).
+
+## Match cache addresses to the configured SDRAM cells
+
+Adapted from paps-g `7b9e51b1` and its required same-edge correction
+`e265bd35` (AUD-FPGA-001). On an 8 MiB configuration, logical addresses
+that differ only in bit 23 select the same SDRAM cell. The old cache tags
+treated them as different lines. A masked write through one alias could
+therefore leave the other port returning an old byte. The original
+[controller address map](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/tsdram.v#L88)
+ignores bits 25:23 for 8 MiB, 25:24 for 16 MiB, and bit 25 for 32 MiB.
+All 26 bits still identify addresses in the 64 MiB configuration.
+Samsung's *K4S511632D*, rev. 1.0, November 2005, §3.0 p. 4, §7.0 p. 7
+and §19.0 p. 16, describes the x16 part's multiplexed row,
+bank and column addresses. The smaller mappings are SAROO controller
+configuration, not requirements from that datasheet.
+
+The two ports now use the physical address for cache lookup, fill tags
+and accepted writes. A geometry change waits for the accepted command
+and all four fill words before clearing both caches. A new read cannot
+hit the previous geometry on that edge. An already waiting read can
+still take its final old word. The refresh count, byte masks, burst
+size and line storage are unchanged. The original
+[top-level connection](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v)
+passes only the low 24 address bits from either external port, so the
+8 MiB bit-23 alias can occur there. The higher alias cases exercise
+the module's full address input.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_fpga*.py' -v
+# Point SAROO_FPGA_GEOMETRY_SOURCE at the parent's FPGA directory
+# to reproduce the stale reads with the current geometry fixture.
+```
+
+The pin model assigns values to row/bank/column cells independent of
+the controller's current configuration. The parent fails 168 cases
+and passes all 32 distinct-cell controls. The port passes all 200 cases,
+covering both ports, every ignored bit and byte mask, all geometry
+pairs, and switches before the column command, during a fill and as
+the last word arrives. Removing just the new-hit gate fails 24 of the
+same-edge cases while preserving the older in-flight completion. The
+existing cache, reset, refresh and clock checks remain in the suite.
+
+The five-stage Quartus build passes all 21 constrained checks. Logic
+elements go from 1,450 to 1,491 and registers from 813 to 818; memory
+remains 32,768 bits and pins remain 150. The lowest reported setup/hold
+slacks change from 1.103/0.161 ns to 0.559/0.153 ns. Only the two
+changed RTL files differ among 18 project inputs. The fit and pin model
+do not qualify electrical behavior, external bus timing or game play.
