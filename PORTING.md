@@ -2149,3 +2149,14 @@ pacing remain unqualified.
    bytes with 24,048 bytes of body space. The actual SCU and VDP
    behavior remains unqualified.
    [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#skip-row-dma-for-a-fully-clipped-gif)
+
+3. **Original-drive command retirement — published**
+   [`1002ed1`](https://github.com/papsg/SAROO/commit/1002ed1f93006d5b003fd10b24d1a7b25cff35f7).
+   Adapted from paps-g `4e024188` (MCU-CDC-034). The parent fails
+   the actual-C disabled dispatcher and coupled FPGA cases while
+   passing 44 drive methods. The candidate covers 1,024 disabled
+   combinations and restores readiness at takeover in the stock
+   FPGA register simulation. Both CD profiles pass 207 methods.
+   The GNU MCU App links 64,460 load bytes with 1,076 bytes of
+   ITCM space. Physical bus timing and games remain unqualified.
+   [Sega and FPGA citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#retire-original-drive-commands-in-the-emulated-registers)
