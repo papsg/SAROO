@@ -440,14 +440,14 @@ _restart_nowait:
 			retained_startup = 1;
 		}
 		
+        /* A queued wake can outlive its reader. Keep the settled state. */
+        if (!cdb.play_type) goto _idle_wait;
         if (cdb.play_type == PLAYTYPE_SECTOR && outside_play_range()) goto _play_end;
+        if (get_sector(cdb.fad, NULL)) goto _read_error;
 
-        if (cdb.play_type && get_sector(cdb.fad, NULL)) goto _read_error;
-
-		if(cdb.play_fad_start==0 || cdb.play_type==0){
-			SSLOG(_DTASK, "play_task: play_type=%d! play_fad_start=%08x!\n", cdb.play_type, cdb.play_fad_start);
+		if(cdb.play_fad_start==0){
 			cdb.status = STAT_PAUSE;
-			goto _restart_wait;
+			goto _idle_wait;
 		}
 
 		if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3){
@@ -567,8 +567,10 @@ _play_end:
 						HIRQ = HIRQ_EFLS;
 					}
 					HIRQ = HIRQ_PEND;
-					cdb.play_type = 0;
 					cdb.index = 0;
+                    /* The command task may preempt as soon as it sees idle. */
+                    __asm__ volatile ("" ::: "memory");
+					cdb.play_type = 0;
 				}else{
 					if(cdb.repcnt<14)
 						cdb.repcnt += 1;
@@ -582,6 +584,10 @@ _play_end:
 
 		set_peri_report();
 		goto _restart_wait;
+
+_idle_wait:
+        SSLOG(_DTASK, "play_task: play_type=%d! play_fad_start=%08x!\n", cdb.play_type, cdb.play_fad_start);
+        goto _restart_wait;
 
 _read_error:
         log_play_end();

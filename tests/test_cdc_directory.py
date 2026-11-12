@@ -53,8 +53,13 @@ class CDDirectoryTests(unittest.TestCase):
         end=main.index(b'\n\t\t\tled_event(',start)
         code=b'static int input_error_step(void) {\nint retv; BLOCK wblk;\ndo {\n'
         code+=main[start:end]+b'\nreturn 1;\n} while (0);\nreturn 2;\n'+error_exit+b'\n_restart_wait: return 0;\n}\n'
-        start=main.index(b'        if (cdb.play_type && get_sector(' if retired else b'        int was_directory =')
-        end=main.index(b'\n\n\t\tif(cdb.play_fad_start',start)
+        if retired:
+            lookup = main.index(b'get_sector(cdb.fad, NULL)',main.index(b'\n_restart_nowait:'))
+            start = main.rfind(b'\n',0,lookup)+1
+            end = main.index(b'\n',lookup)
+        else:
+            start=main.index(b'        int was_directory =')
+            end=main.index(b'\n\n\t\tif(cdb.play_fad_start',start)
         code+=b'static int initial_error_step(void) {\n'+main[start:end]+b'\nreturn 1;\n'+error_exit+b'\n_restart_wait: return 0;\n}\n'
         (cls.target/'input-error.inc').write_bytes(code)
         (cls.target/'pause.inc').write_bytes(function(main,b'static void acknowledge_disc_pause('))

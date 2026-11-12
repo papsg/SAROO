@@ -71,3 +71,23 @@ directory fixture checks preemption after publication. Both CD
 profiles pass 208 methods. The GNU MCU App links 64,572 load
 bytes with 964 bytes of ITCM space. Physical event timing and
 game behavior remain unqualified.
+
+## Keep settled drive state after reader retirement
+
+Adapted from paps-g `218dcb45` (MCU-CDC-036). A queued worker wake
+can outlive a pause and a subsequent SEEK. The idle worker returns
+to waiting before it can change the settled status or position.
+At normal completion the worker updates the old index before
+publishing idle. A compiler memory barrier preserves the store
+order for the MCU's higher-priority command task.
+[Sega CD Communication Interface ST-162-062094, §4.2 drive
+control, printed pp. 37–38](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=25),
+[v0.8 disk worker](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_main.c).
+
+The actual-source PLAY-continuity fixture reproduces both parent
+failures and passes the other 11 methods. The port checks a queued
+idle wake in three settled states and simulates a new command
+publishing its index immediately after reader retirement. Both CD
+profiles pass 210 methods. The GNU MCU App links 64,572 load bytes
+with 964 bytes of ITCM space. The preemption boundary is modeled
+on the host.

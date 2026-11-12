@@ -17,6 +17,12 @@ class CDPlayContinuityTests(unittest.TestCase):
         tests = Path(__file__).parent
         harness = (tests / 'cdc_drive.c').read_bytes()
         (target / 'drive-harness.inc').write_bytes(harness[:harness.index(b'int main(')])
+        worker = target / 'disk-task.inc'
+        code = worker.read_bytes()
+        end = code.index(b'\n_play_end:')
+        publish = b'cdb.play_type = 0;'
+        at = code.index(publish, code.index(b'HIRQ = HIRQ_PEND;', end)) + len(publish)
+        worker.write_bytes(code[:at] + b'\n\t\t\t\t\teof_release_probe();' + code[at:])
         cls.binary = target / 'play-continuity'
         flags = ['-O2'] if os.environ.get('SAROO_CDC_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -69,6 +75,12 @@ class CDPlayContinuityTests(unittest.TestCase):
 
     def test_failed_input_reports_under_old_owner_and_terminates_file_access(self):
         self.run_case('input-terminal')
+
+    def test_queued_idle_wake_preserves_settled_seek_state(self):
+        self.run_case('idle-wake')
+
+    def test_reader_releases_ownership_after_its_last_index_store(self):
+        self.run_case('eof-release')
 
 
 if __name__ == '__main__':

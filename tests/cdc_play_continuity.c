@@ -13,6 +13,7 @@ static int ack_status, ack_type, initial_status, lookup_error, read_error, finis
 static int sem_calls, play_delay, sector_delay, seek_delays, last_read_status;
 static int delay_failure, delay_calls, filtered, queued;
 static int error_reports, reported_reader;
+static int replace_on_eof, eof_publications, lookup_calls;
 static u32 ack_fad, last_read_fad;
 static jmp_buf worker_exit;
 
@@ -105,6 +106,7 @@ static int fail_sector(int result)
 static int get_sector(int fad, BLOCK *block)
 {
     if (!block) {
+        lookup_calls++;
         if (lookup_error) {
             cdb.play_track = NULL;
             return fail_sector(-1);
@@ -126,6 +128,14 @@ static int worker_delay(int ticks)
 {
     if (ticks == play_delay) seek_delays++;
     return ++delay_calls == delay_failure ? -1 : 0;
+}
+
+static void eof_release_probe(void)
+{
+    if (!replace_on_eof) return;
+    assert(!cdb.play_type && (hirq & HIRQ_PEND));
+    ++eof_publications;
+    cdb.index = 2; /* The higher-priority command publishes its new index. */
 }
 
 #define LEDEV_CSCT 1
@@ -158,6 +168,7 @@ static void prepare(u32 fad, int audio, int status)
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
     delay_failure = delay_calls = filtered = queued = sector_delay = pend_delay = 0;
     lookup_error = error_reports = reported_reader = 0;
+    replace_on_eof = eof_publications = lookup_calls = 0;
     ack_fad = last_read_fad = 0;
     finish_after = 1;
 }
@@ -359,6 +370,36 @@ static void failed_input_terminal(void)
     }
 }
 
+/* Idle and final-release cases adapted from paps-g 218dcb45. */
+static void idle_wake(void)
+{
+    const int statuses[] = {STAT_STANDBY, STAT_PAUSE, STAT_ERROR};
+    for (unsigned i = 0; i < sizeof statuses / sizeof *statuses; ++i) {
+        prepare(250, 0, statuses[i]);
+        cdb.play_type = 0;
+        cdb.play_track = NULL;
+        cdb.fad = i ? 251 : 0;
+        cdb.index = 3;
+        cdb.track = 2;
+        run_worker(NULL);
+        assert(cdb.status == statuses[i] && cdb.fad == (i ? 251 : 0));
+        assert(cdb.index == 3 && cdb.track == 2 && !cdb.play_track);
+        assert(!lookup_calls && !read_calls && !hirq && !error_reports);
+    }
+}
+
+static void eof_release(void)
+{
+    prepare(250, 0, STAT_PLAY);
+    cdb.play_fad_end = 251;
+    cdb.index = 4;
+    finish_after = 0;
+    replace_on_eof = 1;
+    run_worker(NULL);
+    assert(eof_publications == 1 && cdb.index == 2);
+    assert(hirq == HIRQ_PEND && read_calls == 1 && filtered == 1);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -382,6 +423,8 @@ int main(int argc, char **argv)
     else if (!strcmp(test, "replace")) replacement();
     else if (!strcmp(test, "timer")) timer_failure();
     else if (!strcmp(test, "input-terminal")) failed_input_terminal();
+    else if (!strcmp(test, "idle-wake")) idle_wake();
+    else if (!strcmp(test, "eof-release")) eof_release();
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);
