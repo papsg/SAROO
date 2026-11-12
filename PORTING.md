@@ -2334,3 +2334,9 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-RES-001) → [8999992](https://github.com/papsg/SAROO/commit/89999923ae5fe5a21b6099d822478ec1220c2292) on `main`. Both FatFs directions share the existing disk owner and four-attempt policy.
 - Both exact revisions pass nine disk adapter methods and 3,840 matrix cases in each host profile, including all drive IDs, all retry positions, exact messages and read-only linking without a write provider. Both port storage runs pass 32 methods.
 - The GNU MCU App links 63,800 load bytes, 64 below the parent. The shared helper uses 40 direct stack bytes while active, eight above the preceding wrappers. Static DTCM stays at 60,208 bytes. [Attribution, CMSIS and reproduction](https://github.com/papsg/SAROO/blob/89999923ae5fe5a21b6099d822478ec1220c2292/doc/STORAGE-AUDIT.md#share-disk-read-and-write-retries).
+
+### exFAT allocation bitmap backing
+
+- `b483124c` (paps-g, AUD-MCU-021) → [73a9ce6](https://github.com/papsg/SAROO/commit/73a9ce65b2ea26fb66dab6dded0335b85c70d89b) on `main`. Mount checks declared length, contiguous backing and volume-relative address bounds before publishing the bitmap.
+- The exact parent changes the neighboring file's first byte from zero to one on the short-chain image and fails six subcases. The port refuses seven invalid layouts with zero writes. Seven valid layouts and three read-error retries pass. The FatFs and MCU save runs pass 130 methods in each profile, with the final partitioned control also verified on the parent.
+- GNU MCU App load rises by 96 bytes to 63,896, leaving 1,640 ITCM bytes. The mount frame grows from 40 to 48 bytes and static DTCM stays at 60,208 bytes. [Attribution, exFAT specification and reproduction](https://github.com/papsg/SAROO/blob/73a9ce65b2ea26fb66dab6dded0335b85c70d89b/doc/STORAGE-AUDIT.md#validate-exfat-allocation-bitmap-backing).
