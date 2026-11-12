@@ -2171,3 +2171,14 @@ pacing remain unqualified.
    controls. The menu retains 81,396 code/data bytes and 24,048
    bytes of body space. Physical behavior remains unqualified.
    [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#protect-an-unanswered-menu-cd-command)
+
+5. **Asynchronous file event admission — published**
+   [`f90cc54`](https://github.com/papsg/SAROO/commit/f90cc546239b268bdbb2e1bf90667e3c15f1d34c).
+   Adapted from paps-g `e515b7c5` and the shared helper from
+   `5ef543a2` (SATURN-CD-003). Two parent methods reproduce stale
+   EFLS and 19 pass. The port checks all 65,536 HIRQ patterns,
+   fresh events on reply/error and all five boot handoff methods.
+   Both menu runs pass 93 methods. The pinned menu links 81,428
+   code/data bytes with 24,016 bytes of body space. Actual BIOS
+   and game execution remain unqualified.
+   [Sega and upstream citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#acknowledge-the-previous-file-event-on-read-admission)
