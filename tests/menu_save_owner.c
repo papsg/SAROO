@@ -79,6 +79,70 @@ static void latch(void)
 
 static void reset_peer(void) { requests = purges = peer_fault = 0; clear_io(); }
 
+/* Resolved identity cases adapted from paps-g 6b728c6d. */
+static void check_named_archive_write(unsigned device, u8 *buffer)
+{
+    static const char *const names[2][3] = {
+        {"/SAROO/SS_SAVE.BIN", "0:/saroo/ss_save.bin", "/SAROO/SS_SAVE.BIN..."},
+        {"/SAROO/SS_MEMS.BIN", "0:/saroo/ss_mems.bin", "/SAROO/SS_MEMS.BIN..."}
+    };
+    ownership(); reset_peer();
+    for (unsigned spelling = 0; spelling < 3; ++spelling) {
+        for (int offset = -1; offset <= 1; ++offset) {
+            memset(buffer, 0xa5, 32);
+            *(u32 *)(TMPBUFF_ADDR + 0) = (u32)offset;
+            *(u32 *)(TMPBUFF_ADDR + 4) = 32;
+            *(u32 *)(TMPBUFF_ADDR + 8) = 0x020c7100;
+            strcpy((char *)(TMPBUFF_ADDR + 16), names[device][spelling]);
+            mcu_command = SSCMD_FILEWR | SSCMD_SAVE_ACK;
+            /* The parent runs with its original locking behavior for comparison. */
+            require_lock = NAMED_FILE_LOCK;
+            command();
+            require_lock = 1;
+            assert(!mcu_command && (int16_t)mcu_argument == -FR_LOCKED);
+            assert(!*(u32 *)(TMPBUFF_ADDR + 4) && !lock_depth);
+            FILINFO info;
+            assert(!f_stat(names[device][spelling], &info));
+            assert(info.fsize == (device ? mems_size : slot_size));
+            assert_archives(slot_before, slot_size, mems_before);
+        }
+    }
+}
+
+static void check_named_archive_lifetime(unsigned device)
+{
+    FIL *owner = device ? &sm_fp : &ss_fp;
+    const char *name = device ? SMEMS_FILE : SSAVE_FILE;
+    const BYTE modes[] = {FA_WRITE, FA_WRITE | FA_OPEN_ALWAYS,
+        FA_WRITE | FA_CREATE_ALWAYS, FA_WRITE | FA_CREATE_NEW,
+        FA_WRITE | FA_OPEN_APPEND, FA_READ | FA_CREATE_ALWAYS};
+    FIL other;
+    fs_lock();
+    for (unsigned i = 0; i < sizeof modes / sizeof *modes; ++i) {
+        assert(f_open(&other, name, modes[i]) == FR_LOCKED);
+        assert(!other.obj.fs);
+    }
+    assert(!f_open(&other, name, FA_READ));
+    assert(f_size(&other) == f_size(owner) && !f_close(&other));
+    owner->err = FR_DISK_ERR;
+    assert(f_open(&other, name, FA_WRITE | FA_CREATE_ALWAYS) == FR_LOCKED);
+    owner->err = 0;
+    assert(!f_close(owner));
+    assert(!f_open(&other, name, FA_WRITE) && !f_close(&other));
+    assert(!f_open(owner, name, FA_READ | FA_WRITE));
+    assert(f_open(&other, name, FA_WRITE) == FR_LOCKED);
+
+    assert(!f_mkdir("/OTHER"));
+    char separate[32];
+    snprintf(separate, sizeof separate, "/OTHER%s", strrchr(name, '/'));
+    assert(!f_open(&other, separate, FA_WRITE | FA_CREATE_ALWAYS));
+    UINT count;
+    const char data[] = "independent file";
+    assert(!f_write(&other, data, sizeof data, &count) && count == sizeof data);
+    assert(!f_close(&other));
+    fs_unlock();
+}
+
 static void check_transport(unsigned device, u8 *buffer)
 {
     ownership(); reset_peer();
@@ -283,11 +347,17 @@ int main(int argc,char **argv)
     MKFS_PARM options={.fmt=(!strcmp(argv[2],"fat32")?FM_FAT32:FM_EXFAT)|FM_SFD,
         .n_fat=1,.au_size=!strcmp(argv[2],"fat32")?512:4096};
     assert(!f_mkfs("0:",&options,work,sizeof work));
-    FATFS fs; assert(!f_mount(&fs,"0:",1)); fixture_trailer=1; initialize(); require_lock=1;
+    FATFS fs; assert(!f_mount(&fs,"0:",1));
+    if(!strcmp(argv[3],"named-crossing"))
+        directory_prefix_entries = !strcmp(argv[2],"fat32") ? 14 : 42;
+    fixture_trailer=1; initialize(); require_lock=1;
     protocol_shared=malloc(0x1000000); assert(protocol_shared);
     test_save_sysinfo[6]=ARCHIVE_IO_VERSION; latch();
     u8 *buffer=protocol_shared+0xc7100;
-    if(!strcmp(argv[3],"transport")) check_transport(device,buffer);
+    if(!strcmp(argv[3],"named-write") || !strcmp(argv[3],"named-crossing"))
+        check_named_archive_write(device,buffer);
+    else if(!strcmp(argv[3],"named-lifetime")) check_named_archive_lifetime(device);
+    else if(!strcmp(argv[3],"transport")) check_transport(device,buffer);
     else if(!strcmp(argv[3],"errors")) check_errors(device,buffer);
     else if(!strcmp(argv[3],"bounds")) check_bounds(device,buffer);
     else if(!strcmp(argv[3],"ram")) check_owner_ram(device);

@@ -487,6 +487,21 @@ static FIL sm_fp;
 static int sm_index0;
 static int sm_index1;
 
+/* Match the resolved directory entry as recorded by f_open. The named
+ * transfer and primary save operations use the same filesystem mutex. */
+FRESULT saroo_save_file_access(const DIR *entry)
+{
+    const FATFS *fs = entry->obj.fs;
+    const FIL *const owners[] = {&ss_fp, &sm_fp};
+    for (unsigned i = 0; i < sizeof owners / sizeof *owners; ++i) {
+        const FIL *owner = owners[i];
+        if (owner->obj.fs == fs && owner->obj.id == fs->id &&
+            owner->dir_sect == fs->winsect && owner->dir_ptr == entry->dir)
+            return FR_LOCKED;
+    }
+    return FR_OK;
+}
+
 
 struct save_reopen {
     FSIZE_t size;

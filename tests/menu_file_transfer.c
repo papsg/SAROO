@@ -20,6 +20,9 @@ static uint16_t archive_ack __attribute__((unused));
 static volatile uint16_t mcu_cmd, mcu_arg;
 #define SS_CMD mcu_cmd
 #define SS_ARG mcu_arg
+static int file_lock_depth;
+static __attribute__((unused)) void fs_lock(void) { assert(!file_lock_depth); ++file_lock_depth; }
+static __attribute__((unused)) void fs_unlock(void) { assert(file_lock_depth==1); --file_lock_depth; }
 static __attribute__((unused)) int save_archive_io(unsigned device, u32 offset,
                                                    void *buffer, int length)
 {

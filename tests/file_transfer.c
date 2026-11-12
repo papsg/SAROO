@@ -25,6 +25,9 @@ static void printk(const char *format, ...)
 #include "log.inc"
 static volatile uint16_t SS_CMD, SS_ARG;
 static uint16_t file_ack;
+static int file_lock_depth;
+static __attribute__((unused)) void fs_lock(void) { assert(!file_lock_depth); ++file_lock_depth; }
+static __attribute__((unused)) void fs_unlock(void) { assert(file_lock_depth==1); --file_lock_depth; }
 static FRESULT checked_open(FIL *, const TCHAR *, BYTE);
 static FRESULT checked_seek(FIL *, FSIZE_t);
 static FRESULT checked_read(FIL *, void *, UINT, UINT *);

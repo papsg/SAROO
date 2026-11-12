@@ -3711,6 +3711,15 @@ FRESULT f_mount (
 /* Open or Create a File                                                 */
 /*-----------------------------------------------------------------------*/
 
+#if !FF_FS_READONLY
+/* The application may reserve writable files with long-lived owners. */
+__attribute__((weak)) FRESULT saroo_save_file_access (const DIR* entry)
+{
+	(void)entry;
+	return FR_OK;
+}
+#endif
+
 FRESULT f_open (
 	FIL* fp,			/* Pointer to the blank file object */
 	const TCHAR* path,	/* Pointer to the file name */
@@ -3741,12 +3750,12 @@ FRESULT f_open (
 		if (res == FR_OK) {
 			if (dj.fn[NSFLAG] & NS_NONAME) {	/* Origin directory itself? */
 				res = FR_INVALID_NAME;
-			}
+			} else {
+				if (mode & ~FA_READ) res = saroo_save_file_access(&dj);
 #if FF_FS_LOCK
-			else {
-				res = chk_share(&dj, (mode & ~FA_READ) ? 1 : 0);	/* Check if the file can be used */
-			}
+				if (res == FR_OK) res = chk_share(&dj, (mode & ~FA_READ) ? 1 : 0);	/* Check if the file can be used */
 #endif
+			}
 		}
 		/* Create or Open a file */
 		if (mode & (FA_CREATE_ALWAYS | FA_OPEN_ALWAYS | FA_CREATE_NEW)) {

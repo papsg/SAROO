@@ -31,7 +31,7 @@ static FSIZE_t altered_size[2];
 static void compare_altered(int capture)
 {
     for (int i = 0; i < 2; i++) {
-        FIL file; assert(!f_open(&file, filename(i), FA_READ | FA_WRITE));
+        FIL file; assert(!f_open(&file, filename(i), FA_READ));
         u8 *bytes = read_archive(&file);
         if (capture) { altered[i] = bytes; altered_size[i] = f_size(&file); }
         else {

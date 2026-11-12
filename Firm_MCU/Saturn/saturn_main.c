@@ -708,28 +708,32 @@ static __attribute__((noinline)) int ss_file_transfer(int mode)
     if (!memchr(name, 0, 0xf0)) return FR_INVALID_PARAMETER;
     int offset = (int)request_offset;
     int flags = writing ? ((offset == -1 ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS) | FA_WRITE) : FA_READ;
+    fs_lock();
     int retv = f_open(&fp, name, flags);
-    u32 count = 0;
-    if (retv == FR_OK) {
-        if (writing && offset < 0) offset = 0;
-        retv = f_lseek(&fp, offset);
-        /* FatFs may report a successful short seek when extension runs out of space. */
-        if (!retv && writing && f_tell(&fp) != (FSIZE_t)offset) retv = FR_INT_ERR;
-        if (!retv) {
-            if (!writing && size == 0) {
-                /* Check the remaining extent at full exFAT width before narrowing. */
-                FSIZE_t remaining = f_size(&fp) - f_tell(&fp);
-                if (remaining > capacity) retv = FR_INVALID_PARAMETER;
-                else size = (u32)remaining;
-            }
-            if (!retv)
-                retv = file_buffer_io(&fp, buffer, size, writing, &count);
-        }
-        int closed = f_close(&fp);
-        if (!retv) retv = closed;
-        SSLOG(_INFO, writing ? "\nSSCMD_FILEWR: retv=%d wsize=%08x  %s\n" :
-                              "\nSSCMD_FILERD: retv=%d rsize=%08x  %s\n", retv, count, name);
+    if (retv) {
+        fs_unlock();
+        return retv;
     }
+    u32 count = 0;
+    if (writing && offset < 0) offset = 0;
+    retv = f_lseek(&fp, offset);
+    /* FatFs may report a successful short seek when extension runs out of space. */
+    if (!retv && writing && f_tell(&fp) != (FSIZE_t)offset) retv = FR_INT_ERR;
+    if (!retv) {
+        if (!writing && size == 0) {
+            /* Check the remaining extent at full exFAT width before narrowing. */
+            FSIZE_t remaining = f_size(&fp) - f_tell(&fp);
+            if (remaining > capacity) retv = FR_INVALID_PARAMETER;
+            else size = (u32)remaining;
+        }
+        if (!retv)
+            retv = file_buffer_io(&fp, buffer, size, writing, &count);
+    }
+    int closed = f_close(&fp);
+    fs_unlock();
+    if (!retv) retv = closed;
+    SSLOG(_INFO, writing ? "\nSSCMD_FILEWR: retv=%d wsize=%08x  %s\n" :
+                          "\nSSCMD_FILERD: retv=%d rsize=%08x  %s\n", retv, count, name);
     *(u32 *)(TMPBUFF_ADDR + 0x04) = count;
     return retv;
 }

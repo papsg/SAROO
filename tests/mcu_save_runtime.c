@@ -26,6 +26,7 @@ static const char key_d[17] = "ABCDEFGH00000004";
 static u8 *slot_before, *mems_before;
 static FSIZE_t slot_size, mems_size;
 static int fixture_trailer;
+static unsigned directory_prefix_entries;
 
 static void raw_write(FIL *fp, FSIZE_t offset, const void *data, UINT size)
 {
@@ -57,6 +58,13 @@ static void clear_io(void)
 static void initialize(void)
 {
     assert(f_mkdir("/SAROO") == FR_OK);
+    for (unsigned i = 0; i < directory_prefix_entries; ++i) {
+        FIL file;
+        char name[32];
+        snprintf(name, sizeof name, "/SAROO/F%03u.BIN", i);
+        assert(!f_open(&file, name, FA_CREATE_NEW | FA_WRITE));
+        assert(!f_close(&file));
+    }
     make_archive(0, 4 * 65536, 0); make_archive(1, 0x800000 + (fixture_trailer ? 37 : 0), 0);
     reset_service(); assert(open_savefile() == 0);
     u8 *data = malloc(65536); assert(data);

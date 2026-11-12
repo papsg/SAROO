@@ -40,7 +40,8 @@ class MenuSaveOwnerTests(MCUSaveTest):
         if b'file_buffer_io(' not in mcu:
             assert peer.count(buffer) == 1
             peer = peer.replace(buffer, b'bus_pointer(baddr & 0x00ffffff)')
-        (target / 'mcu-owner.inc').write_bytes(peer)
+        lock_check = b'#define NAMED_FILE_LOCK ' + (b'1' if b'fs_lock();' in peer else b'0')
+        (target / 'mcu-owner.inc').write_bytes(lock_check + b'\n' + peer)
         return {'Firm_Saturn/main.c': raw, 'Firm_Saturn/main.h': menu_header}
 
     def cases(self, mode, devices):
@@ -67,6 +68,15 @@ class MenuSaveOwnerTests(MCUSaveTest):
 
     def test_slot_lookup_preserves_bounds_when_either_read_fails(self):
         self.cases('lookup-fault', (0,))
+
+    def test_named_write_refuses_both_primary_archives_through_aliases(self):
+        self.cases('named-write', (0, 1))
+
+    def test_resolved_archive_identity_survives_directory_boundaries(self):
+        self.cases('named-crossing', (0, 1))
+
+    def test_primary_write_reservation_tracks_the_open_file_lifetime(self):
+        self.cases('named-lifetime', (0, 1))
 
 
 if __name__ == '__main__':
