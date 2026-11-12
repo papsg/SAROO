@@ -720,7 +720,7 @@ static __attribute__((noinline)) int ss_file_transfer(int mode)
         if (!result) *(u32 *)(TMPBUFF_ADDR + 0x04) = size;
         return result;
     }
-    if (!memchr(name, 0, 0xf0)) return FR_INVALID_PARAMETER;
+    if (strnlen(name, 0xf0) == 0xf0) return FR_INVALID_PARAMETER;
     int offset = (int)request_offset;
     int flags = writing ? ((offset == -1 ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS) | FA_WRITE) : FA_READ;
     fs_lock();

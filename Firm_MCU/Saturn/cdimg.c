@@ -212,7 +212,7 @@ int parse_cue(char *fname, u8 *ipbuf)
     int closed = f_close(&local.cue);
     if (retv || closed || nread != bytes) return -1;
     fbuf[nread] = 0;
-    if (memchr(fbuf, 0, nread)) return -1;
+    if (strnlen((const char *)fbuf, nread) != nread) return -1;
     int cpos = nread >= 3 && !memcmp(fbuf, "\xef\xbb\xbf", 3) ? 3 : 0;
     char *line;
     if (!ipbuf) current_index = 0;

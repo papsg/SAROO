@@ -379,7 +379,7 @@ static __attribute__((noinline)) int config_load(char *fname, u8 *buffer)
     if (!result && count != bytes) result = FR_DISK_ERR;
     if (result) return -result;
     buffer[count] = 0;
-    if (memchr(buffer, 0, count)) return -FR_INVALID_PARAMETER;
+    if (strnlen((const char *)buffer, count) != count) return -FR_INVALID_PARAMETER;
     if (count >= 3 && !memcmp(buffer, "\xef\xbb\xbf", 3)) memset(buffer, ' ', 3);
     for (unsigned i = 0; i < count; i++)
         if (buffer[i] == '\r' || buffer[i] == '\n') buffer[i] = 0;

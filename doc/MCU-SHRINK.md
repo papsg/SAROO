@@ -342,3 +342,33 @@ falls 55,864 → 53,816 bytes. The App image grows 32 bytes to
 64,696 (840 bytes free). The direct subindex search frame grows
 by four bytes to 20. This verifies results and memory use; it
 does not measure physical playback timing.
+
+## Reuse the existing bounded NUL scan
+
+Adapted from paps-g `07b96476` (AUD-RES-030). The CUE parser and
+configuration loader reject a NUL inside the file payload. The file
+transfer command requires a NUL inside its 240-byte filename field.
+All three needed only the presence or absence of a NUL, so they now
+use the `strnlen` already linked by other callers.
+[POSIX.1-2024, `strnlen`, Description and Return Value](https://pubs.opengroup.org/onlinepubs/9799919799/functions/strlen.html)
+specifies that a result below the bound means a NUL was found within
+that bound. A result equal to the bound means none was found. File
+and field limits and rejection behavior are unchanged.
+
+```sh
+for name in test_mcu_save_cue.py test_config_loader.py test_file_transfer.py; do
+    python3 -B -m unittest discover -s tests -p "$name" -v || exit $?
+done
+```
+
+All 41 existing methods pass on the parent and on the port. The port
+also passes all 41 with `SAROO_FIRMWARE_SAVE_PROFILE=release`,
+`SAROO_CONFIG_PROFILE=release` and `SAROO_FILE_PROFILE=release`.
+The cases cover embedded NULs, valid input, and both sides of the
+filename field boundary.
+
+The GNU App map drops the 160-byte standalone `memchr` body and
+keeps the 24-byte `strnlen`. Complete load goes from 65,064 to 64,912
+bytes, leaving 624 bytes free. Static DTCM and compiler-reported stack
+frames are unchanged. This measures linked size, not scan speed or
+physical firmware performance.
