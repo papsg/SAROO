@@ -24,6 +24,14 @@ class DiscDiscoveryTests(MCUSaveTest):
             for order in range(3):
                 with self.subTest(mode=mode,order=order):self.invoke(mode,order)
 
+    def test_catalog_sort_preserves_every_offset_and_matches_reference(self):
+        self.invoke('sort-controls')
+
+    def test_catalog_sort_bounds_full_ordered_and_equal_catalogs(self):
+        for shape in (0, 1, 2):
+            with self.subTest(shape=shape):
+                self.invoke('sort-bound', shape)
+
     def test_full_catalog_preserves_last_usable_slot_and_string_byte(self):
         for mode,values in (('count-capacity',(2559,2560)),('name-capacity',(520,521)),('sorted-capacity',(2559,)),('reverse-capacity',(2559,))):
             for count in values:

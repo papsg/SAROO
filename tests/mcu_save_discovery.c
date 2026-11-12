@@ -5,7 +5,7 @@
 #include <stdarg.h>
 _Alignas(8) static struct { u8 before[32],image[0x23000],after[32]; } memory;
 #define IMGINFO_ADDR ((uintptr_t)memory.image)
-static u32 sort_space[1024];
+static u32 sort_space[1024] __attribute__((unused));
 #define TEST_SORT_ADDR ((uintptr_t)sort_space)
 #include "sort.inc"
 static int category_num,sort_mode;
@@ -282,6 +282,85 @@ static void folder_io(int which)
     assert(!list_folder(folder) && total_disc == 2 && *(u32 *)memory.image == 2);
     guards();
 }
+/* Adapted from paps-g b483124c. Exercise the real sorter and comparator
+ * against libc ordering and an independent count of entry identities. */
+enum { SORT_MAX_ENTRIES = (0x2800 - 4) / 4 };
+static unsigned sort_comparisons;
+
+static int count_path_cmp(const void *a, const void *b)
+{
+    ++sort_comparisons;
+    return path_cmp(a, b);
+}
+
+static int reference_path_cmp(const void *a, const void *b)
+{
+    const char *left = path_str + *(const int *)a;
+    const char *right = path_str + *(const int *)b;
+    return sort_mode == 1 ? strcmp(left, right) : strcmp(right, left);
+}
+
+static void sort_sample(unsigned count, unsigned pattern, unsigned prefix, int bounded)
+{
+    int reference[SORT_MAX_ENTRIES];
+    u8 seen[SORT_MAX_ENTRIES] = {0};
+    unsigned stride = prefix + 9;
+    assert(count <= SORT_MAX_ENTRIES && 0x2800 + count * stride <= sizeof memory.image);
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned key = i;
+        if (pattern == 1) key = count - 1 - i;
+        if (pattern == 2) key = 0;
+        if (pattern == 3) key = i % 7;
+        unsigned offset = 0x2800 + i * stride;
+        disc_path[i] = (int)offset;
+        memset(path_str + offset, 'x', prefix);
+        assert(snprintf(path_str + offset + prefix, 9, "G%07u", key) == 8);
+    }
+    if (pattern == 4) {
+        u32 state = 1;
+        for (unsigned i = count; i > 1; --i) {
+            state = state * 1664525u + 1013904223u;
+            unsigned j = state % i;
+            int temp = disc_path[i - 1];
+            disc_path[i - 1] = disc_path[j];
+            disc_path[j] = temp;
+        }
+    }
+    memcpy(reference, disc_path, count * sizeof *reference);
+    qsort(reference, count, sizeof *reference, reference_path_cmp);
+    sort_comparisons = 0;
+    qsort4(disc_path, count, count_path_cmp);
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned offset = (unsigned)disc_path[i];
+        assert(offset >= 0x2800 && (offset - 0x2800) % stride == 0);
+        unsigned entry = (offset - 0x2800) / stride;
+        assert(entry < count && !seen[entry]++);
+        assert(reference_path_cmp(reference + i, disc_path + i) == 0);
+    }
+    guards();
+    if (bounded) {
+        unsigned levels = 0;
+        for (unsigned size = 1; size < count; size *= 2)
+            ++levels;
+        unsigned limit = 2 * count * (levels + 1);
+        fprintf(stderr, "catalog count=%u shape=%u order=%d comparisons=%u limit=%u\n",
+                count, pattern, sort_mode, sort_comparisons, limit);
+        assert(sort_comparisons <= limit);
+    }
+}
+
+static void sort_controls(void)
+{
+    const unsigned sizes[] = {0, 1, 2, 3, 15, 64, 127, 520, SORT_MAX_ENTRIES};
+    for (sort_mode = 1; sort_mode <= 2; ++sort_mode) {
+        for (unsigned i = 0; i < sizeof sizes / sizeof *sizes; ++i)
+            for (unsigned pattern = 0; pattern < 5; ++pattern)
+                sort_sample(sizes[i], pattern, 0, 0);
+        for (unsigned pattern = 0; pattern < 5; ++pattern)
+            sort_sample(520, pattern, 247, 0);
+    }
+}
+
 #ifndef MCU_DISCOVERY_TEST_ENTRY
 #define MCU_DISCOVERY_TEST_ENTRY main
 #endif
@@ -300,6 +379,11 @@ int MCU_DISCOVERY_TEST_ENTRY(int argc,char **argv)
     else if(strstr(mode,"capacity"))capacity(value,!strcmp(mode,"name-capacity"),!strcmp(mode,"sorted-capacity")?1:!strcmp(mode,"reverse-capacity")?2:0);
     else if(!strcmp(mode,"path"))path_case(value);
     else if(!strcmp(mode,"producer-consumer"))producer_consumer();
+    else if (!strcmp(mode, "sort-controls")) sort_controls();
+    else if (!strcmp(mode, "sort-bound")) {
+        for (sort_mode = 1; sort_mode <= 2; ++sort_mode)
+            sort_sample(SORT_MAX_ENTRIES, value, 0, 1);
+    }
     else if(!strcmp(mode,"category")) {
         category_num=1;strcpy(category,"Category");assert(list_disc(value,0)<0 && !opens && !total_disc && !*(u32*)memory.image);
     } else {assert(!strcmp(mode,"reuse"));reuse();}

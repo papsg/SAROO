@@ -100,3 +100,36 @@ The fixture uses generated files as block devices. The port adds
 bytes in ITCM. The direct mount frame grows from 40 to 48 bytes.
 Static DTCM stays at 60,208 bytes. Physical media and power-loss
 behavior remain unqualified.
+
+## Bound game catalog sorting
+
+Adapted from paps-g `b483124c` (AUD-MCU-006 and AUD-RES-021).
+The game catalog sorts its existing offset array with in-place
+heapsort. The old endpoint partition compared every remaining pair
+on an ordered or equal catalog. The heap bounds the number of
+comparison steps by its height and needs only local indices and one
+temporary offset. The catalog retains the same filename comparator,
+forward and reverse modes, enumeration order when sorting is off,
+and each offset's file and cover association.
+[Original SAROO sorter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_utils.c),
+[Public parent comparator and catalog publication](https://github.com/papsg/SAROO/blob/73a9ce65b2ea26fb66dab6dded0335b85c70d89b/Firm_MCU/Saturn/cdimg.c#L349-L427).
+
+The exact parent uses 3,272,961 comparisons for each of the three
+ordered, reversed and equal 2,559-entry cases checked in ascending
+mode. The port uses at most 52,436 across those shapes in both
+directions. Both versions pass 100 reference ordering and offset
+conservation cases, including the full catalog and 255-byte names.
+The port passes all 24 discovery and cover methods in each host
+profile, including file lookup, scan failures and catalog reuse.
+These are comparison counts, with physical startup latency open.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_mcu_save_discovery.py -v
+python3 -B -m unittest discover -s tests -p test_mcu_save_cover.py -v
+```
+
+Set `SAROO_MCU_SAVE_DIR` to the parent's `Firm_MCU/Saturn` directory
+and select `-k catalog_sort` to compare the exact old sorter.
+The GNU MCU App saves 96 load bytes, reaching 63,800 bytes, and
+eight static DTCM bytes. The sorter's direct frame falls from 48
+to 40 bytes.

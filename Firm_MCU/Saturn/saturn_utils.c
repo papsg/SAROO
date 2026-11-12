@@ -93,52 +93,36 @@ int gameid_match(char *gid1, char *gid2)
 /******************************************************************************/
 
 
-static int max_depth;
-static int *qstack = (int*)0x2400a000;
-static int qtop;
-
-#define qs_push(lp, rp)  ( qstack[qtop++] = ((lp)<<16) | (rp))
-
+/* Sort four-byte catalog offsets with a bounded, in-place heap.
+ * The active heap is data[0..end); data[end..num) is already final.
+ * Test root < end/2 before forming its child to avoid signed overflow. */
 void qsort4(void *idata, int num, int (*cmp_func)(const void*, const void*))
 {
-	int *data = (int*)idata;
-	int ilp, irp, lp, rp, flag;
+    int *data = (int*)idata;
+    int start = num / 2, end = num;
 
-	if(num<2)
-		return;
-
-	max_depth = 0;
-	qtop = 0;
-	qs_push(0, num-1);
-
-	while(qtop){
-		qtop -= 1;
-		ilp = qstack[qtop]>>16;
-		irp = qstack[qtop]&0xffff;
-
-		lp = ilp;
-		rp = irp;
-		flag = -1;
-		while(rp > lp){
-			if(cmp_func(data+lp, data+rp)>0){
-				int temp = data[rp];
-				data[rp] = data[lp];
-				data[lp] = temp;
-				flag = -flag;
-			}
-			if(flag<0){
-				rp -= 1;
-			}else{
-				lp += 1;
-			}
-		}
-		if(ilp<lp-1) qs_push(ilp, lp-1);
-		if(lp+1<irp) qs_push(lp+1, irp);
-		if(max_depth<qtop){
-			max_depth = qtop;
-		}
-	}
-	//printk("qsort4: max_depth=%d\n", max_depth);
+    while (end > 1) {
+        int root;
+        if (start) {
+            root = --start;
+        } else {
+            int temp = data[0];
+            data[0] = data[--end];
+            data[end] = temp;
+            root = 0;
+        }
+        while (root < end / 2) {
+            int child = root * 2 + 1;
+            if (child + 1 < end && cmp_func(data + child, data + child + 1) < 0)
+                ++child;
+            if (cmp_func(data + root, data + child) >= 0)
+                break;
+            int temp = data[root];
+            data[root] = data[child];
+            data[child] = temp;
+            root = child;
+        }
+    }
 }
 
 

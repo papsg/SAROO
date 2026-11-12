@@ -194,7 +194,10 @@ class MCUSaveTest(unittest.TestCase):
                 begin = data.index(b'\n\tif(', data.index(b'int load_disc('))
                 end = data.index(b'\tfname = malloc(256);', begin)
                 (cls.target / 'path.inc').write_bytes(b'char cat_dir[256];\n' + data[begin:end] + b'memcpy(out,cat_dir,256); return 0;\n')
-            begin = module.index(b'static int max_depth;'); end = module.index(b'char *get_token(', begin)
+            begin = module.find(b'static int max_depth;')
+            if begin < 0:
+                begin = module.index(b'void qsort4(')
+            end = module.index(b'char *get_token(', begin)
             (cls.target / 'sort.inc').write_bytes(module[begin:end].replace(b'0x2400a000', b'TEST_SORT_ADDR'))
             path = Path(os.environ.get('SAROO_MENU_BINARY_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
