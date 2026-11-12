@@ -58,6 +58,11 @@ typedef unsigned long long u64;
 #define ARCHIVE_IO_VERSION 0x534f5731u
 #define SSCMD_ARCHIVERD 0x0036
 #define SSCMD_ARCHIVEWR 0x0037
+#define SSCMD_BINDIR   0x0038
+#define BIN_DIRECTORY_VERSION 1u
+#define BIN_DIRECTORY_ENTRY 0x80000000u
+#define BIN_PATH_CAPACITY 0xf0u
+#define BIN_ROOT "/SAROO/BIN"
 #define MENU_ACK_VERSION 1u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
@@ -436,6 +441,7 @@ void add_menu_item(MENU_DESC *menu, char *item);
 int menu_run(MENU_DESC *menu);
 
 void menu_status(MENU_DESC *menu, char *string);
+void menu_timer(MENU_DESC *menu);
 void menu_error(MENU_DESC *menu, char *format, ...);
 void draw_menu_frame(MENU_DESC *menu);
 void menu_update(MENU_DESC *menu, int new);

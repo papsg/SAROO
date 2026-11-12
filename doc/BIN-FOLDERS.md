@@ -38,5 +38,43 @@ limit, rejected aliases and four injected scan failures with retry.
 It verifies the capability word and all signed FatFs results through
 the real MCU dispatcher. The GNU MCU App links 63,864 load bytes,
 leaving 1,672 bytes of ITCM space with unchanged static RAM. These
-are host checks and a firmware build. Physical media and the paired
-menu remain separate qualification steps.
+are host checks and a firmware build. Physical media behavior remains
+unqualified.
+
+## Browse and launch files from the menu
+
+Adapted from paps-g `a09e734b` after the MCU folder protocol. Open
+**Load Binary** and use A or Z to enter a folder. C goes up one level
+or exits from the root. B exits from any folder. The menu remembers
+the last folder for the current session. Files retain their existing
+A and Z launch behavior. The optional `@address` belongs to the file
+name, so an at sign in a parent directory has no effect on loading.
+[Upstream issue #84](https://github.com/tpunix/SAROO/issues/84),
+[v0.8 binary selector and launcher](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/main.c).
+
+The stock menu negotiates both directory and menu completion
+capabilities. Older MCU firmware keeps the flat list. The browser
+continues controller and animation processing while a folder command
+is pending. It waits for the command register to clear and checks
+its tagged reply before reusing the request field. Leaving during
+a read queues a return and restores the game catalog after the
+request retires. A failed folder change retries the previous folder
+once. An invalid completion leaves the command workspace unavailable
+until reset.
+[Public mailbox completion contract](SAVE-CD-RESET-OWNERSHIP.md#preserve-an-in-flight-mailbox-across-saturn-reset).
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_bin_browser.py -v
+SAROO_MENU_BIN_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_bin_browser.py -v
+make -C tests check-menu-safety check-menu-binary check-file-transfer
+```
+
+With `SAROO_MENU_BIN_SOURCE` pointing at the parent menu directory,
+the actual stock selector passes the flat fallback control and
+fails the negotiated browsing check. The port checks the real
+menu's nested listing, launch path and address, parent navigation,
+late replies, queued exit, failed restore retry and malformed
+catalog bounds. The linked menu has 84,164 code/data bytes, up
+2,112, and a 240-byte saved path in BSS. It retains 21,036 bytes
+of body space. The mailbox and input checks are host models.
+Physical menu and game behavior remain unqualified.

@@ -909,9 +909,26 @@ static void change_cover_layer(void)
 /**********************************************************/
 
 static int total_disc, total_page, page;
-static int sel_mode; // 0:game  1:binary
+static int sel_mode; // 0: game, 1: flat binary list, 2: binary folders
+enum { BIN_FOLDER_MODE = 2 };
 
 MENU_DESC sel_menu;
+
+static char *bin_catalog_name(int index, int *directory)
+{
+    char *catalog = (char *)IMGINFO_ADDR;
+    u32 count = LE32(catalog);
+    if (count > (0x2800u - 4) / 4 || index < 0 || (u32)index >= count) return NULL;
+    u32 entry = LE32(catalog + 4 + index * 4);
+    u32 offset = entry & ~BIN_DIRECTORY_ENTRY;
+    if (offset < 0x2800 || offset >= 0x23000) return NULL;
+    unsigned length = 0;
+    while (length < 256 && length < 0x23000u - offset && catalog[offset + length])
+        ++length;
+    if (!length || length == 256 || length == 0x23000u - offset) return NULL;
+    *directory = !!(entry & BIN_DIRECTORY_ENTRY);
+    return catalog + offset;
+}
 
 static void fill_selmenu(void)
 {
@@ -925,14 +942,20 @@ static void fill_selmenu(void)
 		if(index>=total_disc)
 			break;
 
-		char *path = path_str + LE32(&disc_path[index]);
-		snprintf(tmp, 128, "%2d: %s", index, path);
+		int directory = 0;
+		char *path = sel_mode == BIN_FOLDER_MODE ? bin_catalog_name(index, &directory)
+		                                       : path_str + LE32(&disc_path[index]);
+		if (!path) {
+			total_disc = total_page = sel_menu.num = 0;
+			break;
+		}
+		snprintf(tmp, sizeof(tmp), directory ? "%2d: /%s" : "%2d: %s", index, path);
 		tmp[127] = 0;
 		if(sel_mode==0){
 			// xxxx/xxxx.cue
 			char *p = strchr(tmp, '/');
 			if(p) *p = 0;
-		}else{
+		}else if (!directory){
 			// xxxx@xxxx
 			char *p = strchr(tmp, '@');
 			if(p) *p = 0;
@@ -941,6 +964,7 @@ static void fill_selmenu(void)
 		add_menu_item(&sel_menu, tmp);
 	}
 
+	if (!sel_menu.num) sel_menu.items[0][0] = 0;
 	int disp_page = (total_page)? page+1 : 0;
 	if(sel_mode==0){
 		snprintf(sel_menu.title, sizeof(sel_menu.title), TT("选择游戏(%d/%d)"), disp_page, total_page);
@@ -966,28 +990,16 @@ static void page_update(int up)
 	menu->num = 0;
 	fill_selmenu();
 
-	menu->current = (up)? menu->num-1: 0;
+	menu->current = (up && menu->num)? menu->num-1: 0;
 	select_notify(menu->current);
 	draw_menu_frame(menu);
 }
 
 
-int run_binary(int index, int run)
+static int load_binary_file(char *path, char *name, int run)
 {
-    char *catalog = (char*)IMGINFO_ADDR;
-    u32 count = LE32(catalog);
-    if (count > (0x2800-4)/4 || index < 0 || (u32)index >= count) return -1;
-    u32 name_offset = LE32(catalog+4+index*4);
-    if (name_offset < 0x2800 || name_offset >= 0x23000) return -1;
-    char *name = catalog + name_offset;
-    char bin_name[128];
-    unsigned length = 0;
-    while (length < 0x23000-name_offset && length <= sizeof(bin_name)-sizeof("/SAROO/BIN/") && name[length])
-        ++length;
-    if (length == 0x23000-name_offset || length > sizeof(bin_name)-sizeof("/SAROO/BIN/")) return -1;
-    sprintf(bin_name, "/SAROO/BIN/%s", name);
     u32 load_addr = 0x06004000;
-    char *p = strchr(bin_name, '@');
+    char *p = strchr(name, '@');
     if (p) {
         ++p;
         if (p[0]=='0' && (p[1]=='x' || p[1]=='X')) p += 2;
@@ -1006,7 +1018,7 @@ int run_binary(int index, int run)
     }
     u32 capacity = file_capacity(load_addr, 1);
     if (!capacity || (run && (load_addr & 1))) return -1;
-    int retv = read_file_bounded(bin_name, 0, 0, (void*)load_addr, capacity);
+    int retv = read_file_bounded(path, 0, 0, (void*)load_addr, capacity);
     if (retv < 0) return retv;
     if (run) {
         int offset = 0;
@@ -1019,6 +1031,23 @@ int run_binary(int index, int run)
         pad_resume();
     } else printk("Load to %08x ...\n", load_addr);
     return 0;
+}
+
+int run_binary(int index, int run)
+{
+    char *catalog = (char*)IMGINFO_ADDR;
+    u32 count = LE32(catalog);
+    if (count > (0x2800-4)/4 || index < 0 || (u32)index >= count) return -1;
+    u32 name_offset = LE32(catalog+4+index*4);
+    if (name_offset < 0x2800 || name_offset >= 0x23000) return -1;
+    char *name = catalog + name_offset;
+    char bin_name[128];
+    unsigned length = 0;
+    while (length < 0x23000-name_offset && length <= sizeof(bin_name)-sizeof("/SAROO/BIN/") && name[length])
+        ++length;
+    if (length == 0x23000-name_offset || length > sizeof(bin_name)-sizeof("/SAROO/BIN/")) return -1;
+    sprintf(bin_name, "/SAROO/BIN/%s", name);
+    return load_binary_file(bin_name, name, run);
 }
 
 
@@ -1161,8 +1190,214 @@ void select_game(void)
 /**********************************************************/
 
 
+enum { BIN_IDLE, BIN_WAIT, BIN_LISTING, BIN_RESTORING, BIN_FAULT };
+enum { BIN_CURRENT = -1, BIN_PARENT = -2 };
+
+typedef struct {
+    int phase, target, error;
+    u32 next_poll, slow_at;
+    u8 listed, leave, slow;
+} BIN_BROWSER;
+
+static char bin_path[BIN_PATH_CAPACITY];
+
+static char *bin_current_path(void)
+{
+    if (!bin_path[0]) memcpy(bin_path, BIN_ROOT, sizeof(BIN_ROOT));
+    return bin_path;
+}
+
+static int bin_append(char *path, char *name)
+{
+    unsigned base = strlen(path), length = strlen(name);
+    if (!length || name[0] == '.' || name[length - 1] == '.' || name[length - 1] == ' ' ||
+        base >= BIN_PATH_CAPACITY || length >= BIN_PATH_CAPACITY - base - 1) return -1;
+    for (unsigned i = 0; i < length; ++i) {
+        unsigned c = (unsigned char)name[i];
+        if (c < ' ' || strchr("/\\:*?\"<>|\x7f", c)) return -1;
+    }
+    path[base] = '/';
+    memcpy(path + base + 1, name, length + 1);
+    return 0;
+}
+
+static int bin_prepare_path(int target)
+{
+    char *request = (char *)(TMPBUFF_ADDR + 0x10);
+    char *current = bin_current_path();
+    unsigned length = strlen(current);
+    memcpy(request, current, length + 1);
+    if (target == BIN_PARENT) {
+        if (length <= sizeof(BIN_ROOT) - 1) return -1;
+        while (request[--length] != '/');
+        request[length] = 0;
+    } else if (target >= 0) {
+        int directory;
+        char *name = bin_catalog_name(target, &directory);
+        if (!name || !directory) return -1;
+        return bin_append(request, name);
+    }
+    return 0;
+}
+
+static void bin_draw(unsigned count)
+{
+    total_disc = count <= (0x2800u - 4) / 4 ? count : 0;
+    total_page = (total_disc + MENU_ITEMS - 1) / MENU_ITEMS;
+    page = sel_menu.num = sel_menu.current = 0;
+    fill_selmenu();
+    draw_menu_frame(&sel_menu);
+}
+
+static void bin_schedule(BIN_BROWSER *browser, int target)
+{
+    browser->target = target;
+    browser->phase = BIN_WAIT;
+    browser->slow = 0;
+    browser->next_poll = get_timer();
+    browser->slow_at = browser->next_poll + MS2TICK(5000);
+    bin_draw(0);
+    menu_status(&sel_menu, TT("加载文件中......"));
+}
+
+/* Return to the main menu only after the request and any catalog restore retire. */
+static int bin_step(BIN_BROWSER *browser)
+{
+    int phase = browser->phase;
+    if (phase == BIN_IDLE || phase == BIN_FAULT) return 0;
+    u32 now = get_timer();
+    if (!timer_reached(now, browser->next_poll)) return 0;
+    browser->next_poll = now + MS2TICK(1);
+    if (!browser->slow && timer_reached(now, browser->slow_at)) {
+        browser->slow = 1;
+        menu_status(&sel_menu, "Still reading... B/C: go back");
+    }
+    if (SS_CMD) return 0;
+    __asm__ volatile ("" ::: "memory");
+
+    if (phase == BIN_WAIT) {
+        if (browser->leave) {
+            if (!browser->listed) return 1;
+            SS_ARG = 0;
+            SS_CMD = SSCMD_LISTDISC | SSCMD_SAVE_ACK;
+            browser->phase = BIN_RESTORING;
+        } else if (bin_prepare_path(browser->target)) {
+            browser->phase = BIN_IDLE;
+            bin_draw(LE32((void *)IMGINFO_ADDR));
+            menu_error(&sel_menu, TT("文件加载失败! %d"), -1);
+        } else {
+            SS_ARG = 0;
+            __asm__ volatile ("" ::: "memory");
+            SS_CMD = SSCMD_BINDIR;
+            browser->listed = 1;
+            browser->phase = BIN_LISTING;
+        }
+        return 0;
+    }
+
+    int wire = (signed short)SS_ARG;
+    if (wire != SSCMD_SAVE_ACK && !(wire >= -19 && wire < 0)) {
+        browser->phase = BIN_FAULT;
+        menu_status(&sel_menu, "MCU response lost. Reset Saturn.");
+        return 0;
+    }
+    int result = wire == SSCMD_SAVE_ACK ? 0 : wire;
+    u32 count = LE32((void *)IMGINFO_ADDR);
+    if (phase == BIN_LISTING && count > (0x2800u - 4) / 4 && !result) result = -1;
+    if (phase == BIN_RESTORING) {
+        if (!result) return 1;
+        browser->leave = 0;
+    } else if (browser->leave) {
+        bin_schedule(browser, BIN_CURRENT);
+        return 0;
+    } else if (result && browser->target != BIN_CURRENT) {
+        browser->error = result;
+        bin_schedule(browser, BIN_CURRENT);
+        return 0;
+    } else if (!result) {
+        char *request = (char *)(TMPBUFF_ADDR + 0x10);
+        unsigned length = 0;
+        while (length < BIN_PATH_CAPACITY && request[length]) ++length;
+        if (length < BIN_PATH_CAPACITY) memcpy(bin_path, request, length + 1);
+        else result = -1;
+    }
+    browser->phase = BIN_IDLE;
+    bin_draw(result ? 0 : count);
+    int error = result ? result : browser->error;
+    if (error) menu_error(&sel_menu, TT("文件加载失败! %d"), error);
+    return 0;
+}
+
+static void bin_input(BIN_BROWSER *browser, int ctrl)
+{
+    int back = BUTTON_DOWN(ctrl, PAD_B) || BUTTON_DOWN(ctrl, PAD_C);
+    if (browser->phase != BIN_IDLE) {
+        if (browser->phase != BIN_FAULT && back && !browser->leave) {
+            browser->leave = 1;
+            menu_status(&sel_menu, "Returning when reading finishes...");
+        }
+        return;
+    }
+
+    browser->error = 0;
+    if (back) {
+        browser->leave = BUTTON_DOWN(ctrl, PAD_B) ||
+                         strlen(bin_current_path()) == sizeof(BIN_ROOT) - 1;
+        bin_schedule(browser, browser->leave ? BIN_CURRENT : BIN_PARENT);
+    } else if (BUTTON_DOWN(ctrl, PAD_A) || BUTTON_DOWN(ctrl, PAD_Z)) {
+        if (!sel_menu.num) {
+            bin_schedule(browser, BIN_CURRENT);
+            return;
+        }
+        int index = page * MENU_ITEMS + sel_menu.current, directory;
+        char *name = bin_catalog_name(index, &directory);
+        if (!name) {
+            menu_error(&sel_menu, TT("文件加载失败! %d"), -1);
+        } else if (directory) {
+            bin_schedule(browser, index);
+        } else {
+            char path[BIN_PATH_CAPACITY];
+            char *current = bin_current_path();
+            memcpy(path, current, strlen(current) + 1);
+            if (bin_append(path, name)) {
+                menu_error(&sel_menu, TT("文件加载失败! %d"), -1);
+                return;
+            }
+            int physical = !BUTTON_DOWN(ctrl, PAD_A) && BUTTON_DOWN(ctrl, PAD_Z);
+            if (menu_cd_power(&sel_menu, physical, 0)) return;
+            menu_status(&sel_menu, TT("加载文件中......"));
+            int result = load_binary_file(path, name, 1);
+            if (result) menu_error(&sel_menu, TT("文件加载失败! %d"), result);
+        }
+    } else if (sel_menu.num) {
+        sel_handle(ctrl);
+    }
+}
+
+static void bin_browser(void)
+{
+    BIN_BROWSER browser = {0};
+    sel_mode = BIN_FOLDER_MODE;
+    memset(&sel_menu, 0, sizeof(sel_menu));
+    sel_menu.version = bin_current_path();
+    bin_schedule(&browser, BIN_CURRENT);
+    while (!bin_step(&browser)) {
+        u32 ctrl = conio_getc();
+        if (ctrl) bin_input(&browser, ctrl);
+        else {
+            menu_timer(&sel_menu);
+            gif_timer();
+        }
+    }
+    sel_mode = 0;
+}
+
 void select_bins(void)
 {
+	if (menu_ack && LE32((void *)(SYSINFO_ADDR + 0x34)) == BIN_DIRECTORY_VERSION) {
+		bin_browser();
+		return;
+	}
 	if (menu_command_wait()) return;
 	SS_CMD = SSCMD_LISTBINS;
 	while(SS_CMD);

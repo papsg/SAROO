@@ -199,6 +199,8 @@ class MCUSaveTest(unittest.TestCase):
             path = Path(os.environ.get('SAROO_MENU_BINARY_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
             begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
+            if b'static int load_binary_file(' in data:
+                begin = data.index(b'static int load_binary_file(')
             binary = data[begin:end]
             if b'static u32 file_capacity(' in data:
                 helper = data.index(b'static u32 file_capacity(')

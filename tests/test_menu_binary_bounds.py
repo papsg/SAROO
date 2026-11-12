@@ -19,6 +19,8 @@ class MenuBinaryBoundsTests(unittest.TestCase):
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
         data = source.read_bytes()
         begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(',begin)
+        if b'static int load_binary_file(' in data:
+            begin = data.index(b'static int load_binary_file(')
         start=data.index(b'u32 BE32(')
         helpers=data[start:data.index(b'/**********************************************************/',start)]
         if b'static u32 file_capacity(' in data:

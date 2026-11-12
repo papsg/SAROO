@@ -35,6 +35,7 @@ check-menu-safety:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_cd_boot_handoff.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_vdp1_order.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_launch_errors.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_bin_browser.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_rom.py -v
 
 .PHONY: check-gif
