@@ -127,6 +127,28 @@ extern const char* VolumeStr[FF_VOLUMES];	/* User defied volume ID */
 
 
 
+
+#if FF_FS_EXFAT && !FF_FS_READONLY
+/* Physical entry slots remain valid while the volume grant is held. */
+typedef struct {
+    LBA_t sector[3]; /* At most 19 entries span three minimum sectors. */
+    WORD offset;
+    BYTE count, done;
+} FF_DIR_RETIRE;
+
+/* One extension may remain owned after a failed public operation. */
+typedef struct {
+    DWORD cluster, tail;
+    LBA_t parent_sector[2];
+    WORD parent_offset;
+    BYTE phase;
+    union {
+        BYTE parent_bytes[64];
+        FF_DIR_RETIRE retire;
+    };
+} FF_DIR_PENDING;
+#endif
+
 /* Filesystem object structure (FATFS) */
 
 typedef struct {
@@ -171,6 +193,9 @@ typedef struct {
 #endif
 	LBA_t	winsect;		/* Current sector appearing in the win[] */
 	BYTE	win[FF_MAX_SS];	/* Disk access window for Directory, FAT (and file data at tiny cfg) */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+    FF_DIR_PENDING dir_pending;
+#endif
 } FATFS;
 
 

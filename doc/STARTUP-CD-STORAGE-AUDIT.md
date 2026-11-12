@@ -73,3 +73,50 @@ under the modeled mask. Linked Arm code keeps the pack copy and HIRQ
 write outside the mask. The GNU MCU App links 63,800 load bytes, with
 1,736 bytes of ITCM space and unchanged static DTCM. The host model
 does not qualify scheduler latency or playback on the Saturn.
+
+## Recover directory updates after storage errors
+
+Adapted from paps-g `18ed08a6` (AUD-MCU-023/024/025/026) and its
+`b483124c` directory initialization prerequisite. The original code
+can link an uncleared directory cluster, leave an exFAT directory
+length behind its chain, or leave part of a new name visible after
+an I/O error. The port initializes a free directory cluster before
+allocation and finishes each exFAT extension before starting another.
+
+One record per mounted filesystem retains unfinished allocation,
+parent header writes, or name cleanup. New names record each affected
+slot before modifying it. Cleanup clears the InUse bit so later
+entries in reused space stay visible. mkdir reserves the name before
+allocating a child and releases a failed child's cluster after clearing
+its name. Rename either retires an incomplete destination or finishes
+retiring the old name after synchronizing the destination; it retains
+the file data. Pending work retries through the existing filesystem
+owner. A failed recovery leaves the mount registered. The port keeps
+the existing read-only seek and retryable file synchronization rules.
+
+[Microsoft exFAT §6.2.1, EntryType](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#621-entrytype-field)
+distinguishes unused entries from the end-of-directory marker.
+[§7.1, Allocation Bitmap](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#71-allocation-bitmap-directory-entry)
+and [§7.6, Stream Extension](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#76-stream-extension-directory-entry)
+describe allocation state and directory extent metadata.
+[§8.1, Recommended Write Ordering](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#81-recommended-write-ordering)
+gives the metadata ordering context. The recovery record lives in RAM.
+The [FatFs f_mount contract](https://elm-chan.org/fsw/ff/doc/mount.html)
+defines the registered filesystem work area.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+```
+
+The exact parent fails 78 of its 214 directory cases, including the
+one-sector cluster control for a long name that needs two extensions.
+The port passes all 284 directory cases in both runs. It sweeps read,
+partial write and sync failures, checks FAT12/16/32 directory clears,
+and verifies allocation, live entries, data and retry across a
+remount. It also models an unavailable volume with a pending update.
+All 30 filesystem and Unicode methods pass in each run. The GNU MCU
+App links 64,808 load bytes, with 728 bytes of ITCM space and 59,456
+static DTCM bytes. All 13 enabled BootLoader C units compile. Recovery
+requires the same mounted medium and power to stay on; the tests do
+not qualify power-loss recovery, card replacement, or physical SD I/O.

@@ -1517,9 +1517,12 @@ static FRESULT remove_chain (	/* FR_OK(0):succeeded, !=0:error */
 /* FAT handling - Stretch a chain or Create a new chain                  */
 /*-----------------------------------------------------------------------*/
 
+static FRESULT dir_clear (FATFS* fs, DWORD clst);
+
 static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:Disk error, >=2:New cluster# */
 	FFOBJID* obj,		/* Corresponding object */
-	DWORD clst			/* Cluster# to stretch, 0:Create a new chain */
+	DWORD clst,			/* Cluster# to stretch, 0:Create a new chain */
+	int clear			/* Initialize a new directory cluster before allocation */
 )
 {
 	DWORD cs, ncl, scl;
@@ -1544,6 +1547,8 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 	if (fs->fs_type == FS_EXFAT) {	/* On the exFAT volume */
 		ncl = find_bitmap(fs, scl, 1);				/* Find a free cluster */
 		if (ncl == 0 || ncl == 0xFFFFFFFF) return ncl;	/* No free cluster or hard error? */
+		/* The volume owner excludes allocation until initialization finishes. */
+		if (clear && dir_clear(fs, ncl) != FR_OK) return 0xFFFFFFFF;
 		res = change_bitmap(fs, ncl, 1, 1);			/* Mark the cluster 'in use' */
 		if (res == FR_INT_ERR) return 1;
 		if (res == FR_DISK_ERR) return 0xFFFFFFFF;
@@ -1593,6 +1598,8 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 				if (ncl == scl) return 0;		/* No free cluster found? */
 			}
 		}
+		/* The volume owner excludes allocation until initialization finishes. */
+		if (clear && dir_clear(fs, ncl) != FR_OK) return 0xFFFFFFFF;
 		res = put_fat(fs, ncl, 0xFFFFFFFF);		/* Mark the new cluster 'EOC' */
 		if (res == FR_OK && clst != 0) {
 			res = put_fat(fs, clst, ncl);		/* Link it from the previous one if needed */
@@ -1769,12 +1776,10 @@ static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DEN
 					if (!stretch) {								/* If no stretch, report EOT */
 						dp->sect = 0; return FR_NO_FILE;
 					}
-					clst = create_chain(&dp->obj, dp->clust);	/* Allocate a cluster */
+					clst = create_chain(&dp->obj, dp->clust, 1);	/* Allocate a cluster */
 					if (clst == 0) return FR_DENIED;			/* No free cluster */
 					if (clst == 1) return FR_INT_ERR;			/* Internal error */
 					if (clst == 0xFFFFFFFF) return FR_DISK_ERR;	/* Disk error */
-					if (dir_clear(fs, clst) != FR_OK) return FR_DISK_ERR;	/* Clean up the stretched table */
-					if (FF_FS_EXFAT) dp->obj.stat |= 4;			/* exFAT: The directory has been stretched */
 #else
 					if (!stretch) dp->sect = 0;					/* (this line is to suppress compiler warning) */
 					dp->sect = 0; return FR_NO_FILE;			/* Report EOT */
@@ -1798,6 +1803,10 @@ static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DEN
 /*-----------------------------------------------------------------------*/
 /* Directory handling - Reserve a block of directory entries             */
 /*-----------------------------------------------------------------------*/
+
+#if FF_FS_EXFAT
+static __attribute__((noinline)) FRESULT dir_extend_exfat(DIR* dp);
+#endif
 
 static FRESULT dir_alloc (	/* FR_OK(0):succeeded, !=0:error */
 	DIR* dp,				/* Pointer to the directory object */
@@ -1824,7 +1833,12 @@ static FRESULT dir_alloc (	/* FR_OK(0):succeeded, !=0:error */
 			} else {
 				n = 0;				/* Not a free entry, restart to search */
 			}
-			res = dir_next(dp, 1);	/* Next entry with table stretch enabled */
+#if FF_FS_EXFAT
+            res = dir_next(dp, fs->fs_type != FS_EXFAT);
+            if (res == FR_NO_FILE && fs->fs_type == FS_EXFAT) res = dir_extend_exfat(dp);
+#else
+            res = dir_next(dp, 1);
+#endif
 		} while (res == FR_OK);
 	}
 
@@ -2221,8 +2235,15 @@ static FRESULT load_obj_xdir (
 /* exFAT: Store the directory entry block */
 /*----------------------------------------*/
 
+enum {
+    DIR_ALLOCATE = 1, DIR_FLUSH_ALLOCATION, DIR_LINK_TAIL,
+    DIR_PARENT_FIRST, DIR_PARENT_STREAM, DIR_FINISH_EXTENSION,
+    DIR_RETIRE_ENTRIES, DIR_SYNC_RETIREMENT, DIR_RELEASE_CHILD,
+    DIR_FINISH_RELEASE
+};
+
 static FRESULT store_xdir (
-	DIR* dp				/* Pointer to the directory object */
+	DIR* dp, DWORD fresh				/* Pointer to the directory object */
 )
 {
 	FRESULT res;
@@ -2233,17 +2254,42 @@ static FRESULT store_xdir (
 	st_word(dirb + XDIR_SetSum, xdir_sum(dirb));
 	nent = dirb[XDIR_NumSec] + 1;
 
+    /* fresh: 0 updates an existing entry, 1 publishes a new name without
+     * owning data, >=2 owns the single newly allocated mkdir cluster.
+     * Keep that cluster until entry retirement has been synchronized. */
+    /* Keep an obligation for each slot before publishing its active entry.
+     * Later untouched slots remain free and need no retirement. */
+    FATFS* fs = dp->obj.fs;
+    FF_DIR_PENDING* pending = &fs->dir_pending;
+    if (fresh) {
+        if (pending->phase || nent < 3 || nent > 19) return FR_INT_ERR;
+        pending->cluster = fresh == 1 ? 0 : fresh;
+        pending->retire.offset = dp->blk_ofs % SS(fs);
+        pending->retire.count = pending->retire.done = 0;
+        pending->phase = DIR_RETIRE_ENTRIES;
+    }
+
 	/* Store the directory entry block to the directory */
 	res = dir_sdi(dp, dp->blk_ofs);
 	while (res == FR_OK) {
 		res = move_window(dp->obj.fs, dp->sect);
 		if (res != FR_OK) break;
+        if (fresh) {
+            UINT i = pending->retire.count;
+            if (i == 0 || dp->dptr % SS(fs) == 0)
+                pending->retire.sector[(pending->retire.offset + i * SZDIRE) / SS(fs)] = dp->sect;
+            pending->retire.count++;
+        }
 		memcpy(dp->dir, dirb, SZDIRE);
 		dp->obj.fs->wflag = 1;
 		if (--nent == 0) break;
 		dirb += SZDIRE;
 		res = dir_next(dp, 0);
 	}
+    if (fresh && res == FR_OK) {
+        res = sync_fs(dp->obj.fs);
+        if (res == FR_OK) pending->phase = 0;
+    }
 	return (res == FR_OK || res == FR_DISK_ERR) ? res : FR_INT_ERR;
 }
 
@@ -2252,6 +2298,160 @@ static FRESULT store_xdir (
 /*-------------------------------------------*/
 /* exFAT: Create a new directory entry block */
 /*-------------------------------------------*/
+
+
+/* Called by the existing filesystem owner. Uses no caller-owned name buffers.
+ * Failed phases retain their intended bytes and the old mounted volume. */
+static FRESULT dir_recover(FATFS* fs)
+{
+    FF_DIR_PENDING* pending = &fs->dir_pending;
+    FRESULT res;
+    if (!pending->phase) return FR_OK;
+    DSTATUS status = disk_status(fs->pdrv);
+    if (status & STA_NOINIT) return FR_NOT_READY;
+    if (status & STA_PROTECT) return FR_WRITE_PROTECTED;
+    for (;;) {
+        switch (pending->phase) {
+        case DIR_ALLOCATE:
+            res = change_bitmap(fs, pending->cluster, 1, 1);
+            if (res != FR_OK) return res;
+            fs->last_clst = pending->cluster;
+            if (fs->free_clst <= fs->n_fatent - 2) fs->free_clst--;
+            fs->fsi_flag |= 1;
+            pending->phase = DIR_FLUSH_ALLOCATION;
+            break;
+        case DIR_FLUSH_ALLOCATION:
+            res = sync_window(fs);
+            if (res != FR_OK) return res;
+            pending->phase = DIR_LINK_TAIL;
+            break;
+        case DIR_LINK_TAIL:
+            if (pending->tail) {
+                res = put_fat(fs, pending->tail, pending->cluster);
+                if (res != FR_OK) return res;
+            }
+            pending->phase = DIR_PARENT_FIRST;
+            break;
+        case DIR_PARENT_FIRST:
+        case DIR_PARENT_STREAM:
+            if (pending->parent_sector[0]) {
+                unsigned slot = pending->phase - DIR_PARENT_FIRST;
+                res = move_window(fs, pending->parent_sector[slot]);
+                if (res != FR_OK) return res;
+                memcpy(fs->win + (pending->parent_offset + slot*SZDIRE) % SS(fs),
+                       pending->parent_bytes + slot*SZDIRE, SZDIRE);
+                fs->wflag = 1;
+            }
+            pending->phase++;
+            break;
+        case DIR_RETIRE_ENTRIES:
+            while (pending->retire.done < pending->retire.count) {
+                UINT offset = pending->retire.offset + pending->retire.done * SZDIRE;
+                res = move_window(fs, pending->retire.sector[offset / SS(fs)]);
+                if (res != FR_OK) return res;
+                /* Retire, never insert an end marker that could hide a later
+                 * live entry in a reused hole. Dirty-window ownership persists. */
+                fs->win[offset % SS(fs)] &= 0x7F;
+                fs->wflag = 1;
+                pending->retire.done++;
+            }
+            pending->phase = DIR_SYNC_RETIREMENT;
+            break;
+        case DIR_SYNC_RETIREMENT:
+            if (pending->cluster) {
+                /* Synchronize retired names before freeing their data. */
+                res = sync_fs(fs);
+                if (res != FR_OK) return res;
+                pending->phase = DIR_RELEASE_CHILD;
+                break;
+            }
+            /* A fresh empty file or rename destination owns no new data. */
+            /* fall through */
+        case DIR_FINISH_EXTENSION:
+        case DIR_FINISH_RELEASE:
+            res = sync_fs(fs);
+            if (res != FR_OK) return res;
+            pending->phase = 0;
+            return FR_OK;
+        case DIR_RELEASE_CHILD:
+            res = change_bitmap(fs, pending->cluster, 1, 0);
+            if (res != FR_OK) return res;
+            if (fs->free_clst < fs->n_fatent - 2) fs->free_clst++;
+            fs->fsi_flag |= 1;
+            pending->phase = DIR_FINISH_RELEASE;
+            break;
+        default:
+            return FR_INT_ERR;
+        }
+    }
+}
+
+/* Allocation-only path; ordinary directory advancement does not call it. */
+static __attribute__((noinline)) FRESULT dir_extend_exfat(DIR* dp)
+{
+    FATFS* fs = dp->obj.fs;
+    FF_DIR_PENDING* pending = &fs->dir_pending;
+    DWORD csz = (DWORD)fs->csize * SS(fs), next, cluster;
+    BYTE state = dp->obj.stat;
+    FRESULT res;
+    DIR parent;
+
+    if (dp->dptr + SZDIRE >= MAX_DIR_EX) return FR_DENIED;
+    if (pending->phase || (state != 0 && state != 2)) return FR_INT_ERR;
+    if (!fs->free_clst) return FR_DENIED;
+    next = find_bitmap(fs, dp->clust, 1);
+    if (!next) return FR_DENIED;
+    if (next == 0xFFFFFFFF) return FR_DISK_ERR;
+    BYTE new_state = state == 2 && next == dp->clust + 1 ? 2 : 0;
+
+    pending->parent_sector[0] = 0;
+    if (dp->obj.sclust) {
+        if (dp->obj.objsize > MAX_DIR_EX - csz || (dp->obj.objsize & (csz - 1))) return FR_INT_ERR;
+        res = load_obj_xdir(&parent, &dp->obj);
+        if (res != FR_OK) return res;
+        st_qword(fs->dirbuf + XDIR_FileSize, dp->obj.objsize + csz);
+        st_qword(fs->dirbuf + XDIR_ValidFileSize, dp->obj.objsize + csz);
+        fs->dirbuf[XDIR_GenFlags] = new_state | 1;
+        st_word(fs->dirbuf + XDIR_SetSum, xdir_sum(fs->dirbuf));
+        memcpy(pending->parent_bytes, fs->dirbuf, sizeof pending->parent_bytes);
+        res = dir_sdi(&parent, parent.blk_ofs);
+        if (res != FR_OK) return res;
+        pending->parent_sector[0] = parent.sect;
+        pending->parent_offset = parent.dptr % SS(fs);
+        res = dir_next(&parent, 0);
+        if (res != FR_OK) return res;
+        pending->parent_sector[1] = parent.sect;
+    }
+    res = dir_clear(fs, next);
+    if (res != FR_OK) return res;
+    if (!new_state) {
+        /* The free cluster's FAT word is not yet a live allocation. */
+        res = put_fat(fs, next, 0xFFFFFFFF);
+        if (res != FR_OK) return res;
+        if (state == 2) {
+            /* The old contiguous parent ignores these prepared FAT words. */
+            for (cluster = dp->obj.sclust; cluster < dp->clust; cluster++) {
+                res = put_fat(fs, cluster, cluster + 1);
+                if (res != FR_OK) return res;
+            }
+            res = put_fat(fs, dp->clust, next);
+            if (res != FR_OK) return res;
+        }
+    }
+    pending->cluster = next;
+    pending->tail = state == 0 ? dp->clust : 0;
+    pending->phase = DIR_ALLOCATE;
+    res = dir_recover(fs);
+    if (res != FR_OK) return res;
+    dp->obj.stat = new_state;
+    dp->obj.n_frag = 0;
+    if (dp->obj.sclust) dp->obj.objsize += csz;
+    dp->clust = next;
+    dp->sect = clst2sect(fs, next);
+    dp->dptr += SZDIRE;
+    dp->dir = fs->win + dp->dptr % SS(fs);
+    return FR_OK;
+}
 
 static void create_xdir (
 	BYTE* dirb,			/* Pointer to the directory entry block buffer */
@@ -2479,25 +2679,7 @@ static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too
 		if (res != FR_OK) return res;
 		dp->blk_ofs = dp->dptr - SZDIRE * (n_ent - 1);	/* Set the allocated entry block offset */
 
-		if (dp->obj.stat & 4) {			/* Has the directory been stretched by new allocation? */
-			dp->obj.stat &= ~4;
-			res = fill_first_frag(&dp->obj);	/* Fill the first fragment on the FAT if needed */
-			if (res != FR_OK) return res;
-			res = fill_last_frag(&dp->obj, dp->clust, 0xFFFFFFFF);	/* Fill the last fragment on the FAT if needed */
-			if (res != FR_OK) return res;
-			if (dp->obj.sclust != 0) {		/* Is it a sub-directory? */
-				DIR dj;
 
-				res = load_obj_xdir(&dj, &dp->obj);	/* Load the object status */
-				if (res != FR_OK) return res;
-				dp->obj.objsize += (DWORD)fs->csize * SS(fs);		/* Increase the directory size by cluster size */
-				st_qword(fs->dirbuf + XDIR_FileSize, dp->obj.objsize);
-				st_qword(fs->dirbuf + XDIR_ValidFileSize, dp->obj.objsize);
-				fs->dirbuf[XDIR_GenFlags] = dp->obj.stat | 1;		/* Update the allocation status */
-				res = store_xdir(&dj);				/* Store the object status */
-				if (res != FR_OK) return res;
-			}
-		}
 
 		create_xdir(fs->dirbuf, fs->lfnbuf);	/* Create on-memory directory block to be written later */
 		return FR_OK;
@@ -3413,14 +3595,21 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 			if (!FF_FS_READONLY && mode && (stat & STA_PROTECT)) {	/* Check write protection if needed */
 				return FR_WRITE_PROTECTED;
 			}
-			return FR_OK;				/* The filesystem object is already valid */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+            return dir_recover(fs);
+#else
+            return FR_OK;
+#endif
 		}
 	}
 
 	/* The filesystem object is not valid. */
 	/* Following code attempts to mount the volume. (find an FAT volume, analyze the BPB and initialize the filesystem object) */
 
-	fs->fs_type = 0;					/* Invalidate the filesystem object */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+    if (fs->dir_pending.phase) return FR_NOT_READY;
+#endif
+    fs->fs_type = 0; /* Invalidate the filesystem object */
 	stat = disk_initialize(fs->pdrv);	/* Initialize the volume hosting physical drive */
 	if (stat & STA_NOINIT) { 			/* Check if the initialization succeeded */
 		return FR_NOT_READY;			/* Failed to initialize due to no medium or hard error */
@@ -3636,20 +3825,29 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 #if FF_FS_REENTRANT
 		if (lock_volume(obj->fs, 0)) {	/* Take a grant to access the volume */
 			if (!(disk_status(obj->fs->pdrv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
-				res = FR_OK;
-			} else {
-				unlock_volume(obj->fs, FR_OK);	/* Invalidated volume, abort to access */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+                res = dir_recover(obj->fs);
+                if (res != FR_OK) unlock_volume(obj->fs, FR_OK);
+#else
+                res = FR_OK;
+#endif
+            } else {
+                unlock_volume(obj->fs, FR_OK);	/* Invalidated volume, abort to access */
 			}
 		} else {	/* Could not take */
 			res = FR_TIMEOUT;
 		}
 #else
 		if (!(disk_status(obj->fs->pdrv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
-			res = FR_OK;
-		}
+#if FF_FS_EXFAT && !FF_FS_READONLY
+            res = dir_recover(obj->fs);
+#else
+            res = FR_OK;
 #endif
-	}
-	*rfs = (res == FR_OK) ? obj->fs : 0;	/* Return corresponding filesystem object if it is valid */
+        }
+#endif
+    }
+    *rfs = (res == FR_OK) ? obj->fs : 0;	/* Return corresponding filesystem object if it is valid */
 	return res;
 }
 
@@ -3685,7 +3883,19 @@ FRESULT f_mount (
 	if (vol < 0) return FR_INVALID_DRIVE;
 	cfs = FatFs[vol];			/* Pointer to the filesystem object of the volume */
 
-	if (cfs) {					/* Unregister current filesystem object if regsitered */
+    if (cfs) { /* Unregister only after any pending extension is complete. */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+        if (cfs->dir_pending.phase) {
+#if FF_FS_REENTRANT
+            if (!lock_volume(cfs, 1)) return FR_TIMEOUT;
+#endif
+            res = dir_recover(cfs);
+#if FF_FS_REENTRANT
+            unlock_volume(cfs, FR_OK);
+#endif
+            if (res != FR_OK) return res;
+        }
+#endif
 		FatFs[vol] = 0;
 #if FF_FS_LOCK
 		clear_share(cfs);
@@ -3711,7 +3921,10 @@ FRESULT f_mount (
 		}
 #endif
 #endif
-		fs->fs_type = 0;		/* Invalidate the new filesystem object */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+        fs->dir_pending.phase = 0;
+#endif
+        fs->fs_type = 0; /* Invalidate the new filesystem object */
 		FatFs[vol] = fs;		/* Register new fs object */
 	}
 
@@ -3757,6 +3970,9 @@ FRESULT f_open (
 	if (!fp) return FR_INVALID_OBJECT;
 
 	/* Get logical drive number */
+#if FF_FS_EXFAT && !FF_FS_READONLY
+    BYTE fresh_entry = 0;
+#endif
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
 	res = mount_volume(&path, &fs, mode);
 	if (res == FR_OK) {
@@ -3784,6 +4000,9 @@ FRESULT f_open (
 					res = dir_register(&dj);
 #endif
 				}
+#if FF_FS_EXFAT
+                fresh_entry = res == FR_OK;
+#endif
 				mode |= FA_CREATE_ALWAYS;		/* File is created */
 			}
 			else {								/* Any object with the same name is already existing */
@@ -3805,7 +4024,7 @@ FRESULT f_open (
 					fs->dirbuf[XDIR_Attr] = AM_ARC;
 					st_dword(fs->dirbuf + XDIR_CrtTime, GET_FATTIME());
 					fs->dirbuf[XDIR_GenFlags] = 1;
-					res = store_xdir(&dj);
+					res = store_xdir(&dj, fresh_entry);
 					if (res == FR_OK && fp->obj.sclust != 0) {	/* Remove the cluster chain if exist */
 						res = remove_chain(&fp->obj, fp->obj.sclust, 0);
 						fs->last_clst = fp->obj.sclust - 1;		/* Reuse the cluster hole */
@@ -4070,7 +4289,7 @@ FRESULT f_write (
 				if (fp->fptr == 0) {		/* On the top of the file? */
 					clst = fp->obj.sclust;	/* Follow from the origin */
 					if (clst == 0) {		/* If no cluster is allocated, */
-						clst = create_chain(&fp->obj, 0);	/* create a new cluster chain */
+						clst = create_chain(&fp->obj, 0, 0);	/* create a new cluster chain */
 					}
 				} else {					/* On the middle or end of the file */
 #if FF_USE_FASTSEEK
@@ -4079,7 +4298,7 @@ FRESULT f_write (
 					} else
 #endif
 					{
-						clst = create_chain(&fp->obj, fp->clust);	/* Follow or stretch cluster chain on the FAT */
+						clst = create_chain(&fp->obj, fp->clust, 0);	/* Follow or stretch cluster chain on the FAT */
 					}
 				}
 				if (clst == 0) break;		/* Could not allocate a new cluster (disk full) */
@@ -4199,7 +4418,7 @@ FRESULT f_sync (
 						st_dword(fs->dirbuf + XDIR_ModTime, tm);		/* Update modified time */
 						fs->dirbuf[XDIR_ModTime10] = 0;
 						st_dword(fs->dirbuf + XDIR_AccTime, 0);
-						res = store_xdir(&dj);	/* Restore it to the directory */
+						res = store_xdir(&dj, 0);	/* Restore it to the directory */
 						if (res == FR_OK) res = sync_fs(fs);
 					}
 					FREE_NAMBUF();
@@ -4552,7 +4771,7 @@ FRESULT f_lseek (
 #if !FF_FS_READONLY
 				if (clst == 0) {						/* If no cluster chain, create a new chain */
 					if (!(fp->flag & FA_WRITE)) ABORT(fs, FR_INT_ERR);
-					clst = create_chain(&fp->obj, 0);
+					clst = create_chain(&fp->obj, 0, 0);
 					if (clst == 1) ABORT(fs, FR_INT_ERR);
 					if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
 					fp->obj.sclust = clst;
@@ -4569,7 +4788,7 @@ FRESULT f_lseek (
 							fp->obj.objsize = fp->fptr;
 							fp->flag |= FA_MODIFIED;
 						}
-						clst = create_chain(&fp->obj, clst);	/* Follow chain with forceed stretch */
+						clst = create_chain(&fp->obj, clst, 0);	/* Follow chain with forceed stretch */
 						if (clst == 0) {				/* Clip file size in case of disk full */
 							ofs = 0; break;
 						}
@@ -5099,14 +5318,25 @@ FRESULT f_mkdir (
 			res = FR_INVALID_NAME;
 		}
 		if (res == FR_NO_FILE) {				/* It is clear to create a new directory */
-			sobj.fs = fs;						/* New object id to create a new chain */
-			dcl = create_chain(&sobj, 0);		/* Allocate a cluster for the new directory */
-			res = FR_OK;
-			if (dcl == 0) res = FR_DENIED;		/* No space to allocate a new cluster? */
-			if (dcl == 1) res = FR_INT_ERR;		/* Any insanity? */
-			if (dcl == 0xFFFFFFFF) res = FR_DISK_ERR;	/* Disk error? */
-			tm = GET_FATTIME();
+			int exfat = FF_FS_EXFAT && fs->fs_type == FS_EXFAT;
+			sobj.fs = fs;
+			dcl = 0;
+			/* exFAT reserves parent slots before owning child data. Clearing
+			 * precedes the child's allocation; store_xdir owns the next I/O. */
+			res = exfat ? dir_register(&dj) : FR_OK;
 			if (res == FR_OK) {
+				dcl = create_chain(&sobj, 0, exfat);
+				if (dcl == 0) res = FR_DENIED;
+				if (dcl == 1) res = FR_INT_ERR;
+				if (dcl == 0xFFFFFFFF) res = FR_DISK_ERR;
+			}
+			tm = GET_FATTIME();
+			if (res == FR_OK && !exfat) {
+#if FF_FS_EXFAT
+				/* Failed registration removes this single allocated cluster. */
+				sobj.sclust = dcl;
+				sobj.objsize = (FSIZE_t)fs->csize * SS(fs);
+#endif
 				res = dir_clear(fs, dcl);		/* Clean up the new table */
 				if (res == FR_OK) {
 					if (!FF_FS_EXFAT || fs->fs_type != FS_EXFAT) {	/* Create dot entries (FAT only) */
@@ -5132,7 +5362,7 @@ FRESULT f_mkdir (
 					st_dword(fs->dirbuf + XDIR_ValidFileSize, (DWORD)fs->csize * SS(fs));
 					fs->dirbuf[XDIR_GenFlags] = 3;				/* Initialize the object flag */
 					fs->dirbuf[XDIR_Attr] = AM_DIR;				/* Attribute */
-					res = store_xdir(&dj);
+					res = store_xdir(&dj, dcl);
 				} else
 #endif
 				{
@@ -5140,11 +5370,9 @@ FRESULT f_mkdir (
 					st_clust(fs, dj.dir, dcl);			/* Table start cluster */
 					dj.dir[DIR_Attr] = AM_DIR;			/* Attribute */
 					fs->wflag = 1;
-				}
-				if (res == FR_OK) {
 					res = sync_fs(fs);
 				}
-			} else {
+			} else if (!exfat) {
 				remove_chain(&sobj, dcl, 0);		/* Could not register, remove the allocated cluster */
 			}
 		}
@@ -5169,7 +5397,13 @@ FRESULT f_rename (
 	FRESULT res;
 	FATFS *fs;
 	DIR djo, djn;
-	BYTE buf[FF_FS_EXFAT ? SZDIRE * 2 : SZDIRE], *dir;
+    union {
+        BYTE metadata[FF_FS_EXFAT ? SZDIRE * 2 : SZDIRE];
+#if FF_FS_EXFAT
+        FF_DIR_RETIRE retire;
+#endif
+    } buf;
+    BYTE *dir;
 	LBA_t sect;
 	DEF_NAMBUF
 
@@ -5191,30 +5425,58 @@ FRESULT f_rename (
 			if (fs->fs_type == FS_EXFAT) {	/* At exFAT volume */
 				BYTE nf, nn;
 				WORD nh;
+                UINT i;
 
-				memcpy(buf, fs->dirbuf, SZDIRE * 2);	/* Save 85+C0 entry of old object */
+				memcpy(buf.metadata, fs->dirbuf, SZDIRE * 2);	/* Save 85+C0 entry of old object */
 				memcpy(&djn, &djo, sizeof djo);
 				res = follow_path(&djn, path_new);		/* Make sure if new object name is not in use */
 				if (res == FR_OK) {						/* Is new name already in use by any other object? */
 					res = (djn.obj.sclust == djo.obj.sclust && djn.dptr == djo.dptr) ? FR_NO_FILE : FR_EXIST;
 				}
 				if (res == FR_NO_FILE) { 				/* It is a valid path and no name collision */
-					res = dir_register(&djn);			/* Register the new entry */
+                    res = dir_register(&djn);
 					if (res == FR_OK) {
 						nf = fs->dirbuf[XDIR_NumSec]; nn = fs->dirbuf[XDIR_NumName];
 						nh = ld_word(fs->dirbuf + XDIR_NameHash);
-						memcpy(fs->dirbuf, buf, SZDIRE * 2);	/* Restore 85+C0 entry */
+						memcpy(fs->dirbuf, buf.metadata, SZDIRE * 2);	/* Restore 85+C0 entry */
 						fs->dirbuf[XDIR_NumSec] = nf; fs->dirbuf[XDIR_NumName] = nn;
 						st_word(fs->dirbuf + XDIR_NameHash, nh);
 						if (!(fs->dirbuf[XDIR_Attr] & AM_DIR)) fs->dirbuf[XDIR_Attr] |= AM_ARC;	/* Set archive attribute if it is a file */
 /* Start of critical section where an interruption can cause a cross-link */
-						res = store_xdir(&djn);
+                        /* The old metadata is now in dirbuf. Reuse its local
+                         * storage for physical slots before publishing the new
+                         * name; directory traversal does not touch dirbuf. */
+                        BYTE old_count = buf.metadata[XDIR_NumSec] + 1;
+                        memset(&buf.retire, 0, sizeof buf.retire);
+                        buf.retire.offset = djo.blk_ofs % SS(fs);
+                        buf.retire.count = old_count;
+                        if (buf.retire.count < 3 || buf.retire.count > 19) {
+                            res = FR_INT_ERR;
+                        } else {
+                            res = dir_sdi(&djo, djo.blk_ofs);
+                            for (i = 0; res == FR_OK && i < buf.retire.count; i++) {
+                                if (i == 0 || djo.dptr % SS(fs) == 0)
+                                    buf.retire.sector[(buf.retire.offset + i * SZDIRE) / SS(fs)] = djo.sect;
+                                if (i + 1 < buf.retire.count) res = dir_next(&djo, 0);
+                            }
+                            if (res == FR_NO_FILE) res = FR_INT_ERR;
+                        }
+
+                        if (res == FR_OK) res = store_xdir(&djn, 1);
+                        if (res == FR_OK) {
+                            /* The new name is synchronized. Transfer the
+                             * obligation before any further fallible I/O. */
+                            fs->dir_pending.retire = buf.retire;
+                            fs->dir_pending.cluster = 0;
+                            fs->dir_pending.phase = DIR_RETIRE_ENTRIES;
+                            res = dir_recover(fs);
+                        }
 					}
 				}
 			} else
 #endif
 			{	/* At FAT/FAT32 volume */
-				memcpy(buf, djo.dir, SZDIRE);			/* Save directory entry of the object */
+				memcpy(buf.metadata, djo.dir, SZDIRE);			/* Save directory entry of the object */
 				memcpy(&djn, &djo, sizeof (DIR));		/* Duplicate the directory object */
 				res = follow_path(&djn, path_new);		/* Make sure if new object name is not in use */
 				if (res == FR_OK) {						/* Is new name already in use by any other object? */
@@ -5224,8 +5486,8 @@ FRESULT f_rename (
 					res = dir_register(&djn);			/* Register the new entry */
 					if (res == FR_OK) {
 						dir = djn.dir;					/* Copy directory entry of the object except name */
-						memcpy(dir + 13, buf + 13, SZDIRE - 13);
-						dir[DIR_Attr] = buf[DIR_Attr];
+						memcpy(dir + 13, buf.metadata + 13, SZDIRE - 13);
+						dir[DIR_Attr] = buf.metadata[DIR_Attr];
 						if (!(dir[DIR_Attr] & AM_DIR)) dir[DIR_Attr] |= AM_ARC;	/* Set archive attribute if it is a file */
 						fs->wflag = 1;
 						if ((dir[DIR_Attr] & AM_DIR) && djo.obj.sclust != djn.obj.sclust) {	/* Update .. entry in the sub-directory if needed */
@@ -5245,7 +5507,7 @@ FRESULT f_rename (
 					}
 				}
 			}
-			if (res == FR_OK) {
+			if (res == FR_OK && !(FF_FS_EXFAT && fs->fs_type == FS_EXFAT)) {
 				res = dir_remove(&djo);		/* Remove old entry */
 				if (res == FR_OK) {
 					res = sync_fs(fs);
@@ -5294,7 +5556,7 @@ FRESULT f_chmod (
 #if FF_FS_EXFAT
 			if (fs->fs_type == FS_EXFAT) {
 				fs->dirbuf[XDIR_Attr] = (attr & mask) | (fs->dirbuf[XDIR_Attr] & (BYTE)~mask);	/* Apply attribute change */
-				res = store_xdir(&dj);
+				res = store_xdir(&dj, 0);
 			} else
 #endif
 			{
@@ -5339,7 +5601,7 @@ FRESULT f_utime (
 #if FF_FS_EXFAT
 			if (fs->fs_type == FS_EXFAT) {
 				st_dword(fs->dirbuf + XDIR_ModTime, (DWORD)fno->fdate << 16 | fno->ftime);
-				res = store_xdir(&dj);
+				res = store_xdir(&dj, 0);
 			} else
 #endif
 			{

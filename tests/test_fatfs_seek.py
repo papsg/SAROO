@@ -12,14 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FatFsSeekTests(unittest.TestCase):
+    fixture_name = 'fatfs-seek'
+    fixture_sources = ('fatfs_seek.c', 'test_fatfs_seek.py')
+
     @classmethod
     def setUpClass(cls):
-        build = ROOT / 'tests/build/fatfs-seek'; build.mkdir(parents=True, exist_ok=True)
+        build = ROOT / 'tests/build' / cls.fixture_name; build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
         fatfs = cls.target / 'FatFS'; fatfs.mkdir()
         inputs = {}
+        directory = Path(os.environ.get('SAROO_FATFS_DIR', ROOT / 'Firm_MCU/FatFS'))
         for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
-            source = Path(os.environ.get('SAROO_FATFS_SOURCE', ROOT / 'Firm_MCU/FatFS/ff.c')) if name == 'ff.c' else ROOT / 'Firm_MCU/FatFS' / name
+            source = Path(os.environ.get('SAROO_FATFS_SOURCE', directory / name)) if name == 'ff.c' else directory / name
             data = source.read_bytes()
             if name == 'ffconf.h':
                 inputs['production-ffconf.h'] = data
@@ -28,7 +32,7 @@ class FatFsSeekTests(unittest.TestCase):
             (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
         data = (fatfs / 'ff.c').read_bytes(); begin = data.index(b'if (ifptr ', data.index(b'FRESULT f_lseek (')); end = data.index(b'{', begin)
         (cls.target / 'seek.inc').write_bytes(b'if (!ofs) return 0;\n' + data[begin:end] + b'{ return 1; }\nreturn 0;\n')
-        for name in ('fatfs_seek.c', 'test_fatfs_seek.py'):
+        for name in cls.fixture_sources:
             data = (ROOT / 'tests' / name).read_bytes(); (cls.target / name).write_bytes(data); inputs[name] = data
         for name, data in inputs.items():
             path = cls.target / 'inputs' / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
@@ -36,9 +40,9 @@ class FatFsSeekTests(unittest.TestCase):
             {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()}, indent=2)+'\n')
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-        cls.binary = cls.target / 'fatfs-seek'
+        cls.binary = cls.target / cls.fixture_name
         result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
-            '-I', str(cls.target), '-I', str(fatfs), str(cls.target / 'fatfs_seek.c'),
+            '-I', str(cls.target), '-I', str(fatfs), str(cls.target / cls.fixture_sources[0]),
             str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)], capture_output=True, timeout=60)
         (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr); result.check_returncode()
 
