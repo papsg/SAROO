@@ -1188,7 +1188,14 @@ void saturn_config(void)
 		led_event(LEDEV_NOFIRM);
 		return;
 	}
-	int fsize = f_size(&fp);
+	/* Check the full exFAT size before narrowing it to a read count. */
+	FSIZE_t extent = f_size(&fp);
+	if (extent < 8 || extent > IMGINFO_ADDR - FIRM_ADDR) {
+		f_close(&fp);
+		led_event(LEDEV_FILE_ERROR);
+		return;
+	}
+	u32 fsize = (u32)extent;
 	printk("Found Saturn bootrom file.\n");
 	printk("    Size %08x\n", fsize);
 
@@ -1196,6 +1203,10 @@ void saturn_config(void)
 	retv = f_read(&fp, (void*)FIRM_ADDR, fsize, &rv);
 	printk("    f_read: retv=%d rv=%08x\n", retv, rv);
 	f_close(&fp);
+	if (retv || rv != fsize) {
+		led_event(LEDEV_FILE_ERROR);
+		return;
+	}
 
 
 	// 打开存档文件
