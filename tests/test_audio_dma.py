@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -30,8 +31,12 @@ class AudioDMATests(unittest.TestCase):
         worker = Path(os.environ.get('SAROO_AUDIO_MAIN', ROOT / 'Firm_MCU/Saturn/saturn_main.c')).read_bytes()
         marker = b'if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3)'
         begin = worker.rindex(marker, 0, worker.index(b'int asize = fill_audio_buffer'))
-        end = worker.index(b'if(asize<=4)', begin)
-        worker_code = worker[begin:end]
+        worker_tail = worker[begin:]
+        # Stop before either the old split delay or the checked timer call.
+        pacing = re.search(rb'^[ \t]*if\s*\(\s*(?:asize\s*<=|hw_delay\s*\()', worker_tail, re.M)
+        if pacing is None:
+            raise ValueError('Audio admission fixture needs a CD pacing boundary')
+        worker_code = worker_tail[:pacing.start()]
         build = ROOT / 'tests/build/audio-dma'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
