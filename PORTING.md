@@ -2231,3 +2231,13 @@ behavior remain unqualified.
    52 methods. The GNU MCU App links 64,572 load bytes and leaves
    964 bytes of ITCM space. Physical SD behavior remains unqualified.
    [FatFs references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#protect-live-primary-save-archives)
+
+2. **Failed CD reader retirement — published**
+   [`f3b6514`](https://github.com/papsg/SAROO/commit/f3b65148aadc11018ce72b36f1b1d02c04538f94).
+   Adapted from paps-g `c3bfa9ef` (MCU-CDC-035). The parent fails five
+   input methods and one worker method while passing 12 controls.
+   The port checks lookup and input failure across reader types,
+   preserves buffered payloads, and reports before acknowledging a
+   pending PLAY. Both CD profiles pass 208 methods. The GNU MCU App
+   links 64,572 load bytes with 964 bytes of ITCM space.
+   [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#report-cd-input-failure-before-retiring-the-reader)
