@@ -2160,3 +2160,14 @@ pacing remain unqualified.
    The GNU MCU App links 64,460 load bytes with 1,076 bytes of
    ITCM space. Physical bus timing and games remain unqualified.
    [Sega and FPGA citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#retire-original-drive-commands-in-the-emulated-registers)
+
+4. **Unanswered CD command admission — published**
+   [`c0a6535`](https://github.com/papsg/SAROO/commit/c0a6535ec933dbff7c4f1f3bd75ceeb9cf1d23e4).
+   Adapted from paps-g `b782c9b7` (SATURN-CD-003), after original-drive
+   command retirement. Both new parent methods fail and 16 controls
+   pass. The port protects all 65,536 busy state/wait combinations
+   and admits a distinct request after a late reply. Both menu runs
+   pass 90 methods, including the CD player, startup and launch
+   controls. The menu retains 81,396 code/data bytes and 24,048
+   bytes of body space. Physical behavior remains unqualified.
+   [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#protect-an-unanswered-menu-cd-command)
