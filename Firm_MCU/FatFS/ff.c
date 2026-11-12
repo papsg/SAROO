@@ -3443,8 +3443,8 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 #if FF_FS_EXFAT
 	if (fmt == 1) {
-		QWORD maxlba;
-		DWORD so, cv, bcl, i;
+		QWORD volume_sectors, bitmap_bytes;
+		DWORD fat_offset, heap_offset, so, cv, bcl, i;
 
 		for (i = BPB_ZeroedEx; i < BPB_ZeroedEx + 53 && fs->win[i] == 0; i++) ;	/* Check zero filler */
 		if (i < BPB_ZeroedEx + 53) return FR_NO_FILESYSTEM;
@@ -3455,8 +3455,8 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 			return FR_NO_FILESYSTEM;
 		}
 
-		maxlba = ld_qword(fs->win + BPB_TotSecEx) + bsect;	/* Last LBA of the volume + 1 */
-		if (!FF_LBA64 && maxlba >= 0x100000000) return FR_NO_FILESYSTEM;	/* (It cannot be accessed in 32-bit LBA) */
+		volume_sectors = ld_qword(fs->win + BPB_TotSecEx);
+		if (volume_sectors > (LBA_t)-1 - bsect) return FR_NO_FILESYSTEM;
 
 		fs->fsize = ld_dword(fs->win + BPB_FatSzEx);	/* Number of sectors per FAT */
 
@@ -3471,19 +3471,28 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		if (nclst > MAX_EXFAT) return FR_NO_FILESYSTEM;	/* (Too many clusters) */
 		fs->n_fatent = nclst + 2;
 
-		/* Boundaries and Limits */
+		/* Bound the FAT and heap before forming the addresses used to find
+		   the bitmap. The heap product can exceed the LBA width. */
+		fat_offset = ld_dword(fs->win + BPB_FatOfsEx);
+		heap_offset = ld_dword(fs->win + BPB_DataOfsEx);
+		if (heap_offset >= volume_sectors ||
+			(QWORD)nclst * fs->csize > volume_sectors - heap_offset ||
+			fat_offset >= heap_offset || fs->fsize > heap_offset - fat_offset) {
+			return FR_NO_FILESYSTEM;
+		}
 		fs->volbase = bsect;
-		fs->database = bsect + ld_dword(fs->win + BPB_DataOfsEx);
-		fs->fatbase = bsect + ld_dword(fs->win + BPB_FatOfsEx);
-		if (maxlba < (QWORD)fs->database + nclst * fs->csize) return FR_NO_FILESYSTEM;	/* (Volume size must not be smaller than the size required) */
+		fs->database = bsect + heap_offset;
+		fs->fatbase = bsect + fat_offset;
 		fs->dirbase = ld_dword(fs->win + BPB_RootClusEx);
+		LBA_t root_sector = clst2sect(fs, (DWORD)fs->dirbase);
+		if (!root_sector) return FR_NO_FILESYSTEM;
 
 		/* Get bitmap location and check if it is contiguous (implementation assumption) */
 		so = i = 0;
 		for (;;) {	/* Find the bitmap entry in the root directory (in only first cluster) */
 			if (i == 0) {
 				if (so >= fs->csize) return FR_NO_FILESYSTEM;	/* Not found? */
-				if (move_window(fs, clst2sect(fs, (DWORD)fs->dirbase) + so) != FR_OK) return FR_DISK_ERR;
+				if (move_window(fs, root_sector + so) != FR_OK) return FR_DISK_ERR;
 				so++;
 			}
 			if (fs->win[i] == ET_BITMAP) break;			/* Is it a bitmap entry? */
@@ -3491,13 +3500,21 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		}
 		bcl = ld_dword(fs->win + i + 20);				/* Bitmap cluster */
 		if (bcl < 2 || bcl >= fs->n_fatent) return FR_NO_FILESYSTEM;	/* (Wrong cluster#) */
-		fs->bitbase = fs->database + fs->csize * (bcl - 2);	/* Bitmap sector */
-		for (;;) {	/* Check if bitmap is contiguous */
-			if (move_window(fs, fs->fatbase + bcl / (SS(fs) / 4)) != FR_OK) return FR_DISK_ERR;
+		bitmap_bytes = ld_qword(fs->win + i + 24);
+		if (bitmap_bytes < (nclst + 7) / 8) return FR_NO_FILESYSTEM;
+		so = bcl;	/* First cluster of the bitmap */
+		for (;;) {	/* Check contiguous backing inside the declared FAT and heap. */
+			i = bcl / (SS(fs) / 4);
+			if (bcl >= fs->n_fatent || i >= fs->fsize) return FR_NO_FILESYSTEM;
+			if (move_window(fs, fs->fatbase + i) != FR_OK) return FR_DISK_ERR;
 			cv = ld_dword(fs->win + bcl % (SS(fs) / 4) * 4);
-			if (cv == 0xFFFFFFFF) break;				/* Last link? */
-			if (cv != ++bcl) return FR_NO_FILESYSTEM;	/* Fragmented bitmap? */
+			if (cv == 0xFFFFFFFF) break;
+			if (cv != ++bcl) return FR_NO_FILESYSTEM;
 		}
+		if (bitmap_bytes > (QWORD)(bcl - so + 1) * fs->csize * SS(fs)) {
+			return FR_NO_FILESYSTEM;
+		}
+		fs->bitbase = clst2sect(fs, so);
 
 #if !FF_FS_READONLY
 		fs->last_clst = fs->free_clst = 0xFFFFFFFF;		/* Initialize cluster allocation information */

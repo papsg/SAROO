@@ -12,6 +12,7 @@ static LBA_t sectors;
 static unsigned reads,writes,syncs,failures;
 static LBA_t fault_sector;
 static UINT fault_prefix;
+static unsigned fail_read;
 static int fail_write,fail_sync;
 static struct {
     const BYTE *payload,*cache;
@@ -30,6 +31,10 @@ DSTATUS disk_status(BYTE drive) { return drive?STA_NOINIT:0; }
 DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 {
     assert(!drive && count && sector+count<=sectors);reads++;
+    if (reads == fail_read) {
+        failures++;
+        return RES_ERROR;
+    }
     assert(!fseeko(disk,(off_t)sector*512,SEEK_SET));return fread(out,512,count,disk)==count?RES_OK:RES_ERROR;
 }
 DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
@@ -436,6 +441,154 @@ static void aborted_write(int fat32, int value)
     printf("write abort case=%d prefix=%u failures=%u\n",value,completed,failures);
 }
 
+static void store_little(BYTE *out, uint64_t value, unsigned size)
+{
+    for (unsigned i = 0; i < size; ++i) {
+        out[i] = (BYTE)value;
+        value >>= 8;
+    }
+}
+
+static void set_exfat_link(LBA_t fat, DWORD cluster, DWORD next)
+{
+    BYTE table[512];
+    LBA_t sector = fat + cluster / 128;
+    assert(disk_read(0, table, sector, 1) == RES_OK);
+    store_little(table + 4 * (cluster % 128), next, 4);
+    assert(disk_write(0, table, sector, 1) == RES_OK);
+}
+
+static void set_bitmap_boot_geometry(int fat_span, int large_heap)
+{
+    for (LBA_t base = 0; base <= 12; base += 12) {
+        BYTE boot[12 * 512];
+        assert(disk_read(0, boot, base, 11) == RES_OK);
+        store_little(boot + 92, large_heap ? (1u << 26) : 8192, 4);
+        if (fat_span)
+            store_little(boot + 84, 0, 4);
+        if (large_heap)
+            boot[109] = 6;
+        uint32_t checksum = 0;
+        for (unsigned i = 0; i < 11 * 512; ++i)
+            if (i != 106 && i != 107 && i != 112)
+                checksum = ((checksum >> 1) | (checksum << 31)) + boot[i];
+        for (unsigned i = 11 * 512; i < sizeof boot; i += 4)
+            store_little(boot + i, checksum, 4);
+        assert(disk_write(0, boot, base, 12) == RES_OK);
+    }
+}
+
+/* Adapted from paps-g b483124c. Format with the actual library before
+ * varying the bitmap entry and its backing allocation on a host file. */
+static void bitmap_case(const char *kind, unsigned value)
+{
+    int partitioned = strcmp(kind, "partitioned") == 0;
+    int formatted = partitioned || strcmp(kind, "formatted") == 0;
+    int exact = strcmp(kind, "exact") == 0;
+    int padded = strcmp(kind, "padded") == 0;
+    int short_chain = strcmp(kind, "short-chain") == 0;
+    int outside_heap = strcmp(kind, "outside-heap") == 0;
+    int large_heap = strcmp(kind, "large-heap") == 0;
+    if (partitioned) {
+        BYTE work[32768];
+        MKFS_PARM options = {.fmt = FM_EXFAT, .n_fat = 1, .au_size = 512};
+        assert(f_mkfs("0:", &options, work, sizeof work) == FR_OK);
+    } else {
+        format_volume(formatted && value == 0 ? FM_FAT32 : FM_EXFAT, 1,
+                      formatted && value ? value * 512 : 512);
+    }
+    FATFS fs;
+    FIL file;
+    BYTE neighbor[512] = {0};
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    if (partitioned)
+        assert(fs.volbase > 0);
+    create_file("/NEIGHBOR.BIN", neighbor, sizeof neighbor);
+    create_file("/TARGET.BIN", neighbor, 0);
+
+    if (!formatted) {
+        assert(f_open(&file, "/NEIGHBOR.BIN", FA_READ) == FR_OK);
+        unsigned entry = file.obj.c_ofs;
+        assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+        LBA_t data = fs.database, fat = fs.fatbase;
+        LBA_t root = data + fs.dirbase - 2;
+        BYTE directory[512];
+        assert(disk_read(0, directory, root, 1) == RES_OK);
+        unsigned bitmap = 0;
+        while (bitmap < sizeof directory && directory[bitmap] != 0x81)
+            bitmap += 32;
+        assert(bitmap < sizeof directory && directory[entry] == 0x85);
+        unsigned clusters = short_chain ? 1 : padded ? 3 : 2;
+        DWORD first = outside_heap ? 8193 : 2;
+        DWORD neighbor_cluster = 2 + clusters;
+        unsigned length = strcmp(kind, "short-length") == 0 ? 512 :
+                          padded || strcmp(kind, "over-length") == 0 ? 1025 : 1024;
+        store_little(directory + bitmap + 20, first, 4);
+        store_little(directory + bitmap + 24, length, 8);
+        store_little(directory + entry + 52, neighbor_cluster, 4);
+        unsigned entry_bytes = (directory[entry + 1] + 1) * 32;
+        assert(entry + entry_bytes <= sizeof directory);
+        uint16_t checksum = 0;
+        for (unsigned i = 0; i < entry_bytes; ++i)
+            if (i != 2 && i != 3)
+                checksum = (uint16_t)(((checksum >> 1) | ((uint32_t)checksum << 15)) +
+                                      directory[entry + i]);
+        store_little(directory + entry + 2, checksum, 2);
+        assert(disk_write(0, directory, root, 1) == RES_OK);
+        for (unsigned i = 0; i < clusters; ++i)
+            set_exfat_link(fat, first + i, i + 1 == clusters ? UINT32_MAX : first + i + 1);
+        if (strcmp(kind, "fragmented") == 0)
+            set_exfat_link(fat, 2, 4);
+        set_exfat_link(fat, neighbor_cluster, UINT32_MAX);
+        BYTE full[512];
+        memset(full, 0xff, sizeof full);
+        assert(disk_write(0, full, data, 1) == RES_OK);
+        for (unsigned i = 1; i < clusters; ++i)
+            assert(disk_write(0, neighbor, data + i, 1) == RES_OK);
+        assert(disk_write(0, neighbor, data + neighbor_cluster - 2, 1) == RES_OK);
+        set_bitmap_boot_geometry(strcmp(kind, "fat-span") == 0, large_heap);
+    } else {
+        assert(f_mount(NULL, "0:", 0) == FR_OK);
+    }
+
+    reads = writes = 0;
+    if (exact)
+        fail_read = value;
+    FRESULT mount = f_mount(&fs, "0:", 1);
+    if (fail_read) {
+        assert(mount == FR_DISK_ERR && !fs.fs_type && failures == 1 && !writes);
+        fail_read = 0;
+        assert(f_mount(NULL, "0:", 0) == FR_OK);
+        mount = f_mount(&fs, "0:", 1);
+    }
+
+    if (formatted || exact || padded || (short_chain && mount == FR_OK)) {
+        assert(mount == FR_OK);
+        BYTE payload = 0x5a;
+        UINT count;
+        assert(f_open(&file, "/TARGET.BIN", FA_WRITE) == FR_OK);
+        assert(f_write(&file, &payload, 1, &count) == FR_OK && count == 1);
+        assert(f_close(&file) == FR_OK);
+        assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+        if (short_chain) {
+            BYTE changed[512];
+            assert(f_open(&file, "/NEIGHBOR.BIN", FA_READ) == FR_OK);
+            assert(f_read(&file, changed, sizeof changed, &count) == FR_OK && count == sizeof changed);
+            fprintf(stderr, "short bitmap admitted; neighbor first byte=%u\n", (unsigned)changed[0]);
+            assert(f_close(&file) == FR_OK);
+        } else {
+            verify_file("/TARGET.BIN", &payload, 1);
+            verify_file("/NEIGHBOR.BIN", neighbor, sizeof neighbor);
+        }
+    }
+    if (!(formatted || exact || padded)) {
+        assert(mount == FR_NO_FILESYSTEM && !fs.fs_type && !writes);
+        if (large_heap)
+            assert(reads == 1);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);
@@ -446,6 +599,8 @@ int main(int argc,char **argv)
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
     } else if (!strcmp(argv[2], "write-abort-fat32") || !strcmp(argv[2], "write-abort-exfat")) {
         aborted_write(!strcmp(argv[2], "write-abort-fat32"), value);
+    } else if (!strncmp(argv[2], "bitmap-", 7)) {
+        bitmap_case(argv[2] + 7, (unsigned)value);
     } else if (!strncmp(argv[2], "metadata-", 9)) {
         const char *name = argv[2] + 9;
         if (!strcmp(name, "fat12")) sync_metadata(FS_FAT12, value);

@@ -70,6 +70,25 @@ class FatFsSeekTests(unittest.TestCase):
         for value in (512, 8, 9, 16, 31, 32, 63, 127, 255, 272, 287, 288, 319, 383, 511):
             with self.subTest(value=value): self.invoke('mount', value)
 
+    def test_exfat_bitmap_rejects_missing_backing_before_allocation(self):
+        for kind in ('short-chain', 'short-length', 'over-length', 'fragmented',
+                     'fat-span', 'outside-heap', 'large-heap'):
+            with self.subTest(kind=kind):
+                self.invoke(f'bitmap-{kind}')
+
+    def test_exfat_bitmap_valid_allocation_preserves_neighbor(self):
+        for kind in ('exact', 'padded', 'partitioned'):
+            with self.subTest(kind=kind):
+                self.invoke(f'bitmap-{kind}')
+        for cluster_sectors in (0, 1, 4, 128):
+            with self.subTest(cluster_sectors=cluster_sectors):
+                self.invoke('bitmap-formatted', cluster_sectors)
+
+    def test_exfat_bitmap_read_errors_allow_remount(self):
+        for ordinal in (1, 2, 3):
+            with self.subTest(ordinal=ordinal):
+                self.invoke('bitmap-exact', ordinal)
+
     def test_failed_directory_write_keeps_pending_sync(self):
         for filesystem in ('fat32', 'exfat'):
             with self.subTest(filesystem=filesystem):

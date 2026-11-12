@@ -65,3 +65,38 @@ the 40-byte helper frame, compared with 32-byte frames on the
 parent. This measures an eight-byte increase while the shared
 transfer function runs. Physical timing and peak stack use remain
 unqualified.
+
+## Validate exFAT allocation bitmap backing
+
+Adapted from paps-g `b483124c` (AUD-MCU-021). Mount now verifies
+that the allocation bitmap declares enough bytes for the cluster
+heap and that its contiguous FAT chain holds the declared length.
+Each link must be inside the declared FAT and cluster heap. The
+public port validates volume-relative bounds before forming the
+root and FAT addresses, and computes the heap product at full width.
+It publishes the bitmap sector only after these checks. A malformed
+bitmap returns `FR_NO_FILESYSTEM`. A failed read returns
+`FR_DISK_ERR` and permits a new mount. The existing single-FAT,
+contiguous-bitmap support and valid padding are preserved.
+[Microsoft exFAT §§3.1.6–3.1.9, FAT and cluster heap bounds](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#316-fatoffset-field),
+[§§7.1.3–7.1.5 and Table 22, bitmap chain and length](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#71-allocation-bitmap-directory-entry).
+
+The exact parent accepted a bitmap backed by one sector on a volume
+that needed two. An ordinary file write changed the first byte of the
+neighboring file from zero to one. Five other parent subcases fail the
+mount or read bound. The port rejects all seven invalid layouts with
+zero writes. Valid exact and padded bitmaps, partitioned exFAT, three
+formatted exFAT cluster sizes and FAT32 retain both files after remount.
+All three injected mount read errors permit retry.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fatfs_seek.py -k bitmap -v
+SAROO_FIRMWARE_SAVE_PROFILE=release python3 -B -m unittest discover -s tests -p test_fatfs_seek.py -k bitmap -v
+```
+
+Set `SAROO_FATFS_SOURCE` to the parent's `ff.c` for the comparison.
+The fixture uses generated files as block devices. The port adds
+96 GNU MCU App load bytes for a total of 63,896 and leaves 1,640
+bytes in ITCM. The direct mount frame grows from 40 to 48 bytes.
+Static DTCM stays at 60,208 bytes. Physical media and power-loss
+behavior remain unqualified.
