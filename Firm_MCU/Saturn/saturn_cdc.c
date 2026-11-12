@@ -1012,9 +1012,11 @@ static void _set_filter(int fid, int mode, int fad, int range)
 }
 
 
-/* Keep selector admission shared while each command owns its reply. */
-static __attribute__((noinline)) FILTER *command_filter(unsigned fid)
+/* The serial command task holds CR3 stable through dispatch. Each caller
+ * owns its reply. */
+static __attribute__((noinline)) FILTER *command_filter(void)
 {
+    unsigned fid = cdb.cr3 >> 8;
     if (fid >= MAX_SELECTORS)
         return NULL;
     return &cdb.filter[fid];
@@ -1023,17 +1025,14 @@ static __attribute__((noinline)) FILTER *command_filter(unsigned fid)
 // 0x40 [SR]
 int set_filter_range(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 	filter->fad   = ((cdb.cr1&0xff)<<16) | cdb.cr2;
 	filter->range = ((cdb.cr3&0xff)<<16) | cdb.cr4;
-	SSLOG(_FILTER, "set_filter_range: fid=%d fad=%08x range=%08x\n", fid, filter->fad, filter->range);
+	SSLOG(_FILTER, "set_filter_range: fid=%d fad=%08x range=%08x\n", cdb.cr3 >> 8, filter->fad, filter->range);
 
 	return HIRQ_ESEL;
 }
@@ -1041,11 +1040,9 @@ int set_filter_range(void)
 // 0x41 [S-]
 int get_filter_range(void)
 {
-	int fid;
 	int fad, range;
 
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
@@ -1062,10 +1059,7 @@ int get_filter_range(void)
 // 0x42 [SR]
 int set_filter_subheader(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
@@ -1077,7 +1071,7 @@ int set_filter_subheader(void)
 	filter->fid    = cdb.cr3&0xff;
 	filter->smval  = cdb.cr4>>8;
 	filter->cival  = cdb.cr4&0xff;
-	SSLOG(_FILTER, "set_filter_subh: fid=%d  FN=%02x CN=%02x SMM=%02x CIM=%02x SM=%02x CI=%02x\n", fid,
+	SSLOG(_FILTER, "set_filter_subh: fid=%d  FN=%02x CN=%02x SMM=%02x CIM=%02x SM=%02x CI=%02x\n", cdb.cr3 >> 8,
 		filter->fid, filter->chan,
 		filter->smmask, filter->cimask,
 		filter->smval, filter->cival
@@ -1089,10 +1083,7 @@ int set_filter_subheader(void)
 // 0x43 [S-]
 int get_filter_subheader(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
@@ -1106,16 +1097,13 @@ int get_filter_subheader(void)
 // 0x44 [SR]
 int set_filter_mode(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
     }
 	filter->mode = cdb.cr1&0xff;
-	SSLOG(_FILTER, "set_filter_mode: fid=%d  mode=%02x\n", fid, cdb.cr1&0xff);
+	SSLOG(_FILTER, "set_filter_mode: fid=%d  mode=%02x\n", cdb.cr3 >> 8, cdb.cr1&0xff);
 
 	if(filter->mode&0x80){
 		reset_filter_conditions(filter);
@@ -1127,10 +1115,7 @@ int set_filter_mode(void)
 // 0x45 [S-]
 int get_filter_mode(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;
@@ -1166,10 +1151,7 @@ int set_filter_connection(void)
 // 0x47 [S-]
 int get_filter_connection(void)
 {
-	int fid;
-
-	fid = cdb.cr3>>8;
-	FILTER *filter = command_filter(fid);
+    FILTER *filter = command_filter();
     if (!filter) {
         set_status(STAT_REJECT);
         return 0;

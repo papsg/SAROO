@@ -206,3 +206,34 @@ image488,751 bytes, including identical final image/ELF hashes. Current56 MCU
 and36 menu input hashes match their complete build receipts. The selected
 helpers' stack/call costs above remain explicit. Original MDK builds, physical
 stack/timing/audio behavior and game compatibility are not qualified.
+
+## Shared CD filter selector decoding
+
+Adapted from paps-g `7c92d827`. Seven filter handlers now decode the
+upper CR3 byte in their existing checked lookup. The serial command
+task reads CR1–CR4 before dispatch and holds that RAM snapshot through
+the handler. The lookup still accepts all 24 selectors. Each caller
+keeps its reply, state updates and interrupt mask. Enabled stock
+logging uses the same selector and format strings.
+[Public parent command task](https://github.com/papsg/SAROO/blob/e44efab959b4d76ce677c139734f6abf2798fdc7/Firm_MCU/Saturn/saturn_main.c#L914-L943).
+
+Sega documents the filter-number parameter for range, subheader, mode
+and connection queries. SAROO's original command handlers show the
+CR3 encoding that this refactor preserves.
+[Sega ST-162-062094 §8.2.5, Nos. 5.1–5.6, printed pp. 87–89](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=75),
+[No. 5.8, printed p. 90](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=78),
+[v0.8 command source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_cdc.c).
+
+```sh
+make -C tests check-cdc-command-buffer
+SAROO_CDC_PROFILE=release make -C tests check-cdc-command-buffer
+```
+
+Both revisions pass 217 methods in each run, including the
+selector-boundary, nonzero low CR3 byte, complete reply and routing
+controls. With the same compiler and SDK,
+both GNU App builds link 63,864 load bytes with 1,672 bytes of ITCM
+headroom and 60,208 bytes of static DTCM. The range and mode setters'
+direct compiler frames each fall from 16 to 8 bytes. The other 729
+matched frames keep their sizes. Physical timing and peak stack usage
+remain unmeasured.
