@@ -2082,3 +2082,16 @@ unqualified. [Sega citations, attribution and reproduction](https://github.com/p
    The menu links 81,380 code/data bytes with 24,064 bytes of body
    space. Physical reset behavior and BIOS variants remain unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#preserve-reset-enable-after-bios-clock-changes)
+
+4. **CD worker pacing — published**
+   [`0a36729`](https://github.com/papsg/SAROO/commit/0a36729944b5c37b608dea693bc7992afdd58c5a).
+   Adapted from paps-g `77b8f027` and `dca425eb` for the public CD
+   worker. Fourteen timer cases fail on the parent and two pass.
+   The parent also fails the startup ownership and worker failure
+   cases, while 14 other methods across those two groups pass.
+   Both CD profiles pass 205 methods. Both menu command profiles
+   pass six methods. The GNU MCU App link uses 64,460 bytes with
+   1,076 bytes of ITCM space. The linked TIM2 vector is active,
+   TIM6/DAC is retired, and TIM4 and TIM7 remain linked.
+   Physical timer latency and game pacing remain unqualified.
+   [STM32 citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#use-tim2-for-cd-worker-pacing)
