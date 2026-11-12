@@ -2346,3 +2346,9 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-MCU-006 and AUD-RES-021) → [f6c8ab5](https://github.com/papsg/SAROO/commit/f6c8ab50e2113299afb9e315355703642a707ffd) on `main`. The in-place heap orders the existing offsets with the stock comparator.
 - The exact parent uses 3,272,961 comparisons in three full-catalog cases. The port uses at most 52,436 across the same shapes in both directions. Both revisions pass 100 ordering and offset controls. The port passes 24 discovery and cover methods in each host profile.
 - GNU MCU App load falls by 96 bytes to 63,800, static DTCM by eight to 60,200, and the direct sorter frame from 48 to 40 bytes. Physical startup latency remains unmeasured. [Attribution, original SAROO source and reproduction](https://github.com/papsg/SAROO/blob/f6c8ab50e2113299afb9e315355703642a707ffd/doc/STORAGE-AUDIT.md#bound-game-catalog-sorting).
+
+### Read-only seek allocation
+
+- `b483124c` (paps-g, AUD-MCU-015) → [5ec3454](https://github.com/papsg/SAROO/commit/5ec3454818db6fc332c8e1154686b17f4fa1a499) on `main`. A read-only handle gets the existing internal-error result before the missing-chain branch can allocate.
+- The exact parent persists an allocation across FAT12, FAT16, FAT32 and exFAT in all 12 malformed cases. Both revisions pass 16 valid controls. The port passes all 24 FatFs methods in both profiles.
+- The GNU MCU App links 63,816 bytes, up 16, leaving 1,720 ITCM bytes. All 739 direct compiler frames and static DTCM match the parent. [Attribution, FatFs and exFAT references, and reproduction](https://github.com/papsg/SAROO/blob/5ec3454818db6fc332c8e1154686b17f4fa1a499/doc/STORAGE-AUDIT.md#refuse-allocation-during-a-read-only-seek).
