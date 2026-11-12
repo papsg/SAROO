@@ -2366,3 +2366,11 @@ All six checkpoints are published in order on [`main` at `79eedd3`](https://gith
 The menu ELF and image reproduce the prior build. The GNU MCU App reproduces the checkpoint load bytes and stripped ELF. It links 63,704 load bytes with 1,832 bytes of ITCM headroom and uses 59,368 static DTCM bytes. The menu and MCU receipts match all 36 and 56 repository input hashes. All 13 enabled BootLoader C units compile with the original BOOT and RTE settings. The final 18 FPGA project inputs match the previous verified fit.
 
 The public working tree is clean. The private checkout matches its starting HEAD, branch, refs and worktree. The Saturn was untouched. Physical DMA, media and timing behavior and a full MDK link remain unqualified.
+
+## Startup, CD, and storage audit follow-up
+
+### Stock menu file admission
+
+- `7f77b9d5` (paps-g, AUD-MCU-002) → [d938595](https://github.com/papsg/SAROO/commit/d938595974e995f48fa41aeaef48e11bca22a54a) on `main`. The stock loader validates the full extent before converting it to a read count, then requires a complete read before startup.
+- The exact parent fails 21 invalid-extent and nine incomplete-read cases. All 43 cases pass with sanitizers and at O2, including boundary, close and missing-file controls.
+- The GNU MCU App links 63,752 load bytes with 1,784 bytes of ITCM space and unchanged static DTCM. Physical startup remains unqualified. [Attribution, FatFs contract and reproduction](https://github.com/papsg/SAROO/blob/d938595974e995f48fa41aeaef48e11bca22a54a/doc/STARTUP-CD-STORAGE-AUDIT.md#validate-the-complete-menu-file).
