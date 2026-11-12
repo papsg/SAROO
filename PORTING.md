@@ -11,7 +11,7 @@ related requests and relevant primary documentation are credited in commits and 
 USB integration, custom diagnostics and private patch-application machinery
 are excluded. This solo-maintainer workflow was authorized by the owner.
 
-Last updated: 2026-11-11.
+Last updated: 2026-11-12.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
@@ -2127,3 +2127,15 @@ branch, refs, stash, status and tracked diff match the initial
 read-only snapshot. Physical SMPC timing, drive behavior, and game
 pacing remain unqualified.
 [Citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md)
+
+## Menu startup, GIF display, and CD handoff
+
+1. **Startup language bounds — published**
+   [`8031a28`](https://github.com/papsg/SAROO/commit/8031a28aec71496212e504c70da57e7494680178).
+   Adapted from paps-g `1ad9fb40` (SATURN-MENU-010). The parent
+   indexes outside the table for a negative ID, and its normal
+   19-language/2,280-lookup control passes. The port passes 65,540
+   signed ID cases and the existing controls under sanitizers and
+   O2. The pinned SH-2 build changes one image byte and retains
+   81,380 code/data bytes with 24,064 bytes of body space.
+   [Upstream references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/STARTUP-GIF-CD-HANDOFF.md#validate-the-startup-language-id)
