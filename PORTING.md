@@ -2060,3 +2060,14 @@ unqualified. [Sega citations, attribution and reproduction](https://github.com/p
    methods. The SH-2 menu links 81,172 code/data bytes with 24,272 bytes
    of body space. Physical timing and game behavior remain unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#bound-physical-cd-power-and-cartridge-takeover)
+
+2. **Stalled game sector reads — published**
+   [`b345952`](https://github.com/papsg/SAROO/commit/b3459526a308d88b01d6db7e81c1a17d715421ac).
+   Adapted from the game-facing portion of paps-g `63e0e2b4`
+   (SATURN-CD-003). The parent keeps polling past the modeled
+   deadline and passes the other 15 transfer methods. Both CD
+   profiles pass 54 methods, including wrap, partial output, and
+   a read that makes progress across 27 modeled seconds. The SH-2
+   menu links 81,236 code/data bytes with 24,208 bytes of body
+   space. Physical drive timing remains unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#bound-a-stalled-game-sector-read)
