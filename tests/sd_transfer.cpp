@@ -32,6 +32,7 @@ static int is_sdhc;
 static osSemaphoreId_t cmd_sem = (void *)1;
 static void SDIO_IRQHandler(void);
 static unsigned reads, tokens, releases, drains, waits, delays, resets, barriers, clock_reads;
+static unsigned mmio_writes;
 static u32 tick, issued, fault_status;
 static unsigned current, fault_command, fault_uses, stop_before_reset, stop_after_reset;
 static bool in_irq, faulty, awaiting, late_irq, pending_irq, busy_error, bad_delay;
@@ -67,6 +68,7 @@ Register::operator u32() const
 
 Register &Register::operator=(u32 v)
 {
+    ++mmio_writes;
     if (id == DCTRL || id == IDMACTRL || id == DLEN || id == BASE)
         assert(!(SDIO->STA.value & SDMMC_STA_DPSMACT) && "data register write while DMA/DPSM owns buffer");
     if (id == ARG || id == CMD)
@@ -204,6 +206,13 @@ static void printk(const char *, ...)
     }
 }
 
+static u8 span_data[17*512], span_bounce[8*512];
+static u32 span_address;
+static u32 model_sd_address(u8 *buf)
+{
+    return buf == span_data ? span_address : (u32)(uintptr_t)buf;
+}
+
 #include "driver.inc"
 #include "support.inc"
 osSemaphoreId_t osSemaphoreNew(uint32_t maximum, uint32_t initial, const osSemaphoreAttr_t *)
@@ -228,7 +237,7 @@ static void setup(void)
                        &SDIO->DTIMER, &SDIO->DLEN, &SDIO->IDMABASE0, &RCC->AHB3RSTR};
     for (unsigned i = 0; i < sizeof(regs)/sizeof(regs[0]); i++) regs[i]->id = i;
     sd_rca = 0x1234; is_sdhc = 1; cmd_sem = (void *)1;
-    reads = tokens = releases = drains = waits = delays = resets = barriers = clock_reads = 0;
+    reads = tokens = releases = drains = waits = delays = resets = barriers = clock_reads = mmio_writes = 0;
     tick = issued = fault_status = current = fault_uses = 0;
     fault_command = 99; stop_before_reset = stop_after_reset = 0;
     in_irq = faulty = awaiting = late_irq = pending_irq = busy_error = bad_delay = false;
@@ -251,6 +260,62 @@ static void data_fault(u32 flags, osStatus_t wait = osOK)
 {
     fault_command = 17; fault_status = flags; wait_failure = wait;
 }
+
+/* Adapted from paps-g bf429abf. Exercise the real command setup and the
+ * public direct/bounce admissions with synthetic DMA addresses. */
+enum SpanPath { Blocks, Axi, Cartridge, UnalignedAxi, UnalignedCartridge, Bounce };
+static int span_io(SpanPath path, bool write, bool high, u32 first, int count)
+{
+    const u32 addresses[] = {0x24002000, 0x24002000, 0x61002000,
+                            0x24002001, 0x61002001, 0x20002000};
+    setup();
+    is_sdhc = high;
+    span_address = addresses[path];
+    sdbuf = span_bounce;
+    std::memset(span_data, 0xa5, sizeof span_data);
+    std::memset(span_bounce, 0x59, sizeof span_bounce);
+    if (path == Blocks)
+        return write ? sd_write_blocks(first,count,span_data) : sd_read_blocks(first,count,span_data);
+    return write ? sd_write_sector(first,count,span_data) : sd_read_sector(first,count,span_data);
+}
+
+static void reject_span(SpanPath path, bool write, bool high, u32 first, int count)
+{
+    int result = span_io(path,write,high,first,count);
+    assert(!mmio_writes && commands.empty() && "unrepresentable span reached the controller");
+    assert(result == -1 && !reads && !waits && !resets);
+    for (u8 b : span_data) assert(b == 0xa5);
+    for (u8 b : span_bounce) assert(b == 0x59);
+    clean();
+}
+
+static void accept_span(SpanPath path, bool write, bool high, u32 first, int count)
+{
+    assert(span_io(path,write,high,first,count) == 0);
+    clean();
+    size_t i = 0;
+    for (int done=0;done<count;) {
+        int chunk = count-done;
+        if (path >= UnalignedAxi && chunk > 8) chunk = 8;
+        if (write && chunk != 1) {
+            assert(commands.at(i)==55 && arguments.at(i)==(0x1234u<<16));
+            ++i;
+            assert(commands.at(i)==23 && arguments.at(i)==u32(chunk));
+            ++i;
+        }
+        u32 block = first+u32(done);
+        assert(commands.at(i)==unsigned((write ? 24 : 17)+(chunk != 1)));
+        assert(arguments.at(i)==(high ? block : block*512u));
+        ++i;
+        if (chunk != 1) {
+            assert(commands.at(i)==12);
+            ++i;
+        }
+        done += chunk;
+    }
+    assert(i == commands.size() && mmio_writes && !resets);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2); int which = std::atoi(argv[1]); setup();
@@ -397,6 +462,26 @@ int main(int argc, char **argv)
     } else if (which == 24) {
         cmd_sem = nullptr;
         assert(sdio_reset() == -1 && !resets && !identified && !sd_rca);
+    } else if (which >= 25 && which <= 27) {
+        for (SpanPath path : {Bounce, Axi, Cartridge, UnalignedAxi, UnalignedCartridge, Blocks})
+        for (bool writing : {false,true}) {
+            if (which == 25) {
+                // The first bounce chunk fits; the entire request does not.
+                reject_span(path,writing,false,0x7ffff8u,9);
+                reject_span(path,writing,false,0x7ffff0u,17);
+                reject_span(path,writing,false,0x80002au,1);
+                reject_span(path,writing,true,0xfffffff8u,9);
+                reject_span(path,writing,true,0xfffffff0u,17);
+            } else if (which == 26) {
+                for (int count : {1,8,9,17}) {
+                    accept_span(path,writing,false,0x800000u-u32(count),count);
+                    accept_span(path,writing,true,0u-u32(count),count);
+                }
+            } else {
+                for (bool high : {false,true}) for (int count : {0,-1})
+                    reject_span(path,writing,high,42,count);
+            }
+        }
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);
 }

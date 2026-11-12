@@ -262,6 +262,15 @@ static int sd_acmd(u32 rca, u32 cmd, u32 arg)
 
 /******************************************************************************/
 
+/* Check the inclusive end before copying or programming the controller.
+ * SDSC uses a 32-bit byte address; SDHC/SDXC use 32-bit sector addresses. */
+static int sd_range_valid(u32 start, int count)
+{
+    if (count <= 0) return 0;
+    u32 last = start + (u32)count - 1u;
+    return last >= start && (is_sdhc || last < 0x800000u);
+}
+
 /* One setup/cleanup contract for both directions. Select the final transfer
  * mode before enabling IDMA; no data command runs during write pre-erase.
  * Callers supply only the command index; response/data flags are invariant. */
@@ -287,12 +296,12 @@ static int sd_blocks(u32 block, int count, u8 *buf, u32 index)
 
 int sd_read_blocks(u32 block, int count, u8 *buf)
 {
-	return sd_blocks(block, count, buf, CMD_17 & 0x3f);
+	return sd_range_valid(block, count) ? sd_blocks(block, count, buf, CMD_17 & 0x3f) : -1;
 }
 
 int sd_write_blocks(u32 block, int count, u8 *buf)
 {
-	return sd_blocks(block, count, buf, CMD_24 & 0x3f);
+	return sd_range_valid(block, count) ? sd_blocks(block, count, buf, CMD_24 & 0x3f) : -1;
 }
 
 /******************************************************************************/
@@ -309,7 +318,7 @@ static __attribute__((noinline)) int sd_sectors(u32 start, int size, u8 *buf, u3
 {
     u32 address = (u32)buf;
     u32 type = address >> 24;
-    if (!sd_rca) return -1;
+    if (!sd_rca || !sd_range_valid(start, size)) return -1;
     if ((address & 3u) == 0 && (type == 0x24 || type == 0x61))
         return sd_blocks(start, size, buf, index);
     while (size) {

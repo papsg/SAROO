@@ -28,6 +28,9 @@ class SDMediaTests(unittest.TestCase):
         sectors = sectors.replace(b'(u32)buf', b'sd_address(buf)')
         acmd = data.index(b'static int sd_acmd(')
         functions = data[acmd:data.index(b'\n}', acmd)+3]
+        span = data.find(b'static int sd_range_valid(')
+        if span >= 0:
+            functions += data[span:data.index(b'\n}', span)+3]
         functions += data[identify:data.index(b'\n}', identify)+3] + sectors
         inputs = {'sdio_h7.c': data, 'state.inc': state, 'identify.inc': functions,
                   'RTX_Config.h': (ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h').read_bytes(),

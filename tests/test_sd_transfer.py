@@ -24,7 +24,7 @@ class SDTransferTests(unittest.TestCase):
         identify = raw.index(b'int sdcard_identify(')
         defines = raw[raw.index(b'#define SDCLK_LOW '):raw.index(b'static u32 cmd_resp')]
         # Preserve the MCU's 32-bit DMA addresses when compiling on a wider host.
-        transfers = raw[handler:identify].replace(b'(u32)buf', b'(u32)(uintptr_t)buf')
+        transfers = raw[handler:identify].replace(b'(u32)buf', b'model_sd_address(buf)')
         inputs = {
             'sdio_h7.c': raw,
             'driver.inc': defines + transfers,
@@ -88,6 +88,15 @@ class SDTransferTests(unittest.TestCase):
         for scenario in (9, 15, 16, 23, 24):
             with self.subTest(scenario=scenario):
                 self.invoke(scenario)
+
+    def test_unrepresentable_span_is_refused_before_io(self):
+        self.invoke(25)
+
+    def test_boundary_addresses_keep_their_byte_or_sector_units(self):
+        self.invoke(26)
+
+    def test_nonpositive_spans_never_touch_registers_or_buffers(self):
+        self.invoke(27)
 
 
 if __name__ == '__main__':

@@ -44,6 +44,43 @@ separate baseline checkout, set `SAROO_SD_SOURCE` to its
 `python3 -m unittest discover -s tests -p test_sd_media.py -v`.
 Physical SD timing and fault recovery remain unmeasured by these checks.
 
+### Reject a sector span that the card address cannot represent
+
+Adapted from paps-g `bf429abf` (AUD-MCU-046). The
+[SD Association Physical Layer Simplified Specification, v3.01,
+§4.3.14, printed p. 52](https://www.sdcard.org/downloads/pls/archives/)
+defines a 32-bit byte address for SDSC and a 32-bit block address
+with 512-byte blocks for SDHC/SDXC. The old driver converted an
+out-of-range SDSC sector number to bytes after transfer setup.
+That conversion could wrap and direct a read or write at a lower
+sector. A bounce request crossing the boundary could start with a
+valid chunk even though the complete request could not succeed.
+
+The driver now checks a positive count and the inclusive final sector
+before it copies data, starts pre-erase or sets up DMA. SDSC can
+represent sectors through `0x7fffff` in its 32-bit byte argument;
+SDHC/SDXC retain the full 32-bit sector argument. These are address
+representation limits. They do not substitute for a card's reported
+physical capacity. The same check covers the lower block entry points.
+Readiness, direct eligibility, bounce chunk size and transfer recovery
+are unchanged.
+
+```sh
+make -C tests check-fatfs check-mcu-diskio
+SAROO_SD_PROFILE=release make -C tests check-fatfs check-mcu-diskio
+```
+
+With `SAROO_SD_SOURCE` pointing at the parent's `sdio_h7.c`, the
+`unrepresentable_span` test reaches the modeled controller while
+the valid boundary control passes. The port passes 204 new transfer
+cases across both directions, the direct and bounce routes, and both
+address units. Invalid spans leave all registers and both buffers
+untouched. Valid endpoints preserve the emitted SD commands and
+arguments. All 70 FatFs and SD methods pass in both runs. The GNU App
+load grows from 64,912 to 64,960 bytes (576 free); static DTCM stays
+at 50,752 bytes. These are host and build results. Physical card
+capacity, command timing and media behavior are unqualified.
+
 ## Recover aborted save handles through ordinary requests
 
 FatFs latches a disk error on an open file. Subsequent requests on that
