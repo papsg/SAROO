@@ -2250,3 +2250,9 @@ behavior remain unqualified.
    Both CD profiles pass 210 methods. The GNU MCU App links 64,572
    load bytes with 964 bytes of ITCM space.
    [Sega and upstream references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#keep-settled-drive-state-after-reader-retirement)
+
+### Atomic retained PLAY acknowledgment
+
+- `c6dc9847` (paps-g, MCU-CDC-037) → [9bee114](https://github.com/papsg/SAROO/commit/9bee11499cfd7301df601486485fd73c888b3289) on `main`.
+- Reuses the ordinary pause guard. The parent lost a replacement command in the new fixture and passed its other 46 drive methods. The port services both requests and passes 211 CD methods in each host profile.
+- GNU MCU App: 64,556 load bytes, 980 bytes free in ITCM. The modeled command-preemption boundary still needs physical qualification. [Implementation and primary references](https://github.com/papsg/SAROO/blob/9bee11499cfd7301df601486485fd73c888b3289/doc/SAVE-CD-RESET-OWNERSHIP.md#acknowledge-retained-play-as-one-operation).
