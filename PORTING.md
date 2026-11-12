@@ -2017,3 +2017,14 @@ Saturn was left untouched.
    pass 191 methods. The GNU MCU App loads 63,276 bytes with 2,260
    bytes of ITCM space. Physical game behavior remains unqualified.
    [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#use-the-disc-playback-range-after-file-access)
+
+6. **Unavailable TOC and session data — published**
+   [`932a0d2`](https://github.com/papsg/SAROO/commit/932a0d2cadfa359e3515713564dd288a88fe8512).
+   Adapted from paps-g `748bfd8d` (MCU-CDC-032/033). The parent
+   returns stale metadata in two methods. Mounted TOC, busy-transfer
+   and valid session controls pass on both revisions. The port checks
+   19,456 session replies and 204-word FIFO publication. Both CD profiles
+   pass 196 methods. The GNU MCU App loads 63,308 bytes with 2,228
+   bytes of ITCM space. Physical tray transitions and multi-session
+   behavior remain unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#return-unavailable-toc-and-session-metadata)
