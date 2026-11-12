@@ -40,7 +40,7 @@ class CDDirectoryTests(unittest.TestCase):
             code += b'#define finish_read finish_directory\n'
         (cls.target/'directory.inc').write_bytes(code)
         start=main.index(b'\t\t\t\tretv = filter_sector(')
-        end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.old_fad',start)
+        end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.',start)
         (cls.target/'dispatch.inc').write_bytes(b'static int dispatch(BLOCK wblk) {\nint retv;\n'+
             main[start:end]+b'\nreturn 1;\n_restart_wait: return 0;\n_restart_nowait: return 2;\n}\n')
         if retired:

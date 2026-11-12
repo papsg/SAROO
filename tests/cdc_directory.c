@@ -51,7 +51,7 @@ static int feed(void)
     BLOCK w={.data=sector,.size=2048,.fad=cdb.fad};
     cdb.play_track=&directory_track;
     int next=dispatch(w);
-    if(next==1){cdb.old_fad=cdb.fad;cdb.fad++;}
+    if(next==1)cdb.fad++;
     check_owners();return next;
 }
 static void extents(void)

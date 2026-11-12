@@ -168,7 +168,6 @@ static void prepare(u32 fad, int audio, int status)
     set_drive_position(fad);
     if (audio) cdb.play_track->mode = 3;
     cdb.options = audio ? 0 : 8;
-    cdb.old_fad = fad - 1;
     play_delay = 700;
     worker_at_gate = request_waiting = acknowledged = command_returned = worker_finished = 0;
     ack_status = ack_type = read_error = sem_calls = seek_delays = last_read_status = 0;
@@ -217,7 +216,7 @@ static void range_update(void)
                 pthread_t worker = start_update(FIRST_READ, 0);
                 assert(!play_cd());
                 assert(ack_fad == 250 && ack_status == STAT_PLAY && ack_type == PLAYTYPE_SECTOR);
-                assert(cdb.fad == 250 && cdb.old_fad == 249 && cdb.options == (audio ? 0 : 8));
+                assert(cdb.fad == 250 && cdb.options == (audio ? 0 : 8));
                 assert(cdb.play_fad_end == 320 && cdb.max_repeat == (int)repeat);
                 assert(waits == 1 && wakeups == 1 && !cdb.pause_request);
                 finish_update(worker);

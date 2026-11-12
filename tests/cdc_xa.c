@@ -102,7 +102,7 @@ static void geometry(void)
             assert(cdb.fad==physical[off] && cdb.play_fad_end==physical[total-1]+1);
             assert(cdb.filter[sel].fad==physical[off] && cdb.filter[sel].range==physical[total-1]+1-physical[off]);
             for(unsigned i=off;i<total;i++){
-                assert(cdb.fad==physical[i]);advance();assert(cdb.old_fad==physical[i]);
+                assert(cdb.fad==physical[i]);advance();
             }
             assert(cdb.fad==physical[total-1]+1);
         }
@@ -220,14 +220,14 @@ static void run_file(unsigned sel, unsigned unit, unsigned gap, int pressure, in
         assert(cdb.fad == fad && cdb.play_type == PLAYTYPE_FILE);
         if (pressure) {
             for (unsigned retry = 0; retry < 3; ++retry) {
-                u32 boundary = cdb.file_next_unit, old_fad = cdb.old_fad;
+                u32 boundary = cdb.file_next_unit;
                 cdb.status = STAT_PLAY;
                 cdb.play_wait = 0;
                 assert(dispatch(w) == 0);
                 assert((file_events & (HIRQ_EFLS | HIRQ_PEND)) == 0);
                 assert(bful_writes == i * 3 + retry + 1);
                 assert(cdb.status == STAT_PAUSE && cdb.play_wait);
-                assert(cdb.fad == fad && cdb.old_fad == old_fad);
+                assert(cdb.fad == fad);
                 assert(cdb.file_next_unit == boundary && cdb.play_type == PLAYTYPE_FILE);
                 assert(!cdb.part[sel].numblocks && cdb.part[occupied].numblocks == MAX_BLOCKS);
                 check_owners();

@@ -462,20 +462,12 @@ _restart_nowait:
 		if(!retained_startup && cdb.play_type!=PLAYTYPE_FILE && cdb.play_fad_start == cdb.fad){
 			if(play_delay){
 				int calc_delay = play_delay;
-#if 0
-				int fadiff = (cdb.old_fad>cdb.fad)? (cdb.old_fad-cdb.fad) : (cdb.fad-cdb.old_fad);
-				calc_delay = fadiff/5;
-				SSLOG(_DTASK, "calc_delay=%d  fadiff=%d\n", calc_delay, fadiff);
-				if(calc_delay>1000)
-#endif
-				{
-					cdb.status = STAT_BUSY;
-					if (hw_delay(10000)) goto _delay_error;
-					if (cdb.pause_request) goto _restart_nowait;
-					cdb.status = STAT_SEEK;
-					if (hw_delay(calc_delay)) goto _delay_error;
-					if (cdb.pause_request) goto _restart_nowait;
-				}
+				cdb.status = STAT_BUSY;
+				if (hw_delay(10000)) goto _delay_error;
+				if (cdb.pause_request) goto _restart_nowait;
+				cdb.status = STAT_SEEK;
+				if (hw_delay(calc_delay)) goto _delay_error;
+				if (cdb.pause_request) goto _restart_nowait;
 				delayed_start = 1;
 			}
 		}
@@ -544,7 +536,6 @@ _play_checkpoint:
                 }
 			}
 
-			cdb.old_fad = cdb.fad;
 			cdb.fad++;
             if (cdb.play_type == PLAYTYPE_FILE) advance_file_unit();
 		}
@@ -578,7 +569,6 @@ _play_end:
 					cdb.play_track = NULL;
 					if(cdb.repcnt<14)
 						cdb.repcnt += 1;
-					cdb.old_fad = cdb.fad;
 					cdb.fad = cdb.play_fad_start;
 					cdb.track = fad_to_track(cdb.fad);
 					goto _restart_nowait;

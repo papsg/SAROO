@@ -800,7 +800,6 @@ static u32 drive_position(u32 position, int ending)
 
 static void set_drive_position(u32 fad)
 {
-    cdb.old_fad = cdb.fad;
     cdb.fad = fad;
     cdb.track = fad_to_track(fad);
     TRACK_INFO *tk = get_track_info(cdb.track<<8);
@@ -1748,7 +1747,6 @@ static void start_file_play(int selnum, u32 fad, u32 sectors, int type)
     cdb.play_fad_start = fad;
     cdb.play_fad_end = fad+sectors;
     cdb.track = fad_to_track(fad);
-    cdb.old_fad = cdb.fad;
     cdb.fad = fad;
 }
 

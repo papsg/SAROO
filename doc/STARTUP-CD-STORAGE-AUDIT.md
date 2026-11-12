@@ -152,3 +152,30 @@ pass in both profiles. The GNU MCU App links 64,872 load bytes,
 with 664 bytes of ITCM space and unchanged static DTCM. These checks
 cover declared filesystem geometry; physical media capacity and I/O
 remain outside this test.
+
+## Remove unused CD position history
+
+Adapted from paps-g `1206dfc8` (AUD-RES-012). The only read of
+`old_fad` was in an excluded distance-based delay experiment.
+Remove that code, the private field, and its writes during seek,
+file setup, sector advance and repeat. Active FAD, range and repeat
+state, configured seek delay and pause handling are unchanged.
+
+[Sega CD Communication Interface ST-162-062094, §4.2,
+printed pp. 37–38](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=25)
+defines the drive reports, range, repeat and full-buffer pause.
+[§8.2.2 Nos. 2.1–2.2, printed pp. 82–83](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=70)
+describes PLAY and SEEK. These behaviors depend on the live drive
+state; the removed field was private to the MCU.
+
+```sh
+make -C tests check-cdc-command-buffer
+SAROO_CDC_PROFILE=release SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-cdc-command-buffer
+```
+
+The exact parent and the port pass all 223 CD/CUE methods, including
+the retained pause, repeat, seek timing and interleaved file controls.
+Both port profiles pass. The linked `CDBLOCK` shrinks from 8,160 to
+8,152 bytes. The GNU MCU App saves 64 load bytes, leaving 728 bytes
+of ITCM space, and saves eight static DTCM bytes. Physical timing
+and stack high-water usage remain unmeasured.
