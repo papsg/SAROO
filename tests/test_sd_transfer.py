@@ -98,6 +98,12 @@ class SDTransferTests(unittest.TestCase):
     def test_nonpositive_spans_never_touch_registers_or_buffers(self):
         self.invoke(27)
 
+    def test_large_direct_command_respects_wire_rate_and_wait_budget(self):
+        self.invoke(28)
+
+    def test_direct_chunks_advance_addresses_and_stop_on_first_error(self):
+        self.invoke(29)
+
 
 if __name__ == '__main__':
     unittest.main()

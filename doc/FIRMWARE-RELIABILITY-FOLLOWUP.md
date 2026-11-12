@@ -81,6 +81,42 @@ load grows from 64,912 to 64,960 bytes (576 free); static DTCM stays
 at 50,752 bytes. These are host and build results. Physical card
 capacity, command timing and media behavior are unqualified.
 
+### Bound the size of direct SD commands
+
+Adapted from paps-g `4c24b1d8` (AUD-MCU-018). The stock SD clock
+configuration gives 25 MHz in four-bit SDR mode, or at most
+12,500,000 data bytes per second. FatFs can pass a 16 MiB direct
+request in an exFAT cluster. The old driver issued it as one data
+command with a one-second wait. The payload alone takes at least
+1.34 seconds under that clock configuration.
+[STM32 RM0433 Rev. 8 §55.10.2 p. 2436, §55.10.8 p. 2442,
+§55.10.11 p. 2445](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf#page=2436).
+
+Admit the complete address span before issuing any command, then
+submit aligned direct transfers in chunks of at most 4,096 sectors
+(2 MiB). The nominal wire time for a full chunk is about 168 ms.
+Advance the address and buffer only after success. The first error
+returns to the existing disk retry path. The eight-sector bounce
+path, card address units and complete request capacity stay the same.
+The wire-time calculation leaves room for card and protocol delays.
+Actual completion time depends on the card and bus.
+
+```sh
+make -C tests check-mcu-diskio
+SAROO_SD_PROFILE=release make -C tests check-mcu-diskio
+```
+
+Point `SAROO_SD_SOURCE` at the parent's `sdio_h7.c` and select
+`-k respects_wire_rate` to observe the old 16 MiB command. The
+512-sector and 4,096-sector controls reach their expected commands.
+The port passes 83 new cases. They check address and DMA progression,
+lengths of 4,095 to 32,768 sectors, reads and writes in both card
+address modes, refusal before I/O for invalid spans, and termination
+at each failed chunk. Both 37-method disk and SD runs pass. The GNU
+App adds 36 load bytes, leaving 364 free, with unchanged static DTCM.
+The GNU BootLoader links with all 166 vectors. The controller model
+does not measure physical transfer or card-busy timing.
+
 ## Recover aborted save handles through ordinary requests
 
 FatFs latches a disk error on an open file. Subsequent requests on that

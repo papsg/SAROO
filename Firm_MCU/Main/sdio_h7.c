@@ -307,6 +307,8 @@ int sd_write_blocks(u32 block, int count, u8 *buf)
 /******************************************************************************/
 
 #define SDBUF_SIZE 8
+/* At 25 MHz in four-bit SDR, 2 MiB takes about 168 ms on the wire. */
+#define SD_DIRECT_MAX_SECTORS 4096
 
 static u8 *sdbuf = (u8*)0x24000000;
 
@@ -319,8 +321,16 @@ static __attribute__((noinline)) int sd_sectors(u32 start, int size, u8 *buf, u3
     u32 address = (u32)buf;
     u32 type = address >> 24;
     if (!sd_rca || !sd_range_valid(start, size)) return -1;
-    if ((address & 3u) == 0 && (type == 0x24 || type == 0x61))
+    if ((address & 3u) == 0 && (type == 0x24 || type == 0x61)) {
+        while (size > SD_DIRECT_MAX_SECTORS) {
+            int result = sd_blocks(start, SD_DIRECT_MAX_SECTORS, buf, index);
+            if (result) return result;
+            buf += SD_DIRECT_MAX_SECTORS * 512;
+            size -= SD_DIRECT_MAX_SECTORS;
+            start += SD_DIRECT_MAX_SECTORS;
+        }
         return sd_blocks(start, size, buf, index);
+    }
     while (size) {
         int count = size > SDBUF_SIZE ? SDBUF_SIZE : size;
         unsigned bytes = count * 512;

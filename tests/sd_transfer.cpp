@@ -48,6 +48,9 @@ static void NVIC_EnableIRQ(int irq) { assert(irq == SDIO_IRQn); irq_enables++; }
 static osStatus_t wait_failure;
 static std::vector<unsigned> commands;
 static std::vector<u32> arguments;
+struct DataCommand { u32 index, address, bytes, dma; };
+static std::vector<DataCommand> data_commands;
+static unsigned fail_data_chunk;
 static constexpr u32 active = SDMMC_STA_CPSMACT | SDMMC_STA_DPSMACT;
 static constexpr u32 selected_clock = 0x15004;
 
@@ -84,7 +87,11 @@ Register &Register::operator=(u32 v)
         awaiting = true;
         faulty = current == fault_command && fault_uses++ == 0;
         if (!pending_start || current == 12) SDIO->STA.value |= SDMMC_STA_CPSMACT;
-        if (v & SDMMC_CMD_CMDTRANS) SDIO->STA.value |= SDMMC_STA_DPSMACT;
+        if (v & SDMMC_CMD_CMDTRANS) {
+            data_commands.push_back({current, SDIO->ARG.value, SDIO->DLEN.value, SDIO->IDMABASE0.value});
+            if (data_commands.size() == fail_data_chunk) faulty = true;
+            SDIO->STA.value |= SDMMC_STA_DPSMACT;
+        }
     } else if (id == MASK) {
         if (pending_irq && v && !in_irq) { pending_irq = false; irq(true); }
         irq();
@@ -208,8 +215,13 @@ static void printk(const char *, ...)
 
 static u8 span_data[17*512], span_bounce[8*512];
 static u32 span_address;
+static u8 *bulk_data;
+static size_t bulk_size;
+static u32 bulk_address;
 static u32 model_sd_address(u8 *buf)
 {
+    uintptr_t offset = (uintptr_t)buf - (uintptr_t)bulk_data;
+    if (bulk_data && offset < bulk_size) return bulk_address + (u32)offset;
     return buf == span_data ? span_address : (u32)(uintptr_t)buf;
 }
 
@@ -245,6 +257,7 @@ static void setup(void)
     permanent_cpsm = healthy_busy = pending_start = fail_semaphore_creation = false;
     reset_hold = identified = irq_enables = 0; identify_result = 0; gpio.IDR = 0;
     commands.clear(); arguments.clear();
+    data_commands.clear(); fail_data_chunk = 0;
     SDIO->CLKCR.value = selected_clock; SDIO->POWER.value = 3; RCC->AHB3RSTR.value = RCC_AHB3RSTR_MDMARST;
     for (unsigned i = 0; i < 4; i++) cmd_resp[i] = 0xa0b0c000 + i;
 }
@@ -314,6 +327,61 @@ static void accept_span(SpanPath path, bool write, bool high, u32 first, int cou
         done += chunk;
     }
     assert(i == commands.size() && mmio_writes && !resets);
+}
+
+/* Adapted from paps-g 4c24b1d8. Verify the actual DATAEND command sizes,
+ * arguments and DMA addresses. A model fault at any chunk must stop admission. */
+static void bulk_case(std::vector<u8>& data, u32 address, bool write, bool high,
+                      int count, unsigned failure, bool reject=false)
+{
+    setup();
+    bulk_data = data.data();
+    bulk_size = data.size();
+    bulk_address = address;
+    is_sdhc = high;
+    const u32 endpoint = high ? UINT32_MAX : 0x7fffff;
+    u32 first = endpoint-u32(count)+1u+unsigned(reject);
+    fail_data_chunk = failure;
+    fault_status = SDMMC_STA_DCRCFAIL | SDMMC_STA_DPSMACT;
+    sdbuf = span_bounce;
+    std::memset(span_bounce, 0x59, sizeof span_bounce);
+    int result = write ? sd_write_sector(first,count,bulk_data)
+                       : sd_read_sector(first,count,bulk_data);
+    assert((result != 0) == (failure || reject));
+    clean();
+    for (u8 b : span_bounce) assert(b == 0x59);
+    if (reject) {
+        assert(result == -1 && !mmio_writes && commands.empty());
+        return;
+    }
+
+    constexpr int chunk_limit = 4096;
+    for (const auto &command : data_commands)
+        assert(uint64_t(command.bytes)*8*OS_TICK_FREQ <= 100ULL*25000000*4 &&
+               "data command cannot fit its wait even at the SD wire-rate ceiling");
+    unsigned expected = failure ? failure : (count+chunk_limit-1)/chunk_limit;
+    assert(data_commands.size() == expected && !resets && sd_rca);
+    size_t event = 0;
+    int done = 0;
+    for (const auto &command : data_commands) {
+        int chunk = count-done > chunk_limit ? chunk_limit : count-done;
+        if (write && chunk != 1) {
+            assert(commands.at(event)==55 && arguments.at(event)==(0x1234u<<16));
+            ++event;
+            assert(commands.at(event)==23 && arguments.at(event)==u32(chunk));
+            ++event;
+        }
+        assert(command.index == unsigned((write ? 24 : 17)+(chunk != 1)));
+        assert(commands.at(event++) == command.index);
+        u32 block = first+u32(done);
+        assert(command.address == (high ? block : block*512u));
+        assert(command.bytes == u32(chunk)*512 && command.dma == address+u32(done)*512);
+        if (chunk != 1 || (failure && &command == &data_commands.back()))
+            assert(commands.at(event++) == 12);
+        done += chunk;
+    }
+    assert(event == commands.size());
+    if (!failure) assert(done == count);
 }
 
 int main(int argc, char **argv)
@@ -482,6 +550,21 @@ int main(int argc, char **argv)
                     reject_span(path,writing,high,42,count);
             }
         }
+    } else if (which == 28 || which == 29) {
+        std::vector<u8> data(32768*512);
+        if (which == 28) {
+            bulk_case(data,0x24000000,false,true,512,0);
+            bulk_case(data,0x61000000,true,true,4096,0);
+            bulk_case(data,0x61000000,false,true,32768,0);
+        } else {
+            for (bool write : {false,true}) for (bool high : {false,true}) {
+                for (int count : {4095,4096,4097,8192,32768})
+                    for (unsigned failure=0;failure<=unsigned(count+4095)/4096;++failure)
+                        bulk_case(data,0x61000000,write,high,count,failure);
+                bulk_case(data,0x61000000,write,high,4097,0,true);
+            }
+        }
+        bulk_data = nullptr;
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);
 }
