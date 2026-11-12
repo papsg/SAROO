@@ -279,7 +279,6 @@ typedef struct
 
 	// Subcode缓存
 	u8 *SUBH;
-	FIL subcode_fp;
 	u8 *subcode_buf;
 	u8 *subrw_buf;
 	u8  has_subrw;
@@ -301,6 +300,8 @@ typedef struct
 	PARTITION part[MAX_SELECTORS];
 	BLOCK block[MAX_BLOCKS];
 	FILE_INFO fi[256];
+
+	FIL subcode_fp; /* Keep the file object behind the CD controls and tables. */
 
 }CDBLOCK;
 

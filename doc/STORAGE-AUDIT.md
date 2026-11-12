@@ -167,3 +167,41 @@ comparison. Both port profiles pass all 24 FatFs methods. The
 GNU MCU App links 63,816 bytes, up 16, with 1,720 ITCM bytes
 free. Static DTCM and all 739 direct compiler frames match the
 parent. The filesystem tests use generated host media.
+
+## Reduce padding in FatFs and CD state
+
+Adapted from paps-g `b483124c` (AUD-RES-007). Move the 64-bit
+`FFOBJID.objsize` to the naturally aligned offset after the
+eight-byte prefix. `FFOBJID` shrinks from 48 to 40 bytes, and
+`FIL` and `DIR` each shrink from 80 to 72. Move the subcode file
+object behind the fixed CD tables, which brings the ordinary
+playback controls closer to the start of `CDBLOCK`.
+The linked ARM layout measures `CDBLOCK` at 8,160 bytes, down
+eight. `play_type` moves from byte 196 to 116 and `play_wait`
+from 200 to 120. Member widths, capacities and on-disk encodings
+are preserved.
+[Arm AAPCS32 2025Q1 §§5.1 and 5.3.1, fundamental types and aggregate alignment](https://github.com/ARM-software/abi-aa/blob/2025Q1/aapcs32/aapcs32.rst#aggregates),
+[Original SAROO FatFs header](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.h).
+
+Rebuilding the full public GNU MCU App saves 112 load bytes,
+from 63,816 to 63,704, and leaves 1,832 bytes of ITCM headroom.
+Static DTCM drops from 60,200 to 59,368 bytes. The 832-byte saving
+comes from 100 track file objects, two save file objects, the
+cover file and the CD state. Twenty-two direct compiler frames
+shrink by 8 to 24 bytes each. The other 717 frames retain their
+sizes. These are individual frames and static allocations.
+Peak stack use and physical timing remain unmeasured.
+
+```sh
+make -C tests check-cdc-command-buffer check-fatfs check-mcu-save
+SAROO_FIRMWARE_SAVE_PROFILE=release SAROO_CDC_PROFILE=release \
+  make -C tests check-cdc-command-buffer check-fatfs check-mcu-save
+```
+
+Both host profiles pass 351 methods, including subcode, CDC
+commands, wide seeks and save ownership. The exact parent also
+passes the 217 CD methods. The GNU App rebuild uses the new
+headers for all consumers, and all 13 enabled BootLoader C
+units compile with the original BootLoader defines and RTE.
+Use the matching compiled objects and ELF for the new in-memory
+layout.
