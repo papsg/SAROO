@@ -2358,3 +2358,11 @@ The original five-stage Quartus project reproduces the RBF and JIC, with 1,435 l
 - `b483124c` (paps-g, AUD-RES-007) → [79eedd3](https://github.com/papsg/SAROO/commit/79eedd31e50f1cb1a438721ef570e48ae11d68c5) on `main`. Use natural alignment to reduce FatFs object padding and move the subcode file behind the CD tables.
 - Linked ARM types measure 48 to 40 bytes for `FFOBJID`, 80 to 72 for `FIL` and `DIR`, and 8,168 to 8,160 for `CDBLOCK`. The rebuilt GNU App saves 112 load bytes to 63,704 and 832 static DTCM bytes to 59,368. Twenty-two direct frames shrink by 8 to 24 bytes.
 - The exact parent passes 217 CD methods. Both port profiles pass all 351 CD, FatFs and MCU save methods. All 13 enabled BootLoader C units compile with the original BOOT and RTE settings. Peak stack use and physical timing remain unqualified. [Attribution, Arm ABI and reproduction](https://github.com/papsg/SAROO/blob/79eedd31e50f1cb1a438721ef570e48ae11d68c5/doc/STORAGE-AUDIT.md#reduce-padding-in-fatfs-and-cd-state).
+
+### Final verification
+
+All six checkpoints are published in order on [`main` at `79eedd3`](https://github.com/papsg/SAROO/commit/79eedd31e50f1cb1a438721ef570e48ae11d68c5). The clean archive passes `make -j4 -C tests check` with 832 Python passes, one Windows-only skip, 18 Rust passes and the native language check. All 48 linked menu clock cases pass.
+
+The menu ELF and image reproduce the prior build. The GNU MCU App reproduces the checkpoint load bytes and stripped ELF. It links 63,704 load bytes with 1,832 bytes of ITCM headroom and uses 59,368 static DTCM bytes. The menu and MCU receipts match all 36 and 56 repository input hashes. All 13 enabled BootLoader C units compile with the original BOOT and RTE settings. The final 18 FPGA project inputs match the previous verified fit.
+
+The public working tree is clean. The private checkout matches its starting HEAD, branch, refs and worktree. The Saturn was untouched. Physical DMA, media and timing behavior and a full MDK link remain unqualified.
