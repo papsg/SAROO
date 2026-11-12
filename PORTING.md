@@ -2374,3 +2374,9 @@ The public working tree is clean. The private checkout matches its starting HEAD
 - `7f77b9d5` (paps-g, AUD-MCU-002) → [d938595](https://github.com/papsg/SAROO/commit/d938595974e995f48fa41aeaef48e11bca22a54a) on `main`. The stock loader validates the full extent before converting it to a read count, then requires a complete read before startup.
 - The exact parent fails 21 invalid-extent and nine incomplete-read cases. All 43 cases pass with sanitizers and at O2, including boundary, close and missing-file controls.
 - The GNU MCU App links 63,752 load bytes with 1,784 bytes of ITCM space and unchanged static DTCM. Physical startup remains unqualified. [Attribution, FatFs contract and reproduction](https://github.com/papsg/SAROO/blob/d938595974e995f48fa41aeaef48e11bca22a54a/doc/STARTUP-CD-STORAGE-AUDIT.md#validate-the-complete-menu-file).
+
+### CD subcode queue ownership
+
+- `49b2bce5` (paps-g, AUD-MCU-007/008) → [8bbed27](https://github.com/papsg/SAROO/commit/8bbed274c2021254fc513ed07f53b23085b04a41) on `main`. The shared cursors are protected and R–W packs become visible after audio or data admission. The early Q hint stays in place.
+- The exact parent fails five targeted methods and passes normal admission controls. The port passes all 223 CD/CUE methods in both profiles, including full ring, track reset, retry, directory and terminal notification.
+- The GNU MCU App links 63,800 load bytes with 1,736 bytes of ITCM space. Static DTCM is unchanged. Linked code confirms copies and HIRQ writes are outside the masked cursor transaction. Physical playback and timing remain unqualified. [Attribution, Sega and Arm references, and reproduction](https://github.com/papsg/SAROO/blob/8bbed274c2021254fc513ed07f53b23085b04a41/doc/STARTUP-CD-STORAGE-AUDIT.md#publish-rw-subcode-with-accepted-sectors).
