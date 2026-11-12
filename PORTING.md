@@ -2262,3 +2262,9 @@ behavior remain unqualified.
 - `39a45215` (paps-g, MCU-CDC-038) → [137caf5](https://github.com/papsg/SAROO/commit/137caf52f453731ac9eb26e5f5bec376ef31db40) on `main`.
 - The parent timer misses both modeled long-wait handoffs. The actual worker parent also misses its seek and PEND handoff checkpoints. All 217 CD methods pass under sanitizers and O2 after the port.
 - GNU MCU App: 64,636 load bytes before the layout change and 63,628 after it, leaving 1,908 bytes of ITCM. The layout preserves static RAM and capacities, and three of 737 matched direct frames shrink. Physical timing remains unqualified. [Implementation and primary references](https://github.com/papsg/SAROO/blob/137caf52f453731ac9eb26e5f5bec376ef31db40/doc/SAVE-CD-RESET-OWNERSHIP.md#wake-cd-pacing-for-drive-handoff).
+
+### Saturn reset and retained command ownership
+
+- `90ff71c0` (paps-g, MCU-SAVE-001) → [db18718](https://github.com/papsg/SAROO/commit/db18718454003f3a0a914fb17317e733e4013176) on `main`. Credits the `dfa2f1d1` investigation and uses the later mailbox fence directly.
+- The stock menu uses the public MCU's existing v1 completion path. The parent overwrites a retained request and reuses an in-flight preview argument. Host and FPGA models verify retained command/argument state, ordered completion, a bounded timeout across counter wrap, retry and the legacy sticky-opcode controls. Both focused profiles pass 189 methods, plus 48 linked menu clock cases.
+- GNU MCU App: 63,628 load bytes with 1,908 bytes of ITCM space. Menu code/data: 82,052 bytes, 608 above the parent. BSS grows four bytes. The pre-v1 MCU still cannot distinguish live and retired untagged STARTUP/SELECT values. Physical reset behavior remains unqualified. [Implementation and primary references](https://github.com/papsg/SAROO/blob/db18718454003f3a0a914fb17317e733e4013176/doc/SAVE-CD-RESET-OWNERSHIP.md#preserve-an-in-flight-mailbox-across-saturn-reset).
