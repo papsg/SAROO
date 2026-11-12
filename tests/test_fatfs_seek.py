@@ -71,6 +71,23 @@ class FatFsSeekTests(unittest.TestCase):
         for value in (0, 1):
             with self.subTest(value=value): self.invoke('fragmented', value)
 
+    def test_valid_utf8_names_round_trip_after_remount(self):
+        for filesystem in ('fat32', 'exfat'):
+            with self.subTest(filesystem=filesystem):
+                self.invoke(f'utf8-{filesystem}', 0)
+
+    def test_nonshortest_utf8_names_are_rejected_without_writes(self):
+        for filesystem in ('fat32', 'exfat'):
+            for value in range(1, 5):
+                with self.subTest(filesystem=filesystem, value=value):
+                    self.invoke(f'utf8-{filesystem}', value)
+
+    def test_other_malformed_utf8_names_are_rejected_without_writes(self):
+        for filesystem in ('fat32', 'exfat'):
+            for value in range(5, 13):
+                with self.subTest(filesystem=filesystem, value=value):
+                    self.invoke(f'utf8-{filesystem}', value)
+
     def test_exfat_mount_rejects_unsafe_geometry_shifts(self):
         for value in (512, 8, 9, 16, 31, 32, 63, 127, 255, 272, 287, 288, 319, 383, 511):
             with self.subTest(value=value): self.invoke('mount', value)

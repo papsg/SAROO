@@ -759,8 +759,10 @@ static DWORD tchar2uni (	/* Returns a character in UTF-16 encoding (>=0x10000 on
 		if        ((uc & 0xE0) == 0xC0) {	/* 2-byte sequence? */
 			uc &= 0x1F; nf = 1;
 		} else if ((uc & 0xF0) == 0xE0) {	/* 3-byte sequence? */
+			if (uc == 0xE0 && (BYTE)*p < 0xA0) return 0xFFFFFFFF;	/* Non-shortest form */
 			uc &= 0x0F; nf = 2;
 		} else if ((uc & 0xF8) == 0xF0) {	/* 4-byte sequence? */
+			if (uc == 0xF0 && (BYTE)*p < 0x90) return 0xFFFFFFFF;	/* Non-shortest form */
 			uc &= 0x07; nf = 3;
 		} else {							/* Wrong sequence */
 			return 0xFFFFFFFF;

@@ -155,3 +155,30 @@ timing, SD-card compatibility and hardware recovery remain unqualified.
 [rm0433]: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
 [sd-spec]: https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf
 [build]: ../tools/README.md#original-mcu-app-compilelink-check
+
+## AUD-MCU-014 — Reject non-shortest UTF-8 filenames
+
+FatFs R0.15 patch 1 accepts some three- and four-byte encodings of
+characters that have a shorter UTF-8 form. On both FAT32 and exFAT the
+parent accepts four such names through `f_open`. The path decoder now
+rejects those forms before constructing a name. Existing checks for
+bad continuation bytes, surrogates and values above U+10FFFF remain in
+place. This targets the public `FF_LFN_UNICODE=2` path; FatFs string I/O
+is disabled. Adapted from paps-g `6e52b09c`; ChaN's notice is retained.
+
+[RFC 3629 §§3–4](https://www.rfc-editor.org/rfc/rfc3629.html#section-3)
+specifies a single encoding length per range and the allowed second
+bytes after `E0` and `F0`. See also the [original FatFs source][original-fatfs]
+and [FatFs filename configuration](https://elm-chan.org/fsw/ff/doc/config.html#lfn_unicode).
+
+Run `make -C tests check-fatfs` and repeat with
+`SAROO_FIRMWARE_SAVE_PROFILE=release` for the O2 build. For the parent
+reproduction set `SAROO_FATFS_DIR` to its `Firm_MCU/FatFS` directory and
+run `python3 -B -m unittest discover -s tests -p test_fatfs_seek.py -k utf8 -v`.
+All 35 FatFs methods pass in both profiles. The UTF-8 cases include
+eight canonical names per filesystem that survive a remount, the four
+overlong forms and eight other malformed names per filesystem. Every
+rejection returns `FR_INVALID_NAME` with no disk writes. The GNU App
+adds 32 load bytes (64,712 used, 824 free), with unchanged static DTCM
+and compiler direct stack frames. This verifies the host media fixture
+and the GNU build; no physical SD or game validation was performed.

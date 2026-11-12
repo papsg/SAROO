@@ -228,6 +228,51 @@ static void verify_file(const char *name, const BYTE *expected, UINT size)
     assert(f_close(&file) == FR_OK);
 }
 
+/* Adapted from paps-g 6e52b09c. Exercise filename decoding through f_open. */
+static void utf8_path(int fat32, unsigned scenario)
+{
+    static const char *const valid[] = {
+        "/ascii.txt", "/\xC2\x80-a", "/\xDF\xBF-b",
+        "/\xE0\xA0\x80-c", "/\xED\x9F\xBF-d", "/\xEE\x80\x80-e",
+        "/\xF0\x90\x80\x80-f", "/\xF4\x8F\xBF\xBF-g"
+    };
+    static const char *const nonshortest[] = {
+        "/\xE0\x82\x80-a", "/\xE0\x9F\xBF-b",
+        "/\xF0\x80\x82\x80-c", "/\xF0\x8F\xBF\xBF-d"
+    };
+    static const char *const malformed[] = {
+        "/\xC0\x80-m", "/\xE0\x81\xBF-m", "/\xE0\xA0-m",
+        "/\xE0\x41\x80-m", "/\xED\xA0\x80-m", "/\xF4\x90\x80\x80-m",
+        "/\xF5\x80\x80\x80-m", "/\x80-m"
+    };
+    const BYTE marker = 0xa6;
+    format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+    FATFS fs;
+    assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == (fat32 ? FS_FAT32 : FS_EXFAT));
+
+    if (scenario == 0) {
+        for (unsigned i = 0; i < sizeof(valid) / sizeof(valid[0]); i++)
+            create_file(valid[i], &marker, 1);
+        assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+        for (unsigned i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
+            verify_file(valid[i], &marker, 1);
+            assert(f_unlink(valid[i]) == FR_OK);
+        }
+    } else {
+        const unsigned count = sizeof(nonshortest) / sizeof(nonshortest[0]);
+        assert(scenario <= count + sizeof(malformed) / sizeof(malformed[0]));
+        const char *name = scenario <= count ? nonshortest[scenario - 1] : malformed[scenario - count - 1];
+        FIL file;
+        unsigned before = writes;
+        FRESULT result = f_open(&file, name, FA_CREATE_NEW | FA_WRITE);
+        if (result != FR_INVALID_NAME || writes != before)
+            fprintf(stderr, "UTF-8 filename case %u: f_open=%d, writes=%u\n",
+                    scenario, result, writes - before);
+        assert(result == FR_INVALID_NAME && writes == before);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
 /* Adapted from paps-g 1816d52c. Exercise the public f_sync/f_close paths. */
 static void sync_file(int fat32, int value)
 {
@@ -812,6 +857,8 @@ int main(int argc,char **argv)
     int value = atoi(argv[3]);
     if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
+    } else if (!strcmp(argv[2], "utf8-fat32") || !strcmp(argv[2], "utf8-exfat")) {
+        utf8_path(!strcmp(argv[2], "utf8-fat32"), (unsigned)value);
     } else if (!strcmp(argv[2], "write-abort-fat32") || !strcmp(argv[2], "write-abort-exfat")) {
         aborted_write(!strcmp(argv[2], "write-abort-fat32"), value);
     } else if (!strncmp(argv[2], "readonly-", 9)) {
