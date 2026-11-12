@@ -18,7 +18,11 @@ module tb;
     memhub dut(reset, clk,
         cs[0], rd[0], wr[0], mask[0], ready[0], address[0], payload[0], result[0],
         cs[1], rd[1], wr[1], mask[1], ready[1], address[1], payload[1], result[1],
-        cke, ncs, nras, ncas, nwe, sd_addr, sd_ba, sd_dqm, sd_data, 1'b0, config_word);
+        cke, ncs, nras, ncas, nwe, sd_addr, sd_ba, sd_dqm, sd_data, 1'b0, config_word
+`ifdef SAROO_FC1_WINDOW
+        ,1'b0
+`endif
+    );
 
     reg [12:0] rows [0:3];
     reg [24:0] burst_cell, last_read_cell, changed_cell;

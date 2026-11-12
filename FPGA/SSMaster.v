@@ -710,7 +710,8 @@ module SSMaster(
 		NRESET, mclk,
 		ss_ram_cs, ss_rd_start, ss_wr_start, ss_mask, ss_ram_wait, ss_ram_addr, ss_ram_din, ss_ram_dout,
 		st_ram_cs, st_rd_start, st_wr_start, st_mask, st_ram_wait, st_ram_addr, ST_AD,      st_ram_data_out,
-		SD_CKE, SD_CS, SD_RAS, SD_CAS, SD_WE, SD_ADDR, SD_BA, SD_DQM, SD_DQ, ss_refresh, st_reg_sdram
+		SD_CKE, SD_CS, SD_RAS, SD_CAS, SD_WE, SD_ADDR, SD_BA, SD_DQM, SD_DQ,
+		ss_refresh, st_reg_sdram, ~ssfc1_s1 | ~ssfc1_s2
 	);
 
 	assign SD_CLK = sdclk;

@@ -209,3 +209,51 @@ remains 32,768 bits and pins remain 150. The lowest reported setup/hold
 slacks change from 1.103/0.161 ns to 0.559/0.153 ns. Only the two
 changed RTL files differ among 18 project inputs. The fit and pin model
 do not qualify electrical behavior, external bus timing or game play.
+
+## Schedule SDRAM refresh in Saturn FC1 idle windows
+
+Adapted from paps-g `8a31651a`. The old controller issued one refresh
+at FC1 and another during ordinary bus use. An expansion RAM transfer
+could then need more time than a game allows when external WAIT
+extension is disabled. [Upstream issue #349](https://github.com/tpunix/SAROO/issues/349) ·
+[Sega SCU User's Manual ST-097-R5 §3.6 pp. 64–65 and
+§3.7 p. 72, AREF](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=88).
+
+Issue two AUTO REFRESH commands per synchronized FC1 event, seven
+controller clocks apart. Hold new MCU requests to SDRAM while the
+window is active. An MCU request qualifies for one clock before
+admission, giving a coincident FC1 edge time to reach the synchronizer.
+Accepted commands and cache hits retain their existing path. If FC1
+events stop, a watchdog restores guarded autonomous refresh. A zero
+configured interval still permits FC1 pairs and disables autonomous
+refresh. The public port gates the shared countdown during power-on
+and preserves a new FC1 event when an older refresh is acknowledged.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_fpga*.py' -v
+# For the parent, point SAROO_FPGA_WINDOW_SOURCE at its FPGA directory
+# and select -k pairs_stay or -k early_fc1 in test_fpga_refresh_window.py.
+```
+
+The parent pin model observes an out-of-window command 722 clocks
+after FC1. The port emits each pair inside the modeled window. The
+maximum 8,192-row intervals are 5,865,472 clocks with FC1, 5,890,886
+after FC1 stops, and 5,956,422 when traffic hits every fallback
+deadline. All are below 6,080,000 clocks, the 64 ms budget at 95 MHz.
+The memory fixture also checks the 18- and 30-clock windows with
+competing MCU reads and writes. Power-on sequencing, queued edges,
+cache geometry and guarded refresh checks pass.
+Samsung K4S511632D Rev. 1.0, §1.0 p. 4 and §13.0 p. 11 note 2
+specify 8,192 refresh cycles per 64 ms.
+
+The five-stage Quartus build passes all 21 constrained checks.
+Logic elements rise from 1,491 to 1,514 and registers from 818 to
+824. Memory remains 32,768 bits and pins remain 150. Minimum reported
+setup and hold slacks are 1.076 and 0.168 ns. Only the three changed
+RTL files differ among the 18 project inputs.
+
+The historical development build addressed issue #349's reproduced
+4 MiB Cinepak freeze on one board. Its control froze after about
+five seconds and the corrected FPGA80 build ran the reported case
+for at least two minutes. That observation belongs to that build and
+workload. The public port has RTL and internal fit verification.

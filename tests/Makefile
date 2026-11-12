@@ -166,6 +166,7 @@ check-host-tools:
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_cache_read.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_cache_geometry.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_refresh_interval.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_refresh_window.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

@@ -8,7 +8,7 @@ module memhub(
 	cs_a, rd_a, wr_a, mask_a, nwait_a, addr_a, wdata_a, rdata_a,
 	cs_b, rd_b, wr_b, mask_b, nwait_b, addr_b, wdata_b, rdata_b,
 	sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data,
-	ext_refresh, reg_sdram
+	ext_refresh, reg_sdram, ext_refresh_active
 );
 
 ///////////////////////////////////////////////////////
@@ -51,6 +51,7 @@ module memhub(
 	inout [15:0] sd_data;
 	input ext_refresh;
 	input [11:0] reg_sdram;
+	input ext_refresh_active;
 
 	// Keep cache tags and accepted commands on the same physical address map.
 	reg[1:0] active_sdtype;
@@ -134,6 +135,7 @@ module memhub(
 	reg data_ab;
 	reg cmd_ack_a;
 	reg cmd_ack_b;
+	reg cmd_req_b_pending;
 
 
 	localparam C_IDLE=0, C_WAITACK=1, C_END=2;
@@ -151,7 +153,11 @@ module memhub(
 			cmd_ack_a <= 0;
 			cmd_ack_b <= 0;
 			active_sdtype <= 2'b11;
+			cmd_req_b_pending <= 0;
 		end else begin
+			// Give a coincident FC1 edge one clock to reach the synchronizer
+			// before admitting a new MCU SDRAM request.
+			cmd_req_b_pending <= state == C_IDLE && (|cmd_req_b) && !ext_refresh_active;
 			if(geometry_switch) active_sdtype <= reg_sdram[11:10];
 			case(state)
 			C_IDLE: begin
@@ -163,7 +169,7 @@ module memhub(
 					cmd_addr[2:0] <= (cmd_req_a[0])? physical_addr_a[2:0] : 3'b0;
 					cmd_din <= wdata_a;
 					state <= C_WAITACK;
-				end else if(cmd_req_b) begin
+				end else if(cmd_req_b && cmd_req_b_pending && !ext_refresh_active) begin
 					act_ab <= 1'b1;
 					cmd_req <= cmd_req_b;
 					cmd_mask <= mask_b;

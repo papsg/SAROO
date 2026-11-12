@@ -131,6 +131,9 @@ module tsdram(
 
 	reg[15:0] ref_count;
 	reg ref_req;
+	reg ref_req_pair;
+	reg ext_refresh_mode;
+	reg refresh_second;
 
 	// Allow for a read or write already in progress and for clock tolerance.
 	// A zero reload still disables autonomous refresh.
@@ -138,13 +141,18 @@ module tsdram(
 	wire[15:0] configured_ref_count = {6'b0, reg_sdram[9:0]};
 	wire[15:0] guarded_ref_count = (configured_ref_count > REFRESH_GUARD) ?
 		configured_ref_count - REFRESH_GUARD : configured_ref_count;
+	// Two row periods between FC1 events. An expiry restores the
+	// one-row autonomous schedule.
+	wire[15:0] ext_watchdog_count = configured_ref_count << 1;
 
 	always @(negedge reset or posedge clk)
 	begin
 		if(reset==0) begin
 			ref_count <= tPOR_count[15:0];
+		end else if(refresh_event) begin
+			ref_count <= ext_watchdog_count;
 		end else if(ref_ack) begin
-			ref_count <= guarded_ref_count;
+			ref_count <= ext_refresh_mode ? ext_watchdog_count : guarded_ref_count;
 		end else if(ref_count) begin
 			ref_count <= ref_count-1'b1;
 		end
@@ -155,10 +163,22 @@ module tsdram(
 	begin
 		if(reset==0) begin
 			ref_req <= 0;
-		end else if(ref_count==1 || ext_refresh) begin
+			ref_req_pair <= 0;
+			ext_refresh_mode <= 0;
+		end else if(refresh_event) begin
 			ref_req <= 1;
-		end else if(ref_ack) begin
-			ref_req <= 0;
+			ref_req_pair <= 1;
+			ext_refresh_mode <= 1;
+		end else begin
+			// Consume the admitted request. A new FC1 event takes priority
+			// so it can queue a pair even when an older request is admitted.
+			if(ref_admit) begin
+				ref_req <= 0;
+				ref_req_pair <= 0;
+			end else if(ref_count==1 && !ref_req) begin
+				ref_req <= 1;
+			end
+			if(ref_count==1) ext_refresh_mode <= 0;
 		end
 	end
 
@@ -185,12 +205,14 @@ module tsdram(
 				M_ACTIVE=3,
 				M_REFERSH=4,
 				M_READ=5,
-				M_READ_END=6,
-				M_WRITE=7,
-				M_WRITE_WAIT=8;
+				M_REFRESH_SECOND=6,
+				M_WRITE=7;
 
 	// Accepting a refresh enters this state for one clock. Reset leaves it.
 	wire ref_ack = m_state == M_REFERSH;
+	wire ref_admit = m_state == M_IDLE && ref_req;
+	// FC1 must not reload the shared power-on countdown.
+	wire refresh_event = ext_refresh && m_state != M_POR;
 
 
 	always @(negedge reset or posedge clk)
@@ -203,6 +225,7 @@ module tsdram(
 			m_addr <= 13'h1fff;
 			m_oe <= 0;
 			m_cke <= 0;
+			refresh_second <= 0;
 		end else begin
 			case(m_state)
 			M_POR: begin
@@ -229,6 +252,7 @@ module tsdram(
 				m_dqm <= 2'b11;
 				m_oe <= 0;
 				if(ref_req) begin
+					refresh_second <= ref_req_pair;
 					m_state <= M_REFERSH;
 				end else if(cmd_req==2'b10) begin
 					m_state <= M_ACTIVE;
@@ -257,11 +281,17 @@ module tsdram(
 				m_state <= M_WAIT;
 			end
 
-			M_REFERSH: begin
+			M_REFERSH, M_REFRESH_SECOND: begin
 				m_cmd <= 4'b0001;
-				m_count <= tRFC[3:0];
 				m_state <= M_WAIT;
-				m_next <= M_IDLE;
+				if(m_state == M_REFERSH && refresh_second) begin
+					// Issue the second row exactly tRFC clocks later.
+					m_count <= tRFC[3:0]-4'd2;
+					m_next <= M_REFRESH_SECOND;
+				end else begin
+					m_count <= tRFC[3:0];
+					m_next <= M_IDLE;
+				end
 			end
 
 			M_READ: begin

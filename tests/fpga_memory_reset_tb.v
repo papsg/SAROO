@@ -18,7 +18,11 @@ module tb;
         cs[0],rd[0],wr[0],mask_a,wait_a,addr_a,data_a,read_a,
         cs[1],rd[1],wr[1],mask_b,wait_b,addr_b,data_b,read_b,
         sd_cke,sd_cs,sd_ras,sd_cas,sd_we,sd_addr,sd_ba,sd_dqm,sd_data,
-        1'b0,12'hf0d);
+        1'b0,12'hf0d
+`ifdef SAROO_FC1_WINDOW
+        ,1'b0
+`endif
+    );
 
     reg [15:0] issued [0:255];
     reg [12:0] row [0:3];

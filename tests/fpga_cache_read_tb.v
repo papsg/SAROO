@@ -17,7 +17,11 @@ module tb;
         cs[0], rd[0], 1'b0, 2'b00, wait_a, addr_a, 16'b0, read_a,
         cs[1], rd[1], 1'b0, 2'b00, wait_b, addr_b, 16'b0, read_b,
         sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data,
-        1'b0, 12'hf0d);
+        1'b0, 12'hf0d
+`ifdef SAROO_FC1_WINDOW
+        ,1'b0
+`endif
+    );
 
     function [15:0] contents(input [25:0] address);
         contents = 16'h9000 ^ address[16:1] ^ {7'b0, address[25:17]};

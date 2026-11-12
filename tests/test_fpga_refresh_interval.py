@@ -54,8 +54,10 @@ class FPGARefreshIntervalTests(unittest.TestCase):
         self.case(4, 1, 781, 0)
 
     def test_external_refresh_and_acknowledgment_collision(self):
-        for mode in (2, 3):
-            self.case(mode, 32, 728)
+        self.case(2, 32, 728)
+        # A pulse at the next acknowledgment intentionally waits for FC1
+        # timeout. The longest gap is 2 * 781 + 2 admission clocks - 7.
+        self.case(3, 32, 1557, maximum=1557)
 
 
 if __name__ == '__main__':

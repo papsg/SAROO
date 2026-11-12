@@ -54,15 +54,19 @@ def retain_refresh_ack_on_reset(raw):
 ''')
 
 
-def build_memory_model(inputs, target, bench):
+def build_memory_model(inputs, target, bench, includes=None):
     target.mkdir()
+    includes = includes or {}
     (target / 'inputs.json').write_text(json.dumps({
-        name: hashlib.sha256(raw).hexdigest() for name, raw in inputs.items()
+        name: hashlib.sha256(raw).hexdigest() for name, raw in {**inputs, **includes}.items()
     }, indent=2) + '\n')
     for name, raw in inputs.items():
         (target / name).write_bytes(declarations_first(raw))
+    for name, raw in includes.items():
+        (target / name).write_bytes(raw)
     binary = target / 'memory.vvp'
-    command = ['iverilog', '-g2012', '-s', 'tb', '-o', str(binary),
+    window_port = ['-DSAROO_FC1_WINDOW'] if b'input ext_refresh_active;' in inputs['memhub.v'] else []
+    command = ['iverilog', '-g2012', *window_port, '-I', str(target), '-s', 'tb', '-o', str(binary),
                *[str(target / name) for name in MODULES], str(ROOT / 'tests' / bench)]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     log = result.stdout + result.stderr
