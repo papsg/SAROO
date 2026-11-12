@@ -47,7 +47,8 @@ class FatFsSeekTests(unittest.TestCase):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2)+'\n')
 
     def invoke(self, mode, value=0):
-        size_mib = {'seek': 8192, 'metadata-fat12': 1, 'metadata-fat16': 16}.get(mode, 64)
+        size_mib = {'seek': 8192, 'metadata-fat12': 1, 'metadata-fat16': 16,
+                    'readonly-fat12': 1, 'readonly-fat16': 16}.get(mode, 64)
         with tempfile.TemporaryDirectory(dir=self.target) as tmp:
             card = Path(tmp) / 'card.img'
             with card.open('wb') as file: file.truncate(size_mib * 1024**2)
@@ -88,6 +89,18 @@ class FatFsSeekTests(unittest.TestCase):
         for ordinal in (1, 2, 3):
             with self.subTest(ordinal=ordinal):
                 self.invoke('bitmap-exact', ordinal)
+
+    def test_readonly_seek_cannot_allocate_a_missing_chain(self):
+        for kind in ('fat12', 'fat16', 'fat32', 'exfat'):
+            for scenario in (0, 1, 2):
+                with self.subTest(kind=kind, scenario=scenario):
+                    self.invoke(f'readonly-{kind}', scenario)
+
+    def test_readonly_seek_and_writable_growth_controls(self):
+        for kind in ('fat12', 'fat16', 'fat32', 'exfat'):
+            for scenario in (3, 4, 5, 6):
+                with self.subTest(kind=kind, scenario=scenario):
+                    self.invoke(f'readonly-{kind}', scenario)
 
     def test_failed_directory_write_keeps_pending_sync(self):
         for filesystem in ('fat32', 'exfat'):

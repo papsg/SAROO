@@ -4551,6 +4551,7 @@ FRESULT f_lseek (
 				clst = fp->obj.sclust;					/* start from the first cluster */
 #if !FF_FS_READONLY
 				if (clst == 0) {						/* If no cluster chain, create a new chain */
+					if (!(fp->flag & FA_WRITE)) ABORT(fs, FR_INT_ERR);
 					clst = create_chain(&fp->obj, 0);
 					if (clst == 1) ABORT(fs, FR_INT_ERR);
 					if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);

@@ -133,3 +133,37 @@ and select `-k catalog_sort` to compare the exact old sorter.
 The GNU MCU App saves 96 load bytes, reaching 63,800 bytes, and
 eight static DTCM bytes. The sorter's direct frame falls from 48
 to 40 bytes.
+
+## Refuse allocation during a read-only seek
+
+Adapted from paps-g `b483124c` (AUD-MCU-015). A nonempty file with
+no starting cluster has inconsistent allocation metadata. If a
+positive seek on a read-only handle reaches the missing-chain
+branch, FatFs now returns `FR_INT_ERR` before allocating. The
+existing abort path records the error on the handle and leaves the
+filesystem through its normal cleanup. A writable handle can still
+allocate its first cluster. Empty reads and zero-offset seeks retain
+their existing behavior.
+[FatFs `f_lseek` behavior and access modes](https://elm-chan.org/fsw/ff/doc/lseek.html),
+[Microsoft exFAT §§6.3.5–6.3.6, FirstCluster and DataLength](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#635-firstcluster-field).
+
+On FAT12, FAT16, FAT32 and exFAT, the exact parent allocates and
+persists a cluster after a read-only seek on the malformed file.
+The FAT32 fixture reads the allocated FAT entry directly because
+FSInfo can retain the previous free count. The port refuses all
+12 malformed seeks while preserving the allocation state and
+neighboring file. Both revisions pass 16 valid controls covering
+zero offsets, empty files, writable growth and reads from an
+allocated chain.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+```
+
+Set `SAROO_FATFS_SOURCE` to the parent's `ff.c` and select
+`-k readonly_seek` in `test_fatfs_seek.py` to reproduce the
+comparison. Both port profiles pass all 24 FatFs methods. The
+GNU MCU App links 63,816 bytes, up 16, with 1,720 ITCM bytes
+free. Static DTCM and all 739 direct compiler frames match the
+parent. The filesystem tests use generated host media.

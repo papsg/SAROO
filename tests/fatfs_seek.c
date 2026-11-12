@@ -449,6 +449,18 @@ static void store_little(BYTE *out, uint64_t value, unsigned size)
     }
 }
 
+static void exfat_entry_checksum(BYTE *entry, unsigned available)
+{
+    assert(available >= 32 && entry[0] == 0x85);
+    unsigned bytes = (entry[1] + 1) * 32;
+    assert(bytes <= available);
+    uint16_t checksum = 0;
+    for (unsigned i = 0; i < bytes; ++i)
+        if (i != 2 && i != 3)
+            checksum = (uint16_t)(((checksum >> 1) | ((uint32_t)checksum << 15)) + entry[i]);
+    store_little(entry + 2, checksum, 2);
+}
+
 static void set_exfat_link(LBA_t fat, DWORD cluster, DWORD next)
 {
     BYTE table[512];
@@ -526,14 +538,7 @@ static void bitmap_case(const char *kind, unsigned value)
         store_little(directory + bitmap + 20, first, 4);
         store_little(directory + bitmap + 24, length, 8);
         store_little(directory + entry + 52, neighbor_cluster, 4);
-        unsigned entry_bytes = (directory[entry + 1] + 1) * 32;
-        assert(entry + entry_bytes <= sizeof directory);
-        uint16_t checksum = 0;
-        for (unsigned i = 0; i < entry_bytes; ++i)
-            if (i != 2 && i != 3)
-                checksum = (uint16_t)(((checksum >> 1) | ((uint32_t)checksum << 15)) +
-                                      directory[entry + i]);
-        store_little(directory + entry + 2, checksum, 2);
+        exfat_entry_checksum(directory + entry, sizeof directory - entry);
         assert(disk_write(0, directory, root, 1) == RES_OK);
         for (unsigned i = 0; i < clusters; ++i)
             set_exfat_link(fat, first + i, i + 1 == clusters ? UINT32_MAX : first + i + 1);
@@ -589,6 +594,123 @@ static void bitmap_case(const char *kind, unsigned value)
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
+/* Adapted from paps-g b483124c. Change only the on-disk size of an
+ * empty file, leaving its starting cluster absent. */
+static void set_empty_file_size(FATFS *fs, FIL *file, unsigned size)
+{
+    LBA_t sector;
+    unsigned offset;
+    int exfat = fs->fs_type == FS_EXFAT;
+    if (exfat) {
+        DWORD root = file->obj.c_scl ? file->obj.c_scl : (DWORD)fs->dirbase;
+        sector = fs->database + (root - 2) * fs->csize + file->obj.c_ofs / 512;
+        offset = file->obj.c_ofs % 512;
+    } else {
+        sector = file->dir_sect;
+        offset = (unsigned)(file->dir_ptr - fs->win);
+    }
+    assert(!file->obj.sclust && !f_size(file));
+    assert(f_close(file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+    BYTE directory[512];
+    assert(disk_read(0, directory, sector, 1) == RES_OK);
+    if (exfat) {
+        assert(offset + 64 <= sizeof directory && directory[offset + 32] == 0xc0);
+        store_little(directory + offset + 40, size, 8);
+        store_little(directory + offset + 56, size, 8);
+        exfat_entry_checksum(directory + offset, sizeof directory - offset);
+    } else {
+        assert(offset + 32 <= sizeof directory);
+        store_little(directory + offset + 28, size, 4);
+    }
+    assert(disk_write(0, directory, sector, 1) == RES_OK);
+    assert(f_mount(fs, "0:", 1) == FR_OK);
+}
+
+static void readonly_seek_case(BYTE type, unsigned scenario)
+{
+    enum { FIRST, LAST, PAST, ZERO, EMPTY, WRITER, HEALTHY };
+    assert(scenario <= HEALTHY);
+    format_volume(type == FS_EXFAT ? FM_EXFAT : type == FS_FAT32 ? FM_FAT32 : FM_FAT,
+                  1, 512);
+    FATFS fs, *volume;
+    FIL file;
+    BYTE neighbor[1024], byte;
+    UINT count;
+    memset(neighbor, 0x37, sizeof neighbor);
+    assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fs_type == type);
+    create_file("/NEIGHBOR.BIN", neighbor, sizeof neighbor);
+    create_file("/TARGET.BIN", neighbor, 0);
+    if (scenario <= ZERO) {
+        assert(f_open(&file, "/TARGET.BIN", FA_READ) == FR_OK);
+        set_empty_file_size(&fs, &file, 512);
+    }
+
+    DWORD free_before;
+    assert(f_getfree("0:", &free_before, &volume) == FR_OK && volume == &fs);
+    const char *path = scenario == HEALTHY ? "/NEIGHBOR.BIN" : "/TARGET.BIN";
+    assert(f_open(&file, path, scenario == WRITER ? FA_WRITE : FA_READ) == FR_OK);
+    if (scenario == WRITER) {
+        assert(f_lseek(&file, 513) == FR_OK && f_tell(&file) == 513);
+        byte = 0x5a;
+        assert(f_write(&file, &byte, 1, &count) == FR_OK && count == 1);
+    } else if (scenario == HEALTHY) {
+        assert(f_lseek(&file, 513) == FR_OK && f_tell(&file) == 513);
+        assert(f_read(&file, &byte, 1, &count) == FR_OK && count == 1 && byte == neighbor[513]);
+    } else {
+        BYTE window[512];
+        memcpy(window, fs.win, sizeof window);
+        DWORD last = fs.last_clst, free_clusters = fs.free_clst;
+        LBA_t window_sector = fs.winsect;
+        BYTE dirty = fs.wflag;
+        unsigned writes_before = writes;
+        FSIZE_t offset = scenario == FIRST ? 1 : scenario == LAST ? 512 :
+                         scenario == ZERO ? 0 : 513;
+        assert(!file.obj.sclust && f_size(&file) == (scenario == EMPTY ? 0 : 512));
+        FRESULT expected = scenario <= PAST ? FR_INT_ERR : FR_OK;
+        FRESULT result = f_lseek(&file, offset);
+        if (expected == FR_INT_ERR && result == FR_OK) {
+            DWORD allocated = file.obj.sclust;
+            assert(f_close(&file) == FR_OK);
+            verify_file("/NEIGHBOR.BIN", neighbor, sizeof neighbor);
+            assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+            DWORD free_after;
+            assert(f_getfree("0:", &free_after, &volume) == FR_OK);
+            if (type == FS_FAT32) {
+                /* FSInfo may retain the old free count. Read the FAT entry. */
+                BYTE fat_sector[512];
+                assert(allocated >= 2);
+                assert(disk_read(0, fat_sector, fs.fatbase + allocated / 128, 1) == RES_OK);
+                assert(little_word(fat_sector + (allocated % 128) * 4) & 0x0fffffffu);
+                fprintf(stderr, "allocation persisted in the FAT\n");
+            }
+            fprintf(stderr, "read-only seek allocated cluster %lu on FAT type %u, free %lu to %lu\n",
+                    (unsigned long)allocated, type, (unsigned long)free_before, (unsigned long)free_after);
+        }
+        assert(result == expected);
+        assert(!file.obj.sclust && !f_tell(&file) && writes == writes_before);
+        assert(fs.last_clst == last && fs.free_clst == free_clusters &&
+               fs.winsect == window_sector && fs.wflag == dirty &&
+               !memcmp(window, fs.win, sizeof window));
+        if (expected == FR_INT_ERR) {
+            assert(f_error(&file) == FR_INT_ERR);
+            assert(f_read(&file, &byte, 1, &count) == FR_INT_ERR && !count);
+        }
+    }
+    assert(f_close(&file) == FR_OK);
+    assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+    verify_file("/NEIGHBOR.BIN", neighbor, sizeof neighbor);
+    if (scenario == WRITER) {
+        assert(f_open(&file, path, FA_READ) == FR_OK && f_size(&file) == 514);
+        assert(f_lseek(&file, 513) == FR_OK);
+        assert(f_read(&file, &byte, 1, &count) == FR_OK && count == 1 && byte == 0x5a);
+        assert(f_close(&file) == FR_OK);
+    } else {
+        DWORD free_after;
+        assert(f_getfree("0:", &free_after, &volume) == FR_OK && free_before == free_after);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);
@@ -599,6 +721,11 @@ int main(int argc,char **argv)
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
     } else if (!strcmp(argv[2], "write-abort-fat32") || !strcmp(argv[2], "write-abort-exfat")) {
         aborted_write(!strcmp(argv[2], "write-abort-fat32"), value);
+    } else if (!strncmp(argv[2], "readonly-", 9)) {
+        const char *name = argv[2] + 9;
+        BYTE type = !strcmp(name, "fat12") ? FS_FAT12 : !strcmp(name, "fat16") ? FS_FAT16 :
+                    !strcmp(name, "fat32") ? FS_FAT32 : FS_EXFAT;
+        readonly_seek_case(type, (unsigned)value);
     } else if (!strncmp(argv[2], "bitmap-", 7)) {
         bitmap_case(argv[2] + 7, (unsigned)value);
     } else if (!strncmp(argv[2], "metadata-", 9)) {
