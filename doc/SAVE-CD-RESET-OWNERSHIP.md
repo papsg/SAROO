@@ -91,3 +91,23 @@ publishing its index immediately after reader retirement. Both CD
 profiles pass 210 methods. The GNU MCU App links 64,572 load bytes
 with 964 bytes of ITCM space. The preemption boundary is modeled
 on the host.
+
+## Acknowledge retained PLAY as one operation
+
+Adapted from paps-g `c6dc9847` (MCU-CDC-037). A higher-priority
+command can replace a request after its wait times out. The CD
+worker now checks whether it can keep the sector reader and clears
+the current request under the same IRQ guard. Ordinary pauses use
+that guard to retire the reader and its directory state. The worker
+signals completion after restoring the interrupt mask.
+[Sega CD Communication Interface ST-162-062094, §4.2 drive
+control, printed pp. 37–38](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=25),
+[CMSIS-Core CPU interrupt mask functions](https://arm-software.github.io/CMSIS_5/Core/html/group__Core__Register__gr.html).
+
+The actual-source drive fixture schedules a replacement pause at
+the old request's clear. The parent loses the new request and
+passes the other 46 methods. The port retains the replacement,
+then services it at the next checkpoint. Both CD profiles pass
+211 methods, including ordinary pause and directory controls.
+The GNU MCU App links 64,556 load bytes with 980 bytes of ITCM
+space. The preemption sequence is a host model.

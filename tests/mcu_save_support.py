@@ -136,13 +136,12 @@ class MCUSaveTest(unittest.TestCase):
                 pause = b'static int pause_disc(void) { return 0; }\n'
             (cls.target / 'pause-disc.inc').write_bytes(pause)
             ack = b''
-            if b'static void acknowledge_disc_pause(void)' in main:
-                begin = main.index(b'static void acknowledge_disc_pause(void)')
-                ack = main[begin:main.index(b'\n}', begin)+2]
-                for signature in (b'int outside_play_range(', b'static int acknowledge_drive_request('):
-                    if signature in main:
-                        start = main.index(signature)
-                        ack += b'\n' + main[start:main.index(b'\n}', start)+2]
+            for signature in (b'static void acknowledge_disc_pause(void)', b'int outside_play_range(',
+                              b'static int acknowledge_drive_request('):
+                if signature in main:
+                    start = main.index(signature)
+                    ack += main[start:main.index(b'\n}', start)+2] + b'\n'
+            if ack:
                 cdc = (source/'saturn_cdc.c').read_bytes(); inputs['Saturn/saturn_cdc.c']=cdc
                 if b'void invalidate_directory(' in cdc:
                     begin=cdc.index(b'void invalidate_directory(')

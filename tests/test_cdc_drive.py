@@ -60,10 +60,15 @@ class CDDriveTests(unittest.TestCase):
         start=main.index(b'\t\t\tif(cdb.pause_request)',end)
         end=main.index(b'\n\t\t\t}',start)+5
         active=main[start:end]
-        ack=function(main,b'static void acknowledge_disc_pause(')
+        stop_signature = b'static void acknowledge_disc_pause('
+        ack = function(main, stop_signature) if stop_signature in main else b''
         new_worker=b'static int acknowledge_drive_request(' in main
         if new_worker:
-            ack+=function(main,b'int outside_play_range(')+function(main,b'static int acknowledge_drive_request(')
+            request = function(main, b'static int acknowledge_drive_request(')
+            publication = b'cdb.pause_request = 0;'
+            assert request.count(publication) == 1
+            request = request.replace(publication, b'if (pause_publication_hook) pause_publication_hook();\n    ' + publication)
+            ack += function(main, b'int outside_play_range(') + request
         locals_ = b'int retained_startup=0;\n' if new_worker else b''
         exits = b'_play_end: (void)retained_startup;\n' if new_worker else b''
         (cls.target/'pause-worker.inc').write_bytes(ack+b'\nstatic void worker_pause_step(void) {\n'+locals_+
@@ -188,6 +193,7 @@ class CDDriveTests(unittest.TestCase):
     def test_file_range_refused_or_timed_out_commands_preserve_worker_bounds(self):self.run_case(41)
     def test_file_range_media_retry_uses_current_disc(self):self.run_case(42)
     def test_file_range_work_bounds_and_background_play_controls(self):self.run_case(43)
+    def test_retained_acknowledgment_cannot_clear_a_replacement_request(self):self.run_case(46)
 
 
 if __name__=='__main__':unittest.main()

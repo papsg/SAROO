@@ -336,19 +336,6 @@ void set_peri_report(void)
 }
 
 
-/* Publish idle state and retire its request together. A new command may run
- * after IRQ restoration; the old notification must not clear its request. */
-static void acknowledge_disc_pause(void)
-{
-    int irqs = disable_irq();
-    cdb.status = STAT_PAUSE;
-    if (cdb.play_type == PLAYTYPE_DIR) invalidate_directory();
-    cdb.play_type = 0;
-    cdb.pause_request = 0;
-    restore_irq(irqs);
-    set_pause_ok();
-}
-
 __attribute__((noinline)) int outside_play_range(void)
 {
     return cdb.fad < cdb.play_fad_start || cdb.fad >= cdb.play_fad_end;
@@ -356,17 +343,21 @@ __attribute__((noinline)) int outside_play_range(void)
 
 static int acknowledge_drive_request(void)
 {
-    if (cdb.pause_request == -PLAYTYPE_SECTOR && cdb.play_type == PLAYTYPE_SECTOR) {
-        /* Command service has higher priority and publishes before this
-         * worker resumes. Check the reader kind here because I/O may fail
-         * between the request and this checkpoint. */
-        cdb.pause_request = 0;
-        set_pause_ok();
-        return 1;
+    /* A timed-out request can be replaced by command service. Decide against
+     * the current request and retire it before a new one can be published. */
+    int irqs = disable_irq();
+    int keep_reader = cdb.pause_request == -PLAYTYPE_SECTOR &&
+                      cdb.play_type == PLAYTYPE_SECTOR;
+    if (!keep_reader) {
+        cdb.status = STAT_PAUSE;
+        if (cdb.play_type == PLAYTYPE_DIR) invalidate_directory();
+        cdb.play_type = 0;
     }
-    SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
-    acknowledge_disc_pause();
-    return 0;
+    cdb.pause_request = 0;
+    restore_irq(irqs);
+    if (!keep_reader) SSLOG(_DTASK, "play_task: Recv PAUSE request!\n");
+    set_pause_ok();
+    return keep_reader;
 }
 
 static __attribute__((noinline)) void log_play_end(void)

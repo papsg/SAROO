@@ -62,7 +62,11 @@ class CDDirectoryTests(unittest.TestCase):
             end=main.index(b'\n\n\t\tif(cdb.play_fad_start',start)
         code+=b'static int initial_error_step(void) {\n'+main[start:end]+b'\nreturn 1;\n'+error_exit+b'\n_restart_wait: return 0;\n}\n'
         (cls.target/'input-error.inc').write_bytes(code)
-        (cls.target/'pause.inc').write_bytes(function(main,b'static void acknowledge_disc_pause('))
+        stop_signature = b'static void acknowledge_disc_pause('
+        pause = (function(main, stop_signature) if stop_signature in main
+                 else function(main, b'static int acknowledge_drive_request(') +
+                 b'#define acknowledge_disc_pause acknowledge_drive_request\n')
+        (cls.target/'pause.inc').write_bytes(pause)
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main}
         for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py'):
             inputs[name]=(ROOT/'tests'/name).read_bytes()

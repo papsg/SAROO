@@ -25,6 +25,7 @@ static int pause_active;
 static unsigned pause_signals;
 static const CDBLOCK *pause_state;
 static u16 pause_control,pause_hirq,pause_clear;
+static void (*pause_publication_hook)(void);
 static void set_pause_ok(void)
 {
     assert(!irq_depth);
@@ -81,6 +82,7 @@ static void ready(void)
     pause_active=0;pause_signals=0;repeat_on_ack=0;
     pause_state=NULL;
     drive_wait_hook=drive_ack_hook=NULL;
+    pause_publication_hook=NULL;
     hirq=hirq_clear=0;
     ss_control=0x8000;
 }
@@ -1232,6 +1234,34 @@ static void original_drive_mask(void)
     printf("shadow mask=%u\n", (unsigned)hirq);
 }
 
+static void replace_retained_request(void)
+{
+    assert(!irq_depth && cdb.play_type == PLAYTYPE_SECTOR);
+    cdb.pause_request = 1;
+}
+
+static void command_preempts_retained_acknowledgment(void)
+{
+    if (irq_depth) irq_restore_hook = replace_retained_request;
+    else replace_retained_request();
+}
+
+static void retained_acknowledgment(void)
+{
+    ready();
+    cdb.status = STAT_PLAY;
+    cdb.play_type = PLAYTYPE_SECTOR;
+    cdb.pause_request = -PLAYTYPE_SECTOR;
+    pause_publication_hook = command_preempts_retained_acknowledgment;
+    assert(acknowledge_drive_request());
+    assert(cdb.pause_request == 1 && cdb.play_type == PLAYTYPE_SECTOR);
+    assert(cdb.status == STAT_PLAY && pause_signals == 1);
+    pause_publication_hook = NULL;
+    assert(!acknowledge_drive_request());
+    assert(!cdb.pause_request && !cdb.play_type && cdb.status == STAT_PAUSE);
+    assert(pause_signals == 2 && !irq_depth);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1268,6 +1298,7 @@ int main(int argc,char **argv)
     case 43:file_range_controls();break;
     case 44:original_drive_commands();break;
     case 45:original_drive_mask();break;
+    case 46:retained_acknowledgment();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }
