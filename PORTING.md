@@ -2448,3 +2448,13 @@ The public checkout is clean. The private checkout's HEAD, branch, refs, stash, 
 - [x] `7b6f6ebd` (AUD-MCU-035): [`7f05303`](https://github.com/papsg/SAROO/commit/7f0530316b32991c45539cf8c914fe7d608922b0) — [already addressed by the continuous link](https://github.com/papsg/SAROO/blob/7f0530316b32991c45539cf8c914fe7d608922b0/doc/AUDIO-SAFETY.md#deliver-a-lone-accepted-audio-track-tail). Pre-continuity parent strands a single accepted sector; current source emits all 1,176 words. Both 44-method audio profiles, 228 CD/CUE methods and 17 optimized worker methods pass. No runtime change; rebuilt GNU App load is byte-identical. Mixed-mode hardware playback unqualified.
 
 - [x] `bf429abf` (AUD-MCU-046): [`fca7da1`](https://github.com/papsg/SAROO/commit/fca7da17877aaae61814d7879a446e870684cb7c) — [whole-span SD address admission](https://github.com/papsg/SAROO/blob/fca7da17877aaae61814d7879a446e870684cb7c/doc/FIRMWARE-RELIABILITY-FOLLOWUP.md#reject-a-sector-span-that-the-card-address-cannot-represent). The parent begins a bounce transfer past the representable span; valid endpoints pass. Both focused 70-method runs and 204 new transfer cases pass. GNU App 64,960 bytes, 576 free. Physical card capacity, timing and media behavior unqualified.
+
+### Final verification: CD audio, SDRAM identity and SD span
+
+All six checkpoints are recorded above and published in order through [`fca7da1`](https://github.com/papsg/SAROO/commit/fca7da17877aaae61814d7879a446e870684cb7c). The fifth checkpoint verifies the existing continuous audio link and adds no runtime workaround. The attribution and primary sources are linked from each entry.
+
+The full `make -j6 -C tests check` passes on the published source: 877 Python methods and 18 Rust tests pass, with one Windows-only fixture skipped. The final GNU App links with all 166 vectors and uses 64,960 load bytes (576 free) and 50,752 static DTCM bytes. The GNU BootLoader comparison links all 13 enabled C units and common providers with 166 vectors at the original flash base. The stock menu ELF and binary match the earlier build exactly, and all 48 linked menu clock cases pass.
+
+All 18 final FPGA project inputs match the completed five-stage Quartus fit. All 21 constrained checks pass; minimum setup and hold slacks are 0.559 ns and 0.153 ns. These are host, simulation, link and fit results. They do not qualify MDK output, external bus timing, physical audio or game behavior.
+
+The public checkout is clean. Private checkout fingerprints match for HEAD, branch, status, all refs (including stash) and tracked diff. The Saturn was untouched. No PR, USB work or runtime diagnostic was added.
