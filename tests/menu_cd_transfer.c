@@ -142,10 +142,15 @@ static struct step { unsigned cmd; int result; u32 words; unsigned offset, exten
 static unsigned used, next;
 static unsigned play_fad=2612, play_sectors;
 static unsigned CR1;
+static u32 clock_value, query_ticks;
+static unsigned timer_reads;
+static __attribute__((unused)) u32 get_timer(void) { timer_reads++; return clock_value; }
+#include "timing.inc"
 
 static void reset(void)
 {
     used=next=fifo_pos=read_words=long_reads=0;
+    clock_value=query_ticks=timer_reads=0;
     CR1=0;
     fifo_limit=sizeof stream;
     for(unsigned i=0;i<sizeof stream;++i) stream[i]=(i*73+19)%251;
@@ -173,7 +178,10 @@ static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name)
     }
     CR1=step->status<<8;
     *resp=(CDCMD){CR1,step->words,0,0};
-    if(cmd->cr1 == 0x5100) resp->cr4=step->words;
+    if(cmd->cr1 == 0x5100) {
+        resp->cr4=step->words;
+        clock_value+=query_ticks;
+    }
     if(cmd->cr1 == 0x0600) resp->cr1=(step->words>>16)&0xff;
     return step->result;
 }
@@ -250,7 +258,7 @@ static void test_read(void)
         u8 *buffer=malloc(prefix+size+32); assert(buffer);
         memset(buffer,0xcc,prefix+size+32);reset();read_script(size,wire);
         assert(cdc_read_sector(play_fad,size,buffer+prefix)==(int)size);
-        assert(next==used);
+        assert(next==used && !timer_reads);
         for(unsigned i=0;i<size;++i) assert(buffer[prefix+i]==stream[(i/2048)*wire+i%2048]);
         for(unsigned i=0;i<prefix;++i) assert(buffer[i]==0xcc);
         for(unsigned i=0;i<32;++i) assert(buffer[prefix+size+i]==0xcc);
@@ -382,6 +390,73 @@ static void test_terminal_read(void)
     }
 }
 
+static void expect_empty(unsigned status, int result)
+{
+    expect(0x5100, result, 0);
+    steps[used - 1].status = status;
+}
+
+static void test_stalled_read(void)
+{
+    const u32 starts[] = {0, UINT32_MAX - 5000000};
+    _Alignas(8) u8 buffer[4096 + 32];
+    for (unsigned state = 0; state < 16; state++) {
+        if (state >= STATUS_OPEN && state <= STATUS_FATAL && state != STATUS_RETRY) continue;
+        for (unsigned wrap = 0; wrap < 2; wrap++) {
+            for (unsigned prefix = 0; prefix < 2; prefix++) {
+                reset();
+                clock_value = starts[wrap];
+                query_ticks = 1000000;
+                memset(buffer, 0xcc, sizeof buffer);
+                setup(4096, -1, 0);
+                if (prefix) sector(0, 2048, -1, 0, 1024);
+                for (unsigned query = 0; query < 11; query++) expect_empty(state | 0x40, 0);
+                assert(cdc_read_sector(play_fad, 4096, buffer) == -3);
+                assert(next == used && read_words == prefix * 1024);
+                assert(!memcmp(buffer, stream, prefix * 2048));
+                for (unsigned i = prefix * 2048; i < sizeof buffer; i++) assert(buffer[i] == 0xcc);
+            }
+        }
+    }
+}
+
+static void test_read_progress(void)
+{
+    _Alignas(8) u8 buffer[6143 + 32];
+    const u32 starts[] = {0, UINT32_MAX - 5000000};
+    for (unsigned wrap = 0; wrap < 2; wrap++) {
+        reset();
+        clock_value = starts[wrap];
+        query_ticks = 1000000;
+        memset(buffer, 0xcc, sizeof buffer);
+        setup(6143, -1, 0);
+        for (unsigned index = 0; index < 3; index++) {
+            for (unsigned query = 0; query < 8; query++) expect_empty(STATUS_RETRY, 0);
+            sector(index, 2048, -1, 0, 1024);
+        }
+        assert(cdc_read_sector(play_fad, 6143, buffer) == 6143);
+        assert(next == used && (u32)(clock_value - starts[wrap]) == 27000000);
+        assert(!memcmp(buffer, stream, 6143) && buffer[6143] == 0xcc);
+    }
+}
+
+static void test_wait_query_error(void)
+{
+    _Alignas(8) u8 buffer[4096 + 32];
+    for (int error = -3; error >= -6; error--) {
+        reset();
+        query_ticks = 1000000;
+        memset(buffer, 0xcc, sizeof buffer);
+        setup(4096, -1, 0);
+        sector(0, 2048, -1, 0, 1024);
+        expect_empty(STATUS_RETRY, 0);
+        expect_empty(STATUS_RETRY, error);
+        assert(cdc_read_sector(play_fad, 4096, buffer) == error);
+        assert(next == used && read_words == 1024 && !memcmp(buffer, stream, 2048));
+        for (unsigned i = 2048; i < sizeof buffer; i++) assert(buffer[i] == 0xcc);
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);reset();
@@ -393,6 +468,9 @@ int main(int argc,char **argv)
     else if(!strcmp(argv[1],"files")) test_files();
     else if(!strcmp(argv[1],"hooks")) test_hooks();
     else if(!strcmp(argv[1],"terminal")) test_terminal_read();
+    else if(!strcmp(argv[1],"stalled")) test_stalled_read();
+    else if(!strcmp(argv[1],"progress")) test_read_progress();
+    else if(!strcmp(argv[1],"query-error")) test_wait_query_error();
     else assert(0);
     return 0;
 }

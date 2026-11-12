@@ -41,6 +41,12 @@ class MenuCDTransferTests(unittest.TestCase):
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         (cls.target / 'transfers.inc').write_bytes(code)
+        header = (ROOT / 'Firm_Saturn/main.h').read_bytes()
+        tick = next(line for line in header.splitlines() if line.startswith(b'#define MS2TICK('))
+        elapsed = function(header.replace(b'static inline int timer_reached',
+                                          b'static int timer_reached'), 'timer_reached')
+        (cls.target / 'timing.inc').write_bytes(
+            tick + b'\n' + elapsed.replace(b'static int', b'static __attribute__((unused)) int', 1))
         (cls.target / 'commands.inc').write_bytes(
             function(raw, 'cdc_cmd') + function(raw, 'cdc_end_trans'))
         flags = ['-O2'] if os.environ.get('SAROO_MENU_CD_PROFILE') == 'release' else [
@@ -88,6 +94,15 @@ class MenuCDTransferTests(unittest.TestCase):
 
     def test_empty_sector_wait_exits_terminal_states_and_preserves_partial_output(self):
         self.scenario('terminal')
+
+    def test_stalled_sector_wait_expires_and_preserves_partial_output(self):
+        self.scenario('stalled')
+
+    def test_incremental_reads_get_a_fresh_deadline_for_each_empty_episode(self):
+        self.scenario('progress')
+
+    def test_query_error_while_waiting_preserves_partial_output(self):
+        self.scenario('query-error')
 
     def test_accepted_data_ready_timeout_ends_once(self):
         self.scenario('cleanup', 'commands')

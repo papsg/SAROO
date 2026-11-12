@@ -874,10 +874,16 @@ int cdc_read_sector(int fad, int size, u8 *buf)
         result = cdc_get_numsector(0, &available);
         if (result) return result;
         if (!available) {
-            int status = (CR1 >> 8) & 0x0f;
-            if (status >= STATUS_OPEN && status <= STATUS_FATAL && status != STATUS_RETRY)
-                return -1;
-            continue;
+            /* Each empty-buffer episode gets a fresh firmware deadline. */
+            u32 deadline = get_timer() + MS2TICK(10000);
+            do {
+                int status = (CR1 >> 8) & 0x0f;
+                if (status >= STATUS_OPEN && status <= STATUS_FATAL && status != STATUS_RETRY)
+                    return -1;
+                if (timer_reached(get_timer(), deadline)) return -3;
+                result = cdc_get_numsector(0, &available);
+                if (result) return result;
+            } while (!available);
         }
         int bytes = remaining >= 2048 ? 2048 : remaining;
         result = cdc_get_del_data(0, 0, 1);

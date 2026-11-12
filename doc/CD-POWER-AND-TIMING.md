@@ -33,3 +33,23 @@ counter wrap, late completion, a wrong completion code, the ready timeout
 and retry before stale status can be consumed. The pinned SH-2 menu links
 81,172 code/data bytes with 24,272 bytes of body space. Physical SMPC timing
 and disc recovery remain unqualified.
+
+## Bound a stalled game sector read
+
+Adapted from the game-facing portion of paps-g `63e0e2b4` (SATURN-CD-003).
+After the first empty buffer reply, the reader has ten seconds to observe
+another sector. A newly empty buffer starts a fresh budget. Already buffered
+sectors take the normal path without reading the timer. Terminal states and
+command errors return their existing errors. A timeout returns `-3` and
+retains any bytes the reader has already copied. The timeout is a firmware
+policy for an empty buffer and depends on the timer and commands returning.
+[Sega CD Communication Interface ST-162-062094, §4.1, printed pp. 33–35](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=21),
+[§8.2.6 No. 6.2, printed p. 92](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=80).
+
+Run `test_menu_cd_transfer.py` with the parent `Firm_Saturn` path in
+`SAROO_MENU_CD_SOURCE`. The parent issues another count query after the
+deadline and passes the other 15 methods. The port checks stalls with
+and without copied output, terminal status, wrap, and a read that makes
+progress across 27 seconds of modeled time. Both CD profiles pass 54
+methods. The SH-2 menu links 81,236 code/data bytes with 24,208 bytes of
+body space. Physical drive timing and game behavior remain unqualified.
