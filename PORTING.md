@@ -1975,3 +1975,13 @@ Saturn was left untouched.
    with 2,372 bytes of ITCM space. Named game behavior and physical
    timing remain unqualified.
    [Sega and upstream citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#preserve-the-playback-range-across-seek)
+
+2. **SEEK completion and BUSY reply — published**
+   [`de03534`](https://github.com/papsg/SAROO/commit/de035340203933076c8734fed613b72ec8837fc5).
+   Adapted from paps-g `13f35e65` (MCU-CDC-024/025) after the
+   retained SEEK range. Three parent cases miss PEND or report the
+   settled status in the command reply. The no-event control passes.
+   Both CD profiles pass 174 methods. The GNU MCU App loads
+   63,196 bytes with 2,340 bytes of ITCM space. Actual interrupt
+   timing and game waits remain unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#report-seek-completion-and-status)
