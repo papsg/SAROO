@@ -44,6 +44,7 @@ static u16 *test_command(void)
 #define SS_CMD (*test_command())
 #define BUP_BROKEN 4
 static u32 mblk_bmp[2];
+#define menu_command_wait() 0
 #include "menu-command.inc"
 
 static unsigned checks;

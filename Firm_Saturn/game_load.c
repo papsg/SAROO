@@ -553,6 +553,7 @@ int bios_cd_cmd(int type)
 	if(type>0 && use_sys_bup==0){
 		// 光盘游戏。需要通知MCU加载SAVE。
 		// Optical disc game. Need to notify MCU to load SAVE.
+		if (menu_command_wait()) return -1;
 		memcpy((void*)(TMPBUFF_ADDR+0x10), (u8*)0x06002020, 16);
 		*(u8*)(TMPBUFF_ADDR+0x20) = 0;
 

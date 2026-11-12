@@ -10,6 +10,7 @@ static u16 *test_command(void);
 #define SAVINFO_ADDR ((uintptr_t)test_shared)
 #define SS_ARG test_arg
 #define SS_CMD (*test_command())
+#define menu_command_wait() 0
 #define SSCMD_SSAVE 9
 #define SSCMD_LMEMS 11
 #define SSCMD_SMEMS 12

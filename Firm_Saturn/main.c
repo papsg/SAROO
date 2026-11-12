@@ -17,6 +17,7 @@
 u16 save_ack;
 static u16 file_ack;
 static u16 archive_ack;
+static u16 menu_ack;
 u32 mcu_ver;
 u32 debug_flag;
 int bios_type;
@@ -364,8 +365,24 @@ static int menu_cd_power(MENU_DESC *menu, int physical, int wait)
 /**********************************************************/
 
 
+int menu_command_wait(void)
+{
+    u16 pending = SS_CMD;
+    /* Legacy startup/preview leave the same opcode after completion. */
+    if (pending && (menu_ack || (pending != SSCMD_STARTUP && pending != SSCMD_SELECT))) {
+        u32 deadline = get_timer() + MS2TICK(10000);
+        while (SS_CMD) {
+            if (timer_reached(get_timer(), deadline)) return -15; /* FR_TIMEOUT */
+        }
+    }
+    /* The prior owner has finished using the request before it clears SS_CMD. */
+    __asm__ volatile ("" ::: "memory");
+    return 0;
+}
+
 void stm32_puts(char *str)
 {
+	if (menu_command_wait()) return;
 	u32 stm32_base = TMPBUFF_ADDR;
 	int len;
 
@@ -374,6 +391,7 @@ void stm32_puts(char *str)
 
 	memcpy((void*)stm32_base+0x10, str, len+1);
 
+	__asm__ volatile ("" ::: "memory");
 	SS_CMD = 0x0001;
 	while(SS_CMD);
 }
@@ -596,6 +614,8 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
     u32 end = direct ? (address < 0x020c7000 ? 0x020c7000 : 0x03000000) : 0x02400000;
     if ((address >= 0x020c7000 && address < 0x020c7100) || size > end - address)
         return -19;
+    int ready = menu_command_wait();
+    if (ready) return ready;
     /* Capture the mapping before the command. Reset can change SS_CTRL. */
     if (!writing && direct && address < 0x02800000u &&
         address + size > 0x02400000u && (SS_CTRL & 0x3000u) == 0x2000u)
@@ -932,9 +952,9 @@ static void fill_selmenu(void)
 
 static void select_notify(int index)
 {
-	if(sel_mode==0){
+	if(sel_mode==0 && !menu_command_wait()){
 		SS_ARG = page*MENU_ITEMS + index;
-		SS_CMD = SSCMD_SELECT;
+		SS_CMD = SSCMD_SELECT | menu_ack;
 	}
 }
 
@@ -1052,6 +1072,11 @@ static int sel_handle(int ctrl)
 		int retv;
 
 		if(sel_mode==0){
+			retv = menu_command_wait();
+			if (retv) {
+				menu_error(menu, TT("游戏启动失败! %d"), retv);
+				return 0;
+			}
 			menu_status(menu, TT("游戏启动中......"));
 
 			SS_ARG = index;
@@ -1081,6 +1106,11 @@ static int sel_handle(int ctrl)
 		if(sel_mode==0){
 			int index = page*MENU_ITEMS + menu->current;
 
+			retv = menu_command_wait();
+			if (retv) {
+				menu_error(menu, TT("游戏启动失败! %d"), retv);
+				return 0;
+			}
 			SS_ARG = index;
 			SS_CMD = SSCMD_LOADDISC;
 			while(SS_CMD);
@@ -1133,11 +1163,13 @@ void select_game(void)
 
 void select_bins(void)
 {
+	if (menu_command_wait()) return;
 	SS_CMD = SSCMD_LISTBINS;
 	while(SS_CMD);
 
 	select_game();
 
+	if (menu_command_wait()) return;
 	SS_ARG = 0;
 	SS_CMD = SSCMD_LISTDISC;
 	while(SS_CMD);
@@ -1160,6 +1192,7 @@ static int category_handle(int ctrl)
 	if(BUTTON_DOWN(ctrl, PAD_A)){
 		int index = menu->current;
 
+		if (menu_command_wait()) return 0;
 		SS_ARG = index;
 		SS_CMD = SSCMD_LISTDISC;
 		while(SS_CMD);
@@ -1277,6 +1310,12 @@ int main_handle(int ctrl)
 
 		// 停止正在播放的背景音乐。
 		// Stop currently playing background music.
+		retv = menu_command_wait();
+		if (retv) {
+			menu_error(&main_menu, TT("游戏启动失败! %d"), retv);
+			menu_cd_power(&main_menu, 0, 0);
+			return 0;
+		}
 		SS_ARG = 0xffff;
 		SS_CMD = SSCMD_LOADDISC;
 
@@ -1300,6 +1339,7 @@ int main_handle(int ctrl)
 		sci_shell();
 		return MENU_EXIT;
 	}else if(index==update_index){
+		if (menu_command_wait()) return 0;
 		menu_status(&main_menu, TT("升级中,请勿断电..."));
 		SS_ARG = 0;
 		SS_CMD = SSCMD_UPDATE;
@@ -1319,6 +1359,7 @@ int main_handle(int ctrl)
 
 int check_update(void)
 {
+	if (menu_command_wait()) return 0;
 	SS_ARG = 0;
 	SS_CMD = SSCMD_CHECK;
 	while(SS_CMD);
@@ -1406,6 +1447,19 @@ void detect_bios_type(void)
 /**********************************************************/
 
 
+static int start_menu_services(void)
+{
+    menu_ack = LE32((void *)(SYSINFO_ADDR + 0x2c)) == MENU_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+    int result = menu_command_wait();
+    if (result) return result;
+    SS_ARG = 0;
+    SS_CMD = SSCMD_STARTUP | menu_ack;
+    if (!menu_ack) return 0;
+    result = menu_command_wait();
+    if (result) return result;
+    return (SS_ARG & menu_ack) ? 0 : -1;
+}
+
 int _main(void)
 {
 	reset_timer();
@@ -1417,11 +1471,12 @@ int _main(void)
 
 	detect_bios_type();
 
-	SS_ARG = 0;
-	SS_CMD = SSCMD_STARTUP;
-
-
 	conio_init();
+	if (start_menu_services()) {
+		nbg1_on();
+		printk("SAROO startup did not complete. Reset to retry.\n");
+		return -1;
+	}
 	pad_init();
 
 	printk("    SRAOOO start!\n");

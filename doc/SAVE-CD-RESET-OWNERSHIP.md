@@ -155,3 +155,48 @@ shrink and the rest are unchanged against the timer-only link.
 The delay routine itself uses 24 bytes of direct stack, up from
 16 before the timer change. This measures link and compiler
 resources. Physical timing and game behavior remain unqualified.
+
+## Preserve an in-flight mailbox across Saturn Reset
+
+Adapted from paps-g `90ff71c0` (MCU-SAVE-001), following the reset
+investigation in `dfa2f1d1`. The front-panel Reset requests an NMI
+on the master SH-2. SAROO's FPGA command and argument registers
+have a separate reset driven by the MCU. When the menu starts again,
+a retained command can still own the argument and shared buffer.
+Clearing the FPGA's interrupt request happens before the handler
+finishes. The MCU's final command clear is the point at which the
+menu can reuse the mailbox.
+[Sega SMPC User's Manual ST-169-R1-072694, §1.1, printed p. 2](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=12),
+[Sega Boot ROM User's Manual ST-079B-R3-011895, §1.0, printed p. 3](https://antime.kapsi.fi/sega/files/ST-079B-R3-011895.pdf#page=7),
+[v0.8 FPGA command and argument registers](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/FPGA/SSMaster.v).
+
+The stock menu waits up to ten seconds for an existing command
+before publishing startup. It uses the public MCU's existing menu
+v1 capability to request completion for startup and preview. Startup
+waits for the new catalog and services to finish. Preview still runs
+asynchronously after submission. The next stock publisher waits
+before modifying the argument or shared request. A timeout leaves
+the existing owner intact. The menu uses the retained command
+register as the fence, following the later private design.
+
+An older MCU with no menu v1 capability keeps its original untagged
+startup and preview behavior. Those two opcodes can remain present
+after completion. The compatibility path accepts the legacy sticky
+values, so those two operations still have their original reset
+limitation on that pairing. Ordinary legacy requests that clear
+their command still use the bounded admission wait.
+
+```sh
+make -C tests check-file-transfer check-menu-safety check-firmware-save
+SAROO_FILE_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_command_completion.py -v
+```
+
+Against the parent menu, the command fixture reproduces startup
+overwrite, timeout overwrite and preview reuse, with seven other
+methods passing. The parent file fixture admits four read/write
+subcases while command admission is busy. The candidate preserves
+the old argument and payload, waits for final MCU completion,
+handles clock wrap and retries, and keeps legacy cold/sticky
+controls. The FPGA fixture models console reset and MCU reset
+separately. These checks establish the source and register model
+behavior. Physical reset timing remains unqualified.

@@ -135,6 +135,7 @@ static int bios_boot(void)
     operation(BOOT);
     return 37; /* Preserve a nonzero BIOS result without inventing its meaning. */
 }
+#define menu_command_wait() 0
 #include "actual.inc"
 
 static void sequence(int stop)

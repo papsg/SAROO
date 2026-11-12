@@ -1,12 +1,12 @@
 // Adapted from paps-g 36c4de4b. Original FPGA command registers.
 module tb;
-    reg clk=0, reset_n=0, mcu_write=0, saturn_write=0;
+    reg clk=0, reset_n=0, console_reset_n=1, mcu_write=0, saturn_write=0;
     reg [24:0] mcu_address=0;
     reg [23:0] saturn_address=0;
     reg [15:0] mcu_data=0, saturn_data=0;
     wire [15:0] command, result;
     wire pending;
-    command_dut dut(clk,reset_n,mcu_write,saturn_write,1'b1,
+    command_dut dut(clk,reset_n,console_reset_n,mcu_write,saturn_write,1'b1,
                     mcu_address,saturn_address,mcu_data,saturn_data,command,result,pending);
     always #5 clk=~clk;
     task swrite(input [23:0] address, input [15:0] data);
@@ -29,6 +29,11 @@ module tb;
             repeat(4) @(negedge clk);
             if(pending || command!==(opcode|tag) || result!==16'ha5c3)
                 $fatal(1,"IRQ retirement changed the request");
+            console_reset_n=0;
+            repeat(2) @(negedge clk);
+            console_reset_n=1;
+            if(pending || command!==(opcode|tag) || result!==16'ha5c3)
+                $fatal(1,"console reset lost the in-flight request");
             mwrite(25'h12,tag);
             if(command!==(opcode|tag) || result!==tag)
                 $fatal(1,"reply must precede command completion");

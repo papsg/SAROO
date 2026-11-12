@@ -298,6 +298,7 @@ void sci_shell(void)
 			reloc_vbr();
 		}
 		CMD(stm32) {
+			if (menu_command_wait()) continue;
 			to_stm32 = 1;
 			gets_from_stm32 = 1;
 			*(u32*)(TMPBUFF_ADDR) = 0;
@@ -375,6 +376,7 @@ void sci_shell(void)
 		}
 
 		CMD(listb){
+			if (menu_command_wait()) continue;
 			SS_CMD = SSCMD_LISTBINS;
 			while(SS_CMD);
 		}

@@ -78,6 +78,23 @@ static void disk_task_wakeup(void) { event(30); }
 static void load_cover(int index) { supplied = index; event(14); }
 #include "command.inc"
 
+static unsigned menu_ticks;
+static u32 menu_now;
+static void (*advance_menu_clock)(unsigned tick);
+static u16 menu_ack, inherited_command, inherited_argument;
+static int sel_mode, page;
+
+static u32 get_timer(void)
+{
+    u32 now = menu_now;
+    menu_now += 1000000u;
+    ++menu_ticks;
+    if (advance_menu_clock) advance_menu_clock(menu_ticks);
+    return now;
+}
+
+#include "menu-start.inc"
+
 static void call(unsigned opcode, unsigned arg)
 {
     command_value = opcode; request_argument = argument = arg; count = 0; supplied = ~0u;
@@ -200,6 +217,145 @@ static void results(void)
         }
     }
 }
+
+static void complete_command(u16 command, u16 arg)
+{
+    assert(command_value == command && argument == arg);
+    request_argument = arg;
+    count = 0;
+    ss_cmd_handle();
+    assert(!command_value);
+}
+
+static void prepare_menu(int tagged, u16 pending, u16 arg)
+{
+    memset(sysinfo, 0, sizeof(sysinfo));
+    if (tagged) ((u8 *)sysinfo)[0x2c] = MENU_ACK_VERSION;
+    command_value = inherited_command = pending;
+    argument = inherited_argument = arg;
+    memset(scratch, 0xa5, sizeof(scratch));
+    count = menu_ticks = menu_ack = sel_mode = page = 0;
+    menu_now = UINT32_MAX - 1500000u;
+    first_pcm = second_pcm = -2;
+    advance_menu_clock = NULL;
+}
+
+static void check_payload(void)
+{
+    for (size_t i = 0; i < sizeof(scratch); ++i)
+        assert((u8)scratch[i] == 0xa5);
+}
+
+static void finish_inherited_then_startup(unsigned tick)
+{
+    if (tick == 3) {
+        check_payload();
+        complete_command(inherited_command, inherited_argument);
+    } else if (tick == 6) {
+        buf_fad_start = buf_fad_end = buf_fad_size = 99;
+        complete_command(SSCMD_STARTUP | SSCMD_SAVE_ACK, 0);
+        assert(count && events[count - 1] == 21);
+    }
+}
+
+static void finish_cold_startup(unsigned tick)
+{
+    if (tick == 3) {
+        complete_command(SSCMD_STARTUP | SSCMD_SAVE_ACK, 0);
+        assert(count && events[count - 1] == 21);
+    }
+}
+
+static void reset_drain(void)
+{
+    const u16 commands[] = {SSCMD_STARTUP | SSCMD_SAVE_ACK, SSCMD_SELECT | SSCMD_SAVE_ACK,
+                            SSCMD_FILEWR | SSCMD_SAVE_ACK, SSCMD_FILEWR};
+    for (unsigned i = 0; i < sizeof(commands) / sizeof(commands[0]); i++) {
+        prepare_menu(1, commands[i], i == 0 ? 0 : 0x8002);
+        advance_menu_clock = finish_inherited_then_startup;
+        int result = start_menu_services();
+        assert(!command_value && argument == SSCMD_SAVE_ACK);
+        assert(!result && menu_ticks == 6);
+        check_payload();
+        checks++;
+    }
+    prepare_menu(1, 0, 0);
+    advance_menu_clock = finish_cold_startup;
+    assert(!start_menu_services() && !command_value && menu_ticks == 3);
+    checks++;
+}
+
+static void reset_without_reply(unsigned tick)
+{
+    if (tick == 3) command_value = argument = 0;
+}
+
+static void reset_timeout(void)
+{
+    prepare_menu(1, SSCMD_FILEWR | SSCMD_SAVE_ACK, 0xf00d);
+    int result = start_menu_services();
+    assert(command_value == inherited_command && argument == inherited_argument);
+    check_payload();
+    assert(result == -15 && menu_ticks == 11);
+    menu_ticks = 0;
+    advance_menu_clock = finish_inherited_then_startup;
+    assert(!start_menu_services() && menu_ticks == 6 && !command_value);
+
+    prepare_menu(1, 0, 0);
+    assert(start_menu_services() == -15 && menu_ticks == 11);
+    assert(command_value == (SSCMD_STARTUP | SSCMD_SAVE_ACK) && !argument);
+    prepare_menu(1, 0, 0);
+    advance_menu_clock = reset_without_reply;
+    assert(start_menu_services() == -1 && !command_value);
+    checks += 3;
+}
+
+static void reset_legacy(void)
+{
+    for (unsigned command = 0; command <= 2; ++command) {
+        prepare_menu(0, command == 0 ? 0 : SSCMD_STARTUP + command - 1, 0x4444);
+        assert(!start_menu_services() && !menu_ticks && command_value == SSCMD_STARTUP);
+        assert(!argument);
+        ss_cmd_handle();
+        assert(command_value == SSCMD_STARTUP && argument == (u16)-2);
+        select_notify(SELECT_ENTER | 4);
+        assert(!menu_ticks && command_value == SSCMD_SELECT && argument == (SELECT_ENTER | 4));
+        ss_cmd_handle();
+        assert(command_value == SSCMD_SELECT && argument == (SELECT_ENTER | 4));
+        checks++;
+    }
+}
+
+static void finish_preview(unsigned tick)
+{
+    if (tick == 3) {
+        complete_command(SSCMD_SELECT | SSCMD_SAVE_ACK, SELECT_ENTER + 2 * MENU_ITEMS + 1);
+        assert(events[count - 1] == 14);
+    }
+}
+
+static void preview_drain(void)
+{
+    prepare_menu(1, SSCMD_SELECT | SSCMD_SAVE_ACK, SELECT_ENTER + 2 * MENU_ITEMS + 1);
+    menu_ack = SSCMD_SAVE_ACK;
+    page = 2;
+    advance_menu_clock = finish_preview;
+    select_notify(SELECT_EXIT);
+    assert(menu_ticks == 3 && command_value == (SSCMD_SELECT | SSCMD_SAVE_ACK));
+    assert(argument == SELECT_EXIT + 2 * MENU_ITEMS);
+
+    menu_ticks = 0;
+    advance_menu_clock = NULL;
+    select_notify(0);
+    assert(menu_ticks == 11 && argument == SELECT_EXIT + 2 * MENU_ITEMS);
+    assert(command_value == (SSCMD_SELECT | SSCMD_SAVE_ACK));
+    stm32_puts("next request");
+    assert(menu_ticks == 22 && argument == SELECT_EXIT + 2 * MENU_ITEMS);
+    assert(command_value == (SSCMD_SELECT | SSCMD_SAVE_ACK));
+    check_payload();
+    checks += 4;
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -214,6 +370,10 @@ int main(int argc, char **argv)
     } else if (!strcmp(argv[1], "dispatch")) dispatch();
     else if (!strcmp(argv[1], "startup")) startup();
     else if (!strcmp(argv[1], "selection")) selection();
+    else if (!strcmp(argv[1], "reset-drain")) reset_drain();
+    else if (!strcmp(argv[1], "reset-timeout")) reset_timeout();
+    else if (!strcmp(argv[1], "reset-legacy")) reset_legacy();
+    else if (!strcmp(argv[1], "preview-drain")) preview_drain();
     else { assert(!strcmp(argv[1], "results")); results(); }
     printf("PASS %s %u checks\n", argv[1], checks);
     return 0;

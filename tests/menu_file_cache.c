@@ -105,6 +105,7 @@ static volatile uint16_t *command_register(void)
 }
 #define SS_CMD (*command_register())
 #define SS_ARG argument
+#define menu_command_wait() 0
 #include "cache.inc"
 
 static u8 cache_read(u32 address, int instruction)

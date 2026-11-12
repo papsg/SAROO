@@ -58,6 +58,7 @@ typedef unsigned long long u64;
 #define ARCHIVE_IO_VERSION 0x534f5731u
 #define SSCMD_ARCHIVERD 0x0036
 #define SSCMD_ARCHIVEWR 0x0037
+#define MENU_ACK_VERSION 1u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -238,6 +239,7 @@ extern const int HZ;
 
 void reset_timer(void);
 u32 get_timer(void);
+int menu_command_wait(void);
 /* Call within half of the wrapping 32-bit counter's range. */
 static inline int timer_reached(u32 now, u32 deadline)
 {

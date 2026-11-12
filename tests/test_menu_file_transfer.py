@@ -109,5 +109,8 @@ class MenuFileTransferTests(unittest.TestCase):
     def test_unexpected_positive_results_cannot_confirm_reads_or_creates(self):
         self.run_cases(range(38, 40))
 
+    def test_busy_command_preserves_existing_file_request_and_payload(self):
+        self.run_cases((40, 41))
+
 
 if __name__=='__main__':unittest.main()

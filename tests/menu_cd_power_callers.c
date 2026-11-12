@@ -34,6 +34,7 @@ static void my_cdplayer(void) { record(PLAYER); }
 static int jhl_auth_hack(int delay)
 { assert(delay==100000 && auth_count<2);record(AUTH);return auth_results[auth_count++]; }
 static int bios_cd_cmd(int type) { record(BIOS);bios_type=type;return bios_result; }
+#define menu_command_wait() 0
 #include "actual.inc"
 
 static void reset(int index)

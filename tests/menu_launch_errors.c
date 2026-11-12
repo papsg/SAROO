@@ -45,6 +45,7 @@ static int cdblock_on(int n) { assert(!n);on_calls++;return power_error; }
 static __attribute__((unused)) int cdblock_off(void) { off_calls++;return power_error; }
 static void change_cover_layer(void) { assert(0); }
 
+#define menu_command_wait() 0
 #include "selector.inc"
 
 static void check(int button, unsigned word, int boot_error)

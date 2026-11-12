@@ -86,6 +86,8 @@ static volatile u8 ccr_dummy __attribute__((unused));
 #define cache_sr_read() 0u
 #define cache_sr_write(value) ((void)(value))
 #define cache_control_read(address) ((void)(address), 0u)
+static int command_admission;
+#define menu_command_wait() command_admission
 #include "menu-file.inc"
 
 static FILE *disk;
@@ -110,7 +112,7 @@ DRESULT disk_ioctl(BYTE drive,BYTE cmd,void *buffer)
 int main(int argc,char **argv)
 {
     assert(argc==4);
-    int test=atoi(argv[2]);assert(test>=0 && test<40);
+    int test=atoi(argv[2]);assert(test>=0 && test<42);
     file_ack=atoi(argv[3]);assert(!file_ack || file_ack==SSCMD_SAVE_ACK);
     /* The old table calls keep four arguments; new capacity is opt-in. */
     int (*legacy_read)(char*,int,int,void*)=read_file;
@@ -161,6 +163,13 @@ int main(int argc,char **argv)
         if (test==34 || test==35 || test==39) { writing=1; offset=-1; size=0; }
         if (test>=38) peer_fault=INVALID_POSITIVE_REPLY;
     }
+    if (test >= 40) {
+        command_admission = -FR_TIMEOUT;
+        peer_fault = 0;
+        writing = test == 41;
+        expected = -FR_TIMEOUT;
+        expected_commands = 0;
+    }
     if(!HAS_BOUNDED_READER) {
         if(test==1 || test==3 || test==26) expected_commands=1;
         if(test==13) { expected=128; expected_commands=1; peer_fault=0; }
@@ -183,8 +192,9 @@ int main(int argc,char **argv)
     if(test==36 || test==37)buffer=test_shared+0x800000;
     if(test==21 || test==22 || test==36 || test==37)memset(buffer,0xa5,16);
     if(test==27)memset(buffer,0xa5,file_size);
-    memset((void*)TMPBUFF_ADDR,0x55,256);
-    u8 request[256];memcpy(request,(void*)TMPBUFF_ADDR,256);
+    u8 request[272];
+    memset((void*)TMPBUFF_ADDR,0x55,sizeof(request));
+    memcpy(request,(void*)TMPBUFF_ADDR,sizeof(request));
     int result=writing ? legacy_write(name,offset,size,buffer) : legacy ? legacy_read(name,offset,size,buffer) :
         read_file_bounded(test==11?NULL:name,offset,size,buffer,capacity);
     if (result!=expected)
@@ -192,7 +202,7 @@ int main(int argc,char **argv)
     assert(result==expected && commands==expected_commands && !mcu_cmd);
     /* The legacy unused request word is not a new capacity/protocol field. */
     assert(*(u32*)(TMPBUFF_ADDR+0x0c)==0x55555555u);
-    if(!commands)assert(!memcmp(request,(void*)TMPBUFF_ADDR,256));
+    if(!commands)assert(!memcmp(request,(void*)TMPBUFF_ADDR,sizeof(request)));
     if(!writing && (result>=0 || test==2 || test==13 || test==24)) {
         unsigned moved=result<0?capacity:(unsigned)result;
         for(unsigned i=0;i<moved;i++)assert(((u8*)buffer)[i]==block[(i+(unsigned)offset)%sizeof block]);

@@ -122,6 +122,8 @@ static PendingSave pending_save[2];
  * cannot acknowledge a tagged request. */
 int save_command(int cmd, int arg)
 {
+    int ready = menu_command_wait();
+    if (ready) return ready;
     int ack = save_ack;
     SS_ARG = arg;
     SS_CMD = cmd | ack;
