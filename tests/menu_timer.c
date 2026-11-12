@@ -53,6 +53,11 @@ static int draw_menu_item_select(int index, char *item)
     return 0;
 }
 static void put_select_item(int index) { assert(index == 1); ++uploads; }
+
+/* Scrolling starts with the display ready. The palette fixture exercises
+ * the real display service, including its startup and retry paths. */
+static void vdp_display_service(void) __attribute__((unused));
+static void vdp_display_service(void) {}
 #include "timer.inc"
 
 static const u32 origins[] = {0, 0x7fff0000u, 0xffff0000u, 0x80010000u, 0x12345678u};
