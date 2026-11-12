@@ -303,13 +303,15 @@ static u8 *sdbuf = (u8*)0x24000000;
 
 //BLKDEV sd_dev;
 
-/* Keep the identical address admission, eight-sector bounce and progress
- * logic in one implementation. Only copy direction and the SD command differ. */
+/* Direct IDMA needs a reachable, word-aligned address. Other byte buffers
+ * use the existing eight-sector bounce path. */
 static __attribute__((noinline)) int sd_sectors(u32 start, int size, u8 *buf, u32 index)
 {
-    u32 type = ((u32)buf) >> 24;
+    u32 address = (u32)buf;
+    u32 type = address >> 24;
     if (!sd_rca) return -1;
-    if (type == 0x24 || type == 0x61) return sd_blocks(start, size, buf, index);
+    if ((address & 3u) == 0 && (type == 0x24 || type == 0x61))
+        return sd_blocks(start, size, buf, index);
     while (size) {
         int count = size > SDBUF_SIZE ? SDBUF_SIZE : size;
         unsigned bytes = count * 512;

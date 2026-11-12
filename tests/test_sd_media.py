@@ -81,6 +81,11 @@ class SDMediaTests(unittest.TestCase):
     def test_direct_and_bounced_reads_and_writes_preserve_copy_and_error_order(self):
         self.invoke('sectors')
 
+    def test_unaligned_byte_buffers_in_both_dma_regions_use_the_bounce_buffer(self):
+        for bank in (0x24, 0x61):
+            with self.subTest(bank=bank):
+                self.invoke('unaligned', bank)
+
     def test_reserved_zero_relative_address_cannot_enable_io(self):
         self.invoke('zero')
 

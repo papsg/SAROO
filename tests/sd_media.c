@@ -51,30 +51,34 @@ static int sd_cmd(u32 command, u32 argument)
     return 0;
 }
 
-enum { TEST_SECTORS = 17, SECTOR_BYTES = 512, FIRST_SECTOR = 123 };
-static u8 sector_data[TEST_SECTORS * SECTOR_BYTES];
-static u8 card_data[sizeof sector_data];
+enum {
+    TEST_SECTORS = 17, SECTOR_BYTES = 512, FIRST_SECTOR = 123,
+    PAYLOAD_BYTES = TEST_SECTORS * SECTOR_BYTES
+};
+static u8 sector_storage[PAYLOAD_BYTES + 8];
+static u8 card_data[PAYLOAD_BYTES];
 static u8 bounce_data[8 * SECTOR_BYTES];
-static unsigned model_bank, model_write, model_fail, model_chunk;
+static u8 *sector_data;
+static unsigned model_address, model_chunks, model_write, model_fail, model_chunk;
 
 static u32 sd_address(u8 *buffer)
 {
     if (buffer == sector_data)
-        return model_bank << 24;
+        return model_address;
     return (u32)(uintptr_t)buffer;
 }
 
 static int transfer_blocks(u32 block, int count, u8 *buffer, unsigned write)
 {
     io_calls++;
-    if (!model_bank) {
+    if (!model_address) {
         assert(block == FIRST_SECTOR && count == 1 && buffer == (u8 *)0x24002000);
         return 0;
     }
 
     assert(write == model_write);
     unsigned chunk = model_chunk++;
-    if (model_bank == 0x20) {
+    if (model_chunks == 3) {
         assert(chunk < 3 && block == FIRST_SECTOR + chunk * 8);
         assert(count == (chunk < 2 ? 8 : 1) && buffer == bounce_data);
     } else {
@@ -137,40 +141,38 @@ static void unavailable(void)
     assert(io_calls == before);
 }
 
-static void check_sector_transfers(void)
+static void check_sector_transfers(unsigned bank, unsigned offset, unsigned chunks)
 {
-    const unsigned banks[] = {0x20, 0x24, 0x61};
-    unsigned cases = 0;
-    for (unsigned i = 0; i < sizeof(banks) / sizeof(*banks); ++i) {
-        model_bank = banks[i];
-        const unsigned chunks = i ? 1 : 3;
-        for (model_write = 0; model_write <= 1; ++model_write) {
-            u8 *source = model_write ? sector_data : card_data;
-            u8 *dest = model_write ? card_data : sector_data;
-            for (model_fail = 0; model_fail <= chunks; ++model_fail) {
-                for (size_t j = 0; j < sizeof sector_data; ++j)
-                    source[j] = (u8)(j * 19 + 3);
-                memset(dest, 0x55, sizeof sector_data);
-                memset(bounce_data, 0xa2, sizeof bounce_data);
-                sdbuf = bounce_data;
-                sd_rca = 0x1234;
-                model_chunk = 0;
-                int result = model_write ? sd_write_sector(FIRST_SECTOR, TEST_SECTORS, sector_data)
-                                         : sd_read_sector(FIRST_SECTOR, TEST_SECTORS, sector_data);
-                assert(result == (model_fail ? -17 : 0));
-                assert(model_chunk == (model_fail ? model_fail : chunks));
-                size_t completed = model_fail ? (model_fail - 1) * sizeof bounce_data
-                                              : sizeof sector_data;
-                for (size_t j = 0; j < sizeof sector_data; ++j) {
-                    assert(source[j] == (u8)(j * 19 + 3));
-                    assert(dest[j] == (j < completed ? source[j] : 0x55));
-                }
-                cases++;
+    sector_data = sector_storage + 4 + offset;
+    model_address = (bank << 24) + 0x2000 + offset;
+    model_chunks = chunks;
+    for (model_write = 0; model_write <= 1; ++model_write) {
+        u8 *source = model_write ? sector_data : card_data;
+        u8 *dest = model_write ? card_data : sector_data;
+        for (model_fail = 0; model_fail <= chunks; ++model_fail) {
+            memset(sector_storage, 0x67, sizeof sector_storage);
+            for (size_t j = 0; j < PAYLOAD_BYTES; ++j)
+                source[j] = (u8)(j * 19 + 3);
+            memset(dest, 0x55, PAYLOAD_BYTES);
+            memset(bounce_data, 0xa2, sizeof bounce_data);
+            sdbuf = bounce_data;
+            sd_rca = 0x1234;
+            model_chunk = 0;
+            int result = model_write ? sd_write_sector(FIRST_SECTOR, TEST_SECTORS, sector_data)
+                                     : sd_read_sector(FIRST_SECTOR, TEST_SECTORS, sector_data);
+            assert(result == (model_fail ? -17 : 0));
+            assert(model_chunk == (model_fail ? model_fail : chunks));
+            size_t completed = model_fail ? (model_fail - 1) * sizeof bounce_data : PAYLOAD_BYTES;
+            for (size_t j = 0; j < PAYLOAD_BYTES; ++j) {
+                assert(source[j] == (u8)(j * 19 + 3));
+                assert(dest[j] == (j < completed ? source[j] : 0x55));
             }
+            for (u8 *p = sector_storage; p < sector_data; ++p)
+                assert(*p == 0x67);
+            for (u8 *p = sector_data + PAYLOAD_BYTES; p < sector_storage + sizeof sector_storage; ++p)
+                assert(*p == 0x67);
         }
     }
-    assert(cases == 16);
-    puts("16 direct and bounced sector transfer cases pass");
 }
 
 int main(int argc, char **argv)
@@ -178,7 +180,14 @@ int main(int argc, char **argv)
     assert(argc == 3); const char *mode = argv[1]; unsigned value = strtoul(argv[2], NULL, 0);
     for (unsigned i = 0; i < 16; i++) inserted_cid[i] = 0x80 + i;
     if (!strcmp(mode, "sectors")) {
-        check_sector_transfers();
+        check_sector_transfers(0x20, 0, 3);
+        check_sector_transfers(0x24, 0, 1);
+        check_sector_transfers(0x61, 0, 1);
+        return 0;
+    }
+    if (!strcmp(mode, "unaligned")) {
+        for (unsigned offset = 1; offset < 4; ++offset)
+            check_sector_transfers(value, offset, 3);
         return 0;
     }
     if (!strcmp(mode, "zero-cid")) {
