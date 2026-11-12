@@ -1962,3 +1962,16 @@ bytes with 2,340 bytes of ITCM margin and 60,216 bytes of static DTCM.
 The private HEAD, worktree, refs and stash match the starting snapshot.
 Physical CD event timing and game rendering remain unqualified. The
 Saturn was left untouched.
+
+## CD playback and media state
+
+1. **Retained SEEK playback range — published**
+   [`fa6dabb`](https://github.com/papsg/SAROO/commit/fa6dabb12eb4eba5019fcc349ba8db973d871427).
+   Adapted from paps-g `4f123d38` (MCU-CDC-023) after
+   `3a68c3d` and `d78c74f`. Three parent methods reproduce range
+   replacement and three valid controls pass. Both public CD profiles
+   pass 170 methods, including 63 endpoint/seek combinations and 162
+   authored resume sequences. The GNU MCU App loads 63,164 bytes
+   with 2,372 bytes of ITCM space. Named game behavior and physical
+   timing remain unqualified.
+   [Sega and upstream citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md#preserve-the-playback-range-across-seek)
