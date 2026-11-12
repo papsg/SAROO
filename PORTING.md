@@ -2241,3 +2241,12 @@ behavior remain unqualified.
    pending PLAY. Both CD profiles pass 208 methods. The GNU MCU App
    links 64,572 load bytes with 964 bytes of ITCM space.
    [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#report-cd-input-failure-before-retiring-the-reader)
+
+3. **Settled drive state after retirement — published**
+   [`b560381`](https://github.com/papsg/SAROO/commit/b560381bcbc3c8b4e7dd6bbfb0f87483125cd778).
+   Adapted from paps-g `218dcb45` (MCU-CDC-036). Both new worker
+   methods fail on the parent and 11 controls pass. The port preserves
+   three idle states and a newly published index at retirement.
+   Both CD profiles pass 210 methods. The GNU MCU App links 64,572
+   load bytes with 964 bytes of ITCM space.
+   [Sega and upstream references, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/SAVE-CD-RESET-OWNERSHIP.md#keep-settled-drive-state-after-reader-retirement)
