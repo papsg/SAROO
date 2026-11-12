@@ -103,6 +103,30 @@ static void erase_bounds(void)
     }
 }
 
+static unsigned slot(u32 schedule, unsigned timing)
+{
+    return (schedule >> (28 - 4 * timing)) & 0xf;
+}
+
+static void vram_cycles(void)
+{
+    for (int logo = 0; logo <= 1; ++logo) {
+        seed(logo);
+        vdp_init();
+        u32 a0 = ((u32)CYCA0L << 16) | CYCA0U;
+        u32 a1 = ((u32)CYCA1L << 16) | CYCA1U;
+        const unsigned expected_a0[] = {4, 4, 15, 14, 14, 14, 14, 14};
+        const unsigned expected_a1[] = {5, 5, 15, 14, 14, 14, 14, 14};
+        for (unsigned timing = 0; timing < 8; ++timing) {
+            assert(slot(a0, timing) == expected_a0[timing]);
+            assert(slot(a1, timing) == expected_a1[timing]);
+        }
+        assert(CYCB0L == 0xffff && CYCB0U == 0xffff);
+        assert(CYCB1L == 0xffff && CYCB1U == 0xffff);
+        guards();
+    }
+}
+
 static void logo_only(void)
 {
     seed(1);
@@ -146,6 +170,7 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "startup")) startup(0);
     else if (!strcmp(argv[1], "startup-logo")) startup(1);
     else if (!strcmp(argv[1], "erase-bounds")) erase_bounds();
+    else if (!strcmp(argv[1], "vram-cycles")) vram_cycles();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();
     else return 2;

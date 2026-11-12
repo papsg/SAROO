@@ -84,3 +84,28 @@ controls also pass. The SH-2 disassembly writes the 16-bit value to
 `0x25d0000a`. The complete menu adds 16 code/data bytes to reach 84,308.
 Physical erase behavior and software that inherits the register state
 remain unqualified.
+
+## Schedule VDP2 VRAM cycles for bitmap and CPU access
+
+SATURN-VDP2-001, adapted from paps-g `50d580c8`. The two menu bitmaps
+occupy the partitioned A0 and A1 banks. Each bank now schedules two
+bitmap reads, one idle slot and five consecutive CPU slots. The CPU
+slots align across the partitions. All slots in unused B0 and B1 select
+No Access. The old CPU slots followed display fetches without the
+required idle lead-in, and unused B-bank cycle registers retained prior
+values.
+
+[Sega VDP2 User's Manual ST-058-R2-060194, Table 3.3, printed p. 34](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=52)
+gives the bitmap read counts. [The partitioned CPU access rule and Figure 3.7,
+printed pp. 36–37](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=54)
+define the shared idle lead-in. [Table 3.5, printed p. 40](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=58)
+defines the cycle encodings.
+
+The [palette fixture](#initialize-the-vdp1-erase-rectangle) decodes every
+slot from actual initialization after cold and logo startup. The parent
+fails the schedule case and passes the five other methods. Both profiles
+pass all six on the port, and all nine cover display/hash methods pass.
+The complete menu uses 84,324 code/data bytes, up 16, with the same
+488,770-byte image and 9,488-byte static BSS. Linked disassembly contains
+the A-bank values and all eight word writes. Physical arbitration and
+visible redraw behavior remain unqualified.

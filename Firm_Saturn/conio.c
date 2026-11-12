@@ -101,10 +101,15 @@ void vdp_init(void)
 	TVMD = 0x0000;
 
 	RAMCTL = 0x2300;
-	CYCA0L = 0x0e44;
+	/* Two bitmap fetches, then idle before linked CPU access to VRAM-A. */
+	CYCA0L = 0x44fe;
 	CYCA0U = 0xeeee;
-	CYCA1L = 0x1e55;
+	CYCA1L = 0x55fe;
 	CYCA1U = 0xeeee;
+	CYCB0L = 0xffff;
+	CYCB0U = 0xffff;
+	CYCB1L = 0xffff;
+	CYCB1U = 0xffff;
 
 	// Map Offset: NBG0 at 0(0x00000), NBG1 at 1(0x20000)
 	MPOFN = 0x0010;
