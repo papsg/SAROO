@@ -1521,6 +1521,15 @@ static FRESULT remove_chain (	/* FR_OK(0):succeeded, !=0:error */
 
 static FRESULT dir_clear (FATFS* fs, DWORD clst);
 
+#if FF_FS_EXFAT
+enum {
+    DIR_ALLOCATE = 1, DIR_FLUSH_ALLOCATION, DIR_LINK_TAIL,
+    DIR_PARENT_FIRST, DIR_PARENT_STREAM, DIR_FINISH_EXTENSION,
+    DIR_RETIRE_ENTRIES, DIR_SYNC_RETIREMENT, DIR_RELEASE_CLUSTER,
+    DIR_FINISH_RELEASE, DIR_RESTORE_FILE_TAIL
+};
+#endif
+
 static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:Disk error, >=2:New cluster# */
 	FFOBJID* obj,		/* Corresponding object */
 	DWORD clst,			/* Cluster# to stretch, 0:Create a new chain */
@@ -1613,6 +1622,12 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 		if (fs->free_clst <= fs->n_fatent - 2) fs->free_clst--;
 		fs->fsi_flag |= 1;
 	} else {
+#if FF_FS_EXFAT
+        /* Keep the allocation owned until the previous tail is restored. */
+        fs->dir_pending.cluster = ncl;
+        fs->dir_pending.tail = clst;
+        fs->dir_pending.phase = DIR_RESTORE_FILE_TAIL;
+#endif
 		ncl = (res == FR_DISK_ERR) ? 0xFFFFFFFF : 1;	/* Failed. Generate error status */
 	}
 
@@ -2237,13 +2252,6 @@ static FRESULT load_obj_xdir (
 /* exFAT: Store the directory entry block */
 /*----------------------------------------*/
 
-enum {
-    DIR_ALLOCATE = 1, DIR_FLUSH_ALLOCATION, DIR_LINK_TAIL,
-    DIR_PARENT_FIRST, DIR_PARENT_STREAM, DIR_FINISH_EXTENSION,
-    DIR_RETIRE_ENTRIES, DIR_SYNC_RETIREMENT, DIR_RELEASE_CHILD,
-    DIR_FINISH_RELEASE
-};
-
 static FRESULT store_xdir (
 	DIR* dp, DWORD fresh				/* Pointer to the directory object */
 )
@@ -2346,6 +2354,15 @@ static FRESULT dir_recover(FATFS* fs)
             }
             pending->phase++;
             break;
+        case DIR_RESTORE_FILE_TAIL:
+            /* Restore the old end of the chain before releasing its new cluster. */
+            if (pending->tail) {
+                res = put_fat(fs, pending->tail, 0xFFFFFFFF);
+                if (res != FR_OK) return res;
+            }
+            if (fs->free_clst <= fs->n_fatent - 2) fs->free_clst--;
+            pending->phase = DIR_RELEASE_CLUSTER;
+            break;
         case DIR_RETIRE_ENTRIES:
             while (pending->retire.done < pending->retire.count) {
                 UINT offset = pending->retire.offset + pending->retire.done * SZDIRE;
@@ -2364,7 +2381,7 @@ static FRESULT dir_recover(FATFS* fs)
                 /* Synchronize retired names before freeing their data. */
                 res = sync_fs(fs);
                 if (res != FR_OK) return res;
-                pending->phase = DIR_RELEASE_CHILD;
+                pending->phase = DIR_RELEASE_CLUSTER;
                 break;
             }
             /* A fresh empty file or rename destination owns no new data. */
@@ -2375,8 +2392,10 @@ static FRESULT dir_recover(FATFS* fs)
             if (res != FR_OK) return res;
             pending->phase = 0;
             return FR_OK;
-        case DIR_RELEASE_CHILD:
-            res = change_bitmap(fs, pending->cluster, 1, 0);
+        case DIR_RELEASE_CLUSTER:
+            res = fs->fs_type == FS_EXFAT
+                ? change_bitmap(fs, pending->cluster, 1, 0)
+                : put_fat(fs, pending->cluster, 0);
             if (res != FR_OK) return res;
             if (fs->free_clst < fs->n_fatent - 2) fs->free_clst++;
             fs->fsi_flag |= 1;
@@ -4406,6 +4425,22 @@ FRESULT f_sync (
 			tm = GET_FATTIME();				/* Modified time */
 #if FF_FS_EXFAT
 			if (fs->fs_type == FS_EXFAT) {
+                /* The first failed write in a new contiguous cluster leaves
+                 * that cluster beyond the accepted size. Transfer ownership
+                 * to the volume before shortening the file cursor. */
+                if (fp->err && fp->obj.stat == 2 && fp->obj.sclust &&
+                    fp->clust - 2 < fs->n_fatent - 2 &&
+                    get_fat(&fp->obj, fp->clust) == 1) {
+                    fs->dir_pending.cluster = fp->clust;
+                    fs->dir_pending.phase = DIR_RELEASE_CLUSTER;
+                    if (fp->obj.objsize) fp->clust--;
+                    else {
+                        fp->clust = fp->obj.sclust = 0;
+                        fp->obj.stat = 0;
+                    }
+                    res = dir_recover(fs);
+                    if (res != FR_OK) LEAVE_FF(fs, res);
+                }
 				res = fill_first_frag(&fp->obj);	/* Fill first fragment on the FAT if needed */
 				if (res == FR_OK) {
 					res = fill_last_frag(&fp->obj, fp->clust, 0xFFFFFFFF);	/* Fill last fragment on the FAT if needed */

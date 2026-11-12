@@ -106,6 +106,7 @@ check-mcu-diskio:
 check-fatfs:
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_seek.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_directory.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_growth.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_unicode_ranges.py -v
 
 .PHONY: check-menu-binary

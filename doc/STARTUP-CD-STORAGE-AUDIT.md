@@ -158,6 +158,49 @@ The linked `f_unlink` grows by two bytes, which fit in the existing
 layout. The GNU BootLoader load grows by four bytes and links all
 166 vectors. These checks use synthetic media and compiled sources.
 
+## Recover clusters after failed file growth
+
+Adapted from paps-g `2d8ba306` (AUD-MCU-039), using the public
+volume recovery record introduced for directory updates. On classic
+FAT or fragmented exFAT, a failed link can leave an allocated cluster
+outside the file's chain. On contiguous exFAT, the first failed write
+to a new cluster can leave it beyond the accepted file length.
+[FatFs `f_write`](https://elm-chan.org/fsw/ff/doc/write.html) ·
+[FatFs `f_sync`](https://elm-chan.org/fsw/ff/doc/sync.html) ·
+[Microsoft exFAT Specification §4.1, First and Second FAT, and
+§6.3.4.2, NoFatChain](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#41-first-and-second-fat-sub-regions).
+
+If linking fails, keep the new cluster and its previous tail in the
+volume record. Restore the end marker on the old tail before releasing
+the cluster through the FAT or bitmap and synchronizing the update.
+When closing a contiguous exFAT file after a write error, use the
+chain decoder to distinguish a newly allocated cluster beyond the
+accepted length from an existing cluster. Transfer only the unused
+cluster to recovery. A failed recovery keeps the record for retry.
+The file's accepted length and data stay under the existing close
+and sync rules.
+
+```sh
+make -C tests check-fatfs
+SAROO_FIRMWARE_SAVE_PROFILE=release make -C tests check-fatfs
+```
+
+Use the current growth fixture with `SAROO_FATFS_SOURCE` set to the
+parent's `ff.c` and select `-k original_lost_allocation`. It reproduces
+one orphan after a failed FAT32 link and one after an exFAT payload
+failure. Both ordinary controls pass. The corrected source passes
+358 growth cases in each profile across FAT12, FAT16, FAT32 and
+exFAT. The fixture checks split FAT12 entries, mirrored FATs, seek and
+write growth, partial and repeated I/O errors, accepted contents,
+neighbor files, and free counts before and after remount. Both full
+43-method FatFs runs pass.
+
+The GNU App adds 176 load bytes, leaving 400 free. Static DTCM stays
+at 50,752 bytes. The GNU BootLoader adds 172 load bytes and links all
+166 vectors. The tests exercise retry on a mounted volume using a
+host block device. Recovery across sudden power loss remains outside
+that model.
+
 ## Validate FAT geometry before mount
 
 Adapted from paps-g `8da2769d` (AUD-MCU-009/029). In classic FAT the
