@@ -2103,3 +2103,27 @@ recognizes both worker forms. It preserves the exact admission,
 backpressure and flush code in the extracted fixture. All 37 audio
 methods pass under sanitizers and O2, and the parent worker-flush
 control passes.
+
+### CD power and timing final verification
+
+All four production checkpoints and the audio fixture correction are
+published through [`81212bd`](https://github.com/papsg/SAROO/commit/81212bd69e1918e96166e574f907b2cd00b2fab4).
+The full `make -C tests check` run passes 770 Python methods, 18 Rust
+checks, and the native language check. The Windows-only CD+G
+replacement fixture is skipped on macOS. Both CD profiles pass 205
+methods and both audio profiles pass 37 methods.
+
+The published source reproduces both ELFs and the SH-2 menu image.
+All 36 tracked menu inputs and 56 tracked MCU inputs match their
+build receipts. The 488,770-byte menu contains 81,380 code/data bytes
+and 9,244 BSS bytes, with 24,064 bytes of body space. The linked
+ROM-cartridge clock hook passes 48 cases at its relocated addresses.
+The GNU MCU App loads 64,460 bytes and leaves 1,076 bytes of ITCM
+space, with 60,216 bytes of static DTCM. Its vector table uses TIM2
+for CD pacing and preserves TIM4 and TIM7.
+
+The public main worktree is clean. The private checkout's HEAD,
+branch, refs, stash, status and tracked diff match the initial
+read-only snapshot. Physical SMPC timing, drive behavior, and game
+pacing remain unqualified.
+[Citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md)
