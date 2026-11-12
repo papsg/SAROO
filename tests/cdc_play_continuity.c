@@ -70,6 +70,7 @@ static void set_peri_report(void)
 }
 static void led_event(int event) { assert(event == 1); }
 static void spi2_flush(void) {}
+static inline void publish_subrw(u32 fad) { (void)fad; }
 static int fill_audio_buffer(const u8 *data)
 {
     assert(data == sector_bytes[0]);

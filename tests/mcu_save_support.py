@@ -268,6 +268,8 @@ class MCUSaveTest(unittest.TestCase):
                 start = main.index(b'static u8 reorder[')
                 code += main[start:main.index(b'int get_sector(', start)]
                 code += function(b'int get_sector(')
+                if cls.c_source == 'cue_subcode.c' and b'static void publish_subrw(' in main:
+                    code += b'#define HAS_SUBRW_PUBLISHER 1\n' + function(b'static void publish_subrw(')
                 (cls.target / 'reader.inc').write_bytes(code)
                 harnesses += [cls.c_source, getattr(cls, 'test_source', 'test_cue_geometry.py')]
         for name in harnesses:

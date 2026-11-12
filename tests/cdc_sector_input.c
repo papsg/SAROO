@@ -24,6 +24,8 @@ static unsigned supplied,seeks,reads,locks,unlocks,lookups;
 static FSIZE_t sought;
 static int locked,lookup_result;
 #define SSLOG(...) ((void)0)
+static inline int disable_irq(void) { return 0; }
+static inline void restore_irq(int key) { assert(!key); }
 static int fad_to_track(u32 fad) { assert(fad>=150);lookups++;return lookup_result; }
 static void subcode_convert(void) { assert(0); }
 static void fs_lock(void) { assert(!locked);locked=1;locks++; }

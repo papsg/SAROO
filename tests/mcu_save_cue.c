@@ -16,6 +16,8 @@ static int current_index;
 #define STAT_PAUSE 1
 #define MSF_TO_FAD(m,s,f) ((m)*4500+(s)*75+(f))
 #define SSLOG(...) ((void)0)
+static inline int disable_irq(void) { return 0; }
+static inline void restore_irq(int key) { assert(!key); }
 _Alignas(8) static struct { u8 before[32],data[MAX_BLOCKS*2352-4096],after[32]; } text_space;
 _Alignas(8) static struct { u8 before[32],dir[512],between[32],full[512],after[32]; } paths;
 #define TEST_CUE_ADDR ((uintptr_t)text_space.data)

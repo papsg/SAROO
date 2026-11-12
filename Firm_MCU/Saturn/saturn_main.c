@@ -202,7 +202,9 @@ int get_sector(int fad, BLOCK *wblk)
             cdb.status = STAT_ERROR;
             return -1;
         }
+        int key = disable_irq();
         cdb.subrw_wp = cdb.subrw_rp;
+        restore_irq(key);
     }
     TRACK_INFO *tk = cdb.play_track;
     cdb.ctrladdr = TRACK_CTRL(tk);
@@ -280,26 +282,32 @@ int get_sector(int fad, BLOCK *wblk)
         wblk->sm = wblk->size == 2324 ? 0x20 : 0;
     }
 
-	// 处理subcode
-	if(subcode_mode){
-		u8 *sbuf = cdb.subcode_buf+(fad-buf_fad_start)*96;
-		for(int i=0; i<4; i++){
-			memcpy(cdb.subrw_buf+cdb.subrw_wp*24, sbuf, 24);
-			int new_wp = (cdb.subrw_wp+1)%64;
-			cdb.subrw_wp = new_wp;
-			if(new_wp==cdb.subrw_rp){
-				cdb.subrw_rp = (cdb.subrw_rp+1)%64;
-			}
-			sbuf += 24;
-		}
-	}
-
     return 0;
 read_error:
     SSLOG(_DTASK, "f_read error!\n");
     cdb.status = STAT_ERROR;
     buf_fad_end = 0;
     return -2;
+}
+
+/* Only the disk task publishes. The higher-priority command task
+ * consumes a slot and copies it to the FIFO without yielding. */
+static void publish_subrw(u32 fad)
+{
+    if (!buf_subcode_mode) return;
+    const u8 *pack = cdb.subcode_buf + (fad - buf_fad_start)*96;
+    for (int i = 0; i < 4; i++, pack += 24) {
+        u8 slot = cdb.subrw_wp;
+        u8 next = (slot + 1) % 64;
+        /* The spare slot stays invisible until both cursors are committed. */
+        memcpy(cdb.subrw_buf + slot*24, pack, 24);
+        int key = disable_irq();
+        if (next == cdb.subrw_rp) cdb.subrw_rp = (next + 1) % 64;
+        cdb.subrw_wp = next;
+        restore_irq(key);
+    }
+    /* The host can clear the earlier Q notification before R-W is ready. */
+    HIRQ = HIRQ_SCDQ;
 }
 
 
@@ -499,6 +507,7 @@ _play_checkpoint:
 					cdb.play_wait = 1;
 					goto _restart_wait;
 				}
+                publish_subrw(wblk.fad);
                 if (cdb.fad+1 == cdb.play_fad_end && cdb.repcnt >= cdb.max_repeat)
                     spi2_flush();
 				if (hw_delay(asize <= 4 ? 10000 : 13500)) goto _delay_error;
@@ -511,9 +520,7 @@ _play_checkpoint:
 				retv = filter_sector(cdb.play_track, &wblk);
 				HIRQ = HIRQ_CSCT;
 
-				if(retv==0){
-					// 送到某个过滤器成功
-				}else if(retv==2){
+				if(retv==2){
 					SSLOG(_DTASK, "buffer full! wait ...\n");
 					// block缓存已满, 需要等待某个事件再继续
 					/* A buffer-full pause leaves file completion pending. */
@@ -521,9 +528,11 @@ _play_checkpoint:
 					cdb.status = STAT_PAUSE;
 					cdb.play_wait = 1;
 					goto _restart_wait;
-				}else{
-					// 无人接收这个扇区
 				}
+                /* A deliberate data discard advances playback; a failed
+                 * directory delivery retires without accepting the sector. */
+                if (retv == 0 || cdb.play_type != PLAYTYPE_DIR)
+                    publish_subrw(wblk.fad);
                 if (cdb.play_type == PLAYTYPE_DIR) {
                     if (retv != 0) {
                         finish_read(0);

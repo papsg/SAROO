@@ -16,6 +16,9 @@ static FRESULT sidecode_read(FIL *fp,void *out,UINT size,UINT *count) {
 }
 #define f_lseek cue_seek
 #define f_read sidecode_read
+static u16 hirq;
+#define HIRQ hirq
+#define HIRQ_SCDQ 0x0400
 #include "reader.inc"
 #undef f_read
 #undef f_lseek
@@ -34,6 +37,14 @@ static void load(const char *text) {
     create(cue_name,text,strlen(text));assert(!parse_cue((char*)cue_name,NULL));
     buf_fad_start=buf_fad_end=0;cdb.play_track=NULL;cdb.play_type=PLAYTYPE_SECTOR;
     cdb.subcode_buf=subcode;cdb.subrw_buf=subring;
+}
+static void accept_sector(BLOCK *sector) {
+#ifdef HAS_SUBRW_PUBLISHER
+    hirq=0;publish_subrw(sector->fad);
+    assert(hirq==(buf_subcode_mode ? HIRQ_SCDQ : 0));
+#else
+    (void)sector;(void)hirq;
+#endif
 }
 static void expect(unsigned fad,unsigned size,int tag,unsigned track,unsigned index) {
     BLOCK b={0};assert(!get_sector(fad,&b));
@@ -88,11 +99,13 @@ static void subcode_mode_change(int value) {
     memset(subcode,0xa5,sizeof subcode);memset(subring,0x5a,sizeof subring);
     unsigned before=reads;mode_change_read=point==2?2:1;mode_after_read=point?0:2;
     BLOCK sector={0};assert(!get_sector(150,&sector) && sector.size==2048 && cdb.index==1);
+    accept_sector(&sector);
     for(unsigned i=0;i<2048;i++)assert(sector.data[i]==byte_at(1,i));
     assert(!mode_change_read && cdb.iflag==mode_after_read);
     assert(reads==before+(point?2:1) && cdb.subrw_wp==(point?4:0));
     if(!point)for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
     assert(!get_sector(151,&sector) && sector.size==2048 && cdb.index==1);
+    accept_sector(&sector);
     for(unsigned i=0;i<2048;i++)assert(sector.data[i]==byte_at(2,i));
     assert(reads==before+3 && cdb.subrw_wp==4);
     unsigned frame=point?0:1;
@@ -121,7 +134,9 @@ static void payload_failure_control(int kind) {
     assert(!buf_fad_end && !cdb.subrw_wp && cdb.status==STAT_ERROR);
     for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
     inject_read=0;cdb.play_type=PLAYTYPE_SECTOR;
-    assert(!get_sector(150,&block) && block.fad==150 && block.size==2048 && cdb.subrw_wp==4);
+    assert(!get_sector(150,&block) && block.fad==150 && block.size==2048);
+    accept_sector(&block);
+    assert(cdb.subrw_wp==4);
     for(unsigned i=0;i<2048;i++)assert(block.data[i]==byte_at(1,i));
     assert(!unload_disc() && !handles_count);
 }
