@@ -2276,3 +2276,11 @@ behavior remain unqualified.
 The six production checkpoints and the archive-owner fixture follow-up are published on [`main` at cc1a6f6](https://github.com/papsg/SAROO/commit/cc1a6f6b3a39cb52fc5aa4abaf60cc6357972da4). The full `make -C tests check` run passed from a clean archive of that commit, with 798 Python passes, one Windows-only skip, 18 Rust passes and the native language check. The separate linked menu clock run passed 48 cases.
 
 The exact archive rebuild reproduced the previous MCU ELF and menu ELF/image byte for byte. The GNU MCU App verifies 166 vectors, links 63,628 load bytes and leaves 1,908 bytes of ITCM. The menu links 82,052 code/data bytes and retains 23,388 bytes of body margin. All 56 MCU and 36 menu repository source hashes match. The public working tree is clean and the private reference checkout matches its baseline. Physical Saturn and game qualification remain open. [Attribution, primary references and reproduction details](https://github.com/papsg/SAROO/blob/cc1a6f6b3a39cb52fc5aa4abaf60cc6357972da4/doc/SAVE-CD-RESET-OWNERSHIP.md).
+
+## FPGA memory, executable folders, and CD selector decoding
+
+### Accepted writes to both FPGA caches
+
+- `eefa5aca` (paps-g, FPGA-CACHE-001) → [36174ac](https://github.com/papsg/SAROO/commit/36174aca6fa36a89b7739592e96b4bbc773b7666) on `main`. Uses the original arbiter's accepted write order and keeps the published memory-ack reset.
+- The exact parent fails five concurrent-write/fill subcases and passes three valid controls. All 416 cache scenarios and four existing reset methods pass.
+- The complete Quartus fit binds all 18 inputs and passes 21 reported constrained timing checks. Logic elements go from 1,479 to 1,426 and registers from 816 to 814. Physical bus timing remains unqualified. [Attribution, original source and reproduction](https://github.com/papsg/SAROO/blob/36174aca6fa36a89b7739592e96b4bbc773b7666/doc/FPGA-MEMORY.md#apply-accepted-writes-to-both-caches).
