@@ -2048,3 +2048,15 @@ The private checkout's HEAD, branch, refs, stash and worktree status
 match the initial read-only snapshot. Validation was on the host.
 Physical disc timing, audio behavior and game compatibility remain
 unqualified. [Sega citations, attribution and reproduction](https://github.com/papsg/SAROO/blob/main/doc/CD-PLAYBACK-STATE.md)
+
+## CD power and timing
+
+1. **CD power and verified takeover — published**
+   [`680f73f`](https://github.com/papsg/SAROO/commit/680f73f6f5b61070d82b2f9f71e6d338faf65094).
+   Adapted from paps-g `ce4de2ff` (SATURN-CD-003). Twelve parent
+   methods reproduce stalled waits, ignored replies or caller errors.
+   Two direct healthy controls pass. The full menu safety group passes
+   80 sanitizer methods and the CD and launch groups pass 54 optimized
+   methods. The SH-2 menu links 81,172 code/data bytes with 24,272 bytes
+   of body space. Physical timing and game behavior remain unqualified.
+   [Sega citations, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/CD-POWER-AND-TIMING.md#bound-physical-cd-power-and-cartridge-takeover)
