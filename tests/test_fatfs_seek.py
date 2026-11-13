@@ -158,6 +158,18 @@ class FatFsSeekTests(unittest.TestCase):
             with self.subTest(fat32=bool(value & 1), reopen_by_path=bool(value & 2)):
                 self.invoke('retained-media', value)
 
+    def test_fat32_selects_only_the_active_copy_and_restores_mirroring(self):
+        for flags in (0x80, 0x81, 0, 0x0f):
+            with self.subTest(flags=flags):
+                self.invoke('active-fat32', flags)
+        self.invoke('single-fat32', 0x80)
+
+    def test_fat32_refuses_out_of_range_active_copies(self):
+        for active in range(2, 16):
+            with self.subTest(active=active):
+                self.invoke('active-fat32', 0x80 | active)
+        self.invoke('single-fat32', 0x81)
+
     def test_failed_fat_mirror_retains_the_pending_window(self):
         for filesystem in ('fat12', 'fat16', 'fat32'):
             with self.subTest(filesystem=filesystem):

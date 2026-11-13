@@ -155,7 +155,7 @@ typedef struct {
 	BYTE	fs_type;		/* Filesystem type (0:not mounted) */
 	BYTE	pdrv;			/* Volume hosting physical drive */
 	BYTE	ldrv;			/* Logical drive number (used only when FF_FS_REENTRANT) */
-	BYTE	n_fats;			/* Number of FATs (1 or 2) */
+	BYTE	n_fats;			/* Number of FAT copies to update (1 or 2) */
 	BYTE	wflag;			/* win[] status (b0:dirty) */
 	BYTE	fsi_flag;		/* FSINFO status (b7:disabled, b0:dirty) */
 	WORD	id;				/* Volume mount ID */

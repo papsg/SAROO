@@ -350,3 +350,29 @@ injected command, data and host-wait failures as legacy startup.
 The two response-timeout controls remain valid. Both corrected
 53-method profiles pass. The GNU App uses 65,484 load bytes and
 leaves 52 bytes free. Physical card timing and MDK remain unqualified.
+
+## Honor the selected FAT32 copy
+
+FAT32 volumes may disable mirroring and select one allocation table. The
+inherited mount always read from FAT0 and wrote both tables when two were
+present. That could follow stale cluster links or change the inactive copy.
+Mount now validates the selector against the physical copy count. It uses
+the selected table for cluster links, allocation and free-space scans, and
+updates only that table. Mirrored volumes still use FAT0 and keep the existing
+second-write failure and retry path.
+
+Adapted from paps-g `a3ca5238` (SSR-011). Microsoft *FAT: General Overview
+of On-Disk Format*, version 1.03 (6 December 2000), p. 12, defines
+`BPB_ExtFlags` at byte 40, including the active index and mirroring bit.
+The public port uses the physical copy count to validate the volume geometry
+before reusing the existing FatFs field as the number of write targets.
+This preserves the filesystem object layout and other supported formats.
+The pinned GNU App link uses all 65,536 ITCM load bytes.
+
+Run `make -C tests check-fatfs`. Generated FAT32 images cover active FAT0
+and FAT1, stale inactive chains, free-space scans, exact appended data,
+out-of-range selectors, single-table volumes and remounting the same
+filesystem object with mirroring restored. They check every inactive FAT
+sector for writes. Existing mirrored-write retry and FAT12/16/exFAT
+controls also run. These tests and the GNU target link do not qualify
+physical media or game behavior.

@@ -3781,6 +3781,14 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		fs->fatbase = bsect + nrsv; 					/* FAT start sector */
 		fs->database = bsect + sysect;					/* Data start sector */
 		if (fmt == FS_FAT32) {
+			BYTE flags = fs->win[BPB_ExtFlags32];
+			if (flags & 0x80) { /* FAT32 mirroring disabled. */
+				BYTE active = flags & 0x0F;
+				if (active >= fs->n_fats) return FR_NO_FILESYSTEM;
+				/* Geometry already covers all physical copies. Keep only one write target. */
+				fs->fatbase += active * fs->fsize;
+				fs->n_fats = 1;
+			}
 			if (ld_word(fs->win + BPB_FSVer32) != 0) return FR_NO_FILESYSTEM;	/* (Must be FAT32 revision 0.0) */
 			if (fs->n_rootdir != 0) return FR_NO_FILESYSTEM;	/* (BPB_RootEntCnt must be 0) */
 			fs->dirbase = ld_dword(fs->win + BPB_RootClus32);	/* Root directory start cluster */

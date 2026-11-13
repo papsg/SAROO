@@ -519,13 +519,103 @@ static void exfat_entry_checksum(BYTE *entry, unsigned available)
     store_little(entry + 2, checksum, 2);
 }
 
-static void set_exfat_link(LBA_t fat, DWORD cluster, DWORD next)
+static void set_32bit_fat_link(LBA_t fat, DWORD cluster, DWORD next)
 {
     BYTE table[512];
     LBA_t sector = fat + cluster / 128;
     assert(disk_read(0, table, sector, 1) == RES_OK);
     store_little(table + 4 * (cluster % 128), next, 4);
     assert(disk_write(0, table, sector, 1) == RES_OK);
+}
+
+static void set_fat32_extflags(unsigned flags)
+{
+    BYTE boot[512];
+    assert(disk_read(0, boot, 0, 1) == RES_OK);
+    store_little(boot + 40, flags, 2);
+    store_little(boot + 48, 0, 2); /* Force a free-cluster scan. */
+    assert(disk_write(0, boot, 0, 1) == RES_OK);
+}
+
+static void fat32_active(unsigned flags, int one_fat)
+{
+    enum { FAT_MIRROR_OFF = 0x80, FAT_ACTIVE_MASK = 0x0f };
+    FATFS fs, *reported;
+    FIL file;
+    UINT count;
+    DWORD free_before, free_after;
+    BYTE payload[5 * 512], sector[512];
+    unsigned copies = one_fat ? 1 : 2;
+    int single_active = (flags & FAT_MIRROR_OFF) != 0;
+    unsigned active = single_active ? flags & FAT_ACTIVE_MASK : 0;
+
+    format_volume(FM_FAT32, copies, 512);
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    LBA_t base = fs.fatbase, length = fs.fsize, data = fs.database;
+    if (active >= copies) {
+        assert(f_mount(NULL, "0:", 0) == FR_OK);
+        set_fat32_extflags(flags);
+        unsigned before = writes;
+        assert(f_mount(&fs, "0:", 1) == FR_NO_FILESYSTEM);
+        assert(writes == before && fs.fs_type == 0);
+        assert(f_mount(NULL, "0:", 0) == FR_OK);
+        return;
+    }
+
+    for (unsigned i = 0; i < sizeof payload; i++) payload[i] = pattern(i);
+    assert(f_open(&file, "/active.bin", FA_CREATE_ALWAYS | FA_WRITE) == FR_OK);
+    assert(f_write(&file, payload, 3 * 512, &count) == FR_OK && count == 3 * 512);
+    DWORD first = file.obj.sclust;
+    assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+    set_fat32_extflags(flags);
+
+    size_t table_bytes = (size_t)length * 512;
+    BYTE *inactive = NULL;
+    LBA_t inactive_base = 0;
+    if (single_active && copies == 2) {
+        inactive_base = base + (1 - active) * length;
+        /* The unselected table has a stale EOF link and an occupied cluster. */
+        set_32bit_fat_link(inactive_base, first, 0x0fffffff);
+        set_32bit_fat_link(inactive_base, first + 3, 0x0fffffff);
+        inactive = malloc(table_bytes);
+        assert(inactive && disk_read(0, inactive, inactive_base, length) == RES_OK);
+    }
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    unsigned before = writes;
+    verify_file("/active.bin", payload, 3 * 512);
+    assert(f_getfree("0:", &free_before, &reported) == FR_OK && reported == &fs);
+    assert(free_before == fs.n_fatent - 6 && writes == before);
+    assert(fs.n_fats == (single_active ? 1 : copies));
+    assert(fs.fatbase == base + active * length && fs.database == data);
+
+    assert(f_open(&file, "/active.bin", FA_OPEN_APPEND | FA_WRITE) == FR_OK);
+    assert(f_write(&file, payload + 3 * 512, 512, &count) == FR_OK && count == 512);
+    assert(f_close(&file) == FR_OK);
+    assert(f_getfree("0:", &free_after, &reported) == FR_OK && free_after + 1 == free_before);
+    assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+    verify_file("/active.bin", payload, 4 * 512);
+
+    if (inactive) {
+        for (LBA_t i = 0; i < length; i++) {
+            assert(disk_read(0, sector, inactive_base + i, 1) == RES_OK);
+            assert(!memcmp(inactive + 512 * i, sector, 512));
+        }
+        free(inactive);
+        assert(f_mount(NULL, "0:", 0) == FR_OK);
+        for (LBA_t i = 0; i < length; i++) {
+            assert(disk_read(0, sector, base + active * length + i, 1) == RES_OK);
+            assert(disk_write(0, sector, inactive_base + i, 1) == RES_OK);
+        }
+        /* Remount the same object as mirrored. The active index is ignored. */
+        set_fat32_extflags(0x0f);
+        assert(f_mount(&fs, "0:", 1) == FR_OK && fs.fatbase == base);
+        assert(f_open(&file, "/active.bin", FA_OPEN_APPEND | FA_WRITE) == FR_OK);
+        assert(f_write(&file, payload + 4 * 512, 512, &count) == FR_OK && count == 512);
+        assert(f_close(&file) == FR_OK);
+        verify_file("/active.bin", payload, 5 * 512);
+    }
+    if (copies == 2) compare_fats(&fs);
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
 static void write_exfat_boot(BYTE *boot, LBA_t base)
@@ -604,10 +694,10 @@ static void bitmap_case(const char *kind, unsigned value)
         exfat_entry_checksum(directory + entry, sizeof directory - entry);
         assert(disk_write(0, directory, root, 1) == RES_OK);
         for (unsigned i = 0; i < clusters; ++i)
-            set_exfat_link(fat, first + i, i + 1 == clusters ? UINT32_MAX : first + i + 1);
+            set_32bit_fat_link(fat, first + i, i + 1 == clusters ? UINT32_MAX : first + i + 1);
         if (strcmp(kind, "fragmented") == 0)
-            set_exfat_link(fat, 2, 4);
-        set_exfat_link(fat, neighbor_cluster, UINT32_MAX);
+            set_32bit_fat_link(fat, 2, 4);
+        set_32bit_fat_link(fat, neighbor_cluster, UINT32_MAX);
         BYTE full[512];
         memset(full, 0xff, sizeof full);
         assert(disk_write(0, full, data, 1) == RES_OK);
@@ -899,7 +989,9 @@ int main(int argc,char **argv)
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
     int value = atoi(argv[3]);
-    if (!strcmp(argv[2], "retained-media")) {
+    if (!strcmp(argv[2], "active-fat32") || !strcmp(argv[2], "single-fat32")) {
+        fat32_active((unsigned)value, !strcmp(argv[2], "single-fat32"));
+    } else if (!strcmp(argv[2], "retained-media")) {
         retained_media(value & 1, value & 2);
     } else if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
