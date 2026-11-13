@@ -722,9 +722,12 @@ int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
         return BUP_BROKEN;
     stat->total_size = dev ? 0x800000 : 65536;
     stat->block_size = dev ? 1024 : 128;
-    stat->total_block = dev ? 8064 : 512;
+    /* The cartridge bitmap admits 8064 blocks, including its directory. */
+    stat->total_block = dev ? 8192 : 512;
     stat->free_block = checked_free;
     stat->free_size = checked_free ? (checked_free - 1) * stat->block_size : 0;
+    if (dev && checked_free == 1)
+        stat->free_size = 960; /* Payload stored inside the header block. */
     stat->data_num = 0;
     if ((u32)dsize <= limit) {
         count = dev && dsize <= 960 ? 0 :
@@ -1021,7 +1024,7 @@ int sro_bup_delete(int dev, char *file_name)
 }
 
 
-static void directory_record(BUPDIR *dir, u8 *bp, int bsize)
+static void directory_record(BUPDIR *dir, u8 *bp, int dev)
 {
     memset(dir, 0, sizeof(*dir));
     memcpy(dir->file_name, bp, 11);
@@ -1029,7 +1032,10 @@ static void directory_record(BUPDIR *dir, u8 *bp, int bsize)
     dir->data_size = *(u32*)(bp + 12);
     dir->language = bp[27];
     dir->date = *(u32*)(bp + 28);
-    dir->block_size = (dir->data_size + bsize - 1) / bsize;
+    if (dev)
+        dir->block_size = dir->data_size <= 960 ? 1 : 1 + (dir->data_size + 1023) / 1024;
+    else
+        dir->block_size = (dir->data_size + 127) / 128;
 }
 
 int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
@@ -1044,7 +1050,7 @@ int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
         while (block) {
             u8 *bp = get_block_addr(block);
             if (!strncmp((char*)bp, file_name, len)) {
-                if (count < tbsize) directory_record(dir + count, bp, 128);
+                if (count < tbsize) directory_record(dir + count, bp, 0);
                 count++;
             }
             block = *(u16*)(bp + 62);
@@ -1071,7 +1077,7 @@ int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
             u8 *bp = get_block_addr(START_BLOCK | *(u16*)(entry + 14));
             if (!bp) return 0;
             BUPDIR record;
-            directory_record(&record, bp, 1024);
+            directory_record(&record, bp, 1);
             memcpy(stage + out * sizeof(record), &record, sizeof(record));
             out++;
         }

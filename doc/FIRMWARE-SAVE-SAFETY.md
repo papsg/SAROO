@@ -733,3 +733,26 @@ Python runtime includes Pillow for the existing Arabic asset check. The MCU
 production inputs are unchanged by this last Saturn-side member. All new tests,
 evidence and builds stay in the public checkout; the private repository and
 Saturn remain untouched.
+
+## Keep extended backup cartridge counts consistent with allocation
+
+The extended cartridge now reports 8,192 total 1 KiB blocks for its existing
+8 MiB container. The bitmap, reserved region and 8,056 initially available
+blocks keep their existing layout. The directory reports each file's header
+and any continuation blocks. When one block is free, the reported open
+space is 960 bytes, which the write service can store inside a header. A
+961-byte write still needs a continuation block. The internal device retains
+its existing SAROO format and geometry.
+
+Adapted from paps-g `24a4b069` (CART-BUP-001, CART-BUP-002 and CART-BUP-003),
+on the [inherited backup service](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_save.c).
+The [Sega System Library guide, ST-162-R1-092994](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=46)
+defines BupStat and BupDir in §2.1, printed pp. 41–42, and BUP_Stat, BUP_Write
+and BUP_Dir in §2.3, printed pp. 45 and 47. The container geometry and inline
+limit come from SAROO's allocator.
+
+Run `python3 -B -m unittest discover -s tests -p test_firmware_save_resize.py -v`.
+The generated saves compare directory counts with actual allocation,
+verify writes and reloads across the 960/961-byte boundary, and check the
+unchanged internal-device geometry. The parent fails nine cases. The
+corrected cases pass under ASan/UBSan and an optimized host build.

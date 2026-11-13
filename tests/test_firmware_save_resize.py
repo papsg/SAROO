@@ -21,6 +21,19 @@ class FirmwareResizeTests(FirmwareSaveTest):
             with self.subTest(device=dev):
                 self.invoke('metadata', dev, '')
 
+    def test_extended_backup_reports_consistent_geometry(self):
+        self.invoke('geometry', 0, '')
+
+    def test_last_cartridge_block_accepts_only_inline_payloads(self):
+        for size in (0, 1, 960, 961):
+            with self.subTest(size=size):
+                self.invoke('last-block', size, '')
+
+    def test_cartridge_directory_counts_all_allocated_blocks(self):
+        for size in (0, 1, 960, 961, 1024, 1025):
+            with self.subTest(size=size):
+                self.invoke('directory-blocks', size, '')
+
     def test_rejected_writes_preserve_persistent_state(self):
         cases = [(dev, reason) for dev in (0, 1)
                  for reason in ('full', 'oversized', 'new-oversized', 'bad-chain', 'protected')]

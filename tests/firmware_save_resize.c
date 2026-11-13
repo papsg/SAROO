@@ -268,13 +268,75 @@ static void rejection(int dev, const char *reason)
     puts("Rejected write leaves persistent saves and the allocation bitmap unchanged.");
 }
 
+static void cartridge_geometry(void)
+{
+    initialize();
+    BUPSTAT stat;
+    assert(sro_bup_stat(1, 960, &stat) == 0);
+    assert(stat.total_size == 8 * 1024 * 1024);
+    assert(stat.block_size == 1024 && stat.total_block == 8192);
+    assert(stat.free_block == 8056 && stat.data_num == 448);
+    assert(stat.free_size == 8055 * 1024);
+    assert(sro_bup_stat(0, 128, &stat) == 0);
+    assert(stat.total_size == 65536 && stat.block_size == 128);
+    assert(stat.total_block == 512 && stat.free_block == 511);
+}
+
+static void cartridge_last_block(int size)
+{
+    initialize();
+    /* Mark every otherwise available block except block eight as reserved. */
+    memset((void *)MEMS->bitmap, 255, sizeof(MEMS->bitmap));
+    set_bitmap((u8 *)MEMS->bitmap, 8, 0);
+    MEMS->free_block = 1;
+    memcpy(mems_disk, (void *)MEMS_HEADER, 8192);
+    reload_model();
+
+    BUPSTAT stat;
+    assert(sro_bup_stat(1, size, &stat) == 0);
+    assert(stat.free_block == 1 && stat.free_size == 960);
+    assert(stat.data_num == (u32)(size <= 960));
+    BUPDIR dir = directory("LAST0000001", size);
+    u8 *data = payload(size, 27);
+    if (size <= 960) {
+        assert(sro_bup_write(1, &dir, data, 0) == 0);
+        reload_model();
+        check_save(1, &dir, data);
+        assert(sro_bup_stat(1, size, &stat) == 0);
+        assert(!stat.free_block && !stat.free_size && !stat.data_num);
+    } else {
+        assert(sro_bup_write(1, &dir, data, 0) == BUP_NOT_ENOUGH_MEMORY);
+        assert(flushes == 0);
+    }
+    free(data);
+}
+
+static void cartridge_directory_blocks(int size)
+{
+    initialize();
+    BUPDIR dir = directory("LIST0000001", size), found;
+    u8 *data = payload(size, 37);
+    BUPSTAT before, after;
+    assert(sro_bup_stat(1, size, &before) == 0);
+    assert(sro_bup_write(1, &dir, data, 0) == 0);
+    reload_model();
+    assert(sro_bup_stat(1, size, &after) == 0);
+    assert(sro_bup_dir(1, dir.file_name, 1, &found) == 1);
+    assert(found.block_size == before.free_block - after.free_block);
+    check_save(1, &dir, data);
+    free(data);
+}
+
 int main(int argc, char **argv)
 {
     _Static_assert(offsetof(BUPDIR, comment) == 12, "BUP comment offset");
     _Static_assert(offsetof(BUPDIR, language) == 23, "BUP language offset");
     _Static_assert(offsetof(BUPDIR, data_size) == 28, "BUP size offset");
     assert(argc == 4);
-    if (!strcmp(argv[1], "reject")) rejection(atoi(argv[2]), argv[3]);
+    if (!strcmp(argv[1], "geometry")) cartridge_geometry();
+    else if (!strcmp(argv[1], "last-block")) cartridge_last_block(atoi(argv[2]));
+    else if (!strcmp(argv[1], "directory-blocks")) cartridge_directory_blocks(atoi(argv[2]));
+    else if (!strcmp(argv[1], "reject")) rejection(atoi(argv[2]), argv[3]);
     else if (!strcmp(argv[1], "metadata")) metadata_overwrite(atoi(argv[2]));
     else round_trip(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
     return 0;
