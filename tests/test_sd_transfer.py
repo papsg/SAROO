@@ -104,6 +104,9 @@ class SDTransferTests(unittest.TestCase):
     def test_direct_chunks_advance_addresses_and_stop_on_first_error(self):
         self.invoke(29)
 
+    def test_recovery_stop_requires_valid_controller_completion(self):
+        self.invoke(30)
+
 
 if __name__ == '__main__':
     unittest.main()

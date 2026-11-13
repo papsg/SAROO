@@ -57,7 +57,8 @@ static u32 osKernelGetTickCount(void)
 static osStatus_t osDelay(u32 ticks)
 {
     assert(ticks == 10 || ticks == 1);
-    if (SDIO->CMD & SDMMC_CMD_CMDSTOP) {
+    if ((SDIO->CMD & (SDMMC_CMD_CMDSTOP | SDMMC_CMD_CPSMEN)) ==
+        (SDMMC_CMD_CMDSTOP | SDMMC_CMD_CPSMEN)) {
         SDIO->CMD &= ~SDMMC_CMD_CPSMEN;
         SDIO->STA = SDMMC_STA_CMDREND;
         identify.tick += ticks;
@@ -87,7 +88,7 @@ static osStatus_t identify_completion(void)
         assert(!argument && identify.prefixes == identify.requests);
         identify.prefixes++;
         identify.tick += identify.prefixes == 1 ? identify.prefix_ticks : identify.command_ticks;
-        SDIO->RESP1 = 0xc0000000; /* A prefix response must not decide readiness. */
+        SDIO->RESP1 = 0x120; /* READY_FOR_DATA on the prefix does not make OCR ready. */
         return identify.prefixes == identify.fail_prefix ? osErrorResource : osOK;
     }
     if (command == 41) {
@@ -151,7 +152,7 @@ static osStatus_t osSemaphoreAcquire(osSemaphoreId_t semaphore, u32 timeout)
 #include "command.inc"
 #include "identify.inc"
 
-static void check_command(const char *mode, unsigned shape, int value)
+static void check_command(const char *mode, unsigned shape, int64_t value)
 {
     const struct {
         u32 cmd, completion;
@@ -161,16 +162,28 @@ static void check_command(const char *mode, unsigned shape, int value)
         {CMD_08, SDMMC_STA_CMDREND, 1},
         {CMD_02, SDMMC_STA_CMDREND, 4},
         {CMD_17, SDMMC_STA_DATAEND, 1},
-        {CMD_41, SDMMC_STA_CMDREND, 1}
+        {CMD_41, SDMMC_STA_CMDREND, 1},
+        {CMD_03, SDMMC_STA_CMDREND, 1},
+        {CMD_07, SDMMC_STA_CMDREND, 1},
+        {CMD_12, SDMMC_STA_CMDREND, 1},
+        {CMD_13, SDMMC_STA_CMDREND, 1},
+        {CMD_16, SDMMC_STA_CMDREND, 1},
+        {CMD_18, SDMMC_STA_DATAEND, 1},
+        {CMD_23, SDMMC_STA_CMDREND, 1},
+        {CMD_55, SDMMC_STA_CMDREND, 1},
+        {CMD_24, SDMMC_STA_DATAEND, 1},
+        {CMD_25, SDMMC_STA_DATAEND, 1},
+        {CMD_06, SDMMC_STA_CMDREND, 1}
     };
     const u32 unchanged[] = {0x42a10001, 0x42a10002, 0x42a10003, 0x42a10004};
     assert(shape < sizeof(shapes) / sizeof(shapes[0]));
     wanted_command = shapes[shape].cmd;
     completion_status = shapes[shape].completion;
-    int data = shape == 3;
+    int data = HAS_DATA(wanted_command) != 0;
     wanted_mask = completion_status | CMD_ERROR | (data ? DATA_ERROR : 0);
     int failed_wait = !strcmp(mode, "wait") || !strcmp(mode, "null");
     int hardware_error = !strcmp(mode, "hardware");
+    int card_error = !strcmp(mode, "card-error");
     wait_status = !strcmp(mode, "wait") ? (osStatus_t)value : osOK;
     if (!strcmp(mode, "null")) cmd_sem = NULL;
     if (hardware_error) completion_status |= (u32)value;
@@ -181,28 +194,34 @@ static void check_command(const char *mode, unsigned shape, int value)
     memcpy(cmd_resp, unchanged, sizeof(cmd_resp));
     SDIO->DCTRL = 0x92;
     SDIO->IDMACTRL = 1;
-    SDIO->RESP1 = 0x11223344;
+    SDIO->RESP1 = card_error || !strcmp(mode, "card-ok") ? (u32)value :
+                  data ? 0x900 : 0x11223344;
     SDIO->RESP2 = 0x55667788;
     SDIO->RESP3 = 0x99aabbcc;
     SDIO->RESP4 = 0xddeeff00;
 
     u32 result = (u32)sd_cmd(wanted_command, 0x12345678);
+    if (card_error && result != (u32)value) {
+        fprintf(stderr, "Wrong card error result for CMD%u: %08x, expected %08x\n",
+                wanted_command & 63, result, (u32)value);
+        abort();
+    }
     assert(waits == 1 && !SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
     int clear_data = data;
 #ifdef TEST_SD_RECOVERY
-    clear_data |= failed_wait || hardware_error;
-    assert(drains == (unsigned)(failed_wait || hardware_error));
+    clear_data |= failed_wait || hardware_error || card_error;
+    assert(drains == (unsigned)(failed_wait || hardware_error || card_error));
 #else
     assert(!drains);
 #endif
     assert(SDIO->DCTRL == (clear_data ? 0 : 0x92) && SDIO->IDMACTRL == (clear_data ? 0 : 1));
     if (failed_wait && result != UINT32_MAX) {
         fprintf(stderr, "Accepted failed command wait: shape=%u status=%d result=%u\n",
-                shape, cmd_sem ? value : osErrorParameter, result);
+                shape, cmd_sem ? (int)value : osErrorParameter, result);
         abort();
     }
-    if (failed_wait || hardware_error) {
-        assert(result == (failed_wait ? UINT32_MAX : completion_status));
+    if (failed_wait || hardware_error || card_error) {
+        assert(result == (failed_wait ? UINT32_MAX : hardware_error ? completion_status : (u32)value));
         assert(!memcmp(cmd_resp, unchanged, sizeof(cmd_resp)));
     } else {
         assert(!result);
@@ -215,7 +234,7 @@ static void check_command(const char *mode, unsigned shape, int value)
             assert(!memcmp(cmd_resp + 1, unchanged + 1, sizeof(cmd_resp) - sizeof(*cmd_resp)));
         }
     }
-    printf("command %s shape=%u value=%d passed\n", mode, shape, value);
+    printf("command %s shape=%u passed\n", mode, shape);
 }
 
 static void check_identification(const char *mode, unsigned shape, int value)
@@ -300,9 +319,10 @@ int main(int argc, char **argv)
     assert(argc == 4);
     const char *mode = argv[1];
     unsigned shape = (unsigned)strtoul(argv[2], NULL, 10);
-    int value = (int)strtol(argv[3], NULL, 10);
+    int64_t value = strtoll(argv[3], NULL, 10);
     if (!strcmp(mode, "wait") || !strcmp(mode, "null") || !strcmp(mode, "success") ||
-        !strcmp(mode, "hardware") || !strcmp(mode, "no-crc"))
+        !strcmp(mode, "hardware") || !strcmp(mode, "no-crc") ||
+        !strcmp(mode, "card-error") || !strcmp(mode, "card-ok"))
         check_command(mode, shape, value);
     else
         check_identification(mode, shape, value);

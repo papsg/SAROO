@@ -182,3 +182,33 @@ rejection returns `FR_INVALID_NAME` with no disk writes. The GNU App
 adds 32 load bytes (64,712 used, 824 free), with unchanged static DTCM
 and compiler direct stack frames. This verifies the host media fixture
 and the GNU build; no physical SD or game validation was performed.
+
+## Reject SD card status errors and failed recovery STOP
+
+MCU-SD-007, adapted from paps-g `3f0e15ae`. The controller could report
+completion even when the card rejected an address, write or other
+operation. The driver now rejects the R1/R1b error and locked-card
+bits and the three R6 error bits before publishing the response. The
+R7 interface condition, R3 OCR and long responses retain their
+separate formats. Recovery CMD12 requires a valid controller
+completion after the command and data engines and busy signal settle.
+The existing retry can reset the controller once and try STOP again.
+A second failure revokes sector access until reidentification.
+The recovery check does not treat retained card-status bits from the
+failed transfer as fresh STOP transport errors.
+
+[SD Physical Layer Simplified Specification 3.01, §4.9, printed pp. 71–73](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=83),
+[§4.10.1, Tables 4-36 and 4-37, printed pp. 75–77](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=87)
+and [STM32 RM0433 Rev 8, §§55.10.4 and 55.10.11, printed pp. 2438–2440 and 2445–2447][rm0433]
+define the response formats and controller status.
+
+Run `make -C tests check-mcu-diskio` and repeat with
+`SAROO_SD_PROFILE=release SAROO_FIRMWARE_SAVE_PROFILE=release`.
+To reproduce the failures, point `SAROO_SD_SOURCE` at the parent
+`sdio_h7.c` and select `-k card_errors` in `test_sd_safety.py` and
+`-k requires_valid_controller` in `test_sd_transfer.py`. The parent
+accepts all 179 injected card-error replies and misses the recovery
+retry after STOP failure. Both corrected 40-method profiles pass.
+The GNU App links 65,448 bytes, with 88 bytes of ITCM space and
+unchanged 50,768-byte DTCM data and BSS span. Physical card recovery,
+save durability and the original MDK build remain unqualified.

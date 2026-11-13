@@ -127,7 +127,8 @@ static void advance(void)
             } else if (behavior != 1) {
                 SDIO->CMD.value &= ~SDMMC_CMD_CPSMEN;
                 SDIO->STA.value &= ~SDMMC_STA_CPSMACT;
-                SDIO->STA.value |= behavior == 3 ? SDMMC_STA_CTIMEOUT : SDMMC_STA_CMDREND;
+                SDIO->STA.value |= behavior == 3 ? SDMMC_STA_CTIMEOUT :
+                                   behavior == 7 ? SDMMC_STA_CCRCFAIL : SDMMC_STA_CMDREND;
                 if (behavior != 2 && age >= 3) {
                     SDIO->STA.value &= ~(SDMMC_STA_DPSMACT | SDMMC_STA_BUSYD0);
                     SDIO->STA.value |= SDMMC_STA_DABORT | SDMMC_STA_BUSYD0END;
@@ -154,7 +155,7 @@ static void advance(void)
                               SDMMC_STA_DATAEND :
                               (SDIO->CMD.value & 0x300) ? SDMMC_STA_CMDREND : SDMMC_STA_CMDSENT;
             SDIO->CMD.value &= ~SDMMC_CMD_CPSMEN;
-            SDIO->RESP1 = 0x11223344 + current;
+            SDIO->RESP1 = current == 8 || current == 41 ? 0x11223344 + current : 0x920;
             SDIO->RESP2 = 0x55667788; SDIO->RESP3 = 0x99aabbcc; SDIO->RESP4 = 0xddeeff00;
             awaiting = false;
         }
@@ -565,6 +566,16 @@ int main(int argc, char **argv)
             }
         }
         bulk_data = nullptr;
+    } else if (which == 30) {
+        for (unsigned error : {3u, 7u}) for (bool persistent : {false, true}) {
+            setup();
+            data_fault(SDMMC_STA_DCRCFAIL | SDMMC_STA_DPSMACT);
+            stop_before_reset = error;
+            stop_after_reset = persistent ? error : 0;
+            assert(sd_read_blocks(42,1,buffer) != 0); clean();
+            assert(commands == (std::vector<unsigned>{17,12,12}));
+            assert(resets == (persistent ? 2u : 1u) && bool(sd_rca) != persistent);
+        }
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);
 }

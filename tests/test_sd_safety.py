@@ -21,7 +21,9 @@ class SDSafetyTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_SD_SOURCE', ROOT / 'Firm_MCU/Main/sdio_h7.c'))
         data = source.read_bytes()
         definitions = data.index(b'#define SDCLK_LOW ')
-        last_define = data.index(b'\n', data.index(b'#define DATA_ERROR '))
+        last_define = data.index(b'\n\n', data.index(b'#define DATA_ERROR '))
+        if b'#define SD_R6_ERRORS ' in data:
+            last_define = data.index(b'\n', data.index(b'#define SD_R6_ERRORS '))
         config = Path(os.environ.get('SAROO_SD_RTX_CONFIG', ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h'))
 
         def function(signature):
@@ -96,6 +98,21 @@ class SDSafetyTests(unittest.TestCase):
         for shape, bits in ((1, 1), (1, 4), (2, 4), (3, 2), (3, 1 << 27), (4, 4)):
             with self.subTest(shape=shape, bits=bits):
                 self.invoke('hardware', shape, bits)
+
+    def test_card_errors_cannot_publish_a_response(self):
+        for shape in (3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
+            for bit in (*range(19, 32), 16, 15, 3):
+                with self.subTest(shape=shape, bit=bit):
+                    self.invoke('card-error', shape, 1 << bit)
+        for bit in (13, 14, 15):
+            with self.subTest(bit=bit):
+                self.invoke('card-error', 5, 1 << bit)
+
+    def test_nonerror_status_and_non_r1_response_formats(self):
+        for shape, bits in ((1, 0x1aa), (4, 0xc0000000), (5, 0xffff0000),
+                            (6, 0x00004f20), (9, 0x00002f20), (12, 0x920)):
+            with self.subTest(shape=shape):
+                self.invoke('card-ok', shape, bits)
 
     def test_ready_cards_follow_normal_legacy_and_high_capacity_startup(self):
         for legacy in (0, 1):

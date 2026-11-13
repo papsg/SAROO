@@ -67,6 +67,9 @@
 
 #define CMD_ERROR  (SDMMC_STA_CTIMEOUT | SDMMC_STA_CCRCFAIL)
 #define DATA_ERROR (SDMMC_STA_IDMATE | SDMMC_STA_RXOVERR | SDMMC_STA_TXUNDERR | SDMMC_STA_DTIMEOUT | SDMMC_STA_DCRCFAIL)
+/* SD Physical Layer 3.01, Table 4-36 and the R6 response format. */
+#define SD_R1_ERRORS 0xfff98008u
+#define SD_R6_ERRORS 0x0000e000u
 
 /******************************************************************************/
 
@@ -142,7 +145,8 @@ static int sd_stop(void)
 			if ((stat & (SDMMC_STA_CMDREND | CMD_ERROR)) &&
 			    !(SDIO->CMD & SDMMC_CMD_CPSMEN) &&
 			    !(stat & (SDMMC_STA_CPSMACT | SDMMC_STA_DPSMACT | SDMMC_STA_BUSYD0)))
-				return 0;
+				/* The STOP response can repeat status from the failed transfer. */
+				return stat & CMD_ERROR ? -1 : 0;
 		} else if (!(SDIO->CMD & SDMMC_CMD_CPSMEN)) {
 			SDIO->ICR = 0x1fe00fff;
 			SDIO->ARG = 0;
@@ -226,7 +230,12 @@ static int sd_cmd(u32 cmd, u32 arg)
 	stat = 0;
 
 	if(RESP_SHORT(cmd)){
-		cmd_resp[0] = SDIO->RESP1;
+		u32 response = SDIO->RESP1;
+		/* CMD3 carries R6, CMD8 carries R7 and ACMD41 carries R3.
+		 * The other short responses used here are R1 or R1b. */
+		if (cmd == CMD_03) stat = response & SD_R6_ERRORS;
+		else if (cmd != CMD_08 && !RESP_NOCRC(cmd)) stat = response & SD_R1_ERRORS;
+		if (!stat) cmd_resp[0] = response;
 	}else if(RESP_LONG(cmd)){
 		cmd_resp[0] = SDIO->RESP4;
 		cmd_resp[1] = SDIO->RESP3;
