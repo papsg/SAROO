@@ -1342,14 +1342,14 @@ GAME_DB game_dbs[] = {
 };
 
 
-void patch_game(char *id)
+void patch_game(char *id, int replace_callback)
 {
 	void (*patch_func)(void) = NULL;
 
 	CHEAT_ADDRES = 0;
 	need_bup = 1;
 
-	if(!skip_patch){
+	if(!skip_patch && !replace_callback){
 		for(GAME_DB *gdb = game_dbs; gdb->id; ++gdb){
 			int slen = strlen(gdb->id);
 			if(strncmp(gdb->id, id, slen)==0){

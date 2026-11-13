@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-7102G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L695",
+  "title": "Terra Cresta 3D (Japan): preserve BIOS language and avoid CDON",
+  "summary": "Skip the game's startup language write and change its CDON command to CDOFF.",
+  "rationale": "The game forces Japanese in the Saturn's battery-backed SMEM and later issues CDON, which conflicts with SAROO's virtual-disc ownership. These guarded edits leave the user's BIOS settings intact and keep the game on the virtual disc.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "0c0cbe7091b081d6816d7637d4ef2e96037def0e468571280ace4d29ce4175e2"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 176,
+      "offset": 614,
+      "before": "480b",
+      "after": "0009",
+      "effect": "Replace the SH-2 call to SETSMEM at 06004256 with a NOP; subsequent SMPC calls remain.",
+      "reason": "The call writes 00 00 00 05 to SMEM, changing the BIOS language to Japanese and overwriting the other SMEM bytes."
+    },
+    {
+      "fad": 285,
+      "offset": 884,
+      "before": "08",
+      "after": "09",
+      "effect": "Change the game's SMPC command-table entry from CDON to CDOFF.",
+      "reason": "CDON transfers CD-block ownership away from SAROO's virtual-disc path; CDOFF preserves the game's later command flow without that handoff."
+    }
+  ],
+  "replaces_callback": true
+}

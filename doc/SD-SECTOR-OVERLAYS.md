@@ -69,3 +69,34 @@ including missing or oversized packs, I/O faults, changed-source retries,
 disc replacement, source immutability and audio control. The public GNU
 App build uses 57,944 load bytes and has 7,592 bytes free. Static DTCM spans
 49,496 bytes. These are host and link checks.
+
+## Pilot games and menu handoff
+
+To use a reviewed recipe, build and use the matching MCU App and SH-2 menu.
+Compile the recipe against your matching CUE/BIN source using the
+[offline compiler](../tools/README.md#sd-sector-overlay-compiler) and place
+the output in `/SAROO/PATCHES/`. The normal A-button game launch requests
+overlays. The Z-button CD player uses its ordinary disc load.
+
+The two pilot recipes declare that they replace the whole built-in callback.
+The compiler encodes that declaration in SSO1 ABI 3. The MCU publishes
+the replacement flag only after all target sectors match and save selection
+succeeds. The menu accepts the exact flag on a virtual-disc boot, while the
+existing callbacks remain available if the pack is absent, damaged or for
+another source. Ordinary video initialization, backup support and configured
+game writes still run. An ABI 1 pack edits sectors without replacing a callback.
+
+| Recipe | Reviewed effect | Attribution |
+| --- | --- | --- |
+| [Terra Cresta 3D (Japan)](../recipes/terra-cresta-3d-jp-sector.json) | Preserve the BIOS language and keep the game using the virtual CD block. | [Original SAROO callback](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L695) and paps-g `d707cc0b`. |
+| [Ultimate Mortal Kombat 3 (USA)](../recipes/umk3-us-sector.json) | Skip the two CDON calls reviewed for the US disc. | [Original issue #206](https://github.com/tpunix/SAROO/issues/206) and paps-g `f7791566`. |
+
+The handoff adapts paps-g `5207cb9b`.
+[Sega SMPC User's Manual ST-169-R1-072694](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf)
+describes CDON and CDOFF on printed pp. 27–28 and SETSMEM on printed pp. 44–45.
+The private Saturn trials exercised both titles with the early overlay
+candidate. The public compiler reproduced both Terra records, including
+their EDC/ECC, from the exact preserved first raw track. For UMK3, both
+preimages and edits agree with the archived SOV and preserved first-file
+instructions. Its full raw track was unavailable for a fresh compile.
+The public port uses host regressions and target links for qualification.

@@ -21,6 +21,8 @@ class MenuLaunchErrorTests(unittest.TestCase):
         names = (b'MENU_ITEMS', b'MENU_EXIT', b'SSCMD_LOADDISC', b'PAD_UP', b'PAD_DOWN',
                  b'PAD_LT', b'PAD_RT', b'PAD_A', b'PAD_Z', b'PAD_LEFT', b'PAD_C',
                  b'BUTTON_DOWN')
+        if b'SD_OVERLAY_REQUEST' in code:
+            names += (b'SD_OVERLAY_REQUEST', b'SD_OVERLAY_VERSION')
         definitions = b''.join(
             re.search(rb'^#define ' + name + rb'\b[^\r\n]+', header, re.M).group() + b'\n'
             for name in names)
@@ -57,6 +59,9 @@ class MenuLaunchErrorTests(unittest.TestCase):
 
     def test_selection_checks_cd_power_before_starting_dependent_work(self):
         self.check_button('power')
+
+    def test_overlay_flag_requires_capable_firmware_and_game_launch(self):
+        self.check_button('overlay')
 
 
 if __name__ == '__main__':

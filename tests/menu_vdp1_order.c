@@ -15,10 +15,12 @@ enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
 static enum rom_kind rom_ready;
 static int CHEAT_ADDRES, need_bup, skip_patch;
 static int game_break_pc, to_stm32, gets_from_stm32;
+static int disc_type __attribute__((unused));
 static int loads, cards, jumps, others, cfg_reads, breaks, installs;
 static int clears;
 static int jump_returns;
 static u32 mailbox;
+static u32 overlay_handoff;
 static jmp_buf takeover;
 
 #define SYSINFO_ADDR ((uintptr_t)config - 0x100)
@@ -27,8 +29,9 @@ static jmp_buf takeover;
 #define CS0_RAM4M 0x2000
 #define REG16(a) (*(u16*)memory_at(a))
 #define REG32(a) (*(u32*)memory_at(a))
-static void *memory_at(u32 address)
+static void *memory_at(uintptr_t address)
 {
+    if (address == SYSINFO_ADDR + 0x38) return &overlay_handoff;
     address &= 0x1fffffff; /* Cached and uncached hardware aliases. */
     if(address >= 0x05c00000 && address < 0x05c80000) return vram + (address - 0x05c00000);
     if(address >= 0x06000000 && address < 0x06100000) return high + (address - 0x06000000);
@@ -129,6 +132,8 @@ static void reset(const char *id, unsigned seed)
     CHEAT_ADDRES = 13; need_bup = 17; skip_patch = jump_returns = 0;
     rom_ready = ROM_NONE;
     game_break_pc = 0; to_stm32 = gets_from_stm32 = 0; mailbox = 0x76543210;
+    disc_type = 0;
+    overlay_handoff = 0;
 }
 static void finished(void)
 {
@@ -246,6 +251,18 @@ int main(int argc, char **argv)
             read_1st(); finished(); assert(!jumps && !cards && !need_bup);
             assert(REG32(addr) == (u32)(uintptr_t)kof95_handle);
         }
+#ifdef TEST_OVERLAY_HANDOFF
+    }else if(!strcmp(mode, "overlay")){
+        for (int type = 0; type <= 1; ++type) {
+            for (int valid = 0; valid <= 1; ++valid) {
+                reset("T-7102G", 77);
+                disc_type = type;
+                overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT ^ (valid ? 0 : 1u));
+                read_1st(); finished();
+                assert(others == (type || !valid) && cfg_reads == 1 && need_bup);
+            }
+        }
+#endif
     }else if(!strcmp(mode, "cnc")){
         cnc_reset();
     }else{

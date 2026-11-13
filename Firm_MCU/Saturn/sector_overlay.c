@@ -63,12 +63,18 @@ static int nonzero(const uint8_t *bytes, unsigned size)
     return 0;
 }
 
+int sector_overlay_replaces_callback(void)
+{
+    return armed && pack[7] == 0x80;
+}
+
 int sector_overlay_validate(size_t size, const char product[10])
 {
     sector_overlay_clear();
     if (size < SECTOR_OVERLAY_HEADER_BYTES || size > sizeof(pack) ||
-        memcmp(pack, "SSO1", 4) || pack[4] != 1 || !pack[5] ||
-        pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] || pack[7] ||
+        memcmp(pack, "SSO1", 4) || !pack[5] ||
+        pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] ||
+        !((pack[4] == 1 && pack[7] == 0) || (pack[4] == 3 && pack[7] == 0x80)) ||
         size != SECTOR_OVERLAY_HEADER_BYTES + pack[5] * SECTOR_OVERLAY_RECORD_BYTES ||
         be16(pack + 18) != size || memcmp(pack + 8, product, 10)) return -1;
 

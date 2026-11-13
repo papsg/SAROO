@@ -31,6 +31,10 @@ class MenuVDP1OrderTests(unittest.TestCase):
         first = load.index(b'static u16 code_06b8[')
         code += load[first:load.index(b'\n};', first) + 4]
         code += function(load, 'read_1st')
+        if b'SD_OVERLAY_REPLACEMENT' in code:
+            header = (source / 'main.h').read_bytes()
+            define = re.search(rb'^#define SD_OVERLAY_REPLACEMENT .+$', header, re.M)
+            code = define[0] + b'\n#define TEST_OVERLAY_HANDOFF 1\n' + code
 
         # Keep the real dispatch and memory writes while mapping the bus
         # pointers and executable targets to the host fixture.
@@ -95,6 +99,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_cnc_reset_patch_requires_the_matching_game_and_instruction(self):
         self.scenario('cnc')
+
+    def test_only_admitted_virtual_overlay_replaces_builtin_callback(self):
+        self.scenario('overlay')
 
 
 if __name__ == '__main__':

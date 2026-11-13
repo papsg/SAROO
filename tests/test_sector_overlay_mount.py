@@ -31,6 +31,8 @@ class OverlayMountTests(support.MCUSaveTest):
             first, last = sector(150, ip=True), sector(152, 0x72)
             pack = bytearray(HEADER_BYTES + RECORD_BYTES)
             pack[:20] = b'SSO1\x01\x01\0\0' + PRODUCT + b'\x01\x74'
+            if value in (11, 12):
+                pack[4], pack[7] = 3, 0x80
             pack[24:32] = (151).to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
             pack[32] = 1
             pack[36:48] = b'\0\x20\x01\0\x71\0\0\0\xab\0\0\0'
@@ -62,5 +64,10 @@ class OverlayMountTests(support.MCUSaveTest):
 
     def test_transport_failures_clear_admission_and_close_handles(self):
         for value in range(5, 10):
+            with self.subTest(value=value):
+                self.invoke(value)
+
+    def test_replacement_handoff_requires_complete_mount_and_save_selection(self):
+        for value in (11, 12):
             with self.subTest(value=value):
                 self.invoke(value)

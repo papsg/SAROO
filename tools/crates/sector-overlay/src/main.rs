@@ -29,6 +29,8 @@ struct Recipe {
     rationale: String,
     tracks: Vec<TrackSource>,
     writes: Vec<WriteSource>,
+    #[serde(default)]
+    replaces_callback: bool,
 }
 
 #[derive(Deserialize)]
@@ -254,8 +256,9 @@ fn compile(recipe: &Recipe, cue: &Path, product: [u8; 10]) -> Result<Vec<u8>> {
     let size = HEADER_BYTES + targets.len() * RECORD_BYTES;
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
-    pack[4] = 1;
+    pack[4] = if recipe.replaces_callback { 3 } else { 1 };
     pack[5] = targets.len() as u8;
+    pack[7] = if recipe.replaces_callback { 0x80 } else { 0 };
     pack[8..18].copy_from_slice(&product);
     pack[18..20].copy_from_slice(&(size as u16).to_be_bytes());
     for ((fad, edits), record) in targets

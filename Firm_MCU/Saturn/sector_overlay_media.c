@@ -4,6 +4,17 @@
 #include "cdc.h"
 #include "sector_overlay.h"
 
+void sector_overlay_reset_handoff(void)
+{
+    sector_overlay_clear();
+    REG(SYSINFO_ADDR + 0x38) = 0;
+}
+
+void sector_overlay_publish_handoff(void)
+{
+    REG(SYSINFO_ADDR + 0x38) = SD_OVERLAY_REPLACEMENT;
+}
+
 static void overlay_path(char path[28], const char product[10])
 {
     static const char digits[] = "0123456789ABCDEF";

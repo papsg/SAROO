@@ -1107,7 +1107,8 @@ static int sel_handle(int ctrl)
 			}
 			menu_status(menu, TT("游戏启动中......"));
 
-			SS_ARG = index;
+			SS_ARG = index | (REG8(SYSINFO_ADDR + 0x3c) == SD_OVERLAY_VERSION ?
+			                  SD_OVERLAY_REQUEST : 0u);
 			SS_CMD = SSCMD_LOADDISC;
 			while(SS_CMD);
 

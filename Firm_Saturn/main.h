@@ -64,6 +64,9 @@ typedef unsigned long long u64;
 #define BIN_PATH_CAPACITY 0xf0u
 #define BIN_ROOT "/SAROO/BIN"
 #define MENU_ACK_VERSION 1u
+#define SD_OVERLAY_VERSION 1u
+#define SD_OVERLAY_REQUEST 0x8000u
+#define SD_OVERLAY_REPLACEMENT 0x534f5680u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -460,7 +463,7 @@ extern int skip_patch;
 extern int need_bup;
 
 int prepare_game_rom(const char *id);
-void patch_game(char *id);
+void patch_game(char *id, int replace_callback);
 
 
 /*****************************************************************************/

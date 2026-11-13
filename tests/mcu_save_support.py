@@ -105,8 +105,15 @@ class MCUSaveTest(unittest.TestCase):
                 selected = disc[disc.index(b'static int read_ip('):begin] + selected
             (cls.target / 'game-id.inc').write_bytes(selected.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             call = disc.index(b'load_savefile(gameid);')
-            (cls.target / 'disc-finish.inc').write_bytes(
-                disc[disc.rfind(b'\n', 0, call)+1:disc.index(b'int get_disc_ip(', call)])
+            tail = disc[disc.rfind(b'\n', 0, call)+1:disc.index(b'int get_disc_ip(', call)]
+            if b'sector_overlay_publish_handoff();' in tail:
+                # This fixture owns saves only. The complete overlay loader
+                # is exercised separately with its actual mount and handoff.
+                tail = re.sub(rb'        if \(overlay_requested && retv\) \{\n'
+                              rb'            unload_disc\(\);\n            goto _exit;\n        \}\n'
+                              rb'        if \(open_disc && overlay_requested && sector_overlay_replaces_callback\(\)\)\n'
+                              rb'            sector_overlay_publish_handoff\(\);\n', b'', tail)
+            (cls.target / 'disc-finish.inc').write_bytes(tail)
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']
         if cls.fixture == 'extents':
             harnesses += ['mcu_save_extents.c', 'test_mcu_save_extents.py']
@@ -264,7 +271,7 @@ class MCUSaveTest(unittest.TestCase):
             if getattr(cls, 'overlay_fixture', False):
                 harnesses += ['sector_overlay_mount.c', 'test_sector_overlay_mount.py']
                 data = (cls.target / 'sector_overlay_media.c').read_bytes()
-                code = data[data.index(b'static void overlay_path('):]
+                code = data[data.index(b'void sector_overlay_reset_handoff('):]
                 (cls.target / 'overlay-media.inc').write_bytes(code.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             if cls.fixture == 'header':
                 harnesses += ['mcu_save_header.c', 'test_mcu_save_header.py']

@@ -493,7 +493,7 @@ static int close_tracks(int count)
 
 int unload_disc(void)
 {
-    sector_overlay_clear();
+    sector_overlay_reset_handoff();
     invalidate_sector_cache();
     /* Extents and file IDs belong to the retired image, even on close error. */
     invalidate_directory();
@@ -687,6 +687,12 @@ int load_disc(int index, int start_save)
         }
         disc_removed = 0;
         if (start_save) retv = load_savefile(gameid);
+        if (overlay_requested && retv) {
+            unload_disc();
+            goto _exit;
+        }
+        if (open_disc && overlay_requested && sector_overlay_replaces_callback())
+            sector_overlay_publish_handoff();
 	}
 
 _exit:

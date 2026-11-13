@@ -13,6 +13,14 @@ static uint32_t catalog_count = 64;
 #define IMGINFO_ADDR (&catalog_count)
 #define LE32(p) (*(uint32_t *)(p))
 #define TT(s) (s)
+#ifdef SD_OVERLAY_REQUEST
+static uint8_t sysinfo[0x40];
+static unsigned expected_overlay_bit;
+#define SYSINFO_ADDR ((uintptr_t)sysinfo)
+#define REG8(address) (*(uint8_t *)(address))
+#else
+enum { expected_overlay_bit = 0 };
+#endif
 
 static volatile uint16_t reply_arg, command_word;
 static uint16_t next_reply;
@@ -22,7 +30,7 @@ static volatile uint16_t *command_register(void)
 {
     if (command_word) {
         assert(command_word == SSCMD_LOADDISC);
-        assert(reply_arg == page * MENU_ITEMS + sel_menu.current);
+        assert(reply_arg == ((page * MENU_ITEMS + sel_menu.current) | expected_overlay_bit));
         commands++;
         reply_arg = next_reply;
         command_word = 0;
@@ -94,6 +102,18 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     if (!strcmp(argv[1], "power")) { check_power_gate();return 0; }
+#ifdef SD_OVERLAY_REQUEST
+    if (!strcmp(argv[1], "overlay")) {
+        for (unsigned capability = 0; capability <= 2; ++capability) {
+            sysinfo[0x3c] = capability;
+            expected_overlay_bit = capability == SD_OVERLAY_VERSION ? SD_OVERLAY_REQUEST : 0;
+            check(PAD_A, 0, 0);
+            expected_overlay_bit = 0;
+            check(PAD_Z, 0, 0);
+        }
+        return 0;
+    }
+#endif
     int button = argv[1][0] == 'A' ? PAD_A : PAD_Z;
     /* Exercise the reported value first, then every possible mailbox reply. */
     check(button, 65530, 0);

@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-9701H",
+  "origin": "https://github.com/tpunix/SAROO/issues/206",
+  "title": "Ultimate Mortal Kombat 3 (USA): avoid CDON",
+  "summary": "Skip two game-issued CDON calls while leaving the disc image untouched.",
+  "rationale": "This release invokes SMPC CDON from two reviewed SH-2 sites. The calls transfer CD-block ownership away from SAROO's virtual-disc path and can interrupt loading.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "b9240335ddd37a1b998a3c45d10861bcd0a713623db190029353c369b336b4af"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 218,
+      "offset": 1898,
+      "before": "480b",
+      "after": "0009",
+      "effect": "Replace the first reviewed SH-2 CDON call with a NOP.",
+      "reason": "Keep SAROO's virtual CD-block ownership when this game path executes."
+    },
+    {
+      "fad": 218,
+      "offset": 1982,
+      "before": "480b",
+      "after": "0009",
+      "effect": "Replace the second reviewed SH-2 CDON call with a NOP.",
+      "reason": "Keep SAROO's virtual CD-block ownership when the alternate path executes."
+    }
+  ],
+  "replaces_callback": true
+}

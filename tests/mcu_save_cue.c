@@ -84,6 +84,10 @@ static void invalidate_sector_cache(void);
 #ifndef MCU_OVERLAY_TEST
 static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
 #define sector_overlay_mount ordinary_overlay_mount
+static inline void test_overlay_reset_handoff(void) { sector_overlay_clear(); }
+static inline void test_overlay_publish_handoff(void) { assert(0); }
+#define sector_overlay_reset_handoff test_overlay_reset_handoff
+#define sector_overlay_publish_handoff test_overlay_publish_handoff
 #endif
 #endif
 #include "token.inc"
@@ -103,6 +107,9 @@ static char path_str[]="\0D",mdisc_str[16];
 static int sector_delay_force=-1,play_delay_force=-1,pend_delay_force=-1;
 static int play_delay,pend_delay,selected_format=1;
 static int media_case,media_pauses,media_config_calls,media_save_calls;
+#ifdef MCU_OVERLAY_TEST
+static int fail_overlay_save;
+#endif
 static char media_id[17];
 static char *get_category(int index) { (void)index;assert(0);return NULL; }
 static int find_cue_iso(char *dir,char *out)
@@ -122,6 +129,9 @@ static int select_save(char *id)
 {
     assert(media_case && !strcmp(id,media_id));
     media_save_calls++;
+#ifdef MCU_OVERLAY_TEST
+    if (fail_overlay_save) return FR_DISK_ERR;
+#endif
     return *id ? FR_OK : FR_INVALID_PARAMETER;
 }
 static int pause_disc(void) { assert(media_case);media_pauses++;return 0; }

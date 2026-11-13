@@ -725,7 +725,7 @@ static __attribute__((noinline)) void clear_drive_position(void)
 /* Call after the reader has stopped, before publishing OPEN. */
 void publish_open_tray(void)
 {
-    sector_overlay_clear();
+    sector_overlay_reset_handoff();
     if (cdb.status == STAT_OPEN) return;
     invalidate_directory();
     cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;

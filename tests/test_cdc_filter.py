@@ -14,7 +14,9 @@ OVERLAY = ROOT / 'Firm_MCU/Saturn/sector_overlay.c'
 
 
 def overlay_source():
-    return b'#include "sector_overlay.h"\n'
+    return (b'#include "sector_overlay.h"\n'
+            b'static inline void test_overlay_reset_handoff(void) { sector_overlay_clear(); }\n'
+            b'#define sector_overlay_reset_handoff test_overlay_reset_handoff\n')
 
 
 def filter_source(raw):

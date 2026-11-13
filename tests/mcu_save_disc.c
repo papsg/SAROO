@@ -75,6 +75,10 @@ static int buf_fad_start,buf_fad_end,require_quiescence,pause_active;
 static inline void invalidate_sector_cache(void) { buf_fad_start=buf_fad_end=0; }
 static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
 #define sector_overlay_mount ordinary_overlay_mount
+static inline void test_overlay_reset_handoff(void) { sector_overlay_clear(); }
+static inline void test_overlay_publish_handoff(void) { assert(0); }
+#define sector_overlay_reset_handoff test_overlay_reset_handoff
+#define sector_overlay_publish_handoff test_overlay_publish_handoff
 #endif
 static int pause_irq_mask,inject_publication,pending_publication,publication_attempts,published_requests;
 static void publish_new_request(void)

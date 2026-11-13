@@ -7,6 +7,9 @@
 static u32 cache_first, cache_end;
 static unsigned invalidations, preflight_reads, pack_opens;
 static int clip_overlay_seek;
+static uint32_t overlay_sysinfo[16];
+#define SYSINFO_ADDR ((uintptr_t)overlay_sysinfo)
+#define REG(address) (*(volatile uint32_t *)(address))
 
 static void invalidate_sector_cache(void)
 {
@@ -103,11 +106,13 @@ int main(int argc, char **argv)
     if (which == 7) clip_overlay_seek = 1;
     if (which == 8) inject_read = 4;
     if (which == 9) inject_close = 2;
+    if (which == 12) fail_overlay_save = 1;
     int result = load_disc(requested, 1);
-    assert((result == 0) == (which < 5 || which >= 10));
+    assert((result == 0) == (which < 5 || which == 10 || which == 11));
+    assert(overlay_sysinfo[0x38 / 4] == (which == 11 ? SD_OVERLAY_REPLACEMENT : 0));
     assert(!lock_depth && !cache_first && !cache_end && invalidations >= 1);
     assert(disk_writes == writes && pack_opens == (which != 3));
-    if (which == 0 || which == 10) {
+    if (which == 0 || which == 10 || which == 11) {
         assert(mounted_disc == 0 && preflight_reads == 1);
         verify_overlay(1);
         uint8_t corrupt[2352];
@@ -117,6 +122,7 @@ int main(int argc, char **argv)
         assert(sector_overlay_apply(151, corrupt) == -1);
         verify_overlay(1);
         verify_image();
+        assert(overlay_sysinfo[0x38 / 4] == (which == 11 ? SD_OVERLAY_REPLACEMENT : 0));
         if (which == 10) {
             assert(!f_unlink(pack_name));
             writes = disk_writes;
@@ -129,7 +135,7 @@ int main(int argc, char **argv)
         assert(mounted_disc == (result ? -1 : 0));
     }
     assert(!unload_disc() && !handles_count && !lock_depth);
-    assert(mounted_disc == -1 && disk_writes == writes);
+    assert(mounted_disc == -1 && disk_writes == writes && !overlay_sysinfo[0x38 / 4]);
     verify_overlay(0);
     assert(!fclose(disk));
     return 0;
