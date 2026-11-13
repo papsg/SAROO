@@ -517,7 +517,7 @@ void scu_dmemcpy(void *dst, void *src, int size, int ch)
 {
 	volatile SCUDMA_REG *sdma = (SCUDMA_REG *)(SCU_DMA_BASE+ch*0x20);
 	/* D1WT is bit 19. Level 1 does not follow the level-0 layout. */
-	u32 mask = ch == 0 ? 0x00010030 : ch == 1 ? 0x000a0100 : 0x00003000;
+	u32 mask = ch == 0 ? SDSTAT_LEVEL0_BUSY : ch == 1 ? 0x000a0100 : 0x00003000;
 	while (SDSTAT & mask);
 
 	sdma->src = (u32)src;

@@ -162,6 +162,7 @@ static inline __attribute__((always_inline)) void scu_set_asr0(u32 value)
 #define SD2MD       REG(SCU_BASE+0x54)
 #define SDSTOP      REG(SCU_BASE+0x60)
 #define SDSTAT      REG(SCU_BASE+0x7c)
+#define SDSTAT_LEVEL0_BUSY 0x00010030u
 
 typedef struct {
 	u32 src;

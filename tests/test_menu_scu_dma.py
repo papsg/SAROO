@@ -1,12 +1,19 @@
 """Check the menu's actual SCU DMA status handling on host registers."""
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
 import unittest
 
 from test_menu_cdplayer import ROOT, function
+
+
+def level0_busy_mask(source):
+    header = (source / 'smpc.h').read_bytes()
+    match = re.search(rb'^#define SDSTAT_LEVEL0_BUSY .+$', header, re.M)
+    return match[0] + b'\n' if match else b''
 
 
 class MenuSCUDMATests(unittest.TestCase):
@@ -17,7 +24,7 @@ class MenuSCUDMATests(unittest.TestCase):
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         code = function((source / 'main.c').read_bytes(), 'scu_dmemcpy')
-        (cls.target / 'scu-dmemcpy.inc').write_bytes(code)
+        (cls.target / 'scu-dmemcpy.inc').write_bytes(level0_busy_mask(source) + code)
         cls.binary = cls.target / 'menu-scu-dma'
         flags = ['-O2'] if os.environ.get('SAROO_MENU_SCU_DMA_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']

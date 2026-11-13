@@ -9,7 +9,7 @@
  */
 
 #include "main.h"
-#include "vdp2.h"
+#include "smpc.h"
 #include "vdp2_display.h"
 
 /******************************************************************************/
@@ -662,17 +662,16 @@ static void put_select_item(int index)
 	int i, y = 24+index*16;
 	u8 *dst = fbptr + y*llen + MENU_LB;
 	u8 *src = sel_pbuf+MENU_LB;
+	int width = MENU_RB - MENU_LB + 1;
 
-	for(i=0; i<16; i++){
-#if 0
-		memcpy(dst, src, (MENU_RB-MENU_LB+1));
-#else
-		//cpu_dmemcpy(dst, src, (MENU_RB-MENU_LB+1), 0);
-		scu_dmemcpy(dst, src, (MENU_RB-MENU_LB+1), 0);
-#endif
+	for(i=0; i<15; i++){
+		scu_dmemcpy(dst, src, width, 0);
 		dst += llen;
 		src += llen;
 	}
+	/* Finish the pending row before the next draw or exit can reuse sel_pbuf. */
+	while (SDSTAT & SDSTAT_LEVEL0_BUSY) {}
+	memcpy(dst, src, width);
 }
 
 

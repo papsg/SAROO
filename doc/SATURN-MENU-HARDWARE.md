@@ -409,3 +409,34 @@ occupy 32 bytes through `0x060006d7` and leave the BIOS literal at
 bytes and 20,064 bytes of body margin. A prior development RAM trial
 reached the game in *6 Inch My Darling* after the WRAM correction.
 Physical timing and game behavior for this public build remain unqualified.
+
+## Finish scrolling-selection DMA before buffer reuse
+
+SATURN-SCU-004, adapted from paps-g `591f7c2b`. The scrolling selection
+uses a scratch bitmap that the next redraw can overwrite and the menu exit
+can clear. Each SCU DMA call waited for the previous row, so the last of
+the sixteen rows could still own the scratch bitmap when the upload
+returned. The menu now sends fifteen rows by level-0 DMA, waits for the
+fifteenth to retire, and copies the last 304 bytes using the SH-2. The
+copy uses the menu's existing CPU access slots in VDP2 bitmap VRAM.
+
+[Sega SCU User's Manual ST-097-R5-072694, §3.4, Fig. 3.13, printed pp. 48–49](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=64)
+defines the level-0 operation, wait and interrupted bits at 4, 5 and 16.
+[Sega SCU Final Specifications ST-210-110194, precaution 23, printed p. 7](https://antime.kapsi.fi/sega/files/ST-210-110194.pdf#page=11)
+prohibits rewriting the setup registers of an active level.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_menu_*dma.py' -v
+SAROO_MENU_SCU_DMA_PROFILE=release python3 -B -m unittest discover -s tests -p 'test_menu_*dma.py' -v
+```
+
+Set `SAROO_MENU_SELECTION_SOURCE` to the preceding checkout's
+`Firm_Saturn` directory and select `-k waiting` with
+`test_menu_selection_dma.py` to reproduce the ownership failure.
+The fixture checks all three pending states, unrelated channel activity,
+immediate reuse of the scratch bitmap and preservation of pixels outside
+the selected row group. The SH-2 link places the status read at the
+cache-through address `0x25fe007c`. The linked body grows by 32 bytes to
+85,164, with 9,488 static bytes, 16,384 stack bytes and 20,032 bytes of
+body margin. The complete image remains 488,770 bytes. Physical VBlank
+copy timing and display behavior remain unqualified.
