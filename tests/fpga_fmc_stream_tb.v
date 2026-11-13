@@ -19,6 +19,7 @@ module cdcfifo(input sclr, clock, rdreq, wrreq, input [15:0] data,
     assign usedw = 0;
 endmodule
 
+`ifndef SAROO_ABUS_TEST
 module tb;
     reg reset = 1, cs = 1, ale = 1, rd = 1, wr = 1, drive = 0, fc1 = 1;
     reg [15:0] pin_data = 0;
@@ -215,3 +216,4 @@ module tb;
         #2000000 $fatal(1, "fixture deadline");
     end
 endmodule
+`endif

@@ -129,13 +129,16 @@ class CDDriveTests(unittest.TestCase):
         start = raw.index(b'wire ss_reg_cs')
         start = raw.index(b'\talways @(negedge NRESET or posedge mclk)', start)
         control = raw[start:raw.index(b'\t// Saturn set and STM32 reset', start)]
-        decoders = re.findall(rb'^[ \t]*wire ss_(?:cdc_(?:cs|en)|reg_cs)\s*=.*;$', raw, re.M)
+        decoders = re.findall(rb'^[ \t]*wire ss_(?:cdc_en|write_(?:reg|cdc)_cs)\s*=.*;$', raw, re.M)
         self.assertEqual(len(decoders), 3)
         dut = self.target / 'cd-shadow.v'
         dut.write_bytes(
             b'module cd_shadow(input mclk,NRESET,st_wr_start,ss_wr_start,SS_CS2,\n'
             b'input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] st_wdata,SS_DATA,\n'
             b'output [15:0] value, output request,enabled);\nreg [15:0] ss_reg_ctrl;\n'
+            b'wire [23:0] ss_write_addr = SS_ADDR;\n'
+            b'wire [15:0] ss_write_data = SS_DATA;\n'
+            b'wire [2:0] ss_write_cs = {SS_CS2, 2\'b11};\n'
             + b'\n'.join(decoders) + b'\n' + control + hirq_and_irq
             + b'\nassign value=ss_hirq, request=st_irq_cdc, enabled=ss_cdc_en;\nendmodule\n')
         bench = self.target / 'cd_shadow_tb.v'

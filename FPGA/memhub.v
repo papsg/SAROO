@@ -8,7 +8,7 @@ module memhub(
 	cs_a, rd_a, wr_a, mask_a, nwait_a, addr_a, wdata_a, rdata_a,
 	cs_b, rd_b, wr_b, mask_b, nwait_b, addr_b, wdata_b, rdata_b,
 	sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data,
-	ext_refresh, reg_sdram, ext_refresh_active, ready_b
+	ext_refresh, reg_sdram, ext_refresh_active, ready_b, write_addr_a
 );
 
 ///////////////////////////////////////////////////////
@@ -27,6 +27,7 @@ module memhub(
 	input[1:0] mask_a;
 	output nwait_a;
 	input[25:0] addr_a;
+	input[25:0] write_addr_a;
 	input[15:0] wdata_a;
 	output[15:0] rdata_a;
 
@@ -60,7 +61,7 @@ module memhub(
 	reg[2:0] read_words_pending;
 	wire geometry_switch;
 	wire[1:0] address_sdtype;
-	wire[25:0] physical_addr_a, physical_addr_b;
+	wire[25:0] physical_addr_a, physical_addr_b, physical_write_addr_a;
 	wire[11:0] active_reg_sdram;
 
 	assign address_sdtype = geometry_switch ? reg_sdram[11:10] : active_sdtype;
@@ -76,6 +77,24 @@ module memhub(
 
 	wire[ 1:0] cmd_req_a;
 	wire cache_invalid_a;
+	reg[25:0] pending_write_addr_a;
+	reg[ 1:0] pending_write_mask_a;
+	reg[15:0] pending_write_data_a;
+	assign physical_write_addr_a = {pending_write_addr_a[25] & (&address_sdtype),
+		pending_write_addr_a[24] & address_sdtype[1],
+		pending_write_addr_a[23] & (|address_sdtype), pending_write_addr_a[22:0]};
+
+	// The cache accepts a write while idle. Keep that transaction until
+	// the arbiter can issue it, even if the Saturn starts a register access.
+	always @(posedge clk)
+	begin
+		if(reset && nwait_a && cs_a && wr_a && !rd_a) begin
+			pending_write_addr_a <= write_addr_a;
+			pending_write_mask_a <= mask_a;
+			pending_write_data_a <= wdata_a;
+		end
+	end
+
 	// Both caches observe the accepted SDRAM write in the same issue order.
 	// The arbiter holds these command fields through cmd_ack.
 	wire cache_write = cmd_ack && cmd_req[0];
@@ -172,10 +191,9 @@ module memhub(
 				if(cmd_req_a) begin
 					act_ab <= 1'b0;
 					cmd_req <= cmd_req_a;
-					cmd_mask <= mask_a;
-					cmd_addr[25:3] <= physical_addr_a[25:3];
-					cmd_addr[2:0] <= (cmd_req_a[0])? physical_addr_a[2:0] : 3'b0;
-					cmd_din <= wdata_a;
+					cmd_mask <= pending_write_mask_a;
+					cmd_addr <= cmd_req_a[0] ? physical_write_addr_a : {physical_addr_a[25:3], 3'b0};
+					cmd_din <= pending_write_data_a;
 					state <= C_WAITACK;
 				end else if(cmd_req_b && cmd_req_b_pending && !ext_refresh_active) begin
 					act_ab <= 1'b1;

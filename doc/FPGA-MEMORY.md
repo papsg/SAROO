@@ -351,3 +351,49 @@ The earlier development image with the full FMC repair passed
 scoped cold boot, register/cache, and ten SD-transfer checks.
 Model rates and fitted paths do not measure board timing or
 qualify the public bitstream.
+
+## Capture Saturn writes on the A-bus data phase
+
+FPGA-ABUS-001, adapted from paps-g `9ba50fc5`. The former FPGA
+started a write at a fixed delay from chip select. The Saturn
+address, write data and strobes could be in different phases at
+that point. The port arms on chip select, synchronizes TIM1
+through two preserved registers, and takes one stable snapshot
+of the address, data, selects and byte lanes. BCR and CD registers,
+interrupts and FIFO writes consume that snapshot. A queued SDRAM
+write keeps its own address, data and lane mask until arbitration.
+The public FPGA05 address map retains its existing 1 MiB RAM
+alias, and the Saturn read path keeps its existing timing.
+
+[Sega SCU User's Manual ST-097-R5-072694, §3.6 and Figure 3.29,
+printed p. 64](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=80)
+describes external WAIT sampling.
+[Sega Technical Bulletin 47, §§7–8, pp. 2–3](https://antime.kapsi.fi/sega/files/ST-TECH-47.pdf#page=2)
+describes byte/word/longword writes and fixed waits for the official
+RAM cartridge. The [original SAROO board schematic](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/HW/ssmaster_v2.PDF)
+shows the bus wiring. [TI SN74LVC16245A, SCES062Q, §7.6, p. 9](https://www.ti.com/lit/ds/symlink/sn74lvc16245a.pdf#page=9)
+specifies up to 4 ns propagation at 3.3 V ±0.3 V from −40 to
+85 °C.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_abus_write.py -v
+```
+
+Set `SAROO_FPGA_ABUS_SOURCE` to the parent checkout's `FPGA`
+directory and select `-k data_phase` to reproduce the write with
+no TIM1 event. The complete top-level fixture covers ten relative
+clock phases, both TIM1 idle levels and 0/4 ns input skew. Each
+of the 40 runs checks 13 writes, including the command registers,
+HIRQ, FIFO and masked SDRAM writes with both RAM maps. Restoring
+the live address makes all ten arbitration-delay controls issue to
+the wrong SDRAM address. The normal and delayed cases use the
+same register and SDRAM command logic.
+
+The offline Quartus build passes all five stages and 39
+reported timing checks. Minimum setup and hold slack are
++0.197 ns and +0.164 ns. The 8 ns bundle constraint has at
+least +5.867 ns reported slack. The fit uses 1,666 logic
+elements, 1,061 registers, 32,768 memory bits, 150 pins and one
+PLL. The fixture uses a digital model and a bounded arbitration
+delay. PCB behavior, RAM-cartridge game timing and the public
+bitstream's hardware qualification remain open.

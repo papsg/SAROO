@@ -23,6 +23,8 @@ input [23:0] SS_ADDR, output [15:0] value);
 reg [31:0] ss_reg_timer;
 reg [15:0] ss_bcr_data_out;
 wire [15:0] ss_reg_ctrl=0, ss_reg_stat=0, ss_reg_cmd=0, ss_reg_data=0, ss_fifo_data_out=0;
+wire [23:0] ss_write_addr = SS_ADDR;
+wire [2:0] ss_write_cs = {SS_CS2, 2'b11};
 ''' + mux + counter + b'\nassign value = ss_bcr_data_out;\nendmodule\n'
         with tempfile.TemporaryDirectory(prefix='saroo-fpga-clock-') as temp:
             target = Path(temp)

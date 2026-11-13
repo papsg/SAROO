@@ -67,7 +67,9 @@ def build_memory_model(inputs, target, bench, includes=None):
     binary = target / 'memory.vvp'
     window_port = ['-DSAROO_FC1_WINDOW'] if b'input ext_refresh_active;' in inputs['memhub.v'] else []
     fmc_port = ['-DSAROO_FMC_READY'] if b'output ready_b;' in inputs['memhub.v'] else []
-    command = ['iverilog', '-g2012', *window_port, *fmc_port, *capture_flag(inputs['tsdram.v']),
+    write_port = ['-DSAROO_ABUS_WRITE'] if b'write_addr_a;' in inputs['memhub.v'] else []
+    command = ['iverilog', '-g2012', *window_port, *fmc_port, *write_port,
+               *capture_flag(inputs['tsdram.v']),
                '-I', str(target), '-s', 'tb', '-o', str(binary),
                *[str(target / name) for name in MODULES], str(ROOT / 'tests' / bench)]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)

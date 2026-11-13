@@ -30,6 +30,9 @@ module tb;
 `ifdef SAROO_FMC_READY
         ,
 `endif
+`ifdef SAROO_ABUS_WRITE
+        ,26'b0
+`endif
     );
 
     integer cycle=0, base=0, edge_cycle=-1, start_cycle=-1, cmd_cycle=-1, ack_cycle=-1;

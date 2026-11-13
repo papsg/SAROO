@@ -33,6 +33,9 @@ module tb;
 `ifdef SAROO_FMC_READY
         ,
 `endif
+`ifdef SAROO_ABUS_WRITE
+        ,addr_a
+`endif
     );
 
     reg [15:0] issued [0:255];

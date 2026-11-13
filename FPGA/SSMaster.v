@@ -266,7 +266,7 @@ module SSMaster(
 ///////////////////////////////////////////////////////
 
 	reg[15:0] ss_hirq;
-
+	wire ss_hirq_clear = ss_wr_start && ss_write_cdc_cs && ss_write_addr[5:2]==4'b00_10;
 
 	always @(negedge NRESET or posedge mclk)
 	begin
@@ -279,10 +279,10 @@ module SSMaster(
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h2c)
 				// Both simultaneous clear requests must take effect.
 				ss_hirq <= ss_hirq&(~st_wdata)&
-					((ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10) ? SS_DATA : 16'hffff);
-			else if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10)
+					(ss_hirq_clear ? ss_write_data : 16'hffff);
+			else if(ss_hirq_clear)
 				// Saturn reset
-				ss_hirq <= ss_hirq&SS_DATA;
+				ss_hirq <= ss_hirq&ss_write_data;
 //			else if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b10_01 && ss_cr1==0)
 //				// Saturn write CR4
 //				// Auto ack getStatus command
@@ -302,7 +302,7 @@ module SSMaster(
 		if(NRESET==0) begin
 			st_irq_cdc <= 1'b0;
 		end else begin
-			if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b10_01) // && ss_cr1!=0)
+			if(ss_wr_start && ss_write_cdc_cs && ss_write_addr[5:2]==4'b10_01)
 				// SS write CR4 and not a getStatus command
 				st_irq_cdc <= 1'b1;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h06)
@@ -321,7 +321,7 @@ module SSMaster(
 		if(NRESET==0) begin
 			st_irq_cmd <= 1'b0;
 		end else begin
-			if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b01_00)
+			if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b01_00)
 				st_irq_cmd <= 1'b1;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h06)
 				st_irq_cmd <= st_irq_cmd&(~st_wdata[1]);
@@ -375,7 +375,7 @@ module SSMaster(
 			if(ss_rd_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b10_01)
 				// Read CR4
 				ss_in_cmd <= 1'b0;
-			else if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b10_01)
+			else if(ss_wr_start && ss_write_cdc_cs && ss_write_addr[5:2]==4'b10_01)
 				// Write CR4
 				ss_in_cmd <= 1'b1;
 		end
@@ -462,7 +462,7 @@ module SSMaster(
 // SATURN ABUS                                       //
 ///////////////////////////////////////////////////////
 
-	reg sscs_s0, sscs_s1, sscs_s2, sscs_s3, sscs_s4;
+	reg sscs_s0, sscs_s1, sscs_s2;
 	reg ssfc1_s0, ssfc1_s1, ssfc1_s2;
 
 	always @(posedge mclk)
@@ -470,8 +470,6 @@ module SSMaster(
 		sscs_s0 <= (SS_CS0 & SS_CS1 & SS_CS2) | ~SS_FC1;
 		sscs_s1 <= sscs_s0;
 		sscs_s2 <= sscs_s1;
-		sscs_s3 <= sscs_s2;
-		sscs_s4 <= sscs_s3;
 
 		ssfc1_s0 <= SS_FC1;
 		ssfc1_s1 <= ssfc1_s0;
@@ -481,7 +479,79 @@ module SSMaster(
 	wire ss_refresh = (ssfc1_s2==1 && ssfc1_s1==0);
 
 	wire ss_rd_start = (sscs_s2==1 && sscs_s1==0 && SS_RD==0);
-	wire ss_wr_start = (sscs_s4==1 && sscs_s3==0 && (SS_WR0==0 || SS_WR1==0));
+
+	// TIM1 marks the write data phase. Synchronize the event and sample
+	// the settled bus bundle before sending one write to the consumers.
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ss_tim1_meta;
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ss_tim1_sync;
+	reg ss_tim1_previous;
+	reg ss_write_armed;
+	reg ss_write_pending;
+	reg ss_wr_start;
+	reg[23:0] ss_addr_sample;
+	reg[15:0] ss_data_sample;
+	reg[2:0] ss_cs_sample;
+	reg[1:0] ss_mask_sample;
+	reg[23:0] ss_write_addr;
+	reg[15:0] ss_write_data;
+	reg[2:0] ss_write_cs;
+	reg[1:0] ss_write_mask;
+	reg ss_write_ram_alias;
+
+	wire ss_select_start = sscs_s2 && !sscs_s1;
+	wire ss_select_end = !sscs_s2 && sscs_s1;
+	wire ss_tim1_event = ss_tim1_sync ^ ss_tim1_previous;
+
+	always @(negedge NRESET or posedge mclk)
+	begin
+		if(!NRESET) begin
+			ss_tim1_meta <= 0;
+			ss_tim1_sync <= 0;
+			ss_tim1_previous <= 0;
+			ss_write_armed <= 0;
+			ss_write_pending <= 0;
+			ss_wr_start <= 0;
+			ss_addr_sample <= 0;
+			ss_data_sample <= 0;
+			ss_cs_sample <= 3'b111;
+			ss_mask_sample <= 2'b11;
+			ss_write_addr <= 0;
+			ss_write_data <= 0;
+			ss_write_cs <= 3'b111;
+			ss_write_mask <= 2'b11;
+			ss_write_ram_alias <= 0;
+		end else begin
+			ss_tim1_meta <= SS_TIM1;
+			ss_tim1_sync <= ss_tim1_meta;
+			ss_tim1_previous <= ss_tim1_sync;
+			ss_addr_sample <= SS_ADDR;
+			ss_data_sample <= SS_DATA;
+			ss_cs_sample <= {SS_CS2, SS_CS1, SS_CS0};
+			ss_mask_sample <= {SS_WR0, SS_WR1};
+			ss_wr_start <= 0;
+			ss_write_pending <= 0;
+
+			if(ss_select_start)
+				ss_write_armed <= 1;
+			else if(ss_select_end)
+				ss_write_armed <= 0;
+			else if(ss_write_armed && ss_tim1_event) begin
+				ss_write_armed <= 0;
+				ss_write_pending <= 1;
+			end
+
+			if(ss_write_pending && ss_cs_sample!=3'b111 && ss_mask_sample!=2'b11) begin
+				ss_wr_start <= 1;
+				ss_write_addr <= ss_addr_sample;
+				ss_write_data <= ss_data_sample;
+				ss_write_cs <= ss_cs_sample;
+				ss_write_mask <= ss_mask_sample;
+				ss_write_ram_alias <= ss_addr_sample[23:22]==2'b01 && ss_cs0_type==2'b10;
+			end
+		end
+	end
 
 	assign SS_DATA =
 					(SS_RD==0 && SS_CS0==0)? ss_ram_data_out :
@@ -519,6 +589,7 @@ module SSMaster(
 
 	// 0x25807000
 	wire ss_reg_cs = (SS_CS2==0 && SS_ADDR[14:12]==3'b111);
+	wire ss_write_reg_cs = (!ss_write_cs[2] && ss_write_addr[14:12]==3'b111);
 
 	always @(posedge mclk)
 	begin
@@ -540,8 +611,8 @@ module SSMaster(
 	begin
 		if(NRESET==0)
 			ss_reg_ctrl <= 16'h0100;
-		else if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b00_01)
-			ss_reg_ctrl <= SS_DATA;
+		else if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b00_01)
+			ss_reg_ctrl <= ss_write_data;
 	end
 
 	// Saturn set and STM32 reset
@@ -551,8 +622,8 @@ module SSMaster(
 			ss_reg_cmd <= 4'b0000;
 		else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h10)
 			ss_reg_cmd <= 0;
-		else if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b01_00)
-			ss_reg_cmd <= SS_DATA;
+		else if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b01_00)
+			ss_reg_cmd <= ss_write_data;
 	end
 
 	// Saturn or STM32 set
@@ -561,8 +632,8 @@ module SSMaster(
 		if(NRESET==0) begin
 			ss_reg_data <= 1'b0;
 		end else begin
-			if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b01_01)
-				ss_reg_data <= SS_DATA;
+			if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b01_01)
+				ss_reg_data <= ss_write_data;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h12)
 				ss_reg_data <= st_wdata;
 		end
@@ -582,7 +653,7 @@ module SSMaster(
 
 	always @(posedge mclk)
 	begin
-		if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b00_11)
+		if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b00_11)
 			ss_reg_timer <= 0;
 		else if(ss_timer_feed==0) begin
 			ss_reg_timer <= ss_reg_timer+32'b1;
@@ -595,7 +666,7 @@ module SSMaster(
 ///////////////////////////////////////////////////////
 
 	wire ss_fifo_read  = ss_rd_start==1 && (ss_cdc_cs==1 && SS_ADDR[5:2]==0);
-	wire ss_fifo_write = ss_wr_start==1 && (ss_cdc_cs==1 && SS_ADDR[5:2]==0);
+	wire ss_fifo_write = ss_wr_start && ss_write_cdc_cs && ss_write_addr[5:2]==0;
 
 	wire fifo_reset = (NRESET==0 || st_fifo_reset==1);
 	wire fifo_empty;
@@ -603,7 +674,7 @@ module SSMaster(
 	wire fifo_rd = (st_fifo_dir)? st_fifo_read  : ss_fifo_read;
 	wire fifo_wr = (st_fifo_dir)? ss_fifo_write : st_fifo_write;
 	wire[15:0] fifo_q;
-	wire[15:0] fifo_wdata = (st_fifo_dir)? {SS_DATA[7:0], SS_DATA[15:8]} : st_wdata;
+	wire[15:0] fifo_wdata = st_fifo_dir ? {ss_write_data[7:0], ss_write_data[15:8]} : st_wdata;
 	wire[10:0] fifo_usedw;
 
 	wire[15:0] ss_fifo_data_out = {fifo_q[7:0], fifo_q[15:8]};
@@ -650,15 +721,16 @@ module SSMaster(
 
 	// 0x25800000
 	wire ss_cdc_cs = (SS_CS2==0 && SS_ADDR[14:12]==3'b000);
+	wire ss_write_cdc_cs = (!ss_write_cs[2] && ss_write_addr[14:12]==3'b000);
 
 	always @(posedge mclk)
 	begin
-		if(ss_wr_start==1 && ss_cdc_cs==1) begin
-			if(SS_ADDR[5:2]==4'b00_11) ss_hirq_mask <= SS_DATA;
-			if(SS_ADDR[5:2]==4'b01_10) ss_cr1   <= SS_DATA;
-			if(SS_ADDR[5:2]==4'b01_11) ss_cr2   <= SS_DATA;
-			if(SS_ADDR[5:2]==4'b10_00) ss_cr3   <= SS_DATA;
-			if(SS_ADDR[5:2]==4'b10_01) ss_cr4   <= SS_DATA;
+		if(ss_wr_start && ss_write_cdc_cs) begin
+			if(ss_write_addr[5:2]==4'b00_11) ss_hirq_mask <= ss_write_data;
+			if(ss_write_addr[5:2]==4'b01_10) ss_cr1 <= ss_write_data;
+			if(ss_write_addr[5:2]==4'b01_11) ss_cr2 <= ss_write_data;
+			if(ss_write_addr[5:2]==4'b10_00) ss_cr3 <= ss_write_data;
+			if(ss_write_addr[5:2]==4'b10_01) ss_cr4 <= ss_write_data;
 		end
 	end
 
@@ -702,10 +774,13 @@ module SSMaster(
 	// 02800000 - 03000000 :  8MB Free Space
 	// 03000000 - 04000000 : 16MB Free Space
 	// Saturn is BigEndian system
-	wire ss_ram_cs = ~SS_CS0;
-	//wire[25:0] ss_ram_addr = {2'b0, SS_ADDR};
-	wire[ 1:0] ss_mask = {SS_WR0,SS_WR1};
-	wire[15:0] ss_ram_din = {SS_DATA[7:0], SS_DATA[15:8]};
+	wire ss_ram_wr_start = ss_wr_start && !ss_write_cs[0];
+	wire ss_ram_cs = !SS_CS0 || ss_ram_wr_start;
+	wire[15:0] ss_ram_din = {ss_write_data[7:0], ss_write_data[15:8]};
+	wire[25:0] ss_write_ram_addr = {
+		2'b0, ss_write_addr[23:21],
+		ss_write_ram_alias ? 2'b00 : ss_write_addr[20:19], ss_write_addr[18:0]
+	};
 	wire[15:0] ss_ram_dout;
 	wire[15:0] ss_ram_data_out = {ss_ram_dout[7:0], ss_ram_dout[15:8]};
 	wire ss_ram_wait;
@@ -727,10 +802,10 @@ module SSMaster(
 
 	memhub _mh(
 		NRESET, mclk, sdclk,
-		ss_ram_cs, ss_rd_start, ss_wr_start, ss_mask, ss_ram_wait, ss_ram_addr, ss_ram_din, ss_ram_dout,
+		ss_ram_cs, ss_rd_start, ss_ram_wr_start, ss_write_mask, ss_ram_wait, ss_ram_addr, ss_ram_din, ss_ram_dout,
 		st_ram_cs, st_rd_start, st_wr_start, st_mask, , st_ram_addr, st_wdata, st_ram_data_out,
 		SD_CKE, SD_CS, SD_RAS, SD_CAS, SD_WE, SD_ADDR, SD_BA, SD_DQM, SD_DQ,
-		ss_refresh, st_reg_sdram, ~ssfc1_s1 | ~ssfc1_s2, st_ram_ready
+		ss_refresh, st_reg_sdram, ~ssfc1_s1 | ~ssfc1_s2, st_ram_ready, ss_write_ram_addr
 	);
 
 	assign SD_CLK = sdclk;

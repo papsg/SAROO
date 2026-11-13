@@ -137,6 +137,9 @@ class MenuCommandCompletionTests(unittest.TestCase):
             b'input [24:0] fsmc_addr, input [23:0] SS_ADDR,\n'
             b'input [15:0] st_wdata,SS_DATA,\n'
             b'output reg [15:0] ss_reg_cmd,ss_reg_data, output pending);\n'
+            b'wire ss_write_reg_cs = ss_reg_cs;\n'
+            b'wire [23:0] ss_write_addr = SS_ADDR;\n'
+            b'wire [15:0] ss_write_data = SS_DATA;\n'
             + irq + registers + b'\nassign pending=st_irq_cmd;\nendmodule\n')
         binary = self.target / 'menu-command.vvp'
         compile_result = subprocess.run(

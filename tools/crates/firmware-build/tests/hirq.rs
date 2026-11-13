@@ -61,7 +61,16 @@ fn simulate(mode: u32, updates: u32) {
             .as_nanos()
     ));
     fs::create_dir(&out).unwrap();
-    let wrapper=format!("module hirq_dut(input mclk,NRESET,st_wr_start,ss_wr_start,ss_cdc_cs,\ninput [24:0] fsmc_addr,input [23:0] SS_ADDR,\ninput [15:0] ST_AD,SS_DATA,output [15:0] value);\n{}\nassign value=ss_hirq;\nendmodule\n",&raw[start..end]);
+    let wrapper = format!(
+        "module hirq_dut(input mclk,NRESET,st_wr_start,ss_wr_start,ss_cdc_cs,\n\
+         input [24:0] fsmc_addr,input [23:0] SS_ADDR,\n\
+         input [15:0] ST_AD,SS_DATA,output [15:0] value);\n\
+         wire [15:0] st_wdata = ST_AD, ss_write_data = SS_DATA;\n\
+         wire [23:0] ss_write_addr = SS_ADDR;\n\
+         wire ss_write_cdc_cs = ss_cdc_cs;\n\
+         {}\nassign value=ss_hirq;\nendmodule\n",
+        &raw[start..end]
+    );
     fs::write(out.join("hirq.v"), wrapper).unwrap();
     let testbench = repo.join("tests/fpga_hirq_tb.v");
     let identity = serde_json::json!({"source_sha256":format!("{:x}",Sha256::digest(raw.as_bytes())),"testbench_sha256":format!("{:x}",Sha256::digest(fs::read(&testbench).unwrap())),"mode":mode,"hardware_tested":false});

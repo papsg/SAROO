@@ -32,6 +32,9 @@ module tb;
 `ifdef SAROO_FMC_READY
         ,
 `endif
+`ifdef SAROO_ABUS_WRITE
+        ,26'b0
+`endif
     );
 
     function [15:0] contents(input [25:0] address);

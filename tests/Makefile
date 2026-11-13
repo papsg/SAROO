@@ -177,6 +177,7 @@ check-host-tools:
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_refresh_window.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_sdram_capture.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_fmc_stream.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_abus_write.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

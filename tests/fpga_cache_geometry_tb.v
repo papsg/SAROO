@@ -33,6 +33,9 @@ module tb;
 `ifdef SAROO_FMC_READY
         ,
 `endif
+`ifdef SAROO_ABUS_WRITE
+        ,address[0]
+`endif
     );
 
     reg [12:0] rows [0:3];
