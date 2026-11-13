@@ -11,6 +11,9 @@ static FILE *disk;
 static LBA_t sectors;
 static LBA_t boot_alias;
 static unsigned reads,writes,syncs,failures;
+enum Media { MEDIA_READY, MEDIA_ABSENT, MEDIA_DIFFERENT, MEDIA_RETURNED };
+static enum Media media;
+static unsigned reidentifications;
 static LBA_t fault_sector;
 static UINT fault_prefix;
 static unsigned fail_read;
@@ -27,13 +30,20 @@ int ff_mutex_create(int vol) { assert(!vol);return pthread_mutex_init(&mutex,NUL
 void ff_mutex_delete(int vol) { assert(!vol);assert(!pthread_mutex_destroy(&mutex)); }
 int ff_mutex_take(int vol) { assert(!vol);return pthread_mutex_lock(&mutex)==0; }
 void ff_mutex_give(int vol) { assert(!vol);assert(!pthread_mutex_unlock(&mutex)); }
-DSTATUS disk_initialize(BYTE drive) { return drive?STA_NOINIT:0; }
-DSTATUS disk_status(BYTE drive) { return drive?STA_NOINIT:0; }
+DSTATUS disk_status(BYTE drive) { return drive || media != MEDIA_READY ? STA_NOINIT : 0; }
+DSTATUS disk_initialize(BYTE drive)
+{
+    if (!drive && media == MEDIA_RETURNED) {
+        reidentifications++;
+        media = MEDIA_READY;
+    }
+    return disk_status(drive);
+}
 DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 {
     /* One synthetic partition boot sector near the LBA limit. */
     if (boot_alias && sector == boot_alias) { assert(count == 1); sector = 1; }
-    assert(!drive && count && sector<sectors && count<=sectors-sector);reads++;
+    assert(!drive && media == MEDIA_READY && count && sector<sectors && count<=sectors-sector);reads++;
     if (reads == fail_read) {
         failures++;
         return RES_ERROR;
@@ -42,7 +52,7 @@ DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 }
 DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 {
-    assert(!drive && count && sector+count<=sectors);writes++;
+    assert(!drive && media == MEDIA_READY && count && sector+count<=sectors);writes++;
     if (abort_fault.payload) {
         uintptr_t ptr=(uintptr_t)data, start=(uintptr_t)abort_fault.payload;
         int matches=abort_fault.cache ? data==abort_fault.cache :
@@ -69,7 +79,7 @@ DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 }
 DRESULT disk_ioctl(BYTE drive,BYTE cmd,void *out)
 {
-    assert(!drive);
+    assert(!drive && media == MEDIA_READY);
     if (cmd == CTRL_SYNC) {
         syncs++;
         if (fail_sync) {
@@ -849,13 +859,49 @@ static void readonly_seek_case(BYTE type, unsigned scenario)
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
+/* Adapted from paps-g 371f5369. Preserve an open, dirty object across reidentification. */
+static void retained_media(int fat32, int by_path)
+{
+    format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+    FATFS fs;
+    FIL file;
+    FILINFO info;
+    BYTE payload[517], received[517];
+    UINT count;
+    for (unsigned i = 0; i < sizeof payload; ++i) payload[i] = pattern(i);
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    assert(f_open(&file, "/session.bin", FA_CREATE_NEW | FA_WRITE) == FR_OK);
+    assert(f_write(&file, payload, sizeof payload, &count) == FR_OK && count == sizeof payload);
+    BYTE type = fs.fs_type, flags = file.flag, dirty = fs.wflag;
+    WORD mount_id = fs.id;
+    unsigned previous_reads = reads, previous_writes = writes, previous_syncs = syncs;
+    for (enum Media state = MEDIA_ABSENT; state <= MEDIA_DIFFERENT; state++) {
+        media = state;
+        assert(f_sync(&file) == FR_INVALID_OBJECT && f_close(&file) == FR_INVALID_OBJECT);
+        assert(f_stat("/session.bin", &info) == FR_NOT_READY);
+        assert(fs.fs_type == type && fs.id == mount_id && fs.wflag == dirty);
+        assert(file.obj.fs == &fs && file.flag == flags && f_size(&file) == sizeof payload);
+        assert(reads == previous_reads && writes == previous_writes && syncs == previous_syncs);
+    }
+    media = MEDIA_RETURNED;
+    if (by_path) assert(f_stat("/session.bin", &info) == FR_OK && reidentifications == 1);
+    assert(f_sync(&file) == FR_OK && reidentifications == 1 && fs.id == mount_id);
+    assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+    assert(f_mount(&fs, "0:", 1) == FR_OK && f_open(&file, "/session.bin", FA_READ) == FR_OK);
+    assert(f_read(&file, received, sizeof received, &count) == FR_OK && count == sizeof received);
+    assert(!memcmp(payload, received, sizeof payload));
+    assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==4);
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
     int value = atoi(argv[3]);
-    if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
+    if (!strcmp(argv[2], "retained-media")) {
+        retained_media(value & 1, value & 2);
+    } else if (!strcmp(argv[2], "sync-fat32") || !strcmp(argv[2], "sync-exfat")) {
         sync_file(!strcmp(argv[2], "sync-fat32"), value);
     } else if (!strcmp(argv[2], "utf8-fat32") || !strcmp(argv[2], "utf8-exfat")) {
         utf8_path(!strcmp(argv[2], "utf8-fat32"), (unsigned)value);

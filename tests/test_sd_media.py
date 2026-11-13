@@ -25,6 +25,12 @@ class SDMediaTests(unittest.TestCase):
         sectors = data[data.index(b'#define SDBUF_SIZE'):identify]
         if b'static __attribute__((noinline)) int sd_sectors(' in sectors:
             state += b'#define HAS_SHARED_SECTOR_WRAPPER 1\n'
+        detect = b''
+        if b'static volatile u8 sd_removed;' in state:
+            state += b'#define HAS_SD_MEDIA_DETECT 1\n'
+            for signature in (b'int sd_card_insert(', b'int sdio_ready('):
+                start = data.index(signature)
+                detect += data[start:data.index(b'\n}', start)+3]
         sectors = sectors.replace(b'(u32)buf', b'sd_address(buf)')
         acmd = data.index(b'static int sd_acmd(')
         functions = data[acmd:data.index(b'\n}', acmd)+3]
@@ -33,6 +39,7 @@ class SDMediaTests(unittest.TestCase):
             functions += data[span:data.index(b'\n}', span)+3]
         functions += data[identify:data.index(b'\n}', identify)+3] + sectors
         inputs = {'sdio_h7.c': data, 'state.inc': state, 'identify.inc': functions,
+                  'detect.inc': detect,
                   'RTX_Config.h': (ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h').read_bytes(),
                   'sd_model.h': (ROOT / 'tests/sd_model.h').read_bytes(),
                   'sd_media.c': (ROOT / 'tests/sd_media.c').read_bytes(),
@@ -98,6 +105,10 @@ class SDMediaTests(unittest.TestCase):
     def test_sector_access_stays_closed_through_every_identification_command(self):
         for existing_rca in (0,1):
             with self.subTest(existing_rca=existing_rca): self.invoke('during',existing_rca)
+
+    def test_sampled_removal_revokes_io_until_same_card_is_reidentified(self):
+        for removal in (0, 2, 13):
+            with self.subTest(removal=removal): self.invoke('removal', removal)
 
 
 if __name__ == '__main__':

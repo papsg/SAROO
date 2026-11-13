@@ -153,6 +153,11 @@ class FatFsSeekTests(unittest.TestCase):
             with self.subTest(filesystem=filesystem):
                 self.invoke(f'sync-{filesystem}', 4)
 
+    def test_retained_mount_and_dirty_file_resume_only_with_same_media(self):
+        for value in range(4):
+            with self.subTest(fat32=bool(value & 1), reopen_by_path=bool(value & 2)):
+                self.invoke('retained-media', value)
+
     def test_failed_fat_mirror_retains_the_pending_window(self):
         for filesystem in ('fat12', 'fat16', 'fat32'):
             with self.subTest(filesystem=filesystem):

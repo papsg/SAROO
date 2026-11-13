@@ -16,6 +16,14 @@ static u8 inserted_cid[16];
 static unsigned new_rca = 0x1234, sequence[32], issued, selected, width, io_calls;
 static unsigned fail_command = 99, fail_ordinal, command_ordinal[64];
 static u32 tick;
+static struct { u32 IDR; } gpio;
+#define GPIOA (&gpio)
+#include "detect.inc"
+#ifndef HAS_SD_MEDIA_DETECT
+int sd_card_insert(void) { return !(GPIOA->IDR & 0x8000); }
+int sdio_ready(void) { return sd_rca != 0; }
+#endif
+static unsigned remove_on_command = 99;
 static int check_during_identification;
 static void unavailable(void);
 static void printk(const char *format, ...) { (void)format; }
@@ -28,6 +36,11 @@ static int sd_cmd(u32 command, u32 argument)
 {
     if (check_during_identification) unavailable();
     unsigned cmd = command & 63;
+    if (cmd == remove_on_command) {
+        GPIOA->IDR = 0x8000;
+        assert(!sd_card_insert());
+        GPIOA->IDR = 0; /* Another task sampled removal during identification. */
+    }
     assert(issued < sizeof(sequence) / sizeof(sequence[0]));
     sequence[issued++] = cmd;
     unsigned ordinal = ++command_ordinal[cmd];
@@ -134,7 +147,7 @@ static void usable(void)
 }
 static void unavailable(void)
 {
-    assert(!sd_rca);
+    assert(!sdio_ready());
     unsigned before = io_calls;
     assert(sd_read_sector(123, 1, (u8 *)0x24002000));
     assert(sd_write_sector(123, 1, (u8 *)0x24002000));
@@ -206,7 +219,26 @@ int main(int argc, char **argv)
         assert(sd_write_sector(123,1,(u8 *)0x24002000)==0);
         return 0;
     }
-    if (!strcmp(mode, "first-failure")) {
+    if (!strcmp(mode, "removal")) {
+        usable();
+        if (value) {
+            attempt();
+            remove_on_command = value;
+            assert(sdcard_identify());
+            remove_on_command = 99;
+        } else {
+            GPIOA->IDR = 0x8000;
+            assert(!sd_card_insert());
+            unavailable();
+            GPIOA->IDR = 0;
+        }
+        unavailable();
+        inserted_cid[7] ^= 1;
+        attempt(); assert(sdcard_identify()); unavailable();
+        inserted_cid[7] ^= 1;
+        new_rca = 0x4321;
+        usable();
+    } else if (!strcmp(mode, "first-failure")) {
         fail_command = value; fail_ordinal = 1; attempt();
         assert(sdcard_identify()); unavailable();
         inserted_cid[0] ^= 1; fail_command = 99; usable();

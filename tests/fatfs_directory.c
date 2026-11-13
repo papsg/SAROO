@@ -5,12 +5,14 @@
 #define disk_write base_write
 #define disk_ioctl base_ioctl
 #define disk_status base_status
+#define disk_initialize base_initialize
 #include "fatfs_seek.c"
 #undef main
 #undef disk_read
 #undef disk_write
 #undef disk_ioctl
 #undef disk_status
+#undef disk_initialize
 
 static const char *fault;
 static unsigned ordinal, armed, op_reads, op_writes, op_syncs, unavailable;
@@ -19,6 +21,9 @@ static BYTE payload[4096];
 
 DSTATUS disk_status(BYTE drive)
 { return unavailable ? STA_NOINIT : base_status(drive); }
+
+DSTATUS disk_initialize(BYTE drive)
+{ return unavailable ? STA_NOINIT : base_initialize(drive); }
 
 static int inject(const char *kind, unsigned number)
 {

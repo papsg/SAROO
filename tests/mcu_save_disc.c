@@ -28,6 +28,7 @@ static char mdisc_str[16];
 static int sector_delay_force=-1,play_delay_force=-1,pend_delay_force=-1;
 static int sector_delay,play_delay,pend_delay;
 static int present=1,identify_result,identifies,discoveries,parse_error,find_error,alloc_error;
+static unsigned card_samples;
 static void set_status(u8 state) { assert(cdb.status==state); }
 static void init_toc(void) { cdb.status=STAT_PAUSE; }
 #define sprintk sprintf
@@ -148,9 +149,9 @@ static int sdcard_identify(void)
     identifies++;
     return identify_result;
 }
+int sd_card_insert(void) { card_samples++; return present; }
 #include "sd-reset.inc"
 static int disk_reidentify(void) { return sdio_reset(); }
-int sd_card_insert(void) { return present; }
 static __attribute__((unused)) void publish_open_tray(void)
 {
     assert(pause_irq_mask && !cdb.play_type);
@@ -477,6 +478,14 @@ int main(int argc,char **argv)
         assert(!menu_step(0xffff) && cdb.status==STAT_NODISC && !cdb.track_num);
     } else if(!strcmp(mode,"swap-failure")) swap_failure(value);
     else if(!strcmp(mode,"reset")) { identify_result=value;assert(sdio_reset()==value && identifies==1); }
+    else if (!strcmp(mode, "menu-media")) {
+        mounted_disc = next_disc = -1;
+        present = 0;
+        u8 status = cdb.status;
+        unsigned samples = card_samples;
+        swap_step();
+        assert(card_samples == samples + 1 && cdb.status == status && !disc_removed);
+    }
     else {
         int preview=!strncmp(mode,"preview-",8);u8 ip[256];
         alloc_error=strstr(mode,"allocation")!=NULL;

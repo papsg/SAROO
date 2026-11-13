@@ -246,3 +246,34 @@ CID checks, addressing and error logs are preserved. The resulting
 GNU App uses 65,036 load bytes, with 500 bytes free and 50,736 bytes
 of DTCM data and BSS span. Card programming is tested in a model.
 Physical media timing, power-loss durability and MDK remain open.
+
+## Resume a retained filesystem after card removal
+
+MCU-SD-R09, adapted from paps-g `de274082` and its filesystem
+test `371f5369`. Once PA15 reports removal, sector I/O and write
+sync remain unavailable until the driver completes identification
+and matches the retained 16-byte CID. The disc task samples PA15
+at the menu too. The drive's semaphore continues to serialize
+reidentification and transfer. It can exist while the drive is
+uninitialized.
+
+FatFs retries identification before touching a retained mount or
+file object. A missing or different card leaves the dirty file,
+directory recovery state and mount ID intact. The same card can
+resume through the original objects. Mounting a different card
+requires a new MCU/filesystem session.
+
+[SD Physical Layer Simplified Specification 3.01, §4.2 and §5.2, printed pp. 19–22 and 93](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=31),
+[FatFs drive status](https://elm-chan.org/fsw/ff/doc/dstat.html)
+and [drive initialization](https://elm-chan.org/fsw/ff/doc/dinit.html)
+describe card identity, relative addressing and readiness.
+
+Run `make -C tests check-mcu-diskio check-fatfs check-mcu-save`.
+The parent fails the injected removal, drive-status and open-file
+retention tests. The corrected tests cover a removal sampled during
+identification, write sync and multi-block pre-erase, full-CID
+refusal and dirty data readback after remount on FAT32 and exFAT.
+The GNU App uses 65,184 load bytes, with 352 bytes of ITCM free
+and a 50,736-byte DTCM data and BSS span. Removal and reinsertion
+entirely between samples, cloned CIDs, interrupted physical writes
+and MDK remain unqualified.

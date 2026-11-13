@@ -41,11 +41,15 @@ class SDSafetyTests(unittest.TestCase):
             layout += b'#define TEST_SD_SESSION\n'
         if b'sd_csd[16]' in data:
             layout += b'#define HAS_CSD_CAPACITY_PRINT\n'
+        detect = b''
+        if b'static volatile u8 sd_removed;' in data:
+            layout += b'#define HAS_SD_MEDIA_DETECT 1\n'
+            detect = function(b'int sd_card_insert(')
         inputs = {
             'sdio_h7.c': data,
             'command-defines.inc': layout + data[definitions:last_define] + b'\n',
             'command.inc': recover + function(b'static int sd_cmd('),
-            'identify.inc': b'\n'.join(function(signature) for signature in (
+            'identify.inc': detect + b'\n'.join(function(signature) for signature in (
                 b'static void sd_clk_set(', b'static void sd_bus_width(',
                 b'static int sd_acmd(', b'int sdcard_identify(')),
             'RTX_Config.h': config.read_bytes(),

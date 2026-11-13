@@ -178,6 +178,8 @@ class MCUSaveTest(unittest.TestCase):
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             clock = data.index(b'#define SDCLK_LOW ')
             prefix = data[clock:data.index(b'\n', clock)+1]
+            if b'static u8 sd_pending_write;' in data:
+                prefix += b'static u8 sd_pending_write;\n'
             reset = data.find(b'static void sd_reset_controller(')
             if reset >= 0:
                 prefix += data[reset:data.index(b'\n}', reset)+3]

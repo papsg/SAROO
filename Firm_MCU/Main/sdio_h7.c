@@ -77,6 +77,7 @@ static u32 cmd_resp[4];
 static u8  sd_cid[16];
 static int is_sdhc;
 static volatile u32 sd_rca;
+static volatile u8 sd_removed;
 static u8 sd_known;
 static u8 sd_pending_write;
 
@@ -109,8 +110,14 @@ static void sd_bus_width(int width)
 
 int sd_card_insert(void)
 {
-	// PA15
-	return (GPIOA->IDR&0x8000)? 0: 1;
+	if (!(GPIOA->IDR & 0x8000)) return 1; /* Active-low PA15. */
+	sd_removed = 1;
+	return 0;
+}
+
+int sdio_ready(void)
+{
+	return sd_card_insert() && !sd_removed && sd_rca;
 }
 
 /******************************************************************************/
@@ -279,12 +286,12 @@ static int sd_range_valid(u32 start, int count)
 /* DATAEND ends the transfer. CMD13 confirms the card has finished programming. */
 int sd_sync(void)
 {
-    if (!sd_rca) return -1;
+    if (!sdio_ready()) return -1;
     if (!sd_pending_write) return 0;
 
     u32 start = osKernelGetTickCount();
     do {
-        if (sd_cmd(CMD_13, sd_rca << 16)) return -1;
+        if (sd_cmd(CMD_13, sd_rca << 16) || !sdio_ready()) return -1;
         u32 status = cmd_resp[0] & 0x1f00u;
         if (status == 0x0900u) {
             sd_pending_write = 0;
@@ -292,7 +299,8 @@ int sd_sync(void)
         }
         unsigned state = status >> 9;
         if (state != 6 && state != 7) return -1;
-    } while (osKernelGetTickCount() - start < 5u * OS_TICK_FREQ && osDelay(1) == osOK);
+    } while (osKernelGetTickCount() - start < 5u * OS_TICK_FREQ &&
+             osDelay(1) == osOK && sdio_ready());
     return -1;
 }
 
@@ -301,23 +309,26 @@ int sd_sync(void)
  * Callers supply only the command index; response/data flags are invariant. */
 static int sd_blocks(u32 block, int count, u8 *buf, u32 index)
 {
-	int retv;
 	int writing = index == (CMD_24 & 0x3f);
-	if (!writing && sd_sync()) return -1;
+	if (writing ? !sdio_ready() : sd_sync()) return -1;
+	if (count != 1) {
+		index++;
+		if (writing) {
+			int result = sd_acmd(sd_rca, CMD_23, count);
+			if (result) return result;
+			if (!sdio_ready()) return -1;
+		}
+	}
 	u32 control = writing ? 0x90 : 0x92;
 	SDIO->DTIMER = writing ? 0x0fffffff : 0xffffffff;
 	SDIO->DLEN = count * 512;
-	if (count != 1) { control |= 0x0c; index++; }
+	if (count != 1) control |= 0x0c;
 	SDIO->DCTRL = control;
 	SDIO->IDMABASE0 = (u32)buf;
 	SDIO->IDMACTRL = 1;
 	if (!is_sdhc) block *= 512;
-	if (index == (CMD_25 & 0x3f)) {
-		retv = sd_acmd(sd_rca, CMD_23, count);
-		if (retv) return retv;
-	}
 	if (writing) sd_pending_write = 1;
-	retv = sd_cmd(index | CMD_RESP_SHORT | SDMMC_CMD_CMDTRANS, block);
+	int retv = sd_cmd(index | CMD_RESP_SHORT | SDMMC_CMD_CMDTRANS, block);
 	if (!retv && count != 1) retv = sd_cmd(CMD_12, 0);
 	return retv;
 }
@@ -348,7 +359,7 @@ static __attribute__((noinline)) int sd_sectors(u32 start, int size, u8 *buf, u3
 {
     u32 address = (u32)buf;
     u32 type = address >> 24;
-    if (!sd_rca || !sd_range_valid(start, size)) return -1;
+    if (!sd_range_valid(start, size) || !sdio_ready()) return -1;
     if ((address & 3u) == 0 && (type == 0x24 || type == 0x61)) {
         while (size > SD_DIRECT_MAX_SECTORS) {
             int result = sd_blocks(start, SD_DIRECT_MAX_SECTORS, buf, index);
@@ -391,6 +402,8 @@ int sdcard_identify(void)
 
 	/* Publish sector access only after the full identification sequence. */
 	sd_rca = 0;
+	sd_removed = 0;
+	if (!sd_card_insert()) return -1;
 	osDelay(10);
 	sd_cmd(CMD_00, 0);
 	osDelay(10);
@@ -467,6 +480,8 @@ int sdcard_identify(void)
 		return retv;
 	osDelay(1);
 
+	/* Also reject a removal sampled by another task during identification. */
+	if (!sd_card_insert() || sd_removed) return -1;
 	if (!sd_known) {
 		memcpy(sd_cid, cid, sizeof(sd_cid));
 		sd_known = 1;
@@ -524,17 +539,12 @@ int sdio_init(void)
 }
 
 
-int sdio_ready(void)
-{
-    return sd_rca != 0;
-}
-
 int sdio_reset(void)
 {
 	sd_rca = 0;
+	if (!cmd_sem || !sd_card_insert()) return -1;
 	sd_pending_write = 0;
 	printk("\nSDIO reset ...\n");
-	if (!cmd_sem) return -1;
 
 	/* Preserve reinsertion's reset hold and initial clock phase. */
 	sd_reset_controller(SDCLK_LOW, 10);

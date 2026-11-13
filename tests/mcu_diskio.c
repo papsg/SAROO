@@ -14,7 +14,8 @@ static int fail_create, held;
 static int reset_result, overlap_reset;
 static int sync_result;
 static unsigned syncs;
-static int card_ready, ready_on_acquire;
+static int card_ready = 1;
+static int ready_on_acquire;
 static unsigned resets;
 static int expected_write;
 static char transfer_log[384];
@@ -82,6 +83,7 @@ int sdio_reset(void)
 {
     assert(held);
     resets++;
+    card_ready = reset_result == 0;
     return reset_result;
 }
 
@@ -161,6 +163,17 @@ int main(int argc, char **argv)
         assert(disk_status(0) == STA_NOINIT);
         assert(disk_initialize(0) == 0 && creates == 1);
         assert(disk_status(0) == 0);
+    } else if (!strcmp(mode, "media-status")) {
+        card_ready = 0;
+        reset_result = -17;
+        assert(disk_initialize(0) == STA_NOINIT && creates == 1 && resets == 1);
+        assert(disk_status(0) == STA_NOINIT);
+        reset_result = 0;
+        assert(disk_initialize(0) == 0 && creates == 1 && resets == 2);
+        assert(disk_status(0) == 0);
+        card_ready = 0;
+        assert(disk_status(0) == STA_NOINIT);
+        assert(acquires == 2 && releases == 2 && !held);
     } else if (!strcmp(mode, "create-failure")) {
         fail_create = 1;
         assert(disk_initialize(0) == STA_NOINIT && creates == 1);

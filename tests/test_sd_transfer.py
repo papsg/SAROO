@@ -25,11 +25,14 @@ class SDTransferTests(unittest.TestCase):
         defines = raw[raw.index(b'#define SDCLK_LOW '):raw.index(b'static u32 cmd_resp')]
         if b'int sd_sync(void)' in raw:
             defines += b'#define HAS_SD_WRITE_SYNC 1\n'
+        if b'static volatile u8 sd_removed;' in raw:
+            defines += b'#define HAS_SD_MEDIA_DETECT 1\n'
         # Preserve the MCU's 32-bit DMA addresses when compiling on a wider host.
         transfers = raw[handler:identify].replace(b'(u32)buf', b'model_sd_address(buf)')
         inputs = {
             'sdio_h7.c': raw,
-            'driver.inc': defines + transfers,
+            'defines.inc': defines,
+            'driver.inc': transfers,
             'support.inc': raw[raw.index(b'static void sd_clk_set('):handler],
             'init.inc': raw[raw.index(b'int sdio_init('):],
             'RTX_Config.h': (ROOT / 'Firm_MCU/RTE/CMSIS/RTX_Config.h').read_bytes(),
@@ -114,6 +117,9 @@ class SDTransferTests(unittest.TestCase):
 
     def test_sync_refuses_errors_or_unbounded_waits_and_allows_retry(self):
         self.invoke(32)
+
+    def test_sd_io_stops_on_sampled_removal(self):
+        self.invoke(33)
 
 
 if __name__ == '__main__':

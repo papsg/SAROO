@@ -388,9 +388,9 @@ static __attribute__((noinline)) void log_play_end(void)
 /* The disk task owns card polling and media replacement. */
 static int service_tray(void)
 {
+    int inserted = sd_card_insert();
     int requested = next_disc >= 0 ? next_disc : mounted_disc;
     if (requested < 0) return 0;
-    int inserted = sd_card_insert();
     if (inserted && !disc_removed) return 0;
 
     int key = disable_irq();

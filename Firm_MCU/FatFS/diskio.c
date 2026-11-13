@@ -51,7 +51,7 @@ int disk_resume(void)
 
 DSTATUS disk_status (BYTE pdrv)
 {
-	return sem_diskio ? 0 : STA_NOINIT;
+	return sem_diskio && sdio_ready() ? 0 : STA_NOINIT;
 }
 
 
@@ -64,7 +64,7 @@ DSTATUS disk_initialize (BYTE pdrv)
 {
 	if (!sem_diskio)
 		sem_diskio = osSemaphoreNew(1, 1, NULL);
-	return sem_diskio ? 0 : STA_NOINIT;
+	return sem_diskio && !disk_resume() ? disk_status(pdrv) : STA_NOINIT;
 }
 
 

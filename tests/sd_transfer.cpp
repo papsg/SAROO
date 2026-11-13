@@ -10,6 +10,7 @@
 
 using u32 = uint32_t;
 using u8 = uint8_t;
+#include "defines.inc"
 enum { STA, MASK, CMD, ARG, DCTRL, IDMACTRL, ICR, CLKCR, POWER, DTIMER, DLEN, BASE, RESET };
 struct Register {
     u32 value = 0;
@@ -28,6 +29,9 @@ struct { Register AHB3RSTR; } rcc;
 #define RCC (&rcc)
 static u32 cmd_resp[4];
 static u32 sd_rca;
+#ifdef HAS_SD_MEDIA_DETECT
+static volatile u8 sd_removed;
+#endif
 static int is_sdhc;
 static u8 sd_pending_write;
 static osSemaphoreId_t cmd_sem = (void *)1;
@@ -51,6 +55,7 @@ static std::vector<unsigned> commands;
 static std::vector<u32> arguments;
 static std::vector<u32> card_status;
 static unsigned status_reads;
+static unsigned remove_after_command;
 struct DataCommand { u32 index, address, bytes, dma; };
 static std::vector<DataCommand> data_commands;
 static unsigned fail_data_chunk;
@@ -168,6 +173,7 @@ static void advance(void)
             SDIO->RESP2 = 0x55667788; SDIO->RESP3 = 0x99aabbcc; SDIO->RESP4 = 0xddeeff00;
             awaiting = false;
         }
+        if (!awaiting && current == remove_after_command) gpio.IDR = 0x8000;
     }
     irq();
 }
@@ -235,8 +241,8 @@ static u32 model_sd_address(u8 *buf)
     return buf == span_data ? span_address : (u32)(uintptr_t)buf;
 }
 
-#include "driver.inc"
 #include "support.inc"
+#include "driver.inc"
 osSemaphoreId_t osSemaphoreNew(uint32_t maximum, uint32_t initial, const osSemaphoreAttr_t *)
 {
     assert(maximum == 1 && initial == 0 && !(SDIO->STA.value & active));
@@ -260,6 +266,9 @@ static void setup(void)
     for (unsigned i = 0; i < sizeof(regs)/sizeof(regs[0]); i++) regs[i]->id = i;
     sd_rca = 0x1234; is_sdhc = 1; cmd_sem = (void *)1;
     sd_pending_write = 0;
+#ifdef HAS_SD_MEDIA_DETECT
+    sd_removed = 0;
+#endif
     reads = tokens = releases = drains = waits = delays = resets = barriers = clock_reads = mmio_writes = 0;
     tick = issued = fault_status = current = fault_uses = 0;
     fault_command = 99; stop_before_reset = stop_after_reset = 0;
@@ -268,7 +277,7 @@ static void setup(void)
     permanent_cpsm = healthy_busy = pending_start = fail_semaphore_creation = false;
     reset_hold = identified = irq_enables = 0; identify_result = 0; gpio.IDR = 0;
     commands.clear(); arguments.clear();
-    card_status.clear(); status_reads = 0;
+    card_status.clear(); status_reads = remove_after_command = 0;
     data_commands.clear(); fail_data_chunk = 0;
     SDIO->CLKCR.value = selected_clock; SDIO->POWER.value = 3; RCC->AHB3RSTR.value = RCC_AHB3RSTR_MDMARST;
     for (unsigned i = 0; i < 4; i++) cmd_resp[i] = 0xa0b0c000 + i;
@@ -628,6 +637,23 @@ int main(int argc, char **argv)
         setup();
         assert(sd_write_sector(42, 1, buffer) == 0 && sd_pending_write);
         assert(sdio_reset() == 0 && !sd_pending_write);
+    } else if (which == 33) {
+        setup();
+        assert(sd_write_sector(42, 1, buffer) == 0 && sd_pending_write);
+        remove_after_command = 13;
+        assert(sd_sync() == -1 && sd_pending_write);
+        clean();
+        gpio.IDR = 0;
+        assert(sd_sync() == -1 && sd_read_sector(42, 1, buffer) == -1);
+        assert(sd_write_blocks(42, 1, buffer) == -1);
+        assert(commands == (std::vector<unsigned>{24,13}));
+
+        setup();
+        remove_after_command = 23;
+        assert(sd_write_blocks(42, 2, buffer) == -1);
+        clean();
+        assert(!sd_pending_write && commands == (std::vector<unsigned>{55,23}));
+        assert(sdio_reset() == -1 && !resets && !identified);
 #endif
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);

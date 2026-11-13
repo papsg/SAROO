@@ -71,6 +71,11 @@ class MCUDiskIOTests(unittest.TestCase):
     def test_uninitialized_io_never_calls_the_sd_driver(self):
         self.invoke('uninitialized')
 
+    def test_disk_status_requires_identified_media(self):
+        for readonly in (False, True):
+            with self.subTest(readonly=readonly):
+                self.invoke('media-status', readonly=readonly)
+
     def test_non_success_cmsis_statuses_prevent_io_and_release(self):
         # All six defined osStatus_t error values; not a reachability claim for each.
         for value in (-1, -2, -3, -4, -5, -6):

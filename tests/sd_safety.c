@@ -32,6 +32,11 @@ static unsigned waits, drains;
 /* Adapted from paps-g 96c9dd85. Drive the actual identify and command paths. */
 static u8 sd_cid[16];
 static volatile u32 sd_rca;
+#ifdef HAS_SD_MEDIA_DETECT
+static volatile u8 sd_removed;
+static struct { u32 IDR; } gpio;
+#define GPIOA (&gpio)
+#endif
 static int is_sdhc;
 #ifdef HAS_CSD_CAPACITY_PRINT
 static u8 sd_csd[16];

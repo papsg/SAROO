@@ -3581,6 +3581,12 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 /* Determine logical drive number and mount the volume if needed         */
 /*-----------------------------------------------------------------------*/
 
+static DSTATUS resume_drive (BYTE drive)
+{
+	DSTATUS status = disk_status(drive);
+	return status & STA_NOINIT ? disk_initialize(drive) : status;
+}
+
 static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	const TCHAR** path,			/* Pointer to pointer to the path name (drive number) */
 	FATFS** rfs,				/* Pointer to pointer to the found filesystem object */
@@ -3611,17 +3617,15 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 	mode &= (BYTE)~FA_READ;				/* Desired access mode, write access or not */
 	if (fs->fs_type != 0) {				/* If the volume has been mounted */
-		stat = disk_status(fs->pdrv);
-		if (!(stat & STA_NOINIT)) {		/* and the physical drive is kept initialized */
-			if (!FF_FS_READONLY && mode && (stat & STA_PROTECT)) {	/* Check write protection if needed */
-				return FR_WRITE_PROTECTED;
-			}
+		/* Keep open objects and pending metadata while the retained card is unavailable. */
+		stat = resume_drive(fs->pdrv);
+		if (stat & STA_NOINIT) return FR_NOT_READY;
+		if (!FF_FS_READONLY && mode && (stat & STA_PROTECT)) return FR_WRITE_PROTECTED;
 #if FF_FS_EXFAT && !FF_FS_READONLY
-            return dir_recover(fs);
+		return dir_recover(fs);
 #else
-            return FR_OK;
+		return FR_OK;
 #endif
-		}
 	}
 
 	/* The filesystem object is not valid. */
@@ -3850,7 +3854,7 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 	if (obj && obj->fs && obj->fs->fs_type && obj->id == obj->fs->id) {	/* Test if the object is valid */
 #if FF_FS_REENTRANT
 		if (lock_volume(obj->fs, 0)) {	/* Take a grant to access the volume */
-			if (!(disk_status(obj->fs->pdrv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
+			if (!(resume_drive(obj->fs->pdrv) & STA_NOINIT)) {
 #if FF_FS_EXFAT && !FF_FS_READONLY
                 res = dir_recover(obj->fs);
                 if (res != FR_OK) unlock_volume(obj->fs, FR_OK);
@@ -3858,13 +3862,13 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
                 res = FR_OK;
 #endif
             } else {
-                unlock_volume(obj->fs, FR_OK);	/* Invalidated volume, abort to access */
+                unlock_volume(obj->fs, FR_OK);
 			}
 		} else {	/* Could not take */
 			res = FR_TIMEOUT;
 		}
 #else
-		if (!(disk_status(obj->fs->pdrv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
+		if (!(resume_drive(obj->fs->pdrv) & STA_NOINIT)) {
 #if FF_FS_EXFAT && !FF_FS_READONLY
             res = dir_recover(obj->fs);
 #else
