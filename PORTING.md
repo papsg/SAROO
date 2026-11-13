@@ -2672,3 +2672,9 @@ Two ordered checkpoints after [`cd24706`](https://github.com/papsg/SAROO/commit/
 Both checkpoints landed through [`d631a9b`](https://github.com/papsg/SAROO/commit/d631a9bc4a85a55494b9aaf3d6b0319e27b10236). All 703 files in the suite archive match that commit. The combined `make -j6 -C tests check` run found 1,008 Python methods: 1,006 passed, the Windows replacement fixture was skipped on macOS, and the optional RTX pool fixture was run separately and passed with both GNU object sets. All 18 Rust tests passed. The App profile passed all 133 growth and recovery cases, including fault reinjection.
 
 Both final GNU links match the committed MCU sources and reproduce their earlier load bytes. Combined ITCM saving from the starting 65,536-byte image is 9,124 bytes: 5,024 from the FAT32 change and 4,100 from LTO. The original Keil build is outside the LTO change. No physical media or Saturn behavior was qualified. Both source commits and ledger updates passed secret and public identity checks; the private checkout was left untouched. SD overlays remain a separate port.
+
+## Guarded SD sector overlays
+
+Four ordered checkpoints after [`d631a9b`](https://github.com/papsg/SAROO/commit/d631a9bc4a85a55494b9aaf3d6b0319e27b10236).
+
+- `f7791566` and standalone CRC from `7afd1bea` (paps-g) → [`aaea43a`](https://github.com/papsg/SAROO/commit/aaea43a1e53d53330beaa52176de127b12e16e46). Add the ABI 1 pack decoder and an offline Rust compiler using the public CUE geometry and exact source checks. Three sanitizer methods exercise 13 structural refusals, mixed-width and later-track geometry, read retry retention and independent whole-sector parity. Workspace format and lint checks pass. The MCU decoder has no caller in this checkpoint. [Format, Sega and ECMA-130 references](https://github.com/papsg/SAROO/blob/aaea43a1e53d53330beaa52176de127b12e16e46/doc/SD-SECTOR-OVERLAYS.md).
