@@ -25,6 +25,8 @@ _Alignas(8) static struct { u8 before[32],dir[512],between[32],full[512],after[3
 #define TEST_FULL_PATH ((uintptr_t)paths.full)
 static struct {
     int status,track_num,has_subrw,track,index,ctrladdr,play_type,iflag,subrw_wp,subrw_rp;
+    int rdir_state,cdir_pfnum,cdir_drend;
+    u32 root_lba,root_size,cdir_lba,cdir_size;
     u8 *subcode_buf,*subrw_buf;
     TRACK_INFO tracks[100];
     TRACK_INFO *play_track;

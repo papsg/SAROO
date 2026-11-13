@@ -26,12 +26,15 @@ class CDDirectoryTests(unittest.TestCase):
         with patch.dict(os.environ,{'SAROO_CDC_BOUNDS_SOURCE':str(source)}):
             bounds.CDBoundsTests.setUpClass()
         raw=source.read_bytes();main=main_source.read_bytes()
+        image=Path(os.environ.get('SAROO_CDC_DIRECTORY_IMAGE',ROOT/'Firm_MCU/Saturn/cdimg.c')).read_bytes()
         header=(bounds.CDBoundsTests.target/'cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-directory';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
         def function(data,signature):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
+        (cls.target/'disc-unload.inc').write_bytes(b''.join(function(image,sig) for sig in (
+            b'static int close_tracks(int count)\n{',b'int unload_disc(')))
         retired = b'int finish_read(' in raw
         code=b''.join(function(raw,sig) for sig in (
             b'static u32 isonum_733(',b'static int read_directory_record(',
@@ -76,7 +79,7 @@ class CDDirectoryTests(unittest.TestCase):
                  else function(main, b'static int acknowledge_drive_request(') +
                  b'#define acknowledge_disc_pause acknowledge_drive_request\n')
         (cls.target/'pause.inc').write_bytes(pause)
-        inputs={'saturn_cdc.c':raw,'saturn_main.c':main}
+        inputs={'saturn_cdc.c':raw,'saturn_main.c':main,'cdimg.c':image}
         for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py','cdc_reply_source.py','test_cdc_filter.py'):
             inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('types.h','copy.inc','bounds.inc','ff.h','ffconf.h'):
@@ -121,6 +124,7 @@ class CDDirectoryTests(unittest.TestCase):
     def test_bounded_readonly_names_and_preserved_traces(self):self.run_case(9)
     def test_wide_extent_arithmetic_and_state_preserving_refusals(self):self.run_case(10)
     def test_startup_places_directory_reservation_between_sector_pool_and_toc(self):self.run_case(11)
+    def test_disc_replacement_reloads_the_new_directory_even_after_close_error(self):self.run_case(16)
 
 
 if __name__=='__main__':unittest.main()

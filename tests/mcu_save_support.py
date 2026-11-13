@@ -79,6 +79,15 @@ class MCUSaveTest(unittest.TestCase):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             catalog_definitions = b'\n'.join(line for line in header.splitlines() if line.startswith(
                 (b'#define BIN_DIRECTORY_ENTRY ', b'#define BIN_PATH_CAPACITY ', b'#define BIN_ROOT '))) + b'\n'
+        invalidate_directory = b''
+        if cls.fixture in ('disc', 'cue', 'header'):
+            cdc = (source/'saturn_cdc.c').read_bytes()
+            inputs['Saturn/saturn_cdc.c'] = cdc
+            signature = b'void invalidate_directory('
+            if signature in cdc:
+                begin = cdc.index(signature)
+                invalidate_directory = cdc[begin:cdc.index(b'\n}',begin)+2]+b'\n'
+            (cls.target/'directory-invalidate.inc').write_bytes(invalidate_directory)
         if cls.fixture in ('runtime', 'extents', 'reopen', 'disc', 'cue', 'header', 'owner'):
             header = (source / 'cdc.h').read_bytes(); inputs['Saturn/cdc.h'] = header
             start = header.rfind(b'typedef struct', 0, header.index(b'}TRACK_INFO;'))
@@ -149,11 +158,6 @@ class MCUSaveTest(unittest.TestCase):
                 if signature in main:
                     start = main.index(signature)
                     ack += main[start:main.index(b'\n}', start)+2] + b'\n'
-            if ack:
-                cdc = (source/'saturn_cdc.c').read_bytes(); inputs['Saturn/saturn_cdc.c']=cdc
-                if b'void invalidate_directory(' in cdc:
-                    begin=cdc.index(b'void invalidate_directory(')
-                    ack=cdc[begin:cdc.index(b'\n}',begin)+2]+b'\n'+ack
             begin = main.index(b'_restart_nowait:')
             begin = main.index(b'\t\tif(cdb.pause_request)',begin)
             end = main.index(b'\n\t\t}',begin)+4
@@ -261,7 +265,7 @@ class MCUSaveTest(unittest.TestCase):
             for old, new in ((b'0x24002000', b'TEST_SCRATCH_ADDR'), (b'0x2400b000', b'TEST_CUE_ADDR'),
                              (b'0x2400a200', b'TEST_FULL_PATH'), (b'0x2400a000', b'TEST_DIR_PATH')):
                 code = code.replace(old, new)
-            (cls.target / 'cue.inc').write_bytes(code)
+            (cls.target / 'cue.inc').write_bytes(invalidate_directory + code)
             begin = data.index(b'static int game_dir(')
             (cls.target / 'load.inc').write_bytes(catalog_definitions + data[begin:data.index(b'int get_disc_ip(', begin)])
             (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])

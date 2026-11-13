@@ -490,6 +490,9 @@ static int close_tracks(int count)
 
 int unload_disc(void)
 {
+    /* Extents and file IDs belong to the retired image, even on close error. */
+    invalidate_directory();
+    cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;
     mounted_disc = next_disc = -1;
     cdb.status = STAT_NODISC;
     set_status(cdb.status);

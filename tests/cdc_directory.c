@@ -23,6 +23,23 @@ static unsigned pause_signals;
 static void set_pause_ok(void) { pause_signals++; }
 #include "pause.inc"
 
+static int mounted_disc,next_disc,current_index;
+static FRESULT track_close,subcode_close;
+static unsigned closed_files;
+static FIL image_file;
+static FRESULT close_image_file(FIL *file)
+{
+    if (closed_files++==0) {
+        assert(file==&image_file);
+        return track_close;
+    }
+    assert(file==&cdb.subcode_fp);
+    return subcode_close;
+}
+#define f_close close_image_file
+#include "disc-unload.inc"
+#undef f_close
+
 static TRACK_INFO directory_track={.mode=1};
 static u8 sector[2048];
 static u32 finfo[254*3];
@@ -533,6 +550,49 @@ static void directory_startup(void)
     for (unsigned i = 0; i < 3072; ++i) assert(after_pool[i] == 0xa5);
 }
 
+/* Adapted from paps-g 340f77b8. The second image has a smaller root at
+ * the same LBA. It must load its own descriptor before using file IDs. */
+static void replace_disc(void)
+{
+    for (unsigned failure=0;failure<3;failure++) {
+        setup(0,200);file_pause_hook=NULL;
+        TRACK_INFO old_track={.fp=&image_file};
+        cdb.tracks=&old_track;cdb.track_num=cdb.has_subrw=1;
+        mounted_disc=4;next_disc=5;current_index=1;
+        cdb.root_lba=cdb.cdir_lba=20;cdb.root_size=cdb.cdir_size=7*2048;
+        cdb.rdir_state=3;cdb.cdir_pfid=2;cdb.cdir_pfnum=1;cdb.cdir_drend=1;
+        cdb.fi[2]=(FILE_INFO){.lba=27,.size=950320};
+        closed_files=0;
+        track_close=failure==1 ? FR_DISK_ERR : FR_OK;
+        subcode_close=failure==2 ? FR_INT_ERR : FR_OK;
+        assert(unload_disc()==-(int)(track_close ? track_close : subcode_close));
+        assert(closed_files==2 && !cdb.track_num && !cdb.has_subrw && !current_index);
+        assert(mounted_disc==-1 && next_disc==-1 && cdb.status==STAT_NODISC);
+        assert(!cdb.root_lba && !cdb.root_size && !cdb.cdir_lba && !cdb.cdir_size);
+        assert(!cdb.rdir_state && !cdb.cdir_pfnum && !cdb.cdir_drend);
+
+        cdb.status=STAT_PAUSE;
+        cdb.cr3=0;cdb.cr4=2;
+        assert(!read_file() && reply[0]>>8==STAT_REJECT && !cdb.play_type);
+        assert(!get_file_info() && reply[0]>>8==STAT_REJECT && !cdb.trans_type);
+
+        cdb.cr3=255;cdb.cr4=65535;
+        assert(!change_dir() && cdb.rdir_state==1 && cdb.fad==166);
+        memset(sector,0,sizeof sector);
+        sector[0]=1;memcpy(sector+1,"CD001",5);sector[6]=1;sector[129]=8;
+        record(sector+156,0,34);le32(sector+158,20);le32(sector+166,2048);
+        assert(feed()==2 && cdb.rdir_state==2 && cdb.fad==170 && cdb.play_fad_end==171);
+        memset(sector,0,sizeof sector);
+        record(sector,0,34);record(sector+34,1,34);record(sector+68,2,44);
+        le32(sector+70,21);le32(sector+78,4096);
+        assert(!feed() && cdb.rdir_state==3 && cdb.cdir_pfnum==1 && cdb.block_free==200);
+        cdb.cr3=0;cdb.cr4=2;
+        assert(!read_file() && reply[0]>>8!=STAT_REJECT && cdb.play_type==PLAYTYPE_FILE);
+        assert(cdb.fad==171 && cdb.play_fad_end==173);
+        check_owners();
+    }
+}
+
 int main(int argc,char **argv)
 {
 
@@ -545,6 +605,7 @@ int main(int argc,char **argv)
     case 13:raw_image_fifo(0);raw_image_fifo(1);raw_image_fifo(2);break;
     case 14:cooked_image_tail();break;
     case 15:mode2_header_fifo();break;
+    case 16:replace_disc();break;
     default:abort();}
 #ifdef TEST_AXI_FILE_INFO
     if (cdb.fi == directory_memory.table)

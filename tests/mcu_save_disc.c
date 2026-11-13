@@ -14,6 +14,7 @@ static FIL track_fp[100];
 static struct {
     int status, track_num, has_subrw, play_type, play_wait, pause_request;
     int rdir_state, cdir_pfnum, cdir_drend;
+    u32 root_lba, root_size, cdir_lba, cdir_size;
     u32 fad, play_fad_start, play_fad_end;
     TRACK_INFO tracks[100];
     TRACK_INFO *play_track;
@@ -87,6 +88,7 @@ static void restore_irq(int old)
 static void set_pause_ok(void) { assert(!pause_irq_mask);pause_acks++; }
 #define SSLOG(...) ((void)0)
 static inline __attribute__((unused)) void retire_cdda(void) {}
+#include "directory-invalidate.inc"
 #include "pause-ack.inc"
 static void pause_worker(void)
 {

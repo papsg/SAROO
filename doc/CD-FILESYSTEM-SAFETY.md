@@ -325,3 +325,28 @@ falls 53,816 → 50,744 bytes. The App image shrinks by 16 bytes to
 64,680, with 856 bytes free. The comparison measures code, memory,
 and modeled FIFO output. Board throughput and game behavior remain
 unmeasured.
+
+## Retire the directory cache when unloading a disc
+
+MCU-CDC-R26, adapted from paps-g `340f77b8`. Unloading an image used
+to leave the root and current directory extents and the current
+file page valid. The next image could inherit the old directory's
+sector count or file IDs. Unload now invalidates the page and clears
+both extents, including when closing a track or subcode file reports
+an error. The next root request reads the new volume descriptor.
+
+[Sega ST-162-062094 §8.2.8, functions 8.1–8.5, printed pp. 99–100](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=87)
+defines directory selection and retained file information.
+[ECMA-119 second edition §8.4.18, printed p. 20](https://ecma-international.org/wp-content/uploads/ECMA-119_2nd_edition_december_1987.pdf)
+places the root directory record in each volume's primary descriptor.
+
+Set `SAROO_CDC_DIRECTORY_IMAGE` to the parent's `cdimg.c` and select
+`-k disc_replacement` in `test_cdc_directory.py`. The old handler
+leaves a seven-sector root in place. With the port, stale file IDs
+are rejected and the next image supplies its one-sector root and
+valid first file. The fixture runs successful, track-error and
+subcode-error closes. Both 250-method CD/CUE profiles and all 35
+adjacent parser, disc/save and header methods pass. The GNU App
+adds 16 load bytes (65,504 used, 32 free). Static DTCM is unchanged.
+The public results establish source and host behavior. Physical
+Daytona USA recovery remains unverified.
