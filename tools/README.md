@@ -1,5 +1,21 @@
 # Host asset tools
 
+## SD sector overlay compiler
+
+Use a reviewed JSON recipe and its matching local CUE/BIN files. The
+compiler checks complete source FILE hashes and writes a new pack to an
+existing output directory. The `name` command gives the expected filename.
+
+```sh
+cargo build --offline --locked --manifest-path tools/Cargo.toml -p sector-overlay
+tools/target/debug/sector-overlay name recipe.json
+tools/target/debug/sector-overlay compile recipe.json disc.cue output/1234ABCD.SOV
+make -C tests check-sector-overlay
+```
+
+Use the actual name returned by `name` in place of `1234ABCD.SOV`.
+See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
+
 ## Isolated firmware qualification
 
 `firmware-build` runs the original public menu Makefile on a source copy under

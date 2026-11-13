@@ -52,6 +52,11 @@ check-mcu-shrink:
 	$(PYTHON) -B -m unittest discover -s . -p test_image_suffix.py -v
 
 check: check-mcu-startup
+check: check-sector-overlay
+
+.PHONY: check-sector-overlay
+check-sector-overlay:
+	$(PYTHON) -B -m unittest discover -s . -p 'test_sector_overlay*.py' -v
 
 .PHONY: check-mcu-startup
 check-mcu-startup:
