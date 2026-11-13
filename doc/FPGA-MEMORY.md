@@ -473,3 +473,31 @@ registers. Minimum reported setup and hold slack are +0.197 ns and
 +0.162 ns.
 Historical Astal observations established the need to preserve the CD
 mapping. They do not qualify the public FPGA on a physical board.
+
+## Decode the terminal extended-RAM cartridge ID
+
+FPGA-CART-001, adapted from paps-g `8b86806f`. The former eight-bit
+address comparison mirrored the RAM cartridge ID throughout the last
+64 KiB of CS1. The full word-address comparison limits the ID to
+`0x24fffffe`/`0x24ffffff`. The 1 MiB and 4 MiB modes return their
+existing big-endian values, `0xff5a` and `0xff5c`. Other CS1 words
+return `0xffff` and the established CS0 RAM and shared SDRAM maps
+stay in use.
+
+[Sega Extended RAM Cartridge Manual ST-TECH-47, §5, Table 2, p. 2](https://antime.kapsi.fi/sega/files/ST-TECH-47.pdf#page=2)
+defines the read-only ID byte at `0x24ffffff` and its two values.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_cart_id.py -v
+```
+
+Set `SAROO_FPGA_CART_ID_SOURCE` to the preceding checkout's FPGA
+directory to reproduce the false `0xff5a` at `0x24ff0000`. The
+full-top fixture selects all four cartridge modes through a bus write
+and checks both byte forms of the ID, every neighboring word in the
+former alias, addresses outside that alias and unselected bus behavior.
+All 46 FPGA test methods and five Quartus stages pass. The fit uses
+1,648 logic elements and 1,063 registers. All 39 reported timing rows
+are nonnegative, with minimum setup and hold slack of +0.210 ns and
++0.186 ns.
+Physical ID reads and game compatibility remain unqualified.

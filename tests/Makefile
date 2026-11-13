@@ -180,6 +180,7 @@ check-host-tools:
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_abus_write.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_data_direction.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_clock_retention.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_cart_id.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

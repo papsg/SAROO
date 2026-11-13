@@ -605,7 +605,7 @@ module SSMaster(
 	// 10: RAM Cart: 1MBytes 
 	// 11: RAM Cart: 4MBytes 
 	wire[1:0] ss_cs0_type = ss_reg_ctrl[13:12];
-	wire[15:0] ss_cs1_data_out = (SS_ADDR[23:16]==8'hff && ss_cs0_type[1]==1)?
+	wire[15:0] ss_cs1_data_out = (SS_ADDR[23:1]==23'h7fffff && ss_cs0_type[1]==1)?
 									(
 										(ss_cs0_type[0]==0)? 16'hff5a : 16'hff5c
 									) : 16'hffff;
