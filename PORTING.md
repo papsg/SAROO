@@ -2602,3 +2602,9 @@ All six checkpoints landed in order through [`73a8864`](https://github.com/papsg
 All six GNU App links match their committed MCU inputs and contain 166 vectors. The final App uses 65,500 of 65,536 ITCM load bytes and 50,736 bytes of DTCM data and BSS span. The GNU BootLoader comparison used the 13 enabled project C units, original BOOT and RTE settings and common providers. The SD baseline and each SD checkpoint link at the original 0x08000000 flash base with 166 vectors. The final load is 29,080 bytes, up from 28,992. Original MDK and physical Saturn behavior remain unqualified.
 
 The public deltas passed staged secret scanning and the public commit identity check. Private checkout fingerprints match and the Saturn was untouched.
+
+## CD commands, STM32 I2S and menu cover visibility
+
+Six ordered checkpoints after [`73a8864`](https://github.com/papsg/SAROO/commit/73a8864a63849cd2657e5d1da6ddc78d80929060).
+
+- **CD frame-address search** — paps-g `a42241e3`, MCU-CDC-R18 → [`b7bdd73`](https://github.com/papsg/SAROO/commit/b7bdd734e9f7801645e77c2872645f31c4c8afd3). The parent leaves stale registers for the query. Both 246-test CD/CUE profiles pass, including 24 selectors, a full 200-block partition, result lifetime, GET/GETDEL ownership and existing trace labels. Sega ST-162 §8.2.6, functions 6.6 and 6.7, printed p. 94. The straight link overflowed by 288 bytes. Moving the two high trace labels out of the dense lookup reduces its table from 904 to 472 bytes. GNU App 65,408 bytes, 128 free, DTCM span 50,744. Physical command timing and MDK remain unqualified.
