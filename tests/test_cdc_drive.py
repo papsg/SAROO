@@ -40,8 +40,13 @@ class CDDriveTests(unittest.TestCase):
                     body = body.replace(b'HIRQ = HIRQ_DCHG | HIRQ_EFLS;',
                                         b'HIRQ = tray_events = HIRQ_DCHG | HIRQ_EFLS;')
                 code += body
-        for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
-            if sig in raw:code+=function(raw,sig)
+        for sig in (b'static u32 drive_position(', b'void set_drive_position(',
+                    b'static unsigned retained_position_type(', b'int scan_cd('):
+            if sig in raw:
+                if sig == b'void set_drive_position(' and b'static ' + sig in raw:
+                    sig = b'static ' + sig
+                code += function(raw, sig)
+        if b'int scan_cd(' in raw: code += b'#define HAS_CD_SCAN 1\n'
         code+=function(raw,b'int init_cdblock(')
         code+=function(raw,b'int play_cd(')+function(raw,b'int seek_cd(')
         code+=function(raw,b'int get_subcode(')
@@ -56,14 +61,22 @@ class CDDriveTests(unittest.TestCase):
         (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
         tray = b'static int service_tray('
         (cls.target/'service-tray.inc').write_bytes(function(main, tray) if tray in main else b'')
+        scan = b'static int scan_sector('
+        (cls.target/'scan-worker.inc').write_bytes(function(main, scan) if scan in main else b'')
         dispatch = function(raw, b'void cdc_cmd_process(')
+        selected = (b'case 0x00:', b'case 0x05:', b'case 0x11:', b'case 0x12:', b'case 0x75:')
         cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
-                         for start in (b'case 0x00:', b'case 0x05:', b'case 0x11:', b'case 0x75:'))
+                         for start in selected if start in dispatch)
+        if b'case 0x12:' not in dispatch:
+            # For the parent exercise its actual unknown-command branch.
+            cases += dispatch[dispatch.index(b'default:'):dispatch.index(b'\n\t}', dispatch.index(b'default:'))]
+        else:
+            cases += b'default: abort();\n'
         start = dispatch.index(b'switch(cmd){') + len(b'switch(cmd){')
         end = dispatch.index(b'if(cdb.block_free!=MAX_BLOCKS)', start)
         code = b''.join(function(raw, name) for name in (b'int get_cd_status(', b'int abort_file(', b'char *cmd_str('))
         (cls.target/'drive-dispatch.inc').write_bytes(code + dispatch[:start] + cases +
-                                                     b'default: abort();}\n' + dispatch[end:])
+                                                     b'}\n' + dispatch[end:])
         start=main.index(b'_restart_nowait:')
         start=main.index(b'\t\tif(cdb.pause_request)',start)
         end=main.index(b'\n\t\t}',start)+4
@@ -79,6 +92,8 @@ class CDDriveTests(unittest.TestCase):
             publication = b'cdb.pause_request = 0;'
             assert request.count(publication) == 1
             request = request.replace(publication, b'if (pause_publication_hook) pause_publication_hook();\n    ' + publication)
+            retire = b'static void retire_cdda('
+            ack += function(main, retire) if retire in main else b'#define retire_cdda copy_stub_retire_cdda\n'
             ack += function(main, b'int outside_play_range(') + request
         locals_ = b'int retained_startup=0;\n' if new_worker else b''
         exits = b'_play_end: (void)retained_startup;\n' if new_worker else b''
@@ -211,6 +226,8 @@ class CDDriveTests(unittest.TestCase):
     def test_open_retires_drive_and_invalidates_media_report(self): self.run_case(47)
     def test_open_timeout_preserves_reader_and_host_state(self): self.run_case(48)
     def test_open_commands_wait_for_media_and_close_on_same_card(self): self.run_case(49)
+    def test_scan_command_moves_to_scan_and_preserves_range(self): self.run_case(50)
+    def test_scan_rejection_and_timeout_preserve_current_reader(self): self.run_case(51)
 
 
 if __name__=='__main__':unittest.main()

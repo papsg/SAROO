@@ -419,6 +419,54 @@ static int service_tray(void)
     return 0;
 }
 
+/* Scan uses the pickup and audio ring without delivering CD-ROM sectors. */
+static int scan_sector(BLOCK *block, u32 start, u32 end)
+{
+    u32 fad = cdb.fad;
+    if (fad < start || fad >= end) return 1;
+    if (!cdb.play_track) {
+        cdb.status = STAT_ERROR;
+        return -1;
+    }
+    int audio = cdb.play_track->mode == 3;
+    if (audio && (cdb.scan_mode & SCAN_AUDIBLE)) {
+        if (get_sector(fad, block)) return -1;
+        if (fill_scan_audio_buffer(block->data) < 0) {
+            osDelay(1);
+            return 0;
+        }
+        cdda_reader_audio = 1;
+        publish_subrw(fad);
+    } else {
+        retire_cdda();
+    }
+    HIRQ = HIRQ_SCDQ;
+    set_peri_report();
+    if (hw_delay(audio ? 13333 : 6667)) return -2;
+
+    /* Six frames per sample, followed by a virtual pickup jump. */
+    unsigned step = 1;
+    if (++cdb.scan_count == 6) {
+        cdb.scan_count = 0;
+        step = 101;
+    }
+    u32 next = fad + step;
+    if (cdb.scan_mode & SCAN_REVERSE) next = fad > step ? fad - step : 0;
+    int ending = next < start || next >= end;
+    if (ending) next = next < start ? start : end - 1;
+
+    int key = disable_irq();
+    if (cdb.pause_request) {
+        restore_irq(key);
+        return 0;
+    }
+    TRACK_INFO *previous = cdb.play_track;
+    set_drive_position(next);
+    if (previous != cdb.play_track) cdb.subrw_wp = cdb.subrw_rp;
+    restore_irq(key);
+    return ending;
+}
+
 void disk_task(void *arg)
 {
 	int retv;
@@ -464,6 +512,7 @@ _restart_nowait:
 		
         /* A queued wake can outlive its reader. Keep the settled state. */
         if (!cdb.play_type) goto _idle_wait;
+        if (cdb.play_type == PLAYTYPE_SCAN) goto _scan_reader;
         if (cdb.play_type == PLAYTYPE_SECTOR && outside_play_range()) goto _play_end;
         if (get_sector(cdb.fad, NULL)) goto _read_error;
 
@@ -609,6 +658,33 @@ _play_end:
 _idle_wait:
         SSLOG(_DTASK, "play_task: play_type=%d! play_fad_start=%08x!\n", cdb.play_type, cdb.play_fad_start);
         goto _restart_wait;
+
+_scan_reader: {
+        u32 start = cdb.tracks[0].fad_0;
+        u32 end = cdb.tracks[cdb.track_num-1].fad_end + 1;
+        if (cdb.play_fad_end && !(cdb.play_pos_types & PLAY_RANGE_FILE)) {
+            if (cdb.play_fad_start > start) start = cdb.play_fad_start;
+            if (cdb.play_fad_end < end) end = cdb.play_fad_end;
+        }
+        do {
+            if (cdb.pause_request || service_tray()) goto _restart_nowait;
+            retv = scan_sector(&wblk, start, end);
+            if (retv == -1) goto _read_error;
+            if (retv == -2) goto _delay_error;
+        } while (!retv);
+        int key = disable_irq();
+        if (cdb.pause_request) {
+            restore_irq(key);
+            goto _restart_nowait;
+        }
+        retire_cdda();
+        cdb.status = STAT_PAUSE;
+        if (cdb.repcnt >= cdb.max_repeat) HIRQ = HIRQ_PEND;
+        cdb.play_type = 0;
+        restore_irq(key);
+        set_peri_report();
+        goto _restart_wait;
+    }
 
 _read_error:
         retire_cdda();

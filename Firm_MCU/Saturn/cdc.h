@@ -103,6 +103,10 @@
 #define PLAYTYPE_SECTOR 1
 #define PLAYTYPE_FILE   2
 #define PLAYTYPE_DIR    3
+#define PLAYTYPE_SCAN   4
+
+#define SCAN_REVERSE 1u
+#define SCAN_AUDIBLE 2u
 
 /* File work owns the numeric bounds. The retained PLAY range is disc-default. */
 #define PLAY_RANGE_FILE 0x10
@@ -277,6 +281,7 @@ typedef struct
 	u8  dir_filter;
 	u8  cdir_drend;
 	u8  rdir_state;
+	u8  scan_count;
 	u32 cdir_pfid;          // 当前目录页的文件开始编号
 	u16 cdir_pfnum;         // 当前目录页的文件个数
 	u8 file_unit, file_gap; /* Reuse the former alignment gap. */
@@ -309,7 +314,8 @@ typedef struct
 	u32 play_fad_start;
 	u32 play_fad_end;
 	int pause_request;
-	int max_repeat;
+	u8 max_repeat;
+	u8 scan_mode;
 	TRACK_INFO *play_track;
 
 	/* Keep frequently used controls within short load/store offsets. */
@@ -415,6 +421,7 @@ int parse_config(char *fname, char *gameid);
 
 
 TRACK_INFO *get_track_info(int tn);
+void set_drive_position(u32 fad);
 u8 track_subindex(const TRACK_INFO *tk, u32 fad);
 u32 track_to_fad(u16 track_index);
 int fad_to_track(u32 fad);

@@ -6,6 +6,7 @@
 #define set_report copy_stub_report
 #define init_cdblock copy_stub_init_cdblock
 #define pause_drive copy_stub_pause_drive
+#define retire_cdda copy_stub_retire_cdda
 #include "cdc_copy.c"
 #undef main
 #undef disk_task_wakeup
@@ -13,6 +14,7 @@
 #undef set_report
 #undef init_cdblock
 #undef pause_drive
+#undef retire_cdda
 static u32 buf_fad_start, buf_fad_end;
 static unsigned wakeups, waits, read_calls;
 static int acknowledge_after;
@@ -26,6 +28,8 @@ static unsigned pause_signals;
 static const CDBLOCK *pause_state;
 static u16 pause_control,pause_hirq,pause_clear;
 static void (*pause_publication_hook)(void);
+static unsigned scan_cancels;
+static __attribute__((unused)) void spi2_cancel(void) { scan_cancels++; }
 static void set_pause_ok(void)
 {
     assert(!irq_depth);
@@ -56,7 +60,11 @@ static u16 *const drive_hirq = &hirq;
 #define HIRQ (*drive_hirq)
 #undef SS_CTRL
 #define SS_CTRL ss_control
+#undef printk
+#define printk(...) ((void)0)
 #include "drive-dispatch.inc"
+#undef printk
+#define printk fixture_printk
 #include "file-start.inc"
 #include "reset.inc"
 #include "phase.inc"
@@ -84,6 +92,7 @@ static void ready(void)
     pause_state=NULL;
     drive_wait_hook=drive_ack_hook=NULL;
     pause_publication_hook=NULL;
+    scan_cancels=0;
     hirq=hirq_clear=0;
     ss_control=0x8000;
 }
@@ -1348,6 +1357,85 @@ static void tray_close(void)
     assert(cdb.status == STAT_OPEN);
 }
 
+static void scan_admission(void)
+{
+    ready();
+    cdb.status = STAT_PLAY;
+    cdb.play_type = PLAYTYPE_SECTOR;
+    cdb.cr1 = 0x1200;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_SCAN && "scan command never entered SCAN");
+#ifdef HAS_CD_SCAN
+    assert(cdb.play_type == PLAYTYPE_SCAN && cdb.scan_mode == SCAN_AUDIBLE);
+    assert(!cdb.options && !cdb.scan_count && cdb.fad == 180);
+    assert(reply[0] >> 8 == STAT_BUSY && !(reply[0] & 0x80));
+    assert(hirq & HIRQ_CMOK);
+    assert(cdb.play_fad_start == 150 && cdb.play_fad_end == 700);
+    assert(waits == 1 && wakeups == 2 && !scan_cancels);
+
+    cdb.cr1 = 0x1201;
+    cdc_cmd_process();
+    assert(cdb.scan_mode == (SCAN_REVERSE | SCAN_AUDIBLE) && !scan_cancels);
+    request(0xffffff, 0xffffff, 0xff);
+    assert(!play_cd() && cdb.play_type == PLAYTYPE_SECTOR && !cdb.pause_request);
+
+    const int states[] = {STAT_PAUSE, STAT_SEEK, STAT_PLAY};
+    for (unsigned s = 0; s < sizeof states / sizeof *states; ++s) {
+        ready();
+        cdb.status = states[s];
+        cdb.play_type = s == 2 ? PLAYTYPE_FILE : 0;
+        cdb.cr1 = 0x1201;
+        cdc_cmd_process();
+        assert(cdb.status == STAT_SCAN && cdb.scan_mode == SCAN_REVERSE);
+        assert(scan_cancels == 1);
+    }
+    ready();
+    cdb.status = STAT_OPEN;
+    cdb.fad = 0xffffffffu;
+    cdb.cr1 = 0x1200;
+    card_inserted = 0;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_OPEN && reply[0] >> 8 == (STAT_WAIT | STAT_OPEN));
+    card_inserted = 1;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_SCAN && cdb.fad == 150 && cdb.track == 1);
+
+    ready();
+    cdb.status = STAT_NODISC;
+    cdb.track_num = 0;
+    cdb.cr1 = 0x1200;
+    card_inserted = 0;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_NODISC && reply[0] >> 8 == (STAT_WAIT | STAT_NODISC));
+    card_inserted = 1;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_OPEN && !cdb.play_type && (hirq & HIRQ_CMOK));
+#endif
+}
+
+static void scan_refusal(void)
+{
+#ifdef HAS_CD_SCAN
+    ready();
+    cdb.status = STAT_PLAY;
+    cdb.play_type = PLAYTYPE_SECTOR;
+    for (unsigned direction = 2; direction < 256; ++direction) {
+        cdb.cr1 = 0x1200 | direction;
+        CDBLOCK before = cdb;
+        cdc_cmd_process();
+        assert(reply[0] >> 8 == STAT_REJECT);
+        assert(!memcmp(&before, &cdb, sizeof cdb) && !waits && !scan_cancels);
+    }
+    cdb.cr1 = 0x1201;
+    acknowledge_after = -1;
+    cdc_cmd_process();
+    assert(reply[0] >> 8 == (STAT_WAIT | STAT_PLAY));
+    assert(cdb.status == STAT_PLAY && cdb.play_type == PLAYTYPE_SECTOR);
+    assert(cdb.options == 8 && cdb.fad == 180 && !cdb.scan_mode && !scan_cancels);
+    assert(waits == 500 && cdb.pause_request);
+#endif
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1388,6 +1476,8 @@ int main(int argc,char **argv)
     case 47:tray_open();break;
     case 48:tray_timeout();break;
     case 49:tray_close();break;
+    case 50:scan_admission();break;
+    case 51:scan_refusal();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

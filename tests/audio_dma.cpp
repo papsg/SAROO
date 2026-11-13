@@ -35,6 +35,7 @@ static void restore_irq(int);
 static void NVIC_EnableIRQ(int);
 static void NVIC_SetPriority(int,int);
 static void memcpy32(void*,void*,int);
+[[maybe_unused]] static void write_scan_byte(u8*, unsigned, u8);
 static void *mapped_memset(void*,int,size_t);
 #define memset mapped_memset
 #include "audio.inc"
@@ -178,6 +179,18 @@ static void memcpy32(void *dst,void *src,int n){
     if(copy_hook)copy_hook();
     std::memcpy(memory.data()+off+n/2,static_cast<u8*>(src)+n/2,n-n/2);
     copying_slot=99;
+}
+[[maybe_unused]] static void write_scan_byte(u8 *slot, unsigned i, u8 value)
+{
+    const auto off = offset(reinterpret_cast<uintptr_t>(slot));
+    assert(i < ABUF_BYTES && off % ABUF_BYTES == 0 && off / ABUF_BYTES < ABUF_NUM);
+    assert(!mask && audio_copying);
+    copying_slot = off / ABUF_BYTES;
+    tags[copying_slot] = input_tag;
+    dirty[copying_slot] = true;
+    memory[off + i] = value;
+    if (i == ABUF_BYTES / 2 && copy_hook) copy_hook();
+    if (i == ABUF_BYTES - 1) copying_slot = 99;
 }
 static void notify(){wakeups++;}
 static void reset_model(){
@@ -882,8 +895,57 @@ static void quiet_rearm(){
 }
 #endif
 
+#if TEST_AUDIO_SCAN
+static void scan_attenuation()
+{
+    const int16_t samples[] = {-32768, -32767, -5, -1, 0, 3, 4, 32767};
+    reset_model();
+    spi2_init();
+    input_tag = 66;
+    for (unsigned i = 0; i < ABUF_WORDS; ++i) {
+        uint16_t value = samples[i % 8];
+        input[i * 2] = value;
+        input[i * 2 + 1] = value >> 8;
+    }
+    copy_hook = [] {
+        assert(audio_copying && awp == arp);
+        step(2 * ABUF_WORDS);
+        assert(awp == arp && !unsafe_reads);
+    };
+    assert(fill_scan_audio_buffer(input) == 1);
+    copy_hook = nullptr;
+    for (unsigned i = 0; i < ABUF_WORDS; ++i) {
+        uint16_t expected = samples[i % 8] / 4;
+        assert(visible[i * 2] == (expected & 255) && visible[i * 2 + 1] == (expected >> 8));
+    }
+    for (unsigned i = 0; i < 40000 && !drained(); ++i) step(1);
+    assert(drained());
+    unsigned received = 0;
+    for (auto word : output)
+        if (word.tag == input_tag) {
+            assert(word.word == received);
+            assert(word.value == uint16_t(samples[received % 8] / 4));
+            ++received;
+        }
+    assert(received == ABUF_WORDS && !unsafe_reads && !discarded);
+
+    reset_model();
+    spi2_init();
+    copy_hook = interrupt_copy;
+    assert(fill_scan_audio_buffer(input) == -1);
+    copy_hook = nullptr;
+    assert(awp == arp && !audio_copying && !unsafe_reads);
+    assert(publish(7) == 1 && publish(8) == 2);
+    drain_without_flush();
+    check_output();
+}
+#endif
+
 int main(int argc,char **argv){assert(argc==2);switch(std::atoi(argv[1])){
 case 37:worker_retirement();break;case 43:worker_track_tail_case();break;
+#if TEST_AUDIO_SCAN
+case 44:scan_attenuation();break;
+#endif
 #if TEST_LINK_CONTINUITY
 case 38:cancel_all_phases();break;case 39:pending_retirement();break;
 case 40:continuous_idle();break;case 41:quiet_rearm();break;case 42:worker_pacing();break;

@@ -97,6 +97,7 @@ static int pause_disc(void)
     assert(gd_state == -1 && !in_decoding); ++handoff_calls;
     return fault == 2 ? -7 : 0;
 }
+static volatile u8 disc_removed __attribute__((unused));
 static int unload_disc(void)
 {
     assert(gd_state == -1 && !in_decoding); ++handoff_calls; return -8;

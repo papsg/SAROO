@@ -311,3 +311,50 @@ space, 50,768 bytes of DTCM data and BSS span, and 166 vectors.
 
 Card presence is polled. Fast swaps can escape observation, and
 physical media, timing and original MDK firmware remain unqualified.
+
+## Implement forward and reverse CD scan
+
+MCU-CDC-R05, MCU-CDC-R23 and MCU-CDC-R24, adapted from paps-g
+`32a363af` and `55dc3521`. Command `0x12` previously fell through
+the unknown-command branch. The port takes over the pickup after the
+old reader acknowledges, updates FAD and subcode Q together, and
+leaves host CD-ROM sectors and selectors alone. Scan across an audio
+track is audible only if it began during CD play. The shared audio
+queue scales signed samples to one quarter before publishing the
+DMA slot. A direction change keeps the scan's audio policy. The
+worker yields on audio backpressure, ends at the retained play
+range, and yields the pickup when another drive command arrives.
+
+[Sega CD Block User's Manual ST-162-062094, §§4.1–4.3, printed pp. 33–40](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=21),
+[CD report fields, printed pp. 60 and 63](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=48)
+and [CDC_CdScan, printed p. 84](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=72)
+define the command, the Q report and the muted or −12 dB audio policy.
+[Sega Technical Bulletins, CD Block specification changes, Table 4.5, PDF p. 15](https://antime.kapsi.fi/sega/files/Sattechs.pdf#page=15)
+describes range exit and PEND. The raw direction bytes `0` and `1`
+were independently corroborated by the [Mednafen CD block source](https://sources.debian.org/src/mednafen/1.32.1%2Bdfsg-3/src/ss/cdb.cpp).
+
+The final private correction replaced kernel ticks with the existing
+microsecond timer and cleared the CD-ROM flag throughout SCAN. Six
+steps request 40,002 µs over data or 79,998 µs over audio. The
+worker then jumps 101 sectors. The [Arm CMSIS-RTOS2 wait reference](https://arm-software.github.io/CMSIS_6/main/RTOS2/group__CMSIS__RTOS__Wait.html)
+defines `osDelay` in kernel ticks. The fast-scan motion is an
+approximation. The requested timer periods do not establish physical
+pickup or audio cadence.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_cdc*.py' -v
+python3 -B -m unittest discover -s tests -p 'test_audio*.py' -v
+```
+
+Set `SAROO_CDC_DRIVE_DIR` to the preceding checkout's
+`Firm_MCU/Saturn` directory and select `-k scan_command` with
+`test_cdc_drive.py` to reproduce the missing command. The actual
+worker fixtures cover both directions, mixed audio and data tracks,
+FAD and Q, the report flag, range completion, backpressure, timer
+and read errors, and interruption by a new drive request. The DMA
+fixture covers signed attenuation, publication and cancellation
+during the copy.
+
+The GNU MCU App links 65,396 load bytes, leaving 140 bytes of ITCM
+space, with the same 50,768-byte DTCM data and BSS span and 166 vectors.
+Physical Saturn playback and original MDK firmware remain unqualified.

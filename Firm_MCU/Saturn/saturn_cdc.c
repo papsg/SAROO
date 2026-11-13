@@ -830,7 +830,7 @@ static u32 drive_position(u32 position, int ending)
     return track < (unsigned)cdb.track_num ? cdb.tracks[track].fad_start : leadout;
 }
 
-static void set_drive_position(u32 fad)
+void set_drive_position(u32 fad)
 {
     cdb.fad = fad;
     cdb.track = fad_to_track(fad);
@@ -937,7 +937,34 @@ int seek_cd(void)
 }
 
 // 0x12 [SR]
-// Scan not support
+int scan_cd(void)
+{
+    unsigned direction = cdb.cr1 & 255;
+    if (direction > SCAN_REVERSE) { set_status(STAT_REJECT); return 0; }
+    if (drive_tray_wait()) return 0;
+    if (cdb.status == STAT_NODISC) {
+        if (!sd_card_insert()) { set_status(STAT_WAIT | STAT_NODISC); return 0; }
+        set_report(STAT_BUSY);
+        publish_open_tray();
+        return 0;
+    }
+    if (!get_track_info(0xffff)) { set_status(STAT_REJECT); return 0; }
+    unsigned mode = direction;
+    if ((cdb.status == STAT_PLAY && cdb.play_type == PLAYTYPE_SECTOR) ||
+        (cdb.status == STAT_SCAN && (cdb.scan_mode & SCAN_AUDIBLE)))
+        mode |= SCAN_AUDIBLE;
+    if (pause_drive()) { set_status(STAT_WAIT | cdb.status); return 0; }
+    if (!(mode & SCAN_AUDIBLE)) spi2_cancel();
+    set_drive_position(cdb.fad == 0xffffffffu ? cdb.tracks[0].fad_start : cdb.fad);
+    cdb.scan_mode = mode;
+    cdb.scan_count = cdb.options = 0; /* SCAN reports describe subcode Q. */
+    cdb.play_wait = 0;
+    cdb.status = STAT_SCAN;
+    cdb.play_type = PLAYTYPE_SCAN;
+    set_report(STAT_BUSY);
+    disk_task_wakeup();
+    return 0;
+}
 
 /******************************************************************************/
 // Subcode 相关命令
@@ -1223,7 +1250,7 @@ int reset_filter(void)
     }
     /* Nonzero reset modes ignore fid; pause only for incoming data erasure. */
     if (((mode & 0x04) || (mode == 0 && fid == cdb.cddev_filter)) &&
-        cdb.cddev_filter < MAX_SELECTORS && cdb.play_type != 0 &&
+        cdb.cddev_filter < MAX_SELECTORS && cdb.play_type != 0 && cdb.play_type != PLAYTYPE_SCAN &&
         cdb.play_track && cdb.play_track->mode != 3) {
 		SSLOG(_CDRV, "reset_filter: Send PAUSE request!\n");
         if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
@@ -2194,6 +2221,8 @@ void cdc_cmd_process(void)
 	case 0x10: hirq = play_cd();
 		break;
 	case 0x11: hirq = seek_cd();
+		break;
+	case 0x12: hirq = scan_cd();
 		break;
 
 	// subcode

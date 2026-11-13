@@ -20,6 +20,9 @@ static int error_reports, reported_reader;
 static int replace_on_eof, eof_publications, lookup_calls;
 static u32 ack_fad, last_read_fad;
 static jmp_buf worker_exit;
+static unsigned scan_reads, scan_retries, scan_rw, scan_reports, scan_microseconds;
+static unsigned scan_retry_count, scan_bad_report;
+static u32 scan_observed[8];
 
 static void wait_for_command(void)
 {
@@ -66,6 +69,16 @@ static int handle_diread(void) { abort(); }
 static void advance_file_unit(void) { assert(!cdb.file_unit); }
 static void set_peri_report(void)
 {
+#ifdef HAS_CD_SCAN
+    if (cdb.status == STAT_SCAN) {
+        assert(cdb.fad >= 150 && cdb.play_track &&
+               cdb.track == fad_to_track(cdb.fad) &&
+               cdb.index == track_subindex(cdb.play_track, cdb.fad));
+        if (cdb.options & 8) scan_bad_report = 1;
+        if (scan_reports < 8) scan_observed[scan_reports] = cdb.fad;
+        scan_reports++;
+    }
+#endif
     if (cdb.status == STAT_ERROR) {
         error_reports++;
         reported_reader = cdb.play_type;
@@ -73,12 +86,36 @@ static void set_peri_report(void)
 }
 static void led_event(int event) { assert(event == 1); }
 static void spi2_flush(void) { ++flushes; }
-static inline void publish_subrw(u32 fad) { (void)fad; }
+static inline void publish_subrw(u32 fad)
+{
+#ifdef HAS_CD_SCAN
+    if (cdb.status == STAT_SCAN) {
+        assert(fad == cdb.fad);
+        scan_rw++;
+    }
+#endif
+    (void)fad;
+}
 static int fill_audio_buffer(const u8 *data)
 {
     assert(data == sector_bytes[0]);
     queued++;
     return audio_depth;
+}
+static __attribute__((unused)) int fill_scan_audio_buffer(const u8 *data)
+{
+    assert(data == sector_bytes[0] && cdb.status == STAT_SCAN);
+    scan_reads++;
+    if (scan_retries) {
+        --scan_retries;
+        return -1;
+    }
+    return 5;
+}
+static __attribute__((unused)) void scan_retry_wait(int ticks)
+{
+    assert(cdb.status == STAT_SCAN && ticks == 1);
+    scan_retry_count++;
 }
 static int filter_sector(TRACK_INFO *track, BLOCK *block)
 {
@@ -126,6 +163,7 @@ static int get_sector(int fad, BLOCK *block)
     }
     last_read_fad = fad;
     last_read_status = cdb.status;
+    block->fad = fad;
     read_calls++;
     if (gate_at == FIRST_READ && read_calls == 1) wait_for_command();
     if (read_error) return fail_sector(-2);
@@ -136,6 +174,7 @@ static int get_sector(int fad, BLOCK *block)
 
 static int worker_delay(int ticks)
 {
+    if (cdb.status == STAT_SCAN) scan_microseconds += ticks;
     if (ticks == play_delay) seek_delays++;
     ++delay_calls;
     if (delay_calls == delay_request_at) cdb.pause_request = delay_request;
@@ -152,7 +191,10 @@ static void eof_release_probe(void)
 
 #define LEDEV_CSCT 1
 #define hw_delay worker_delay
+#define osDelay scan_retry_wait
+#include "scan-worker.inc"
 #include "disk-task.inc"
+#undef osDelay
 #undef hw_delay
 
 static void *run_worker(void *unused)
@@ -186,6 +228,9 @@ static void prepare(u32 fad, int audio, int status)
     lookup_error = error_reports = reported_reader = 0;
     replace_on_eof = eof_publications = lookup_calls = 0;
     ack_fad = last_read_fad = 0;
+    scan_reads = scan_retries = scan_rw = scan_reports = scan_microseconds = 0;
+    scan_retry_count = scan_bad_report = 0;
+    memset(scan_observed, 0, sizeof scan_observed);
     finish_after = 1;
 }
 
@@ -530,6 +575,101 @@ static void audio_track_tail(void)
     }
 }
 
+#ifdef HAS_CD_SCAN
+static void prepare_scan(u32 fad, unsigned mode)
+{
+    prepare(fad, 0, STAT_SCAN);
+    cdb.play_type = PLAYTYPE_SCAN;
+    cdb.scan_mode = mode;
+    cdb.options = 0;
+    finish_after = play_delay = 0;
+}
+
+static void scan_motion(void)
+{
+    for (unsigned audible = 0; audible <= 1; ++audible)
+        for (unsigned reverse = 0; reverse <= 1; ++reverse) {
+            u32 start = audible ? 360 : 160;
+            u32 end = audible ? 420 : 220;
+            u32 first = reverse ? end - 1 : start;
+            prepare_scan(first, (audible ? SCAN_AUDIBLE : 0) | reverse);
+            cdb.play_fad_start = start;
+            cdb.play_fad_end = end;
+            cdb.max_repeat = reverse;
+            run_worker(NULL);
+            assert(scan_reports == 6 && !scan_bad_report && !filtered && !queued);
+            assert(scan_microseconds == 6 * (audible ? 13333u : 6667u));
+            assert(scan_reads == 6 * audible && scan_rw == scan_reads);
+            for (unsigned i = 0; i < 6; ++i)
+                assert(scan_observed[i] == (reverse ? first - i : first + i));
+            assert(cdb.status == STAT_PAUSE && !cdb.play_type && !cdb.scan_count);
+            assert(cdb.fad == (reverse ? start : end - 1));
+            assert(!!(hirq & HIRQ_PEND) == !reverse && !(hirq & HIRQ_CSCT));
+        }
+
+    prepare_scan(180, SCAN_AUDIBLE);
+    cdb.play_fad_end = 182;
+    run_worker(NULL);
+    assert(!scan_reads && !scan_rw && !read_calls && !filtered);
+    assert(scan_microseconds == 2 * 6667 && !scan_bad_report);
+
+    prepare_scan(360, 0);
+    cdb.play_fad_end = 362;
+    run_worker(NULL);
+    assert(!scan_reads && !scan_rw && !read_calls && !filtered);
+    assert(scan_microseconds == 2 * 13333 && !scan_bad_report);
+
+    prepare_scan(298, SCAN_AUDIBLE);
+    cdb.play_fad_end = 302;
+    run_worker(NULL);
+    assert(scan_observed[0] == 298 && scan_observed[1] == 299);
+    assert(scan_observed[2] == 300 && scan_observed[3] == 301);
+    assert(scan_microseconds == 2 * (6667u + 13333u));
+    assert(scan_reads == 2 && scan_rw == 2 && !filtered && !scan_bad_report);
+
+    prepare_scan(301, SCAN_AUDIBLE | SCAN_REVERSE);
+    cdb.play_fad_start = 298;
+    run_worker(NULL);
+    assert(scan_observed[0] == 301 && scan_observed[1] == 300);
+    assert(scan_observed[2] == 299 && scan_observed[3] == 298);
+    assert(scan_microseconds == 2 * (6667u + 13333u));
+    assert(scan_reads == 2 && scan_rw == 2 && !filtered && scan_cancels == 1);
+
+    /* An empty initial PLAY range defaults to the disc for this scan only. */
+    prepare_scan(698, 0);
+    cdb.play_fad_start = cdb.play_fad_end = 0;
+    run_worker(NULL);
+    assert(scan_reports == 2 && cdb.fad == 699 && !cdb.play_fad_end);
+    assert(cdb.status == STAT_PAUSE && !cdb.play_type);
+}
+
+static void scan_worker_errors(void)
+{
+    prepare_scan(360, SCAN_AUDIBLE);
+    scan_retries = 1;
+    cdb.play_fad_end = 362;
+    run_worker(NULL);
+    assert(scan_reads == 3 && scan_reports == 2 && scan_retry_count == 1);
+    assert(scan_observed[0] == 360 && scan_observed[1] == 361 && scan_rw == 2);
+    assert(cdb.status == STAT_PAUSE && !cdb.play_type);
+
+    for (int read = 0; read <= 1; ++read) {
+        prepare_scan(360, SCAN_AUDIBLE);
+        read_error = read;
+        delay_failure = !read;
+        run_worker(NULL);
+        assert(cdb.status == STAT_ERROR && !cdb.play_type && !cdb.play_track);
+        assert(cdb.fad == 360 && !(hirq & (HIRQ_PEND | HIRQ_CSCT)));
+    }
+    prepare_scan(360, SCAN_AUDIBLE);
+    delay_request_at = delay_request = 1;
+    run_worker(NULL);
+    assert(cdb.status == STAT_PAUSE && cdb.fad == 360 && !cdb.play_type);
+    assert(!cdb.pause_request && pause_signals == 1 && scan_cancels == 1);
+    assert(scan_reports == 1 && !(hirq & HIRQ_PEND));
+}
+#endif
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -559,6 +699,10 @@ int main(int argc, char **argv)
     else if (!strcmp(test, "eof-handoff")) eof_handoff();
     else if (!strcmp(test, "sector-handoff")) sector_handoff();
     else if (!strcmp(test, "audio-track-tail")) audio_track_tail();
+#ifdef HAS_CD_SCAN
+    else if (!strcmp(test, "scan-motion")) scan_motion();
+    else if (!strcmp(test, "scan-errors")) scan_worker_errors();
+#endif
     else if (!strcmp(test, "controls")) {
         prepare(150, 0, STAT_PAUSE);
         run_worker(NULL);

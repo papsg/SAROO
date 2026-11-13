@@ -17,7 +17,9 @@ class AudioDMATests(unittest.TestCase):
     def setUpClass(cls):
         source = Path(os.environ.get('SAROO_AUDIO_SOURCE', ROOT / 'Firm_MCU/Saturn/cdda_i2s.c'))
         raw = source.read_bytes()
-        end = raw.index(b'\n}', raw.index(b'int fill_audio_buffer(')) + 2
+        scan = b'int fill_scan_audio_buffer(' in raw
+        last = b'int fill_scan_audio_buffer(' if scan else b'int fill_audio_buffer('
+        end = raw.index(b'\n}', raw.index(last)) + 2
         code = raw[raw.index(b'#define ABUF_NUM'):end]
         start = code.index(b'void spi2_set_notify(')
         end = code.index(b'\n}', start) + 2
@@ -27,6 +29,12 @@ class AudioDMATests(unittest.TestCase):
         code = code.replace(b'(u32)', b'(uintptr_t)')
         code = code.replace(b'(u8 *)', b'(u8 *)(uintptr_t)')
         code = code.replace(b'(u8*)', b'(u8*)(uintptr_t)')
+        if scan:
+            # Model direct writes to the unpublished slot just like memcpy32.
+            code = code.replace(b'slot[i] = quiet;',
+                                b'write_scan_byte(slot, i, quiet);')
+            code = code.replace(b'slot[i+1] = quiet >> 8;',
+                                b'write_scan_byte(slot, i+1, quiet >> 8);')
         worker = Path(os.environ.get('SAROO_AUDIO_MAIN', ROOT / 'Firm_MCU/Saturn/saturn_main.c')).read_bytes()
         marker = b'if(cdb.play_type!=PLAYTYPE_FILE && cdb.play_type!=PLAYTYPE_DIR && cdb.play_track->mode==3)'
         begin = worker.rindex(marker, 0, worker.index(b'int asize = fill_audio_buffer'))
@@ -36,7 +44,8 @@ class AudioDMATests(unittest.TestCase):
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         continuity = b'void spi2_cancel(' in raw
         cls.continuity = continuity
-        (cls.target / 'audio.inc').write_bytes(f'#define TEST_LINK_CONTINUITY {int(continuity)}\n'.encode() + code)
+        (cls.target / 'audio.inc').write_bytes(
+            f'#define TEST_LINK_CONTINUITY {int(continuity)}\n#define TEST_AUDIO_SCAN {int(scan)}\n'.encode() + code)
         (cls.target / 'audio-worker.inc').write_bytes(worker_code)
         start = worker.index(b'static void disk_task_notify(void)')
         (cls.target / 'audio-notify.inc').write_bytes(worker[start:worker.index(b'\n}', start) + 2])
@@ -139,6 +148,7 @@ class AudioDMATests(unittest.TestCase):
     def test_publication_recovers_an_exhausted_quiet_stream(self):self.run_case(41)
     def test_plain_cdda_uses_queue_room_and_sidecars_keep_timer_errors(self):self.run_case(42)
     def test_one_accepted_audio_track_tail_drains_without_another_sector(self):self.run_case(43)
+    def test_scan_attenuates_signed_pcm_in_unpublished_slot_and_honors_cancel(self):self.run_case(44)
 
 if __name__ == '__main__':
     unittest.main()

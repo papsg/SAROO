@@ -339,7 +339,7 @@ void spi2_cancel(void)
     restore_irq(key);
 }
 
-int fill_audio_buffer(u8 *data)
+static __attribute__((noinline)) int queue_audio_sector(u8 *data, int attenuate)
 {
     int key = disable_irq();
     if (audio_copying || audio_cancel_pending() || awp-arp == ABUF_NUM) {
@@ -350,7 +350,17 @@ int fill_audio_buffer(u8 *data)
     u8 *slot = audio_slot(awp);
     restore_irq(key);
 
-    memcpy32(slot, data, ABUF_BYTES);
+    if (attenuate) {
+        /* Build the -12 dB sector before DMA can see its slot. */
+        for (unsigned i = 0; i < ABUF_BYTES; i += 2) {
+            int sample = (short)(data[i] | (data[i+1] << 8));
+            unsigned quiet = (unsigned)(short)(sample / 4);
+            slot[i] = quiet;
+            slot[i+1] = quiet >> 8;
+        }
+    } else {
+        memcpy32(slot, data, ABUF_BYTES);
+    }
     __DMB(); /* Publish only after every SRAM payload store is visible to DMA. */
 
     key = disable_irq();
@@ -367,6 +377,15 @@ int fill_audio_buffer(u8 *data)
     return count;
 }
 
+int fill_audio_buffer(u8 *data)
+{
+    return queue_audio_sector(data, 0);
+}
+
+int fill_scan_audio_buffer(u8 *data)
+{
+    return queue_audio_sector(data, 1);
+}
 
 void spi2_trans(u32 data)
 {

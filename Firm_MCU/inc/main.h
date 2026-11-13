@@ -66,6 +66,7 @@ void spi2_cancel(void);
 void spi2_set_notify(void *handle);
 void spi2_trans(u32 data);
 int fill_audio_buffer(u8 *data);
+int fill_scan_audio_buffer(u8 *data);
 
 void saturn_config(void);
 

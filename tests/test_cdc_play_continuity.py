@@ -94,6 +94,12 @@ class CDPlayContinuityTests(unittest.TestCase):
     def test_accepted_audio_track_tail_followed_by_data_or_request_end(self):
         self.run_case('audio-track-tail')
 
+    def test_scan_paces_both_directions_and_reports_q_without_host_sectors(self):
+        self.run_case('scan-motion')
+
+    def test_scan_backpressure_error_and_drive_handoff(self):
+        self.run_case('scan-errors')
+
 
 if __name__ == '__main__':
     unittest.main()
