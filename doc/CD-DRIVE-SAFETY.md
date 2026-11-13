@@ -557,3 +557,28 @@ each rejection with a valid status command. Both 247-method profiles,
 including the original-drive controls, pass. The GNU App remains
 65,440 load bytes, with 96 bytes free. Physical command timing and
 original MDK output remain unqualified.
+
+## Report no disc before command service begins
+
+MCU-CDC-R21, adapted from paps-g `34ad28b3`. Startup used to leave
+the empty emulated drive in PAUSE until the disk task ran. The command
+task can run first and report a disc position or use a TOC entry before
+it is populated. The software initializer now starts in NODISC. The
+earlier hardware signature and later mounted-disc transitions are
+unchanged.
+
+[Sega ST-162 §7.2.3, printed p. 58](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=46)
+defines unavailable session fields.
+[§7.2.4, printed pp. 59–60](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=47)
+defines NODISC and its invalid position fields.
+
+Run `make -C tests check-cdc-command-buffer` in the default and
+`SAROO_CDC_PROFILE=release` profiles. Select `-k empty_startup` in
+`test_cdc_connections.py` with `SAROO_CDC_CONNECTION_MAIN` set to the
+parent's `saturn_main.c` to reproduce the bad session response. The
+fixture runs the actual software initializer and status/session handlers
+before the disk task, with sentinel data in the TOC workspace. It also
+checks that the valid mounted session still reports its leadout.
+Both 248-method profiles pass. The GNU App remains 65,440 load bytes,
+with 96 bytes free. Physical startup timing and original MDK output
+remain unqualified.

@@ -36,7 +36,6 @@ static unsigned pauses,wakeups;
 #define SSLOG(...) ((void)0)
 static int disable_irq(void) { return irq_depth++; }
 static void restore_irq(int prior) { assert(irq_depth==prior+1);irq_depth=prior; }
-static void set_report(u8 status) { reply[0]=(u16)status<<8; }
 static volatile u8 disc_removed;
 static __attribute__((unused)) int sd_card_insert(void) { return 1; }
 static void disk_task_wakeup(void) { wakeups++; }
@@ -175,7 +174,7 @@ static void startup(void)
 {
     memset(&cdb,0xa5,sizeof cdb);ss_sw_init();
     assert(cdb.sector_size==2048 && cdb.put_sector_size==2048);
-    assert(cdb.block_free==200 && cdb.status==STAT_PAUSE && cdb.fad==150);
+    assert(cdb.block_free==200 && cdb.status==STAT_NODISC && cdb.fad==150);
     assert(cdb.ctrladdr==0x41 && cdb.track==1 && cdb.index==1);
     assert(cdb.cddev_filter==0xff && cdb.last_buffer==0xff && !cdb.trans_type);
     for(unsigned i=0;i<200;i++)assert(cdb.block[i].size==-1 && cdb.block[i].data==payload[i]);
@@ -184,6 +183,34 @@ static void startup(void)
         assert(cdb.filter[i].c_true==i && cdb.filter[i].c_false==0xff);
         assert(!cdb.part[i].numblocks && !cdb.part[i].head && !cdb.part[i].tail);
     }
+}
+
+/* The command task can answer before the disk task's first instruction. */
+static void startup_replies(void)
+{
+    memset(info_bytes,0xa5,sizeof info_bytes);
+    memset(&cdb,0xa5,sizeof cdb);
+    ss_sw_init();
+    assert(!cdb.track_num);
+    for (unsigned sid=0;sid<3;sid++) {
+        cdb.cr1=0x0300|sid;
+        memset(reply,0x5a,sizeof reply);
+        assert(!get_session_info());
+        assert(reply[0]==0x0700 && !reply[1] && reply[2]==0xffff && reply[3]==0xffff);
+    }
+    memset(reply,0x5a,sizeof reply);
+    assert(!get_cd_status());
+    assert(reply[0]==0x07ff && reply[1]==0xffff && reply[2]==0xffff && reply[3]==0xffff);
+
+    /* A mounted-disc report can still use its populated leadout entry. */
+    u32 toc[102]={0};
+    toc[101]=bswap32(0x41012345);
+    cdb.TOC=toc;
+    cdb.status=STAT_PAUSE;
+    cdb.track_num=1;
+    cdb.cr1=0x0300;
+    assert(!get_session_info());
+    assert(reply[0]==0x0100 && !reply[1] && reply[2]==0x0101 && reply[3]==0x2345);
 }
 static void software_init(void)
 {
@@ -282,11 +309,11 @@ static void every_sector_length(void)
 }
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<11);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<12);
     if(test==0)ownership();else if(test==1)validation();else if(test==2)mode_reset();
     else if(test==3)reset_flags();else if(test==4)pause_policy();
     else if(test==5)startup();else if(test==6)software_init();
     else if(test==7)unpublished_owner();else if(test==8)baseline_control();
-    else if(test==9)every_filter_reset();else every_sector_length();
+    else if(test==9)every_filter_reset();else if(test==10)every_sector_length();else startup_replies();
     puts("pass: actual connection ownership, validation, resets and defaults");return 0;
 }

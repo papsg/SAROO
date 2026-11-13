@@ -1188,7 +1188,7 @@ void ss_sw_init(void)
 
 	memset(&cdb, 0, sizeof(cdb));
 
-	cdb.status = STAT_PAUSE;
+	cdb.status = STAT_NODISC;
 	cdb.fad = 150;
 	cdb.ctrladdr = 0x41;
 	cdb.track = 1;

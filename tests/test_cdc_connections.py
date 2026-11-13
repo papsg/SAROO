@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unittest
 
-from cdc_reply_source import status_reply_source
+from cdc_reply_source import bswap_source, status_reply_source
 from test_cdc_copy import filter_reset_source, tray_wait_source
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -31,6 +31,8 @@ class CDConnectionTests(unittest.TestCase):
         for sig in (b'static void disconnect_partition_output(',b'static void free_block_list('):
             if sig in raw:code+=function(raw,sig)
         code+=function(raw,b'void free_partition(')+status_reply_source(raw)
+        code+=function(raw,b'void set_report(')+function(raw,b'int get_cd_status(')
+        code+=bswap_source(header,main)+function(raw,b'int get_session_info(')
         code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
         if b'static void disconnect_filter_input(' in raw:code+=function(raw,b'static void disconnect_filter_input(')
         if b'void invalidate_directory(' in raw:code+=function(raw,b'void invalidate_directory(')
@@ -83,6 +85,7 @@ class CDConnectionTests(unittest.TestCase):
     def test_baseline_valid_configuration_control(self):self.run_case(8)
     def test_all_filter_mode_and_selector_bytes(self): self.run_case(9)
     def test_all_sector_length_selector_pairs(self): self.run_case(10)
+    def test_empty_startup_status_and_session_replies(self): self.run_case(11)
 
 
 if __name__=='__main__':unittest.main()
