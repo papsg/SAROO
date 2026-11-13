@@ -1213,6 +1213,17 @@ void Croc_LOG_patch(void)
 int skip_patch = 0;
 int need_bup = 1;
 
+static void CNC_reset_patch(void)
+{
+	/* Both USA v1.000 discs use this executable. Read through P2 and
+	 * write through P1 so a resident cache line sees the correction.
+	 * ST-210 precaution 14 prohibits writes to SCU DMA force stop. */
+	if(crc32((u8*)0x26003800, 950320, 0) != 0xd606ee5b ||
+	   REG16(0x06076344) != 0x2212)
+		return;
+	REG16(0x06076344) = 0x0009;
+}
+
 typedef struct _game_db {
 	char *id;
 	char *name;
@@ -1221,6 +1232,7 @@ typedef struct _game_db {
 
 
 GAME_DB game_dbs[] = {
+	{"T-7028H   V1.000",   "Command & Conquer",  CNC_reset_patch},
 	{"T-1229G",            "VAMPIRE_SAVIOR",     VAMPIRE_SAVIOR_patch},
 	{"T-14411G",           "GROOVE_ON_FIGHT",    GROOVE_ON_FIGHT_patch},
 	{"T-22205G",           "NOEL3",              NOEL3_patch},

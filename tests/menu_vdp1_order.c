@@ -76,6 +76,33 @@ static void rom_target(int address)
     if(!jump_returns) longjmp(takeover, 1);
 }
 
+/* Adapted from paps-g 6bcc069b. Model the uncached checksum input and
+ * the native-endian instruction word separately. */
+enum { CNC_IMAGE_BYTES=950320, CNC_INSTRUCTION_OFFSET=0x76344-0x3800 };
+static u8 cnc_image[CNC_IMAGE_BYTES];
+static u16 cnc_instruction;
+static unsigned cnc_reads, cnc_instruction_accesses;
+#define crc32 menu_crc32
+#include "crc32.inc"
+#undef crc32
+static __attribute__((unused)) u8 *cnc_image_at(u32 address)
+{
+    assert(address==0x26003800);
+    return cnc_image;
+}
+static __attribute__((unused)) u32 crc32(u8 *data, int size, u32 seed)
+{
+    assert(data==cnc_image && size==CNC_IMAGE_BYTES && !seed);
+    cnc_reads++;
+    return menu_crc32(data,size,seed);
+}
+static __attribute__((unused)) u16 *cnc_instruction_at(u32 address)
+{
+    assert(address==0x06076344);
+    cnc_instruction_accesses++;
+    return &cnc_instruction;
+}
+
 #include "actual.inc"
 
 static const u32 clock_callback = 0x060006b8 + sizeof code_06b8;
@@ -122,6 +149,51 @@ static void finished(void)
     assert(to_stm32 == !!game_break_pc && gets_from_stm32 == !!game_break_pc);
     assert(mailbox == (game_break_pc ? 0 : 0x76543210));
 }
+
+static void cnc_reset(void)
+{
+    const char *id="T-7028H   V1.000";
+    /* Authored zero-filled fixture with a matching CRC. No game bytes. */
+    const u8 suffix[]={0xc7,0x14,0x50,0xf2};
+    cnc_image[CNC_INSTRUCTION_OFFSET]=0x22;
+    cnc_image[CNC_INSTRUCTION_OFFSET+1]=0x12;
+    memcpy(cnc_image+sizeof cnc_image-sizeof suffix,suffix,sizeof suffix);
+    assert(menu_crc32(cnc_image,sizeof cnc_image,0)==0xd606ee5b);
+
+    reset(id,71);
+    cnc_instruction=0x2212;
+    cnc_reads=cnc_instruction_accesses=0;
+    read_1st();finished();
+    assert(cnc_instruction==0x0009 && cnc_reads==1 && cnc_instruction_accesses==2);
+
+    for (unsigned skip=0;skip<2;skip++) {
+        reset(skip ? id : "T-7028H   V1.001",71);
+        skip_patch=skip;
+        cnc_instruction=0x2212;
+        cnc_reads=cnc_instruction_accesses=0;
+        read_1st();finished();
+        assert(cnc_instruction==0x2212 && !cnc_reads && !cnc_instruction_accesses);
+    }
+    const u16 alternatives[]={0,0x0009,0x2210,0xffff};
+    for (unsigned i=0;i<sizeof alternatives/sizeof *alternatives;i++) {
+        reset(id,71);
+        cnc_instruction=alternatives[i];
+        cnc_reads=cnc_instruction_accesses=0;
+        read_1st();finished();
+        assert(cnc_instruction==alternatives[i] && cnc_reads==1 && cnc_instruction_accesses==1);
+    }
+    const unsigned offsets[]={0,CNC_INSTRUCTION_OFFSET,sizeof cnc_image/2,sizeof cnc_image-1};
+    for (unsigned i=0;i<sizeof offsets/sizeof *offsets;i++) {
+        reset(id,71);
+        cnc_image[offsets[i]]^=1;
+        cnc_instruction=0x2212;
+        cnc_reads=cnc_instruction_accesses=0;
+        read_1st();finished();
+        assert(cnc_instruction==0x2212 && cnc_reads==1 && !cnc_instruction_accesses);
+        cnc_image[offsets[i]]^=1;
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -174,10 +246,13 @@ int main(int argc, char **argv)
             read_1st(); finished(); assert(!jumps && !cards && !need_bup);
             assert(REG32(addr) == (u32)(uintptr_t)kof95_handle);
         }
+    }else if(!strcmp(mode, "cnc")){
+        cnc_reset();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){
             if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch || g->patch_func == kof95_patch) continue;
+            if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);
         }

@@ -16,11 +16,14 @@ class MenuVDP1OrderTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_MENU_VDP1_SOURCE', ROOT / 'Firm_Saturn'))
         patch = (source / 'game_patch.c').read_bytes()
         load = (source / 'game_load.c').read_bytes()
+        crc = (source / 'crc32.c').read_bytes().replace(b'#include "main.h"', b'')
         first = patch.index(b'typedef struct _game_db')
         table = patch[first:patch.index(b'void patch_game(', first)]
         names = set(re.findall(rb'"[^"\n]+",\s*([A-Za-z_0-9]+)\}', table))
         actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
+        if b'CNC_reset_patch' in names:
+            actual.add(b'CNC_reset_patch')
         code = b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -35,6 +38,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code = code.replace(b'(void*) *(u32*)(0x06000284)',
                             b'loader_target(*(u32*)(0x06000284))')
         code = code.replace(b'(void*)0x200000', b'rom_target')
+        code = code.replace(b'(u8*)0x26003800', b'(u8*)cnc_image_at(0x26003800)')
+        code = code.replace(b'REG16(0x06076344)', b'(*cnc_instruction_at(0x06076344))')
         code = re.sub(rb'\((u8|u16|u32|char)\s*\*\)\s*\((0x[0-9a-fA-F]+(?:\+i)?|val0)\)',
                       rb'(\1*)memory_at(\2)', code)
         code = re.sub(rb'\((u8|u16|u32|char)\s*\*\)(0x[0-9a-fA-F]+)',
@@ -47,6 +52,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         (cls.target / 'actual.inc').write_bytes(code)
+        (cls.target / 'crc32.inc').write_bytes(crc)
         cls.binary = cls.target / 'menu-vdp1-order'
         flags = ['-O2'] if os.environ.get('SAROO_MENU_VDP1_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -86,6 +92,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_remaining_table_entries_dispatch_once(self):
         self.scenario('table')
+
+    def test_cnc_reset_patch_requires_the_matching_game_and_instruction(self):
+        self.scenario('cnc')
 
 
 if __name__ == '__main__':

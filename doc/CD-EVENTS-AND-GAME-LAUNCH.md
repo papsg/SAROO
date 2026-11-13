@@ -172,3 +172,33 @@ The harness records each worker event write and models the retry boundary.
 The 168-method CD group and all 13 XA methods at O2 pass.
 The GNU MCU App loads 63,196 bytes (−16), with 2,340 bytes of ITCM space.
 Physical scheduling and game behavior remain unqualified.
+
+## Avoid the prohibited DMA force-stop write in Command & Conquer
+
+Adapted from paps-g `6bcc069b` (GAME-REG-004). The US v1.000 game
+writes to the removed SCU DMA force-stop register during soft reset.
+Both discs share the checked executable. The existing game dispatcher
+checks the product and version, then the callback checks the loaded
+executable CRC and original instruction. It replaces just that
+instruction with a NOP. The game keeps its subsequent DMA cleanup
+and return trap. The checksum scan runs once at launch for the
+matching game.
+
+[Sega SCU Final Specifications ST-210-110194, precaution 14, printed p. 5](https://antime.kapsi.fi/sega/files/ST-210-110194.pdf#page=9)
+prohibits writes to that register.
+[Hitachi SH7604 Hardware Manual, §8.4.2, printed p. 219](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=235)
+describes the cached write used to update the instruction and any
+resident line.
+
+Run `python3 -B -m unittest discover -s tests -p test_menu_vdp1_order.py -v`.
+Set `SAROO_MENU_VDP1_SOURCE` to the parent menu sources and select
+`-k cnc_reset_patch` to see the unchanged instruction. The fixture
+uses authored bytes and the real CRC and dispatch code. It checks the
+matching executable and refuses a different version, disabled patches,
+four different instructions and four changed executable positions.
+All 144 focused methods and eight optimized dispatch methods pass.
+The stock menu adds 108 code/data bytes (85,352 total, 19,848 bytes
+of body margin) and passes the linked clock tail and 48 ROM clock cases.
+
+The historical private menu passed the reported soft-reset sequence
+on the development Saturn. This port has host and link verification.
