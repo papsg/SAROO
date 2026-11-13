@@ -182,3 +182,40 @@ timer wrap, stale phase, mode changes and expiry before changing routing.
 Eight clock/launch controls and 48 linked ROM clock checks pass. The
 complete menu links 84,900 code/data bytes, with 20,296 bytes of body
 margin. Physical SMPC timing and real-disc behavior remain unqualified.
+
+## Complete reset disable before handing off to the BIOS player
+
+SATURN-SMPC-002 and SATURN-SMPC-004, adapted from paps-g `f822fc1e`
+and `33014804`. The player handoff wrote RESDISA directly after the
+BIOS clock call, then replaced high work RAM before confirming the
+command. The public port uses the existing bounded reset-command
+sequence. It waits for idle SF and a locally latched line from 0 through
+191, sets SF before writing COMREG, waits for SF to clear, and checks
+OREG31 for the completed command before changing high work RAM. The
+scanline check works while output is disabled. An unavailable latch,
+busy timeout, or unexpected result stops the handoff before replacement.
+
+[Sega SMPC User's Manual ST-169-R1-072694, §2.2 and Figure 2.2, printed pp. 13–14](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=23)
+defines Type-B issue and completion. [Command timing, printed pp. 17–19](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=27),
+[OREG31, printed p. 21](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=31)
+and [RESDISA, printed p. 34](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=44)
+define the window, result code and reset-button NMI behavior.
+[VDP2 §2.5, printed p. 19](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=37)
+and [Technical Bulletin 37, items 3 and 6, PDF pp. 116–117](https://antime.kapsi.fi/sega/files/Sattechs.pdf#page=116)
+cover the latch and counter available while output is disabled.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_clock_reset.py -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_clock_reset.py -v
+```
+
+The parent fails both player methods at command admission and passes
+all five clock and installer controls. Both port profiles pass all seven
+methods. The new failure controls cover unavailable latch, incomplete
+command and mismatched OREG31. All 38 adjacent player, power, boot and
+VDP1 methods pass. The SH-2 menu has 84,980 code/data bytes and 20,216
+bytes of body margin. Both relocated clock fragments remain byte-identical
+and pass all 48 linked checks. The historical private Astal trial reached
+the BIOS player after two reset combinations. Hardware behavior of this
+public build and timeout recovery after the BIOS clock change remain
+unqualified.

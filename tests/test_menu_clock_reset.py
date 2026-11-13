@@ -1,6 +1,7 @@
 """Run the two actual BIOS clock hooks and the ROM installer with modeled MMIO."""
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -18,12 +19,28 @@ class MenuClockResetTests(unittest.TestCase):
         header = (source / 'smpc.h').read_bytes()
         code = b''
         if b'int smpc_enable_reset(' in header:
-            defines = b'\n'.join(line for line in header.splitlines() if line.startswith(
-                (b'#define SMPC_RESET_POLL_BUDGET ', b'#define RESENAB ')))
-            helper = function(header.replace(b'static inline int smpc_enable_reset',
-                                             b'static int smpc_enable_reset'), 'smpc_enable_reset')
-            code += defines + b'\n' + helper
+            defines = (b'#define SMPC_RESET_POLL_BUDGET ', b'#define RESENAB ',
+                       b'#define RESDISA ')
+            code += b'\n'.join(line for line in header.splitlines()
+                               if line.startswith(defines)) + b'\n'
+            plain_header = header.replace(b'static inline int smpc_', b'static int smpc_')
+            names = ('smpc_reset_command', 'smpc_enable_reset', 'smpc_disable_reset')
+            code += b'\n'.join(function(plain_header, name) for name in names
+                               if f'int {name}('.encode() in plain_header)
         code += function(load, 'my_06b0') + function(rom, 'jump_06b0') + function(rom, 'card_init')
+        # Execute the real player handoff up to its first destructive write.
+        player, found, _ = function(load, 'my_cdplayer').partition(
+            b'memset((u8*)0x0600a000, 0, 0xf6000);')
+        assert found
+        player = player.replace(b'*(u8 *)(0x2010001f)', b'COMREG')
+        player = player.replace(b'go = (void*)*(u32*)(0x060002dc);',
+                                b'go = player_prepare;')
+        player = player.replace(b'go = (void*)0x00280000;', b'go = player_clock;')
+        player = player.replace(b'memcpy((u8*)0x00280000, _call_04c8, 64);',
+                                b'player_copy_clock();')
+        player = re.sub(rb'\*\((?:u8|u16|u32)\s*\*\)\((0x[\da-f]+)\)\s*=\s*([^;]+);',
+                        rb'player_write(\1, \2);', player)
+        code += player + b'player_replace_work_ram();\n}\n'
         for original, replacement in (
             (b'(void*)(0x04c8)', b'bios_clock'), (b'(void*)0x1800', b'bios_scu'),
             (b'*(u32*)(0x25fe00b0)', b'asr'), (b'*(u32*)(0x25fe00b8)', b'aref'),
@@ -59,6 +76,8 @@ class MenuClockResetTests(unittest.TestCase):
     def test_completion_uses_remaining_poll_budget(self): self.scenario('completion')
     def test_valid_hooks_preserve_bios_calls_and_bus_restore(self): self.scenario('healthy')
     def test_rom_clock_vector_publishes_after_both_copies(self): self.scenario('install')
+    def test_player_waits_for_reset_disable_with_display_off(self): self.scenario('player')
+    def test_player_does_not_replace_work_ram_on_reset_failure(self): self.scenario('player-failure')
 
 
 if __name__ == '__main__':

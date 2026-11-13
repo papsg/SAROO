@@ -9,10 +9,12 @@ enum { BUDGET = 1 << 24 };
 static unsigned sf_reads, latch_reads, counter_reads, pre_busy, post_busy, unsafe;
 static unsigned calls, issued, completed, line, external, debug_flag;
 static unsigned last_busy, last_line;
-static u8 sf, command;
+static u8 sf, command, reply;
 static u32 asr, aref, save_vector, player_vector, published;
 static unsigned copies;
-static int rom_path;
+static int rom_path, player_path;
+static unsigned suspended, clock_copied, work_ram_replaced, reject_reply;
+#define EXLTEN 0x0200
 static void jump_06b0(void);
 static void jump_copy_code(int type) { (void)type; assert(0); }
 static __attribute__((unused)) void rom_reset_issue(void) { assert(0); }
@@ -23,7 +25,10 @@ static u8 *sf_port(void)
     if (issued) {
         last_busy = post_busy != 0;
         if (post_busy) post_busy--;
-        else completed = 1;
+        else {
+            completed = 1;
+            reply = reject_reply ? 0 : command;
+        }
     } else {
         last_busy = pre_busy != 0;
         if (pre_busy) pre_busy--;
@@ -35,7 +40,7 @@ static u8 *sf_port(void)
 static u8 *command_port(void)
 {
     assert(sf == 1 && !last_busy && !issued);
-    assert(calls == (rom_path ? 2u : 1u));
+    assert(calls == ((rom_path || player_path) ? 2u : 1u));
     assert(asr == (rom_path ? 0x34403440u : 0x38803880u));
     if (rom_path) assert(aref == 0x13);
     assert(!external && (!latch_reads || last_line < 192));
@@ -90,6 +95,44 @@ static void install_fragment(void *destination, const void *source, size_t size)
     copies++;
 }
 
+static void pad_suspend(void)
+{
+    assert(player_path && !suspended && !calls);
+    suspended = 1;
+}
+
+static void player_prepare(int type)
+{
+    assert(suspended && !calls && type == 3);
+    calls = 1;
+}
+
+static void player_copy_clock(void)
+{
+    assert(calls == 1 && !clock_copied);
+    clock_copied = 1;
+}
+
+static void player_clock(int type)
+{
+    assert(clock_copied && calls == 1 && type == 0);
+    calls = 2;
+    asr = 0x38803880u;
+}
+
+static void player_write(u32 address, u32 value)
+{
+    (void)value;
+    assert(suspended && (address >= 0xffff0000u || address == 0x06000348u));
+}
+
+static void player_replace_work_ram(void)
+{
+    assert(completed && command == 0x1a && reply == command);
+    work_ram_replaced++;
+}
+
+#define OREG31 reply
 #define SF (*sf_port())
 #define COMREG (*command_port())
 #define EXTEN (ext_latch())
@@ -101,10 +144,12 @@ static void install_fragment(void *destination, const void *source, size_t size)
 
 static void reset(int path)
 {
-    rom_path = path;
+    rom_path = path == 1;
+    player_path = path == 2;
+    suspended = clock_copied = work_ram_replaced = reject_reply = 0;
     sf_reads = latch_reads = counter_reads = pre_busy = post_busy = unsafe = 0;
     calls = issued = completed = external = last_busy = last_line = 0;
-    sf = command = 0;
+    sf = command = reply = 0;
     asr = aref = 0;
     line = 32;
 }
@@ -117,10 +162,44 @@ static void run(void)
     assert(asr == (rom_path ? 0x34403440u : 0x38803880u));
 }
 
+static void player(int fail)
+{
+    reset(2);
+    pre_busy = 3;
+    unsafe = 2;
+    post_busy = 4;
+    if (!fail) {
+        my_cdplayer();
+        assert(suspended && calls == 2 && issued == 1 && completed);
+        assert(command == 0x1a && work_ram_replaced == 1 && latch_reads == 3);
+        return;
+    }
+
+    external = 1;
+    my_cdplayer();
+    assert(!issued && !counter_reads && !work_ram_replaced);
+    assert(sf_reads == BUDGET && latch_reads == BUDGET - 3);
+
+    reset(2);
+    post_busy = BUDGET;
+    my_cdplayer();
+    assert(issued == 1 && !completed && !work_ram_replaced);
+    assert(sf_reads == BUDGET + 1);
+
+    reset(2);
+    reject_reply = 1;
+    my_cdplayer();
+    assert(issued == 1 && completed && !work_ram_replaced);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *test = argv[1];
+    if (!strcmp(test, "player") || !strcmp(test, "player-failure")) {
+        player(!strcmp(test, "player-failure"));
+        return 0;
+    }
     if (!strcmp(test, "install")) {
         card_init();
         assert(copies == 3 && published == 0x6000c80);

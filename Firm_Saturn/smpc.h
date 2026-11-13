@@ -92,19 +92,32 @@
 
 #define SMPC_RESET_POLL_BUDGET (1u << 24)
 
-static inline int smpc_enable_reset(unsigned line_limit)
+static inline int smpc_reset_command(unsigned command, unsigned line_limit)
 {
-    int command = RESENAB;
     for (unsigned remaining = SMPC_RESET_POLL_BUDGET; remaining; remaining--) {
         if (SF & 1) continue;
         if (!command) return 0;
         /* Reading EXTEN latches the counters when external latching is off. */
-        if ((EXTEN & 0x0200) || (VCNT & 0x03ff) >= line_limit) continue;
+        if ((EXTEN & EXLTEN) || (VCNT & 0x03ff) >= line_limit) continue;
         SF = 1;
         COMREG = command;
         command = 0;
     }
     return -3;
+}
+
+static inline int smpc_enable_reset(unsigned line_limit)
+{
+    return smpc_reset_command(RESENAB, line_limit);
+}
+
+static inline int smpc_disable_reset(void)
+{
+    /* After the BIOS clock change the display may be off. Lines 0–191
+     * give a guard of at least 32 lines before the next TV VBlank. */
+    int result = smpc_reset_command(RESDISA, 192);
+    if (result) return result;
+    return OREG31 == RESDISA ? 0 : -1;
 }
 
 

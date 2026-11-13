@@ -294,7 +294,11 @@ void my_cdplayer(void)
 
 	if(debug_flag&1) sci_init();
 	*(u32*)(0xffffffb0) = 0;
-	*(u8 *)(0x2010001f) = 0x1a;
+	/* Confirm reset-button NMI is disabled before replacing high work RAM. */
+	if (smpc_disable_reset()) {
+		printk("SMPC reset-disable failed\n");
+		return;
+	}
 
 	memset((u8*)0x0600a000, 0, 0xf6000);
 	memset((u8*)0x06000c00, 0, 0x09400);
