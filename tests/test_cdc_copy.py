@@ -23,6 +23,14 @@ def filter_reset_source(raw):
     return (raw[start:raw.index(b'\n}', start) + 2] + b'\n').replace(b'noinline,noclone', b'noinline')
 
 
+def tray_wait_source(raw):
+    signature = b'static __attribute__((noinline)) int drive_tray_wait('
+    if signature not in raw:
+        return b''
+    start = raw.index(signature)
+    return raw[start:raw.index(b'\n}', start) + 2] + b'\n'
+
+
 def copy_source(raw,required=()):
     def function(signature):
         start=raw.index(signature)
@@ -51,7 +59,7 @@ def copy_source(raw,required=()):
     if b'FILTER *command_filter(' in raw:
         code += function(b'static __attribute__((noinline)) FILTER *command_filter(')
     code += filter_reset_source(raw)
-    code+=function(b'int get_filter_subheader(void)')+function(b'int init_cdblock(void)')
+    code+=function(b'int get_filter_subheader(void)')+tray_wait_source(raw)+function(b'int init_cdblock(void)')
     return code
 
 

@@ -54,6 +54,7 @@ int tiny_xmodem_recv(u8 *dest);
 int sdio_init(void);
 int sdio_reset(void);
 int sdio_ready(void);
+int sd_card_insert(void);
 int disk_reidentify(void);
 int disk_resume(void);
 

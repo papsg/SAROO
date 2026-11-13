@@ -37,6 +37,8 @@ static unsigned pauses,wakeups;
 static int disable_irq(void) { return irq_depth++; }
 static void restore_irq(int prior) { assert(irq_depth==prior+1);irq_depth=prior; }
 static void set_report(u8 status) { reply[0]=(u16)status<<8; }
+static volatile u8 disc_removed;
+static __attribute__((unused)) int sd_card_insert(void) { return 1; }
 static void disk_task_wakeup(void) { wakeups++; }
 static __attribute__((unused)) void osDelay(int value) { (void)value;assert(0); }
 static void wait_pause_ok(void)

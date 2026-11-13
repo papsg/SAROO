@@ -22,6 +22,7 @@ int pend_delay_force = -1;
 int auto_update = 0;
 char mdisc_str[16];
 int next_disc = -1;
+volatile u8 disc_removed;
 
 int log_mask = LOG_MASK_DEFAULT;
 
@@ -56,8 +57,10 @@ void init_toc(void)
 	cdb.TOC[100] = bswap32((TRACK_CTRL(last)<<24) | (cdb.track_num<<16));
 	cdb.TOC[101] = bswap32((TRACK_CTRL(last)<<24) | (last->fad_end+1));
 	
-	cdb.status = STAT_PAUSE;
-	set_status(cdb.status);
+    if (!disc_removed) {
+        cdb.status = STAT_PAUSE;
+        set_status(cdb.status);
+    }
 
 	sector_delay = 0;
 }
@@ -382,6 +385,40 @@ static __attribute__((noinline)) void log_play_end(void)
           cdb.fad, cdb.play_fad_end, cdb.repcnt, cdb.max_repeat, cdb.play_type);
 }
 
+/* The disk task owns card polling and media replacement. */
+static int service_tray(void)
+{
+    int requested = next_disc >= 0 ? next_disc : mounted_disc;
+    if (requested < 0) return 0;
+    int inserted = sd_card_insert();
+    if (inserted && !disc_removed) return 0;
+
+    int key = disable_irq();
+    disc_removed = 1;
+    if (cdb.play_type) {
+        cdb.pause_request = 1;
+        cdb.play_wait = 0;
+        restore_irq(key);
+        return 1;
+    }
+    buf_fad_start = buf_fad_end = 0;
+    publish_open_tray();
+    restore_irq(key);
+    if (inserted) {
+        fs_lock();
+        int result = disk_reidentify();
+        fs_unlock();
+        if (result || load_disc(requested, 0)) {
+            /* Retry only after another observed removal. */
+            unload_disc();
+            next_disc = requested;
+        }
+        disc_removed = 0;
+        HIRQ = HIRQ_DCHG;
+    }
+    return 0;
+}
+
 void disk_task(void *arg)
 {
 	int retv;
@@ -411,29 +448,7 @@ _restart_wait:
 					}
 				}
 			}
-			if(next_disc>=0){
-				int sd_card_insert(void);
-				if(cdb.status==STAT_OPEN){
-					if(sd_card_insert()){
-                        int requested = next_disc;
-                        fs_lock();
-                        retv = disk_reidentify();
-                        fs_unlock();
-                        if (!retv) retv = load_disc(requested, 0);
-                        if (retv) {
-                            /* Wait for another removal/insertion, retaining
-                             * the requested disc without a tight retry loop. */
-                            unload_disc();
-                            next_disc = requested;
-                        }
-						HIRQ = HIRQ_DCHG;
-					}
-				}else{
-					if(sd_card_insert()==0){
-						cdb.status = STAT_OPEN;
-					}
-				}
-			}
+            if (service_tray()) goto _restart_nowait;
 			HIRQ = HIRQ_SCDQ;
 			set_peri_report();
 
@@ -811,7 +826,10 @@ void ss_cmd_handle(void)
 		gif_decode_exit();
 		if (SS_ARG == 0xffff) {
             retv = pause_disc();
-            if (!retv) retv = unload_disc();
+            if (!retv) {
+                retv = unload_disc();
+                disc_removed = 0;
+            }
         } else retv = load_disc(SS_ARG, 1);
         goto save_reply;
 	case SSCMD_CHECK:
@@ -1013,7 +1031,13 @@ static int hw_delay(int us)
     TIM2->CR1 = TIM_CR1_OPM | TIM_CR1_URS | TIM_CR1_CEN;
 
     /* Allow for the inclusive period, tick phase and an extra scheduler tick. */
-    uint32_t deadline = osKernelGetTickCount() + (uint64_t)ticks * OS_TICK_FREQ / 100000u + 3u;
+    /* A timer tick is 10 us. Reduce the ratio exactly at the configured rate. */
+#if 100000u % OS_TICK_FREQ == 0
+    uint32_t wait_ticks = ticks / (100000u / OS_TICK_FREQ);
+#else
+    uint32_t wait_ticks = (uint64_t)ticks * OS_TICK_FREQ / 100000u;
+#endif
+    uint32_t deadline = osKernelGetTickCount() + wait_ticks + 3u;
     for (;;) {
         int32_t remaining = (int32_t)(deadline - osKernelGetTickCount());
         int result = osSemaphoreAcquire(sem_wait_disc, remaining > 0 ? remaining : 0);

@@ -348,6 +348,8 @@ extern int pend_delay;
 extern int pend_delay_force;
 extern char mdisc_str[];
 extern int next_disc;
+extern volatile int mounted_disc;
+extern volatile u8 disc_removed;
 extern int sort_mode;
 extern int category_num;
 extern int category_current;
@@ -463,6 +465,7 @@ void load_cover(int index);
 
 /* Retire unfinished directory metadata before worker ownership is released. */
 void invalidate_directory(void);
+void publish_open_tray(void);
 int finish_read(int valid);
 
 /* Skip the next physical interleave gap after consuming a file sector. */

@@ -54,13 +54,14 @@ static void acknowledge(void)
 }
 
 static int next_disc = -1;
+static volatile int mounted_disc __attribute__((unused)) = -1;
 static const int sem_wait_disc = 0, osErrorTimeout = -2;
-int sd_card_insert(void) { abort(); }
 static void fs_lock(void) { abort(); }
 static void fs_unlock(void) { abort(); }
 static int disk_reidentify(void) { abort(); }
 static int load_disc(int disc, int start_save) { abort(); }
 static void unload_disc(void) { abort(); }
+#include "service-tray.inc"
 static int handle_diread(void) { abort(); }
 static void advance_file_unit(void) { assert(!cdb.file_unit); }
 static void set_peri_report(void)

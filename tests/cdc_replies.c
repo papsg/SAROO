@@ -109,7 +109,8 @@ int main(int argc, char **argv)
     u8 subheader[10];
     BLOCK block = {0};
     /* Sweep both byte lanes, high-bit halfwords and changing 24-bit metadata.
-     * This is 18 layouts × 65536 inputs, not every combination of all fields. */
+     * This is 17 layouts × 65536 inputs, not every combination of all fields.
+     * The stateful OPEN command is checked in cdc_drive.c. */
     for (u32 v=0; v<65536; v++) {
         memset(&cdb, 0, sizeof cdb);
         cdb.status=v;
@@ -129,7 +130,6 @@ int main(int argc, char **argv)
         f->c_true=v%MAX_SELECTORS; f->c_false=(v&1)?255:selector;
         check(get_hw_info,status,1,0,0x400,0,0);
         check(get_toc_info,status|0x4000,204,0,0,HIRQ_DRDY,TRANS_TOC);
-        check(open_tray,status,0,0,0,0,0);
         cdb.cr1=0; cdb.track=1; cdb.tracks=&track; cdb.SUBH=subheader;
         cdb.fad=150; cdb.track_num=1; track.fad_start=150;
         check(get_subcode,status|0x4000,5,0,0,HIRQ_DRDY,TRANS_SUBQ);

@@ -35,7 +35,7 @@ class CDReplyTests(unittest.TestCase):
         code += function(b'void set_status(') + function(b'BLOCK *find_block(')
         main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
         code += function(b'TRACK_INFO *get_track_info(', main) + bswap_source(header, main)
-        names = ('get_hw_info', 'get_toc_info', 'get_session_info', 'open_tray', 'get_subcode',
+        names = ('get_hw_info', 'get_toc_info', 'get_session_info', 'get_subcode',
                  'get_cdev_connect', 'get_last_buffer', 'get_filter_range',
                  'get_filter_subheader', 'get_filter_mode', 'get_filter_connection',
                  'get_buffer_size', 'get_sector_num', 'get_actual_size',
@@ -66,7 +66,7 @@ class CDReplyTests(unittest.TestCase):
         print(result.stdout.strip())
 
     def test_complete_replies_keep_values_order_and_command_state(self):
-        self.run_case([], '1179648 complete replies pass')
+        self.run_case([], '1114112 complete replies pass')
 
     def test_cd_word_swap_preserves_wire_byte_order(self):
         self.run_case(['byteorder'], '65536 CD words have the expected byte order')

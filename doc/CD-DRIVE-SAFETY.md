@@ -262,3 +262,52 @@ cycles are unmeasured; two CPUs/four GiB are container caps, not measured usage.
 The final GNU MCU image remains byte-identical to the021 checkpoint; menu source
 and image are unchanged. No MCU/menu layout, stream I/O, installation or runtime
 instrumentation accompanies this FPGA source change.
+## Open the virtual tray and wait for observed SD removal
+
+MCU-CDC-R04, adapted from paps-g `b768af07`. Command `0x05` previously
+returned the old drive status without stopping the reader. It now waits
+for the reader to retire, replies BUSY, signals DCHG and EFLS, and enters
+OPEN. A timed-out handoff returns WAIT without invalidating the reader
+or its media. Opening invalidates TOC, session, directory and pickup
+reports while preserving host selectors, buffered sectors and the
+retained play range. Repeating OPEN leaves the change event latched only
+once. A drive initialization, play or seek can close the tray on the
+current card. A software reset leaves the tray open.
+
+The disk worker waits for a sampled removal followed by reinsertion
+before replacing the image. It stops any old reader and invalidates its
+cache before reading the replacement. It selects the configured next
+image or remounts the previous one while preserving the live save session.
+Failed identification or load leaves NODISC and waits for a new removal
+before retrying. An explicit menu unload clears the pending selection.
+
+[Sega CD Block User's Manual ST-162-062094, §4.1, printed pp. 33–34](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=21),
+[§5.5, printed p. 49](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=37),
+[§6.2, printed pp. 51–53](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=39)
+and [CDC_CdInit and CDC_CdOpen, printed pp. 79–80](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=67)
+specify drive transitions, initialization and the disc-change events.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_cdc*.py' -v
+python3 -B -m unittest discover -s tests -p test_mcu_save_disc.py -v
+python3 -B -m unittest discover -s tests -p test_cd_pacing_timer.py -v
+```
+
+The parent ignores OPEN and remounts a queued image while the card is
+still inserted. To reproduce those failures, point `SAROO_CDC_DRIVE_DIR`
+and `SAROO_MCU_SAVE_DIR` to its `Firm_MCU/Saturn` directory and use
+`-k open_retires` in the drive fixture and `-k observed_removal` in the
+disc/save fixture. Both corrected CD profiles pass 203 methods. Both
+disc/save profiles pass 14 methods. The adjacent CUE, timer, audio and
+menu-command checks also pass.
+
+The public port also reduces the existing CD timer's 10 µs to kernel-tick
+conversion exactly at the configured 100 Hz rate. This preserves every
+integer result while avoiding a 64-bit divide in the GNU build. The
+general conversion remains available for other rates. All 11 timer
+methods pass, including the largest positive delay, timeout/retry and
+tick wrap. The GNU App links 64,760 load bytes with 776 bytes of ITCM
+space, 50,768 bytes of DTCM data and BSS span, and 166 vectors.
+
+Card presence is polled. Fast swaps can escape observation, and
+physical media, timing and original MDK firmware remain unqualified.

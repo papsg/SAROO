@@ -7,6 +7,7 @@
 #define STAT_OPEN 6
 #define STAT_NODISC 7
 #define HIRQ_DCHG 0x20
+#define HIRQ_EFLS 0x200
 static int HIRQ;
 #include "track-layout.h"
 static FIL track_fp[100];
@@ -19,6 +20,8 @@ static struct {
     FIL subcode_fp;
 } cdb;
 static int current_index,category_current,total_disc=2,next_disc;
+static volatile int mounted_disc = -1;
+static volatile u8 disc_removed;
 static int disc_path[2]={1,7};
 static char path_str[]="\0DISC1\0DISC2";
 static char mdisc_str[16];
@@ -148,11 +151,26 @@ static int sdcard_identify(void)
 #include "sd-reset.inc"
 static int disk_reidentify(void) { return sdio_reset(); }
 int sd_card_insert(void) { return present; }
+static __attribute__((unused)) void publish_open_tray(void)
+{
+    assert(pause_irq_mask && !cdb.play_type);
+    if (cdb.status != STAT_OPEN) HIRQ = HIRQ_DCHG | HIRQ_EFLS;
+    cdb.status = STAT_OPEN;
+}
+#include "swap.inc"
 static void swap_step(void)
 {
-    int retv=0;
-#include "swap.inc"
-    (void)retv;
+    if (service_tray()) {
+        pause_active = 0;
+        pause_worker();
+    }
+}
+static void remove_card(void)
+{
+    present = 0;
+    swap_step();
+    assert(cdb.status == STAT_OPEN && disc_removed);
+    present = 1;
 }
 /* Decoder ownership is exercised by the separate actual-GIF fixture. */
 static void gif_decode_exit(void) {}
@@ -215,6 +233,7 @@ static void live_session(int state)
     PendingSave saved[2];memcpy(saved,pending_save,sizeof saved);
     int slot=ss_index,header=sm_index0,window=sm_index1;
     reset_counts();next_disc=1;cdb.status=STAT_OPEN;
+    remove_card();
     swap_step();
     fprintf(stderr,"swap state=%d save_reads=%u read_bytes=%u save_writes=%u write_bytes=%u\n",state,api_reads,read_bytes,api_writes,write_bytes);
     assert(cdb.status==STAT_PAUSE && HIRQ==HIRQ_DCHG);
@@ -237,6 +256,7 @@ static void swap_failure(int value)
         assert(f_lseek(&fp,128)==0 && f_truncate(&fp)==0 && f_close(&fp)==0);
     }
     u8 snapshot[sizeof test_shared];memcpy(snapshot,test_shared,sizeof snapshot);
+    remove_card();
     swap_step();
     assert(cdb.status==STAT_NODISC && next_disc==1);
     assert(HIRQ==HIRQ_DCHG && !memcmp(snapshot,test_shared,sizeof snapshot));
@@ -304,9 +324,30 @@ static void publication(int value)
 static void automatic_no_wait(void)
 {
     cdb.play_type=1;cdb.play_wait=1;pause_allow_ack=0;
-    next_disc=1;cdb.status=STAT_OPEN;swap_step();
+    next_disc=1;
+    present=0;
+    swap_step();
+    assert(!cdb.play_type && !cdb.play_wait && !cdb.pause_request && disc_removed);
+    assert(!identifies && !discoveries);
+    /* Reinsertion may occur while the old reader is acknowledging. */
+    present=1;
+    swap_step();
     assert(cdb.track_num==1 && cdb.status==STAT_PAUSE && ss_index==1);
     assert(!pause_waits && !pause_wakes && !api_reads && !api_writes);
+}
+static void tray_remount(int next)
+{
+    next_disc = next ? 1 : -1;
+    cdb.status = STAT_OPEN;
+    for (int tick = 0; tick < 20; ++tick) swap_step();
+    assert(cdb.status == STAT_OPEN && !identifies && !discoveries &&
+           "software OPEN reloaded the inserted card");
+
+    remove_card();
+    swap_step();
+    assert(identifies == 1 && discoveries == 1 && !disc_removed);
+    assert(cdb.status == STAT_PAUSE && cdb.track_num == 1 && mounted_disc == next);
+    assert(!api_reads && !api_writes && ss_index == 1);
 }
 static void reidentify_under_lock(int fail)
 {
@@ -314,6 +355,7 @@ static void reidentify_under_lock(int fail)
     next_disc=1;
     cdb.status=STAT_OPEN;
     identify_result=fail ? -17 : 0;
+    remove_card();
     swap_step();
     assert(!lock_depth && identifies==1 && ss_index==1);
     assert(cdb.status==(fail ? STAT_NODISC : STAT_PAUSE));
@@ -425,6 +467,7 @@ int main(int argc,char **argv)
     } else if(!strcmp(mode,"quiesce")) quiesce(value);
     else if(!strcmp(mode,"publication")) publication(value);
     else if(!strcmp(mode,"automatic-no-wait")) automatic_no_wait();
+    else if(!strcmp(mode,"tray-remount")) tray_remount(value);
     else if(!strcmp(mode,"reset-lock")) reidentify_under_lock(value);
     else if(!strcmp(mode,"stop")) {
         u8 snapshot[sizeof test_shared];memcpy(snapshot,test_shared,sizeof snapshot);

@@ -10,6 +10,7 @@
 FIL track_fp[100];
 SUBINDEX_TABLE index_table;
 int current_index;
+volatile int mounted_disc = -1;
 
 int sort_mode = 0;
 
@@ -489,6 +490,7 @@ static int close_tracks(int count)
 
 int unload_disc(void)
 {
+    mounted_disc = next_disc = -1;
     cdb.status = STAT_NODISC;
     set_status(cdb.status);
     int result = -close_tracks(cdb.track_num);
@@ -657,6 +659,12 @@ int load_disc(int index, int start_save)
 		}
 
         /* Automatic changes retain the running game's save session. */
+        mounted_disc = index;
+        if (disc_removed) {
+            cdb.status = STAT_PAUSE;
+            set_status(cdb.status);
+        }
+        disc_removed = 0;
         if (start_save) retv = load_savefile(gameid);
 	}
 

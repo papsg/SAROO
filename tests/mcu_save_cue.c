@@ -73,6 +73,9 @@ static void *cue_alloc(size_t size)
 static void cue_free(void *ptr) { if(ptr)frees++;free(ptr); }
 static int sprintk(char *out,const char *format,...)
 { va_list args;va_start(args,format);int n=vsprintf(out,format,args);va_end(args);return n; }
+static int next_disc;
+static volatile int mounted_disc = -1;
+static volatile u8 disc_removed;
 #include "token.inc"
 #include "toc.inc"
 #define f_open cue_open
@@ -85,7 +88,7 @@ static int sprintk(char *out,const char *format,...)
 #undef f_close
 #undef f_read
 /* Keep the actual loader/TOC/readers. Configuration and discovery are fixtures. */
-static int total_disc=1,disc_path[1]={1},category_num,category_current,next_disc;
+static int total_disc=1,disc_path[1]={1},category_num,category_current;
 static char path_str[]="\0D",mdisc_str[16];
 static int sector_delay_force=-1,play_delay_force=-1,pend_delay_force=-1;
 static int play_delay,pend_delay,selected_format=1;

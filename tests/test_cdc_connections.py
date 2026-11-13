@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 from cdc_reply_source import command_reply_source
-from test_cdc_copy import filter_reset_source
+from test_cdc_copy import filter_reset_source, tray_wait_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -40,6 +40,7 @@ class CDConnectionTests(unittest.TestCase):
         code += filter_reset_source(raw)
         if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         code+=function(main,b'int pause_drive(')
+        code += tray_wait_source(raw)
         code+=b''.join(function(raw,sig) for sig in (b'int set_cdev_connect(',b'int set_filter_connection(',b'int set_filter_mode(',b'int reset_filter(',b'int init_cdblock(',b'int get_copy_error('))
         table = raw.rfind(b'\n', 0, raw.index(b'sector_len_table[4]')) + 1
         code += raw[table:raw.index(b'\n', table)] + b'\n'

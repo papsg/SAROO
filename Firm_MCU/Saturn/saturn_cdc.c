@@ -584,6 +584,14 @@ static __attribute__((noinline,noclone)) void reset_filter_conditions(FILTER *fi
     filter->cival = 0;
 }
 
+/* An observed removal keeps the drive closed to new requests until remount. */
+static __attribute__((noinline)) int drive_tray_wait(void)
+{
+    if (!disc_removed && (cdb.status != STAT_OPEN || sd_card_insert())) return 0;
+    set_status(STAT_WAIT | STAT_OPEN);
+    return 1;
+}
+
 // 0x04 [SR]
 //   iflag[0]: 复位CDBLOCK软件(其他位忽略)
 //   iflag[1]: 解码subcode_rw
@@ -599,6 +607,7 @@ int init_cdblock(void)
 	int i;
 
 	int iflag = cdb.cr1&0xff;
+    if (!(iflag & 1) && drive_tray_wait()) return 0;
 	int stnby = cdb.cr2;
 	int ecc   = cdb.cr4>>8;
 	int retry = cdb.cr4&0xff;
@@ -608,6 +617,17 @@ int init_cdblock(void)
     /* The reader still owns its policy and buffers until it acknowledges.
      * Keep its request pending if the bounded handoff cannot complete. */
     if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    if (cdb.status == STAT_OPEN && !(iflag & 1)) {
+        TRACK_INFO *first = cdb.track_num ? cdb.tracks : NULL;
+        cdb.status = STAT_NODISC;
+        if (first) {
+            cdb.fad = first->fad_start;
+            cdb.track = cdb.index = 1;
+            cdb.ctrladdr = TRACK_CTRL(first);
+            cdb.options = 0;
+            cdb.status = STAT_PAUSE;
+        }
+    }
     if (iflag & 0x80) {
         set_report(cdb.status);
         return 0;
@@ -670,14 +690,32 @@ int init_cdblock(void)
 }
 
 
+static __attribute__((noinline)) void clear_drive_position(void)
+{
+    cdb.fad = 0xffffffffu;
+    cdb.track = cdb.index = cdb.ctrladdr = cdb.options = 0xff;
+    cdb.play_track = NULL;
+}
+
+/* Call after the reader has stopped, before publishing OPEN. */
+void publish_open_tray(void)
+{
+    if (cdb.status == STAT_OPEN) return;
+    invalidate_directory();
+    cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;
+    cdb.subrw_wp = cdb.subrw_rp;
+    clear_drive_position();
+    HIRQ = HIRQ_DCHG | HIRQ_EFLS;
+    cdb.status = STAT_OPEN;
+}
+
 // 0x05 [S-]
 int open_tray(void)
 {
-	SSLOG(_INFO, "open_tray\n");
-
-	command_reply((cdb.status<<8), 0x0000, reply_pair(0x0000, 0x0000));
-
-	return 0;
+    if (pause_disc()) { set_status(STAT_WAIT | cdb.status); return 0; }
+    command_reply(STAT_BUSY << 8, 0, 0);
+    publish_open_tray();
+    return 0;
 }
 
 
@@ -811,6 +849,7 @@ static unsigned retained_position_type(u32 position, unsigned previous)
 
 int play_cd(void)
 {
+    if (drive_tray_wait()) return 0;
     u32 start_pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     u32 end_pos = ((u32)(cdb.cr3&255)<<16) | cdb.cr4;
     unsigned mode = cdb.cr3>>8;
@@ -849,6 +888,7 @@ int play_cd(void)
         set_drive_position(pickup);
         cdb.options = 0x08;
         cdb.play_wait = 0;
+        if (cdb.status == STAT_OPEN) cdb.status = STAT_BUSY;
         cdb.play_type = PLAYTYPE_SECTOR;
         disk_task_wakeup();
     }
@@ -859,6 +899,7 @@ int play_cd(void)
 // 0x11 [SR]
 int seek_cd(void)
 {
+    if (drive_tray_wait()) return 0;
     u32 pos = ((u32)(cdb.cr1&255)<<16) | cdb.cr2;
     SSLOG(_CDRV, "\nseek_cd: pos=%08x\n", pos);
     int explicit_seek = pos && pos != 0xffffff;
@@ -873,10 +914,8 @@ int seek_cd(void)
     if (pos == 0xffffff) SSLOG(_CDRV, "       : PAUSE cmd\n");
     if (!pos) {
         cdb.status = STAT_STANDBY;
-        cdb.fad = 0xffffffff;
         /* An invalid report must not overwrite the retained repeat count. */
-        cdb.track = cdb.index = cdb.ctrladdr = cdb.options = 0xff;
-        cdb.play_track = NULL;
+        clear_drive_position();
     } else if (home_pause) {
         set_drive_position(150);
         cdb.options = 0;
@@ -1872,6 +1911,10 @@ static int file_info_index(u32 fid)
 // 0x70 [SR]
 int change_dir(void)
 {
+    if (cdb.status == STAT_OPEN || disc_removed) {
+        set_status(STAT_WAIT | STAT_OPEN);
+        return 0;
+    }
     int sel = cdb.cr3 >> 8;
     u32 fid = ((u32)(cdb.cr3 & 255)<<16) | cdb.cr4;
     if (sel >= MAX_SELECTORS) { set_status(STAT_REJECT); return 0; }

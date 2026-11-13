@@ -165,9 +165,15 @@ class MCUSaveTest(unittest.TestCase):
             for name, code in (('pause-ack.inc', ack), ('pause-worker.inc', restart), ('pause-active-worker.inc', active)):
                 code = re.sub(rb'(cdb\.play_type\s*=\s*0;)', rb'\1 publication_checkpoint();', code)
                 (cls.target / name).write_bytes(code)
-            begin = main.index(b'\t\t\tif(next_disc>=0)')
-            end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
-            (cls.target / 'swap.inc').write_bytes(main[begin:end])
+            signature = b'static int service_tray(void)'
+            if signature in main:
+                begin = main.index(signature)
+                code = main[begin:main.index(b'\n}', begin)+2]
+            else:
+                begin = main.index(b'\t\t\tif(next_disc>=0)')
+                end = main.index(b'\n\t\t\tHIRQ = HIRQ_SCDQ;', begin)
+                code = b'static int service_tray(void) { int retv = 0;\n' + main[begin:end] + b'\nreturn 0;\n}'
+            (cls.target / 'swap.inc').write_bytes(code + b'\n')
             (cls.target / 'menu-load.inc').write_bytes(load_case(main))
             data = (source.parent / 'Main/sdio_h7.c').read_bytes(); inputs['Main/sdio_h7.c'] = data
             clock = data.index(b'#define SDCLK_LOW ')

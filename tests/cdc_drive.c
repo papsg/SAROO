@@ -48,6 +48,7 @@ static void wait_pause_ok(void)
 }
 static unsigned subcode_starts;
 static void trans_start(void) { subcode_starts++; }
+static u16 tray_events;
 #include "drive.inc"
 static u16 ss_control;
 static u16 *const drive_hirq = &hirq;
@@ -608,8 +609,12 @@ static void init_no_media(void)
     for(unsigned state=0;state<2;state++)for(unsigned flags=0;flags<256;flags++) {
         init_request(flags,0,0);cdb.tracks=NULL;cdb.track_num=0;cdb.play_track=NULL;
         cdb.status=states[state];int reset=!(flags&0x80) && (flags&1);
+        unsigned settled = states[state];
+#ifdef HAS_VIRTUAL_TRAY
+        if (settled == STAT_OPEN && !(flags & 1)) settled = STAT_NODISC;
+#endif
         assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
-        assert(cdb.status==(int)states[state] && reply[0]==((states[state]<<8)|0x84));
+        assert(cdb.status==(int)settled && reply[0]==((settled<<8)|0x84));
         assert(reply[1]==0x4101 && reply[2]==0x100 && reply[3]==180);
         assert(!waits && !wakeups && !cdb.play_type && !cdb.pause_request);
         assert(cdb.iflag==(flags&0x80?0x14:reset?0:flags));
@@ -1262,6 +1267,87 @@ static void retained_acknowledgment(void)
     assert(pause_signals == 2 && !irq_depth);
 }
 
+static void tray_open(void)
+{
+    ready();
+    cdb.play_type = PLAYTYPE_SECTOR;
+    cdb.status = STAT_PLAY;
+    cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 20;
+    cdb.rdir_state = 3;
+    cdb.cdir_pfnum = 7;
+    cdb.subrw_wp = 5;
+    cdb.subrw_rp = 2;
+    PARTITION partition = cdb.part[0];
+    FILTER filter = cdb.filter[0];
+    cdb.cr1 = 0x0500;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_OPEN && "tray command never entered OPEN");
+    assert((hirq & HIRQ_CMOK) && (tray_events & (HIRQ_DCHG | HIRQ_EFLS)) ==
+           (HIRQ_DCHG | HIRQ_EFLS));
+    assert(!cdb.play_type && !cdb.play_track && !cdb.pause_request && !buf_fad_end);
+    assert(reply[0] == STAT_BUSY << 8 && !reply[1] && !reply[2] && !reply[3]);
+    assert(!cdb.root_lba && !cdb.root_size && !cdb.cdir_lba && !cdb.cdir_size);
+    assert(!cdb.rdir_state && !cdb.cdir_pfnum && cdb.subrw_wp == cdb.subrw_rp);
+    assert(cdb.play_fad_start == 150 && cdb.play_fad_end == 700);
+    assert(!memcmp(&partition, &cdb.part[0], sizeof partition));
+    assert(!memcmp(&filter, &cdb.filter[0], sizeof filter));
+
+    hirq = tray_events = 0;
+    cdc_cmd_process();
+    assert(cdb.status == STAT_OPEN && !tray_events);
+    cdb.cr1 = 0;
+    cdc_cmd_process();
+    assert(reply[0] == (STAT_OPEN << 8 | 255));
+    assert(reply[1] == 0xffff && reply[2] == 0xffff && reply[3] == 0xffff);
+}
+
+static void tray_timeout(void)
+{
+    ready();
+    cdb.play_type = PLAYTYPE_FILE;
+    cdb.status = STAT_PLAY;
+    cdb.rdir_state = 3;
+    cdb.cdir_pfnum = 7;
+    cdb.root_lba = 32;
+    cdb.cr1 = 0x0500;
+    acknowledge_after = -1;
+    cdc_cmd_process();
+    assert(reply[0] >> 8 == (STAT_WAIT | STAT_PLAY));
+    assert(waits == 500 && cdb.pause_request && cdb.play_type == PLAYTYPE_FILE);
+    assert(cdb.rdir_state == 3 && cdb.cdir_pfnum == 7 && cdb.root_lba == 32);
+    assert(cdb.fad == 180 && buf_fad_start == 123 && buf_fad_end == 456);
+    assert(!(hirq & (HIRQ_DCHG | HIRQ_EFLS)));
+}
+
+static void tray_close(void)
+{
+    for (int command = 0; command < 3; ++command) {
+        ready();
+        cdb.status = STAT_PLAY;
+        cdb.cr1 = 0x0500;
+        cdc_cmd_process();
+        cdb.cr1 = 0;
+        cdb.cr2 = command == 2 ? 0xffff : 0;
+        if (command == 2) cdb.cr1 = 0xff;
+        cdb.cr3 = cdb.cr4 = 0;
+        card_inserted = 0;
+        int (*handler)(void) = command == 0 ? init_cdblock : command == 1 ? play_cd : seek_cd;
+        assert(!handler() && cdb.status == STAT_OPEN && !cdb.play_type);
+        assert(reply[0] >> 8 == (STAT_WAIT | STAT_OPEN));
+        card_inserted = disc_removed = 1;
+        assert(!handler() && cdb.status == STAT_OPEN && !cdb.play_type);
+        disc_removed = 0;
+        assert(!handler() && cdb.fad == 150 && cdb.track == 1 && cdb.index == 1);
+        assert(cdb.status == (command == 1 ? STAT_BUSY : STAT_PAUSE));
+    }
+    ready();
+    cdb.status = STAT_OPEN;
+    card_inserted = 0;
+    cdb.cr1 = 0x0401;
+    assert(init_cdblock() == (HIRQ_EFLS | HIRQ_ECPY | HIRQ_ESEL | HIRQ_EHST));
+    assert(cdb.status == STAT_OPEN);
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1299,6 +1385,9 @@ int main(int argc,char **argv)
     case 44:original_drive_commands();break;
     case 45:original_drive_mask();break;
     case 46:retained_acknowledgment();break;
+    case 47:tray_open();break;
+    case 48:tray_timeout();break;
+    case 49:tray_close();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

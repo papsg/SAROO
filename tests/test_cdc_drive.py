@@ -27,10 +27,19 @@ class CDDriveTests(unittest.TestCase):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
         code=b''.join(function(main,sig) for sig in (b'TRACK_INFO *get_track_info(',b'u32 track_to_fad(',b'int fad_to_track('))
+        if b'void publish_open_tray(' in raw: code += b'#define HAS_VIRTUAL_TRAY 1\n'
         if b'u8 track_subindex(' in main:code=function(main,b'u8 track_subindex(')+code
         if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
         code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
+        for sig in (b'static __attribute__((noinline)) void clear_drive_position(',
+                    b'void publish_open_tray(', b'int open_tray('):
+            if sig in raw:
+                body = function(raw, sig)
+                if sig == b'void publish_open_tray(':
+                    body = body.replace(b'HIRQ = HIRQ_DCHG | HIRQ_EFLS;',
+                                        b'HIRQ = tray_events = HIRQ_DCHG | HIRQ_EFLS;')
+                code += body
         for sig in (b'static u32 drive_position(',b'static void set_drive_position(',b'static unsigned retained_position_type('):
             if sig in raw:code+=function(raw,sig)
         code+=function(raw,b'int init_cdblock(')
@@ -45,9 +54,11 @@ class CDDriveTests(unittest.TestCase):
         code += f'#define HAS_FAILED_READ_RETIREMENT {int(retired)}\n'.encode()
         (cls.target/'drive.inc').write_bytes(code)
         (cls.target/'disk-task.inc').write_bytes(function(main,b'void disk_task('))
+        tray = b'static int service_tray('
+        (cls.target/'service-tray.inc').write_bytes(function(main, tray) if tray in main else b'')
         dispatch = function(raw, b'void cdc_cmd_process(')
         cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
-                         for start in (b'case 0x00:', b'case 0x11:', b'case 0x75:'))
+                         for start in (b'case 0x00:', b'case 0x05:', b'case 0x11:', b'case 0x75:'))
         start = dispatch.index(b'switch(cmd){') + len(b'switch(cmd){')
         end = dispatch.index(b'if(cdb.block_free!=MAX_BLOCKS)', start)
         code = b''.join(function(raw, name) for name in (b'int get_cd_status(', b'int abort_file(', b'char *cmd_str('))
@@ -197,6 +208,9 @@ class CDDriveTests(unittest.TestCase):
     def test_file_range_media_retry_uses_current_disc(self):self.run_case(42)
     def test_file_range_work_bounds_and_background_play_controls(self):self.run_case(43)
     def test_retained_acknowledgment_cannot_clear_a_replacement_request(self):self.run_case(46)
+    def test_open_retires_drive_and_invalidates_media_report(self): self.run_case(47)
+    def test_open_timeout_preserves_reader_and_host_state(self): self.run_case(48)
+    def test_open_commands_wait_for_media_and_close_on_same_card(self): self.run_case(49)
 
 
 if __name__=='__main__':unittest.main()

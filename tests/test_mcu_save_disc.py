@@ -53,6 +53,11 @@ class DiscSaveSessionTests(MCUSaveTest):
     def test_automatic_change_does_not_wait_on_its_own_worker(self):
         self.invoke('automatic-no-wait')
 
+    def test_open_requires_an_observed_removal_and_remounts_requested_image(self):
+        for next_disc in (0, 1):
+            with self.subTest(next_disc=next_disc):
+                self.invoke('tray-remount', next_disc)
+
     def test_sd_reset_propagates_identification_results(self):
         for result in (0,-1,1,2,19):
             with self.subTest(result=result): self.invoke('reset',result)

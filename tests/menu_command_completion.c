@@ -53,6 +53,7 @@ static int list_disc(int category, int show)
 }
 static void gif_decode_exit(void) { event(20); }
 static void gif_decode_init(void) { event(21); }
+static volatile u8 disc_removed __attribute__((unused));
 static int pause_disc(void) { event(22); return pause_result; }
 static int unload_disc(void) { event(23); return operation_result; }
 static int load_disc(int index, int start_save)

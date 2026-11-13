@@ -89,6 +89,9 @@ static __attribute__((unused)) void wait_pause_ok(void) { assert(0); }
 static __attribute__((unused)) int pause_drive(void)
 { assert(!cdb.play_type); return 0; }
 static void set_report(u8 status) { reply[0]=(u16)status<<8; }
+static volatile u8 disc_removed;
+static int card_inserted = 1;
+static __attribute__((unused)) int sd_card_insert(void) { return card_inserted; }
 static void *counted_memcpy(void *to,const void *from,size_t n)
 {
     assert(!irq_depth); copied_bytes+=n; return memcpy(to,from,n);
@@ -101,6 +104,8 @@ static void *counted_memcpy(void *to,const void *from,size_t n)
 /* Independent initial lists: production append/unlink do not seed them. */
 static void setup(unsigned source_count,unsigned free_count)
 {
+    disc_removed = 0;
+    card_inserted = 1;
 #ifdef CDC_OWNERSHIP_HOOKS
     irq_restore_hook=boundary_log_hook=NULL;fixture_log_mask=fixture_log_used=0;fixture_log_text[0]=0;
 #endif
