@@ -2552,3 +2552,9 @@ Six ordered checkpoints after [`5b5409b`](https://github.com/papsg/SAROO/commit/
 The final archived source matches all 691 tracked files. `make -j6 -C tests check` passed 934 of 935 Python methods and all 18 Rust tests. The Windows replacement fixture was skipped. The fresh SH-2 menu and ELF reproduce the verified SCU checkpoint byte for byte. The linked ordinary WRAM tail and all 48 relocated ROM cases pass. The final Quartus build matches all 21 FPGA input hashes.
 
 All six deltas passed secret scanning and public identity review. Private HEAD, branch, refs and stash, status and tracked diff match the starting fingerprints. No Saturn operation was performed.
+
+## Saturn bus reset, menu DMA and CD drive behavior
+
+Six ordered checkpoints after [](https://github.com/papsg/SAROO/commit/4dc4b665338e448271706b29b1e4d65611314927). Private source IDs are attribution. The public notes record source, verification and hardware limits.
+
+- [x]  (FPGA-ABUS-002) — [public commit](https://github.com/papsg/SAROO/commit/22d3c835e6de54a71a056d1f1cdd1be7aea950e1), [set Saturn data direction before chip select](https://github.com/papsg/SAROO/blob/22d3c835e6de54a71a056d1f1cdd1be7aea950e1/doc/FPGA-MEMORY.md#set-saturn-data-direction-before-chip-select). The parent fails idle direction. The port passes 13 direction and isolation cases and six adjacent FPGA methods. All five Quartus stages and 39 reported timing checks pass. RD-to-DIR is 6.390 ns, with 7.045 ns worst across the three inputs against 12 ns. Board-level switching and game behavior remain unqualified.
