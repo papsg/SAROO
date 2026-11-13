@@ -30,9 +30,13 @@ static osStatus_t wait_status;
 static unsigned waits, drains;
 
 /* Adapted from paps-g 96c9dd85. Drive the actual identify and command paths. */
-static u8 sd_cid[16], sd_csd[16];
+static u8 sd_cid[16];
 static volatile u32 sd_rca;
-static int is_sdhc, bsize, csize, cblock;
+static int is_sdhc;
+#ifdef HAS_CSD_CAPACITY_PRINT
+static u8 sd_csd[16];
+static int bsize, csize, cblock;
+#endif
 #ifdef TEST_SD_SESSION
 static u8 sd_known;
 #define __DMB() ((void)0)
@@ -284,7 +288,10 @@ static void check_identification(const char *mode, unsigned shape, int value)
     u32 elapsed = identify.last_tick - identify.first_tick;
     if (expect_ready) {
         assert(result == 0 && identify.post_ready == 8);
-        assert(sd_rca == 0x1234 && is_sdhc == !identify.legacy && bsize == 512);
+        assert(sd_rca == 0x1234 && is_sdhc == !identify.legacy);
+#ifdef HAS_CSD_CAPACITY_PRINT
+        assert(bsize == 512);
+#endif
         assert((SDIO->CLKCR & 0x3ff) == SDCLK_HIGH && (SDIO->CLKCR & 0xc000) == 0x4000);
         if (!identify.command_ticks) {
             assert(identify.requests == identify.ready_after + 1 && elapsed == identify.ready_after);

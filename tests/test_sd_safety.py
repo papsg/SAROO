@@ -39,6 +39,8 @@ class SDSafetyTests(unittest.TestCase):
         layout = b'#define TEST_SD_RECOVERY\n' if recover else b''
         if b'static u8 sd_known;' in data:
             layout += b'#define TEST_SD_SESSION\n'
+        if b'sd_csd[16]' in data:
+            layout += b'#define HAS_CSD_CAPACITY_PRINT\n'
         inputs = {
             'sdio_h7.c': data,
             'command-defines.inc': layout + data[definitions:last_define] + b'\n',

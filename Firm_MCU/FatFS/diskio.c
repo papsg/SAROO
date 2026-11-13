@@ -19,6 +19,7 @@
 
 int sd_read_sector(u32 block, int count, u8 *buf);
 int sd_write_sector(u32 block, int count, u8 *buf);
+int sd_sync(void);
 
 static osSemaphoreId_t sem_diskio;
 
@@ -102,6 +103,9 @@ static __attribute__((noinline)) DRESULT disk_transfer(unsigned operation, BYTE 
                          "disk_read: pdrv=%d sector=%08x count=%d\n",
                (int)(operation & 0xffu), sector, count);
         printk("    retv=%08x\n", result);
+#if FF_FS_READONLY == 0
+        if (writing && retry > 1 && sd_sync()) break;
+#endif
     } while (--retry);
     osSemaphoreRelease(sem_diskio);
     return result ? RES_ERROR : RES_OK;
@@ -134,6 +138,12 @@ DRESULT disk_write (BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 
 DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void *buff)
 {
+	if (cmd == CTRL_SYNC) {
+		if (osSemaphoreAcquire(sem_diskio, 100) != osOK) return RES_ERROR;
+		int result = sd_sync();
+		osSemaphoreRelease(sem_diskio);
+		return result ? RES_ERROR : RES_OK;
+	}
 	if(cmd==GET_SECTOR_SIZE)
 		*(int*)buff = 512;
 

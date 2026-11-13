@@ -29,6 +29,7 @@ struct { Register AHB3RSTR; } rcc;
 static u32 cmd_resp[4];
 static u32 sd_rca;
 static int is_sdhc;
+static u8 sd_pending_write;
 static osSemaphoreId_t cmd_sem = (void *)1;
 static void SDIO_IRQHandler(void);
 static unsigned reads, tokens, releases, drains, waits, delays, resets, barriers, clock_reads;
@@ -48,6 +49,8 @@ static void NVIC_EnableIRQ(int irq) { assert(irq == SDIO_IRQn); irq_enables++; }
 static osStatus_t wait_failure;
 static std::vector<unsigned> commands;
 static std::vector<u32> arguments;
+static std::vector<u32> card_status;
+static unsigned status_reads;
 struct DataCommand { u32 index, address, bytes, dma; };
 static std::vector<DataCommand> data_commands;
 static unsigned fail_data_chunk;
@@ -155,7 +158,13 @@ static void advance(void)
                               SDMMC_STA_DATAEND :
                               (SDIO->CMD.value & 0x300) ? SDMMC_STA_CMDREND : SDMMC_STA_CMDSENT;
             SDIO->CMD.value &= ~SDMMC_CMD_CPSMEN;
-            SDIO->RESP1 = current == 8 || current == 41 ? 0x11223344 + current : 0x920;
+            if (current == 13 && !card_status.empty()) {
+                assert(SDIO->ARG.value == sd_rca << 16 && !SDIO->IDMACTRL.value);
+                size_t position = status_reads++;
+                SDIO->RESP1 = card_status[position < card_status.size() ? position : card_status.size()-1];
+            } else {
+                SDIO->RESP1 = current == 8 || current == 41 ? 0x11223344 + current : 0x920;
+            }
             SDIO->RESP2 = 0x55667788; SDIO->RESP3 = 0x99aabbcc; SDIO->RESP4 = 0xddeeff00;
             awaiting = false;
         }
@@ -250,6 +259,7 @@ static void setup(void)
                        &SDIO->DTIMER, &SDIO->DLEN, &SDIO->IDMABASE0, &RCC->AHB3RSTR};
     for (unsigned i = 0; i < sizeof(regs)/sizeof(regs[0]); i++) regs[i]->id = i;
     sd_rca = 0x1234; is_sdhc = 1; cmd_sem = (void *)1;
+    sd_pending_write = 0;
     reads = tokens = releases = drains = waits = delays = resets = barriers = clock_reads = mmio_writes = 0;
     tick = issued = fault_status = current = fault_uses = 0;
     fault_command = 99; stop_before_reset = stop_after_reset = 0;
@@ -258,6 +268,7 @@ static void setup(void)
     permanent_cpsm = healthy_busy = pending_start = fail_semaphore_creation = false;
     reset_hold = identified = irq_enables = 0; identify_result = 0; gpio.IDR = 0;
     commands.clear(); arguments.clear();
+    card_status.clear(); status_reads = 0;
     data_commands.clear(); fail_data_chunk = 0;
     SDIO->CLKCR.value = selected_clock; SDIO->POWER.value = 3; RCC->AHB3RSTR.value = RCC_AHB3RSTR_MDMARST;
     for (unsigned i = 0; i < 4; i++) cmd_resp[i] = 0xa0b0c000 + i;
@@ -278,12 +289,10 @@ static void data_fault(u32 flags, osStatus_t wait = osOK)
 /* Adapted from paps-g bf429abf. Exercise the real command setup and the
  * public direct/bounce admissions with synthetic DMA addresses. */
 enum SpanPath { Blocks, Axi, Cartridge, UnalignedAxi, UnalignedCartridge, Bounce };
-static int span_io(SpanPath path, bool write, bool high, u32 first, int count)
+static int span_operation(SpanPath path, bool write, u32 first, int count)
 {
     const u32 addresses[] = {0x24002000, 0x24002000, 0x61002000,
                             0x24002001, 0x61002001, 0x20002000};
-    setup();
-    is_sdhc = high;
     span_address = addresses[path];
     sdbuf = span_bounce;
     std::memset(span_data, 0xa5, sizeof span_data);
@@ -291,6 +300,13 @@ static int span_io(SpanPath path, bool write, bool high, u32 first, int count)
     if (path == Blocks)
         return write ? sd_write_blocks(first,count,span_data) : sd_read_blocks(first,count,span_data);
     return write ? sd_write_sector(first,count,span_data) : sd_read_sector(first,count,span_data);
+}
+
+static int span_io(SpanPath path, bool write, bool high, u32 first, int count)
+{
+    setup();
+    is_sdhc = high;
+    return span_operation(path, write, first, count);
 }
 
 static void reject_span(SpanPath path, bool write, bool high, u32 first, int count)
@@ -576,6 +592,43 @@ int main(int argc, char **argv)
             assert(commands == (std::vector<unsigned>{17,12,12}));
             assert(resets == (persistent ? 2u : 1u) && bool(sd_rca) != persistent);
         }
+    } else if (which == 31) {
+        for (auto path : {Axi, Bounce, Blocks}) {
+            setup();
+            assert(sd_read_blocks(42,1,buffer) == 0); /* Clean read needs no CMD13. */
+            assert(span_operation(path, true, 42, 1) == 0);
+            card_status = {0x0c00, 0x0f00, 0x0900};
+            assert(span_operation(path, false, 42, 1) == 0); clean();
+            assert(commands == (std::vector<unsigned>{17,24,13,13,13,17}) &&
+                   "read overtook pending card programming");
+            assert(status_reads == 3 && delays == 2 && !sd_pending_write);
+            assert(span_operation(path, false, 42, 1) == 0);
+            assert(commands.back() == 17 && status_reads == 3);
+        }
+#ifdef HAS_SD_WRITE_SYNC
+    } else if (which == 32) {
+        for (unsigned failure = 0; failure < 4; ++failure) {
+            setup();
+            assert(sd_write_sector(42, 1, buffer) == 0 && sd_pending_write);
+            tick = UINT32_MAX - 8;
+            if (failure == 0) card_status = {0x0e00}; /* Persistent programming. */
+            if (failure == 1) card_status = {0x0900 | (1u << 19)}; /* R1 ERROR. */
+            if (failure == 2) { card_status = {0x0e00}; bad_delay = true; }
+            if (failure == 3) card_status = {0x0700}; /* Unexpected standby. */
+            assert(sd_read_sector(42, 1, buffer) == -1); clean();
+            assert(sd_pending_write && commands.back() == 13 && data_commands.size() == 1);
+            assert(status_reads && status_reads <= 5 * OS_TICK_FREQ + 1);
+            if (failure == 0) assert((u32)(tick - (UINT32_MAX - 8)) >= 5 * OS_TICK_FREQ);
+            bad_delay = false;
+            card_status = {0x0900};
+            assert(sd_sync() == 0 && !sd_pending_write); clean();
+            unsigned previous = status_reads;
+            assert(sd_sync() == 0 && status_reads == previous);
+        }
+        setup();
+        assert(sd_write_sector(42, 1, buffer) == 0 && sd_pending_write);
+        assert(sdio_reset() == 0 && !sd_pending_write);
+#endif
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);
 }

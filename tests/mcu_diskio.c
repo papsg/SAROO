@@ -12,6 +12,8 @@
 static unsigned creates, acquires, releases, transfers, driver_failures;
 static int fail_create, held;
 static int reset_result, overlap_reset;
+static int sync_result;
+static unsigned syncs;
 static int card_ready, ready_on_acquire;
 static unsigned resets;
 static int expected_write;
@@ -68,6 +70,13 @@ int printk(const char *format, ...)
 }
 
 int sdio_ready(void) { return card_ready; }
+
+int sd_sync(void)
+{
+    assert(held);
+    ++syncs;
+    return sync_result;
+}
 
 int sdio_reset(void)
 {
@@ -217,6 +226,19 @@ int main(int argc, char **argv)
         assert(run_transfer(0,value)==RES_OK);
         assert(acquires==2 && releases==1 && transfers==1 && !held && !resets);
         assert(disk_reidentify()==0 && resets==1 && releases==2 && !held);
+    } else if (!strcmp(mode, "sync")) {
+        if (value != 0) assert(disk_initialize(0) == 0);
+        if (value == 2) acquire_result = osErrorTimeout;
+        if (value == 3) sync_result = -1;
+        assert(disk_ioctl(0, CTRL_SYNC, NULL) == (value == 1 ? RES_OK : RES_ERROR));
+        assert(acquires == 1 && syncs == (value == 1 || value == 3));
+        assert(releases == syncs && !held && !transfers);
+    } else if (!strcmp(mode, "failed-write-sync")) {
+        assert(disk_initialize(0) == 0);
+        driver_failures = 1;
+        sync_result = -1;
+        assert(run_transfer(0, 1) == RES_ERROR);
+        assert(transfers == 1 && syncs == 1 && acquires == 1 && releases == 1 && !held);
     } else if (!strcmp(mode, "all-drives")) {
         assert(disk_initialize(0) == 0);
         for (unsigned drive = 0; drive < 256; ++drive)

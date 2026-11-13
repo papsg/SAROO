@@ -101,5 +101,13 @@ class MCUDiskIOTests(unittest.TestCase):
             with self.subTest(case=case):
                 self.invoke('resume', case)
 
+    def test_filesystem_sync_requires_disk_ownership_and_propagates_errors(self):
+        for case in range(4):
+            with self.subTest(case=case):
+                self.invoke('sync', case)
+
+    def test_failed_write_cannot_retry_while_programming_status_fails(self):
+        self.invoke('failed-write-sync')
+
 
 if __name__ == '__main__': unittest.main()

@@ -212,3 +212,37 @@ retry after STOP failure. Both corrected 40-method profiles pass.
 The GNU App links 65,448 bytes, with 88 bytes of ITCM space and
 unchanged 50,768-byte DTCM data and BSS span. Physical card recovery,
 save durability and the original MDK build remain unqualified.
+
+## Complete pending SD programming before sync and reads
+
+MCU-SD-008, adapted from paps-g `3b44556a` and its production-path
+follow-up `5c15670e`. The shared block submission marks a write
+pending before the data command. FatFs `CTRL_SYNC` holds the disk
+semaphore and polls CMD13 until the card reports transfer state and
+ready for data. Reads take the same path when a write is pending.
+A failed write can retry only after a successful check. Status
+errors, unexpected states or an expired five-second polling budget
+return failure and keep the pending marker for retry. A command
+already in progress can finish at the boundary. Card reidentification
+starts a new command session and clears the marker.
+
+[SD Physical Layer Simplified Specification 3.01, §§4.3.4 and 4.6.2.2, printed pp. 30–31 and 56–57](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=43),
+[STM32 RM0433 Rev 8, §55.10.11, printed pp. 2445–2447][rm0433]
+and the [FatFs `CTRL_SYNC` contract](https://elm-chan.org/fsw/ff/doc/dioctl.html)
+distinguish end of data transfer from completion at the medium.
+
+Run `make -C tests check-mcu-diskio check-fatfs` and repeat the
+disk tests with `SAROO_SD_PROFILE=release SAROO_FIRMWARE_SAVE_PROFILE=release`.
+The parent launches a read without waiting and reports sync success
+without acquiring the disk semaphore. The corrected fixture covers
+direct and bounced writes, receive and programming states, timeout
+across tick wrap, a later successful sync and failed-write retry.
+Both storage profiles pass 44 methods.
+
+The first port exceeded the 64 KiB ITCM limit by 144 bytes. The
+public port drops verbose startup response and capacity prints and
+the CSD arithmetic used only by those prints. The command sequence,
+CID checks, addressing and error logs are preserved. The resulting
+GNU App uses 65,036 load bytes, with 500 bytes free and 50,736 bytes
+of DTCM data and BSS span. Card programming is tested in a model.
+Physical media timing, power-loss durability and MDK remain open.

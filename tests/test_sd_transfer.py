@@ -23,6 +23,8 @@ class SDTransferTests(unittest.TestCase):
         handler = raw.index(b'void SDIO_IRQHandler(')
         identify = raw.index(b'int sdcard_identify(')
         defines = raw[raw.index(b'#define SDCLK_LOW '):raw.index(b'static u32 cmd_resp')]
+        if b'int sd_sync(void)' in raw:
+            defines += b'#define HAS_SD_WRITE_SYNC 1\n'
         # Preserve the MCU's 32-bit DMA addresses when compiling on a wider host.
         transfers = raw[handler:identify].replace(b'(u32)buf', b'model_sd_address(buf)')
         inputs = {
@@ -106,6 +108,12 @@ class SDTransferTests(unittest.TestCase):
 
     def test_recovery_stop_requires_valid_controller_completion(self):
         self.invoke(30)
+
+    def test_production_reads_wait_for_pending_programming(self):
+        self.invoke(31)
+
+    def test_sync_refuses_errors_or_unbounded_waits_and_allows_retry(self):
+        self.invoke(32)
 
 
 if __name__ == '__main__':

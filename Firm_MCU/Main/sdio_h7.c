@@ -75,14 +75,10 @@
 
 static u32 cmd_resp[4];
 static u8  sd_cid[16];
-static u8  sd_csd[16];
 static int is_sdhc;
 static volatile u32 sd_rca;
 static u8 sd_known;
-
-static int bsize;
-static int csize;
-static int cblock;
+static u8 sd_pending_write;
 
 static osSemaphoreId_t cmd_sem;
 
@@ -280,14 +276,36 @@ static int sd_range_valid(u32 start, int count)
     return last >= start && (is_sdhc || last < 0x800000u);
 }
 
+/* DATAEND ends the transfer. CMD13 confirms the card has finished programming. */
+int sd_sync(void)
+{
+    if (!sd_rca) return -1;
+    if (!sd_pending_write) return 0;
+
+    u32 start = osKernelGetTickCount();
+    do {
+        if (sd_cmd(CMD_13, sd_rca << 16)) return -1;
+        u32 status = cmd_resp[0] & 0x1f00u;
+        if (status == 0x0900u) {
+            sd_pending_write = 0;
+            return 0;
+        }
+        unsigned state = status >> 9;
+        if (state != 6 && state != 7) return -1;
+    } while (osKernelGetTickCount() - start < 5u * OS_TICK_FREQ && osDelay(1) == osOK);
+    return -1;
+}
+
 /* One setup/cleanup contract for both directions. Select the final transfer
  * mode before enabling IDMA; no data command runs during write pre-erase.
  * Callers supply only the command index; response/data flags are invariant. */
 static int sd_blocks(u32 block, int count, u8 *buf, u32 index)
 {
 	int retv;
-	u32 control = index == (CMD_17 & 0x3f) ? 0x92 : 0x90;
-	SDIO->DTIMER = index == (CMD_17 & 0x3f) ? 0xffffffff : 0x0fffffff;
+	int writing = index == (CMD_24 & 0x3f);
+	if (!writing && sd_sync()) return -1;
+	u32 control = writing ? 0x90 : 0x92;
+	SDIO->DTIMER = writing ? 0x0fffffff : 0xffffffff;
 	SDIO->DLEN = count * 512;
 	if (count != 1) { control |= 0x0c; index++; }
 	SDIO->DCTRL = control;
@@ -298,6 +316,7 @@ static int sd_blocks(u32 block, int count, u8 *buf, u32 index)
 		retv = sd_acmd(sd_rca, CMD_23, count);
 		if (retv) return retv;
 	}
+	if (writing) sd_pending_write = 1;
 	retv = sd_cmd(index | CMD_RESP_SHORT | SDMMC_CMD_CMDTRANS, block);
 	if (!retv && count != 1) retv = sd_cmd(CMD_12, 0);
 	return retv;
@@ -368,7 +387,6 @@ int sd_write_sector(u32 start, int size, u8 *buf)
 int sdcard_identify(void)
 {
 	int retv, hcs;
-	char tmp[8];
 	u8 cid[sizeof(sd_cid)];
 
 	/* Publish sector access only after the full identification sequence. */
@@ -381,7 +399,6 @@ int sdcard_identify(void)
 	osDelay(10);
 
 	retv = sd_cmd(CMD_08, 0x000001aa);
-	printk("CMD_08: retv=%08x resp0=%08x\n", retv, cmd_resp[0]);
 	if(retv)
 		hcs = 0;
 	else
@@ -411,23 +428,12 @@ int sdcard_identify(void)
 	}
 	int high_capacity = (cmd_resp[0] & 0x40000000) != 0;
 
-	printk("    V2.0: %s\n", (hcs?"Yes":"No"));
-	printk("    SDHC: %s\n", (high_capacity?"Yes":"No"));
-
 	// Send CID
 	retv = sd_cmd(CMD_02, 0x00000000);
 	if(retv)
 		return retv;
 	memcpy(cid, cmd_resp, sizeof(cid));
 	if (sd_known && memcmp(sd_cid, cid, sizeof(cid))) return -1;
-
-	tmp[0] = cid[12];
-	tmp[1] = cid[11];
-	tmp[2] = cid[10];
-	tmp[3] = cid[9];
-	tmp[4] = cid[8];
-	tmp[5] = 0;
-	printk("    Name: %s\n", tmp);
 
 	// Send RCA
 	retv = sd_cmd(CMD_03, 0x00000000);
@@ -439,55 +445,20 @@ int sdcard_identify(void)
 	// Send CSD
 	retv = sd_cmd(CMD_09, rca<<16);
 	if (retv) return retv;
-	memcpy(sd_csd, (u8*)cmd_resp, 16);
-
-	// Get Size form CSD
-	bsize = 1<<(sd_csd[10]&0x0f);
-	printk("    Blen: %d\n", bsize);
-
-	if(high_capacity){
-		csize = (sd_csd[8]<<16) | (sd_csd[7]<<8) | sd_csd[6];
-		csize &= 0x003fffff;
-		csize = (csize+1)*512;
-		if(bsize==512){
-			cblock = csize*2;
-		}else if(bsize==1024){
-			cblock = csize;
-		}else{
-			cblock = csize/2;
-		}
-	}else{
-		int m;
-		m = (sd_csd[6]<<8) | sd_csd[5];
-		m = (m>>7)&7;
-		m = 1<<(m+2);
-		csize = (sd_csd[9]<<16) | (sd_csd[8]<<8) | sd_csd[7];
-		csize = (csize>>6)&0x00000fff;
-		csize = (csize+1)*m;
-		cblock = csize;
-		if(bsize==512)  csize /= 2;
-		if(bsize==2048) csize *= 2;
-	}
-	printk("    Blks: %d\n", cblock);
-	printk("    Size: %d K\n", csize);
-	//sd_dev.sectors = cblock;
 
 	// Select CARD
 	retv = sd_cmd(CMD_07, rca<<16);
 	if (retv) return retv;
-	printk("CMD_07: resp=%08x\n", cmd_resp[0]);
 	sd_clk_set(SDCLK_HIGH);
 
 	// Set Block Len
 	retv = sd_cmd(CMD_16, 512);
-	printk("CMD_16: resp=%08x\n", cmd_resp[0]);
 	if (retv) return retv;
 
 	// Switch to 4bit
 	retv = sd_acmd(rca, CMD_06, 2);
 	if(retv)
 		return retv;
-	printk("ACMD06: resp=%08x\n", cmd_resp[0]);
 	sd_bus_width(4);
 
 	// Card send its status
@@ -495,7 +466,6 @@ int sdcard_identify(void)
 	if(retv)
 		return retv;
 	osDelay(1);
-	printk("CMD13: resp=%08x\n", cmd_resp[0]);
 
 	if (!sd_known) {
 		memcpy(sd_cid, cid, sizeof(sd_cid));
@@ -536,6 +506,7 @@ void sd_rw_test(void)
 int sdio_init(void)
 {
 	sd_rca = 0;
+	sd_pending_write = 0;
 	/* Preserve the initial falling-edge clock configuration. */
 	sd_reset_controller((1u << 16) | SDCLK_LOW, 0);
 
@@ -561,6 +532,7 @@ int sdio_ready(void)
 int sdio_reset(void)
 {
 	sd_rca = 0;
+	sd_pending_write = 0;
 	printk("\nSDIO reset ...\n");
 	if (!cmd_sem) return -1;
 
