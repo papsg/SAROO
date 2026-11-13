@@ -200,3 +200,36 @@ handles clock wrap and retries, and keeps legacy cold/sticky
 controls. The FPGA fixture models console reset and MCU reset
 separately. These checks establish the source and register model
 behavior. Physical reset timing remains unqualified.
+
+## Retire the disc reader before menu startup
+
+MCU-MENU-001, adapted from the reader-handoff portion of paps-g
+`ff3f9d2f`. Restarting the menu can leave the MCU's reader alive.
+Startup used to clear that reader's cache bounds and try to load menu
+music while the old image still owned them. Startup now uses the
+same bounded pause and close as an explicit disc replacement before
+rebuilding the catalog and starting music.
+
+A pause failure preserves the reader and cache. A close failure ends
+the old reader's ownership and stops startup before it uses the
+catalog or music services. For either failure, the tagged request
+completes without the acknowledgment that permits the menu to use the
+new catalog. The menu can report its existing reset-to-retry message.
+An untagged failure returns the raw error, and successful untagged
+startup retains its asynchronous reply. Tagged catalog replies after
+a successful handoff retain their existing format.
+
+[Sega SMPC User's Manual ST-169-R1-072694 §1.1, printed p. 2](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=12)
+identifies the reset-button NMI as a master SH-2 request.
+[The original SAROO startup handler](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_main.c)
+is the source for the inherited MCU cache clearing.
+
+Run `make -C tests check-file-transfer check-firmware-save check-mcu-save`.
+With `SAROO_MENU_COMPLETION_SOURCE` set to the parent's MCU Saturn
+source directory, select `-k startup_reader` in
+`test_menu_command_completion.py`. The old handler reaches the
+catalog with the reader still owned. The port tests pause and close
+failure, a subsequent retry, both command formats and the existing
+catalog and music controls. The GNU App adds 32 load bytes (65,472
+used, 64 free) with unchanged static DTCM. The results describe host
+behavior and the GNU link.

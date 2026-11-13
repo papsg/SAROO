@@ -14,6 +14,7 @@ static char scratch[256];
 static unsigned events[16], count, checks, supplied;
 static int operation_result, listed, first_pcm, second_pcm, pause_result;
 static int fpga_result, flash_result;
+static int reader_open;
 static u32 buf_fad_start, buf_fad_end, buf_fad_size;
 static struct { u32 CR1; } timer2, timer6;
 static struct {
@@ -46,7 +47,7 @@ static int list_disc(int category, int show)
 {
     assert(!show); supplied = category; event(2);
     if ((command_value & ~SSCMD_SAVE_ACK) == SSCMD_STARTUP) {
-        assert(!buf_fad_start && !buf_fad_end && !buf_fad_size && !category);
+        assert(!reader_open && !buf_fad_start && !buf_fad_end && !buf_fad_size && !category);
         return listed;
     }
     return operation_result;
@@ -54,8 +55,24 @@ static int list_disc(int category, int show)
 static void gif_decode_exit(void) { event(20); }
 static void gif_decode_init(void) { event(21); }
 static volatile u8 disc_removed __attribute__((unused));
-static int pause_disc(void) { event(22); return pause_result; }
-static int unload_disc(void) { event(23); return operation_result; }
+static int pause_disc(void)
+{
+    event(22);
+    if (reader_open)
+        assert(buf_fad_start==99 && buf_fad_end==99 && buf_fad_size==99);
+    if (!pause_result) {
+        buf_fad_start=buf_fad_end=0;
+        cdb.play_type=0;
+    }
+    return pause_result;
+}
+static int unload_disc(void)
+{
+    event(23);
+    assert(!cdb.play_type);
+    reader_open=0;
+    return operation_result;
+}
 static int load_disc(int index, int start_save)
 { assert(start_save == 1); supplied = index; event(3); return operation_result; }
 static int fpga_update(int check)
@@ -72,6 +89,7 @@ static int flush_smems(int flags) { supplied = flags; event(12); return operatio
 static void cover_init(void) { event(26); }
 static int load_pcm(char *name)
 {
+    assert(!reader_open);
     if (!strcmp(name, "/SAROO/bgsound.pcm")) { event(27); return first_pcm; }
     assert(!strcmp(name, "/SAROO/bgsound_r.pcm")); event(28); return second_pcm;
 }
@@ -145,7 +163,7 @@ static void dispatch(void)
             case 4: case 5: SEQUENCE(24, 25); break;
             case 6: case 7: case 8: case 9: case 10: case 11: case 12:
             case 54: case 55: case 56: { unsigned e[] = {base}; sequence(e, 1); break; }
-            case 13: SEQUENCE(2, 26, 27, 28, 21); break;
+            case 13: SEQUENCE(22, 23, 2, 26, 27, 28, 21); break;
             case 14: SEQUENCE(1, 14); assert(supplied == 0x1234); break;
             }
         } else assert(!count && command_value == opcode && argument == 0x1234);
@@ -174,7 +192,7 @@ static void startup(void)
             assert(!cdb.repcnt && !cdb.options && !cdb.pause_request && !cdb.play_pos_types);
             assert(cdb.play_type == PLAYTYPE_SECTOR);
             assert(events[count - 2] == 30);
-        } else assert(cdb.play_type == 0xa5a5a5a5);
+        } else assert(!cdb.play_type);
         checks++;
     }
 }
@@ -288,6 +306,47 @@ static void finish_cold_startup(unsigned tick)
     }
 }
 
+static void finish_warm_startup(unsigned tick)
+{
+    if (tick==3) complete_command(SSCMD_STARTUP|SSCMD_SAVE_ACK,0);
+}
+
+/* Adapted from paps-g ff3f9d2f. The same menu retries after either failure. */
+static void startup_reader(void)
+{
+    for (unsigned failing=0;failing<2;failing++) {
+        pause_result=failing ? 0 : -1;
+        operation_result=failing ? -2 : 0;
+        reader_open=1;
+        call(SSCMD_STARTUP,0);
+        assert(!command_value && argument==(u16)(failing ? -2 : -1));
+        if (failing) {
+            SEQUENCE(22,23);
+            assert(!reader_open && !cdb.play_type && buf_fad_size==99);
+        } else {
+            SEQUENCE(22);
+            assert(reader_open && cdb.play_type && buf_fad_start==99 && buf_fad_end==99 && buf_fad_size==99);
+        }
+
+        prepare_menu(1,0,0);
+        reader_open=1;
+        buf_fad_start=buf_fad_end=buf_fad_size=99;
+        advance_menu_clock=finish_warm_startup;
+        assert(start_menu_services()==-1 && !command_value && !argument);
+        if (failing) { SEQUENCE(22,23); }
+        else { SEQUENCE(22); }
+
+        pause_result=operation_result=0;
+        prepare_menu(1,0,0);
+        buf_fad_start=buf_fad_end=buf_fad_size=99;
+        first_pcm=0;
+        advance_menu_clock=finish_warm_startup;
+        assert(!start_menu_services() && !command_value && argument==SSCMD_SAVE_ACK);
+        SEQUENCE(22,23,2,26,27,29,29,30,21);
+        assert(!reader_open && cdb.play_type==PLAYTYPE_SECTOR);
+    }
+}
+
 static void reset_drain(void)
 {
     const u16 commands[] = {SSCMD_STARTUP | SSCMD_SAVE_ACK, SSCMD_SELECT | SSCMD_SAVE_ACK,
@@ -391,6 +450,7 @@ int main(int argc, char **argv)
         checks++;
     } else if (!strcmp(argv[1], "dispatch")) dispatch();
     else if (!strcmp(argv[1], "startup")) startup();
+    else if (!strcmp(argv[1], "startup-reader")) startup_reader();
     else if (!strcmp(argv[1], "selection")) selection();
     else if (!strcmp(argv[1], "bin-directory")) bin_directory();
     else if (!strcmp(argv[1], "reset-drain")) reset_drain();

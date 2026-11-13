@@ -951,6 +951,16 @@ void ss_cmd_handle(void)
 	case SSCMD_STARTUP: {
 		// 土星端启动!
 
+        /* The MCU can retain a live reader across a Saturn menu restart. */
+        retv = pause_disc();
+        if (!retv) retv = unload_disc();
+        if (retv) {
+            /* The tagged menu requires acknowledgment to use the new catalog. */
+            SS_ARG = (cmd & SSCMD_SAVE_ACK) ? 0 : retv;
+            SS_CMD = 0;
+            break;
+        }
+
 		// 复位buffer
 		buf_fad_start = 0;
 		buf_fad_end = 0;

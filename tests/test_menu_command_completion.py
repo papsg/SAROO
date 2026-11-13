@@ -101,6 +101,9 @@ class MenuCommandCompletionTests(unittest.TestCase):
     def test_startup_finishes_all_services_and_reports_catalog_failure(self):
         self.invoke('startup')
 
+    def test_startup_reader_handoff_rejects_failure_and_allows_retry(self):
+        self.invoke('startup-reader')
+
     def test_selection_preserves_full_index_and_enter_exit_order(self):
         self.invoke('selection')
 
