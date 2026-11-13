@@ -231,7 +231,15 @@
 /  buffer in the filesystem object (FATFS) is used for the file data transfer. */
 
 
-#define FF_FS_EXFAT		1
+/* The App mounts FAT32. Keep the original BootLoader format support. */
+#ifndef SAROO_FAT32_ONLY
+#ifdef BOOT
+#define SAROO_FAT32_ONLY 0
+#else
+#define SAROO_FAT32_ONLY 1
+#endif
+#endif
+#define FF_FS_EXFAT		(!SAROO_FAT32_ONLY)
 /* This option switches support for exFAT filesystem. (0:Disable or 1:Enable)
 /  To enable exFAT, also LFN needs to be enabled. (FF_USE_LFN >= 1)
 /  Note that enabling exFAT discards ANSI C (C89) compatibility. */

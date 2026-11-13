@@ -1111,7 +1111,7 @@ static FRESULT sync_fs (	/* Returns FR_OK or FR_DISK_ERR */
 
 	res = sync_window(fs);
 	if (res == FR_OK) {
-		if (fs->fs_type == FS_FAT32 && fs->fsi_flag == 1) {	/* FAT32: Update FSInfo sector if needed */
+		if ((SAROO_FAT32_ONLY || fs->fs_type == FS_FAT32) && fs->fsi_flag == 1) {	/* FAT32: Update FSInfo sector if needed */
 			/* Create FSInfo structure */
 			memset(fs->win, 0, sizeof fs->win);
 			st_word(fs->win + BS_55AA, 0xAA55);					/* Boot signature */
@@ -1172,7 +1172,7 @@ static DWORD get_fat (		/* 0xFFFFFFFF:Disk error, 1:Internal error, 2..0x7FFFFFF
 	} else {
 		val = 0xFFFFFFFF;	/* Default value falls on disk error */
 
-		switch (fs->fs_type) {
+		switch (SAROO_FAT32_ONLY ? FS_FAT32 : fs->fs_type) {
 		case FS_FAT12 :
 			bc = (UINT)clst; bc += bc / 2;
 			if (move_window(fs, fs->fatbase + (bc / SS(fs))) != FR_OK) break;
@@ -1246,7 +1246,7 @@ static FRESULT put_fat (	/* FR_OK(0):succeeded, !=0:error */
 
 
 	if (clst >= 2 && clst < fs->n_fatent) {	/* Check if in valid range */
-		switch (fs->fs_type) {
+		switch (SAROO_FAT32_ONLY ? FS_FAT32 : fs->fs_type) {
 		case FS_FAT12:
 			bc = (UINT)clst; bc += bc / 2;	/* bc: byte offset of the entry */
 			res = move_window(fs, fs->fatbase + (bc / SS(fs)));
@@ -1530,6 +1530,23 @@ enum {
 };
 #endif
 
+#if !FF_FS_EXFAT
+/* Restore the previous tail before freeing the uncounted cluster. The
+ * volume retains both identities until the FAT writes and sync complete. */
+static FRESULT recover_volume(FATFS* fs)
+{
+    if (!fs->growth_cluster) return FR_OK;
+    DSTATUS status = disk_status(fs->pdrv);
+    if (status & STA_NOINIT) return FR_NOT_READY;
+    if (status & STA_PROTECT) return FR_WRITE_PROTECTED;
+    FRESULT res = fs->growth_tail ? put_fat(fs, fs->growth_tail, 0xFFFFFFFF) : FR_OK;
+    if (res == FR_OK) res = put_fat(fs, fs->growth_cluster, 0);
+    if (res == FR_OK) res = sync_fs(fs);
+    if (res == FR_OK) fs->growth_cluster = 0;
+    return res;
+}
+#endif
+
 static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:Disk error, >=2:New cluster# */
 	FFOBJID* obj,		/* Corresponding object */
 	DWORD clst,			/* Cluster# to stretch, 0:Create a new chain */
@@ -1627,6 +1644,9 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
         fs->dir_pending.cluster = ncl;
         fs->dir_pending.tail = clst;
         fs->dir_pending.phase = DIR_RESTORE_FILE_TAIL;
+#else
+        fs->growth_cluster = ncl;
+        fs->growth_tail = clst;
 #endif
 		ncl = (res == FR_DISK_ERR) ? 0xFFFFFFFF : 1;	/* Failed. Generate error status */
 	}
@@ -1728,12 +1748,12 @@ static FRESULT dir_sdi (	/* FR_OK(0):succeeded, !=0:error */
 	}
 	dp->dptr = ofs;				/* Set current offset */
 	clst = dp->obj.sclust;		/* Table start cluster (0:root) */
-	if (clst == 0 && fs->fs_type >= FS_FAT32) {	/* Replace cluster# 0 with root cluster# */
+	if (clst == 0 && (SAROO_FAT32_ONLY || fs->fs_type >= FS_FAT32)) {	/* Replace cluster# 0 with root cluster# */
 		clst = (DWORD)fs->dirbase;
 		if (FF_FS_EXFAT) dp->obj.stat = 0;	/* exFAT: Root dir has an FAT chain */
 	}
 
-	if (clst == 0) {	/* Static table (root-directory on the FAT volume) */
+	if (!SAROO_FAT32_ONLY && clst == 0) {	/* Static table (root-directory on the FAT volume) */
 		if (ofs / SZDIRE >= fs->n_rootdir) return FR_INT_ERR;	/* Is index out of range? */
 		dp->sect = fs->dirbase;
 
@@ -1778,7 +1798,7 @@ static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DEN
 	if (ofs % SS(fs) == 0) {	/* Sector changed? */
 		dp->sect++;				/* Next sector */
 
-		if (dp->clust == 0) {	/* Static table */
+		if (!SAROO_FAT32_ONLY && dp->clust == 0) {	/* Static table */
 			if (ofs / SZDIRE >= fs->n_rootdir) {	/* Report EOT if it reached end of static table */
 				dp->sect = 0; return FR_NO_FILE;
 			}
@@ -1880,7 +1900,7 @@ static DWORD ld_clust (	/* Returns the top cluster value of the SFN entry */
 	DWORD cl;
 
 	cl = ld_word(dir + DIR_FstClusLO);
-	if (fs->fs_type == FS_FAT32) {
+	if (SAROO_FAT32_ONLY || fs->fs_type == FS_FAT32) {
 		cl |= (DWORD)ld_word(dir + DIR_FstClusHI) << 16;
 	}
 
@@ -1896,7 +1916,7 @@ static void st_clust (
 )
 {
 	st_word(dir + DIR_FstClusLO, (WORD)cl);
-	if (fs->fs_type == FS_FAT32) {
+	if (SAROO_FAT32_ONLY || fs->fs_type == FS_FAT32) {
 		st_word(dir + DIR_FstClusHI, (WORD)(cl >> 16));
 	}
 }
@@ -2312,7 +2332,7 @@ static FRESULT store_xdir (
 
 /* Called by the existing filesystem owner. Uses no caller-owned name buffers.
  * Failed phases retain their intended bytes and the old mounted volume. */
-static FRESULT dir_recover(FATFS* fs)
+static FRESULT recover_volume(FATFS* fs)
 {
     FF_DIR_PENDING* pending = &fs->dir_pending;
     FRESULT res;
@@ -2462,7 +2482,7 @@ static __attribute__((noinline)) FRESULT dir_extend_exfat(DIR* dp)
     pending->cluster = next;
     pending->tail = state == 0 ? dp->clust : 0;
     pending->phase = DIR_ALLOCATE;
-    res = dir_recover(fs);
+    res = recover_volume(fs);
     if (res != FR_OK) return res;
     dp->obj.stat = new_state;
     dp->obj.n_frag = 0;
@@ -3492,7 +3512,7 @@ static UINT check_fs (	/* 0:FAT/FAT32 VBR, 1:exFAT VBR, 2:Not FAT and valid BS, 
 	LBA_t sect			/* Sector to load and check if it is an FAT-VBR or not */
 )
 {
-	WORD w, sign;
+	WORD sign;
 	BYTE b;
 
 
@@ -3504,6 +3524,13 @@ static UINT check_fs (	/* 0:FAT/FAT32 VBR, 1:exFAT VBR, 2:Not FAT and valid BS, 
 #endif
 	b = fs->win[BS_JmpBoot];
 	if (b == 0xEB || b == 0xE9 || b == 0xE8) {	/* Valid JumpBoot code? (short jump, near jump or near call) */
+#if SAROO_FAT32_ONLY
+		/* Use BPB geometry instead of the optional filesystem type string. */
+		if (sign == 0xAA55 && ld_word(fs->win + BPB_BytsPerSec) == SS(fs) &&
+		    ld_word(fs->win + BPB_RootEntCnt) == 0 && ld_word(fs->win + BPB_TotSec16) == 0 &&
+		    ld_word(fs->win + BPB_FATSz16) == 0 && ld_dword(fs->win + BPB_FATSz32) != 0) return 0;
+#else
+		WORD w;
 		if (sign == 0xAA55 && !memcmp(fs->win + BS_FilSysType32, "FAT32   ", 8)) {
 			return 0;	/* It is an FAT32 VBR */
 		}
@@ -3519,6 +3546,7 @@ static UINT check_fs (	/* 0:FAT/FAT32 VBR, 1:exFAT VBR, 2:Not FAT and valid BS, 
 			&& ld_word(fs->win + BPB_FATSz16) != 0) {	/* Properness of FAT size (MNBZ) */
 				return 0;	/* It can be presumed an FAT VBR */
 		}
+#endif
 	}
 	return sign == 0xAA55 ? 2 : 3;	/* Not an FAT VBR (valid or invalid BS) */
 }
@@ -3587,6 +3615,17 @@ static DSTATUS resume_drive (BYTE drive)
 	return status & STA_NOINIT ? disk_initialize(drive) : status;
 }
 
+#if !FF_FS_READONLY
+static int volume_has_pending(const FATFS* fs)
+{
+#if FF_FS_EXFAT
+    return fs->dir_pending.phase != 0;
+#else
+    return fs->growth_cluster != 0;
+#endif
+}
+#endif
+
 static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	const TCHAR** path,			/* Pointer to pointer to the path name (drive number) */
 	FATFS** rfs,				/* Pointer to pointer to the found filesystem object */
@@ -3621,8 +3660,8 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		stat = resume_drive(fs->pdrv);
 		if (stat & STA_NOINIT) return FR_NOT_READY;
 		if (!FF_FS_READONLY && mode && (stat & STA_PROTECT)) return FR_WRITE_PROTECTED;
-#if FF_FS_EXFAT && !FF_FS_READONLY
-		return dir_recover(fs);
+#if !FF_FS_READONLY
+		return recover_volume(fs);
 #else
 		return FR_OK;
 #endif
@@ -3631,8 +3670,8 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	/* The filesystem object is not valid. */
 	/* Following code attempts to mount the volume. (find an FAT volume, analyze the BPB and initialize the filesystem object) */
 
-#if FF_FS_EXFAT && !FF_FS_READONLY
-    if (fs->dir_pending.phase) return FR_NOT_READY;
+#if !FF_FS_READONLY
+    if (volume_has_pending(fs)) return FR_NOT_READY;
 #endif
     fs->fs_type = 0; /* Invalidate the filesystem object */
 	stat = disk_initialize(fs->pdrv);	/* Initialize the volume hosting physical drive */
@@ -3741,8 +3780,9 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	{
 		if (ld_word(fs->win + BPB_BytsPerSec) != SS(fs)) return FR_NO_FILESYSTEM;	/* (BPB_BytsPerSec must be equal to the physical sector size) */
 
-		fasize = ld_word(fs->win + BPB_FATSz16);		/* Number of sectors per FAT */
-		if (fasize == 0) fasize = ld_dword(fs->win + BPB_FATSz32);
+		fasize = SAROO_FAT32_ONLY ? ld_dword(fs->win + BPB_FATSz32) :
+		         ld_word(fs->win + BPB_FATSz16);
+		if (!SAROO_FAT32_ONLY && fasize == 0) fasize = ld_dword(fs->win + BPB_FATSz32);
 		fs->fsize = fasize;
 
 		fs->n_fats = fs->win[BPB_NumFATs];				/* Number of FATs */
@@ -3752,28 +3792,34 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		if (fs->csize == 0 || (fs->csize & (fs->csize - 1))) return FR_NO_FILESYSTEM;	/* (Must be power of 2) */
 
 		fs->n_rootdir = ld_word(fs->win + BPB_RootEntCnt);	/* Number of root directory entries */
-		if (fs->n_rootdir % (SS(fs) / SZDIRE)) return FR_NO_FILESYSTEM;	/* (Must be sector aligned) */
+		if (!SAROO_FAT32_ONLY && fs->n_rootdir % (SS(fs) / SZDIRE)) return FR_NO_FILESYSTEM;
 
-		tsect = ld_word(fs->win + BPB_TotSec16);		/* Number of sectors on the volume */
-		if (tsect == 0) tsect = ld_dword(fs->win + BPB_TotSec32);
+		tsect = SAROO_FAT32_ONLY ? ld_dword(fs->win + BPB_TotSec32) :
+		        ld_word(fs->win + BPB_TotSec16);
+		if (!SAROO_FAT32_ONLY && tsect == 0) tsect = ld_dword(fs->win + BPB_TotSec32);
 
 		nrsv = ld_word(fs->win + BPB_RsvdSecCnt);		/* Number of reserved sectors */
 		if (nrsv == 0) return FR_NO_FILESYSTEM;			/* (Must not be 0) */
 
 		/* Determine the FAT sub type */
-		QWORD metadata = (QWORD)nrsv + (QWORD)fasize * fs->n_fats
-			+ fs->n_rootdir / (SS(fs) / SZDIRE);
+		QWORD metadata = (QWORD)nrsv + (QWORD)fasize * fs->n_fats;
+		if (!SAROO_FAT32_ONLY) metadata += fs->n_rootdir / (SS(fs) / SZDIRE);
 		/* Leave room for data and keep the last sector representable. */
 		if (metadata >= tsect || (LBA_t)(tsect - 1) > (LBA_t)-1 - bsect) return FR_NO_FILESYSTEM;
 		sysect = (DWORD)metadata;
 		fasize *= fs->n_fats;	/* Complete FAT area now fits. */
 		nclst = (tsect - sysect) / fs->csize;			/* Number of clusters */
-		if (nclst == 0) return FR_NO_FILESYSTEM;		/* (Invalid volume size) */
+#if SAROO_FAT32_ONLY
+		if (nclst <= MAX_FAT16 || nclst > MAX_FAT32) return FR_NO_FILESYSTEM;
+		fmt = FS_FAT32;
+#else
+		if (nclst == 0) return FR_NO_FILESYSTEM;	/* (Invalid volume size) */
 		fmt = 0;
 		if (nclst <= MAX_FAT32) fmt = FS_FAT32;
 		if (nclst <= MAX_FAT16) fmt = FS_FAT16;
 		if (nclst <= MAX_FAT12) fmt = FS_FAT12;
 		if (fmt == 0) return FR_NO_FILESYSTEM;
+#endif
 
 		/* Boundaries and Limits */
 		fs->n_fatent = nclst + 2;						/* Number of FAT entries */
@@ -3792,6 +3838,8 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 			if (ld_word(fs->win + BPB_FSVer32) != 0) return FR_NO_FILESYSTEM;	/* (Must be FAT32 revision 0.0) */
 			if (fs->n_rootdir != 0) return FR_NO_FILESYSTEM;	/* (BPB_RootEntCnt must be 0) */
 			fs->dirbase = ld_dword(fs->win + BPB_RootClus32);	/* Root directory start cluster */
+			if (SAROO_FAT32_ONLY && (fs->dirbase < 2 || fs->dirbase >= fs->n_fatent))
+				return FR_NO_FILESYSTEM;
 			szbfat = fs->n_fatent * 4;					/* (Needed FAT size) */
 		} else {
 			if (fs->n_rootdir == 0)	return FR_NO_FILESYSTEM;	/* (BPB_RootEntCnt must not be 0) */
@@ -3863,8 +3911,8 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 #if FF_FS_REENTRANT
 		if (lock_volume(obj->fs, 0)) {	/* Take a grant to access the volume */
 			if (!(resume_drive(obj->fs->pdrv) & STA_NOINIT)) {
-#if FF_FS_EXFAT && !FF_FS_READONLY
-                res = dir_recover(obj->fs);
+#if !FF_FS_READONLY
+                res = recover_volume(obj->fs);
                 if (res != FR_OK) unlock_volume(obj->fs, FR_OK);
 #else
                 res = FR_OK;
@@ -3877,8 +3925,8 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 		}
 #else
 		if (!(resume_drive(obj->fs->pdrv) & STA_NOINIT)) {
-#if FF_FS_EXFAT && !FF_FS_READONLY
-            res = dir_recover(obj->fs);
+#if !FF_FS_READONLY
+            res = recover_volume(obj->fs);
 #else
             res = FR_OK;
 #endif
@@ -3922,12 +3970,12 @@ FRESULT f_mount (
 	cfs = FatFs[vol];			/* Pointer to the filesystem object of the volume */
 
     if (cfs) { /* Unregister only after any pending extension is complete. */
-#if FF_FS_EXFAT && !FF_FS_READONLY
-        if (cfs->dir_pending.phase) {
+#if !FF_FS_READONLY
+        if (volume_has_pending(cfs)) {
 #if FF_FS_REENTRANT
             if (!lock_volume(cfs, 1)) return FR_TIMEOUT;
 #endif
-            res = dir_recover(cfs);
+            res = recover_volume(cfs);
 #if FF_FS_REENTRANT
             unlock_volume(cfs, FR_OK);
 #endif
@@ -3961,6 +4009,8 @@ FRESULT f_mount (
 #endif
 #if FF_FS_EXFAT && !FF_FS_READONLY
         fs->dir_pending.phase = 0;
+#elif !FF_FS_READONLY
+        fs->growth_cluster = 0;
 #endif
         fs->fs_type = 0; /* Invalidate the new filesystem object */
 		FatFs[vol] = fs;		/* Register new fs object */
@@ -4450,7 +4500,7 @@ FRESULT f_sync (
                         fp->clust = fp->obj.sclust = 0;
                         fp->obj.stat = 0;
                     }
-                    res = dir_recover(fs);
+                    res = recover_volume(fs);
                     if (res != FR_OK) LEAVE_FF(fs, res);
                 }
 				res = fill_first_frag(&fp->obj);	/* Fill first fragment on the FAT if needed */
@@ -4838,7 +4888,7 @@ FRESULT f_lseek (
 					ofs -= bcs; fp->fptr += bcs;
 #if !FF_FS_READONLY
 					if (fp->flag & FA_WRITE) {			/* Check if in write mode or not */
-						if (FF_FS_EXFAT && fp->fptr > fp->obj.objsize) {	/* No FAT chain object needs correct objsize to generate FAT value */
+						if (fp->fptr > fp->obj.objsize) {	/* Preserve accepted growth if the next allocation fails. */
 							fp->obj.objsize = fp->fptr;
 							fp->flag |= FA_MODIFIED;
 						}
@@ -5134,7 +5184,7 @@ FRESULT f_getfree (
 		} else {
 			/* Scan FAT to obtain number of free clusters */
 			nfree = 0;
-			if (fs->fs_type == FS_FAT12) {	/* FAT12: Scan bit field FAT entries */
+			if (!SAROO_FAT32_ONLY && fs->fs_type == FS_FAT12) {	/* FAT12: Scan bit field FAT entries */
 				clst = 2; obj.fs = fs;
 				do {
 					stat = get_fat(&obj, clst);
@@ -5177,7 +5227,7 @@ FRESULT f_getfree (
 							res = move_window(fs, sect++);
 							if (res != FR_OK) break;
 						}
-						if (fs->fs_type == FS_FAT16) {
+						if (!SAROO_FAT32_ONLY && fs->fs_type == FS_FAT16) {
 							if (ld_word(fs->win + i) == 0) nfree++;
 							i += 2;
 						} else {
@@ -5524,7 +5574,7 @@ FRESULT f_rename (
                             fs->dir_pending.retire = buf.retire;
                             fs->dir_pending.cluster = 0;
                             fs->dir_pending.phase = DIR_RETIRE_ENTRIES;
-                            res = dir_recover(fs);
+                            res = recover_volume(fs);
                         }
 					}
 				}
@@ -5757,7 +5807,7 @@ FRESULT f_getlabel (
 	if (res == FR_OK && vsn) {
 		res = move_window(fs, fs->volbase);
 		if (res == FR_OK) {
-			switch (fs->fs_type) {
+			switch (SAROO_FAT32_ONLY ? FS_FAT32 : fs->fs_type) {
 			case FS_EXFAT:
 				di = BPB_VolIDEx;
 				break;

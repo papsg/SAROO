@@ -307,6 +307,8 @@ class MCUSaveTest(unittest.TestCase):
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
         if cls.fixture in ('api', 'disc', 'discovery', 'cover'):
             flags += ['-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast', '-fno-strict-aliasing']
+        if getattr(cls, 'generic_formats', False):
+            flags.append('-DSAROO_FAT32_ONLY=0')
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / getattr(cls, 'c_source', 'mcu_save_'+cls.fixture+'.c')),
                 str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)]

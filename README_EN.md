@@ -41,9 +41,18 @@ Source references: the [MCU boot/application loader](Firm_MCU/Main/main.c),
 
 ## Images and configuration
 
-The original firmware supports FAT32/exFAT storage and CUE/BIN images with
-single or multiple track files. Preserve the filenames referenced by the CUE
-and keep its companion files together.
+This fork's MCU application requires a FAT32 SD card. It accepts partitioned
+and unpartitioned FAT32 volumes. Each file can be at most 4 GiB minus one byte.
+The original BootLoader still supports its earlier formats; being able to
+load `mcuapp.bin` from an exFAT card does not mean the new App can use that card.
+
+If your card uses exFAT, FAT12 or FAT16, copy everything to your computer and
+verify the backup before formatting. Formatting erases the card. Format it
+as FAT32 with your computer and restore the files in their original locations,
+including `/SAROO/SS_SAVE.BIN` and `/SAROO/SS_MEMS.BIN` if present. For CUE/BIN
+images, keep the track files together and preserve the filenames in the CUE.
+See the [filesystem notes](doc/FATFS-SD-SAFETY.md#use-fat32-in-the-mcu-application)
+for the firmware scope and verification.
 
 The [configuration example](doc/saroocfg.txt) contains global and per-game
 sections, language selection, category names, multi-disc markers, expansion-RAM

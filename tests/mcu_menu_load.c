@@ -6,7 +6,7 @@
 #include "menu_load_limits.inc"
 
 typedef uint32_t u32;
-_Static_assert(sizeof(FSIZE_t) == 8 && sizeof(UINT) == 4, "exFAT menu load types");
+_Static_assert(sizeof(FSIZE_t) == (FF_FS_EXFAT ? 8 : 4) && sizeof(UINT) == 4, "FatFs menu load types");
 
 enum { LEDEV_NOFIRM = 1, LEDEV_FILE_ERROR };
 enum { OK, MISSING, READ_ERROR, SHORT, EMPTY, CLOSE_ERROR };

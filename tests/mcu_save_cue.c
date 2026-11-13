@@ -276,7 +276,9 @@ static void raw(int value)
 {
     unsigned bytes=value==0?2048:value==1?2047:value==2?0:value==4?2351:2352;
     u8 data[2352]={0};create("/D/raw.bin",data,bytes);
+#if FF_FS_EXFAT
     if(value==5 || value==6)virtual_raw_size=(FSIZE_t)1<<32;
+#endif
     if(value==7)inject_open=1;
     if(value>=8){create(cue_name,single,strlen(single));assert(!parse_cue((char*)cue_name,NULL));}
     unsigned old_opens=opens;

@@ -376,3 +376,39 @@ filesystem object with mirroring restored. They check every inactive FAT
 sector for writes. Existing mirrored-write retry and FAT12/16/exFAT
 controls also run. These tests and the GNU target link do not qualify
 physical media or game behavior.
+
+## Use FAT32 in the MCU application
+
+The App now builds FatFs for FAT32 only. It recognizes partitioned and
+unpartitioned FAT32 from the boot sector and cluster geometry, including cards
+without the optional filesystem type string. It refuses FAT12, FAT16 and exFAT
+without writing to those volumes. Long UTF-8 names, FAT32 active copy and
+mirroring rules, and the full 4 GiB minus one byte file limit are retained.
+The BootLoader still selects the original multi-format configuration. See
+the [card migration instructions](../README_EN.md#images-and-configuration).
+
+Adapted from paps-g `205e0f61` and `495794eb` (MCU-FS-005/006). A failed
+allocation retains the previous tail and new cluster in the mounted FAT32
+volume until the rollback can be synchronized. A later allocation failure
+during a write-mode seek leaves the successfully grown prefix eligible for
+sync or close. Both paths work when exFAT is compiled out. This recovery
+state lives in RAM; it is not an on-disk journal. The public adaptation also
+checks the CD header's track offset and sector prefix before adding them, so
+the narrower file position cannot wrap to another part of the image.
+
+Microsoft *FAT: General Overview of On-Disk Format*, version 1.03
+(6 December 2000), printed pp. 10–12 and 14–15, defines the FAT32 BPB,
+`BPB_ExtFlags`, and the cluster calculation used to distinguish FAT types.
+The port retains the FatFs driver's existing cluster-count limits.
+See also [FatFs f_lseek](https://elm-chan.org/fsw/ff/doc/lseek.html) and
+[FatFs f_close][close].
+
+Run `make -C tests check-fatfs check-mcu-save check-file-transfer check-mcu-diskio`.
+The App profile verifies generated media, directory growth, an unlabelled
+FAT32 volume, the last byte of a maximum-size file and one- and two-FAT
+recovery under injected I/O failures. Generic-format fixtures remain available
+for comparison. The pinned GNU App uses 60,512 of 65,536 ITCM load bytes
+and 46,688 bytes of static DTCM span, down from 65,536 and 50,744 bytes.
+A separate GNU `BOOT` link retains the multi-format configuration and the
+same 29,112-byte image size; the linked bytes differ in `mount_volume`.
+Host tests and GNU links do not qualify physical media, gameplay or MDK output.

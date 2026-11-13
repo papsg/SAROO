@@ -4,6 +4,7 @@ from mcu_save_support import MCUSaveTest
 
 
 class SaveOwnerTests(MCUSaveTest):
+    generic_formats = True
     fixture = 'owner'
 
     def case(self, mode, device):

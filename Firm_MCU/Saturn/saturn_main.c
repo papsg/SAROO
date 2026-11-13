@@ -1311,7 +1311,7 @@ void saturn_config(void)
 		led_event(LEDEV_NOFIRM);
 		return;
 	}
-	/* Check the full exFAT size before narrowing it to a read count. */
+	/* Check the complete file extent before issuing the read. */
 	FSIZE_t extent = f_size(&fp);
 	if (extent < 8 || extent > IMGINFO_ADDR - FIRM_ADDR) {
 		f_close(&fp);

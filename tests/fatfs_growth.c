@@ -54,6 +54,15 @@ static DWORD le32(const BYTE *p)
     return (DWORD)p[0] | (DWORD)p[1] << 8 | (DWORD)p[2] << 16 | (DWORD)p[3] << 24;
 }
 
+static unsigned pending_allocation(const FATFS *fs)
+{
+#if FF_FS_EXFAT
+    return fs->dir_pending.phase;
+#else
+    return fs->growth_cluster != 0;
+#endif
+}
+
 typedef struct {
     BYTE *fat;
     BYTE *used;
@@ -88,12 +97,14 @@ static ALLOCATION allocation(const FATFS *fs)
         free(mirror);
     }
     BYTE *bitmap = NULL;
+#if FF_FS_EXFAT
     if (fs->fs_type == FS_EXFAT) {
         UINT sectors = (fs->n_fatent - 2 + 4095) / 4096;
         bitmap = malloc((size_t)sectors * 512);
         assert(bitmap);
         assert(ordinary_disk_read(0, bitmap, fs->bitbase, sectors) == RES_OK);
     }
+#endif
     for (DWORD cluster = 2; cluster < fs->n_fatent; ++cluster)
         result.used[cluster] = bitmap
             ? !!(bitmap[(cluster - 2) / 8] & (1u << ((cluster - 2) % 8)))
@@ -213,7 +224,7 @@ int main(int argc, char **argv)
     assert(expected_size >= old_size && expected_size <= old_size + requested);
     if (!seek) assert(expected_size == old_size + accepted);
     printf("operation result=%d accepted=%u size=%llu phase=%u reads=%u writes=%u syncs=%u\n",
-           result, accepted, (unsigned long long)expected_size, fs.dir_pending.phase,
+           result, accepted, (unsigned long long)expected_size, pending_allocation(&fs),
            io[1][0], io[1][1], io[1][2]);
 
     if (fail_at[1]) assert(failures == 1 && result == FR_DISK_ERR);
@@ -224,7 +235,7 @@ int main(int argc, char **argv)
     if (closed != FR_OK) {
         assert(file.obj.fs == &fs);
         assert(f_close(&file) != FR_OK && file.obj.fs == &fs);
-        if (fs.dir_pending.phase) {
+        if (pending_allocation(&fs)) {
             assert(f_mount(NULL, "0:", 0) != FR_OK && file.obj.fs == &fs);
             FIL other;
             assert(f_open(&other, "/NEW.BIN", FA_CREATE_NEW | FA_WRITE) != FR_OK);
@@ -232,7 +243,7 @@ int main(int argc, char **argv)
     }
     stage = 0;
     if (closed != FR_OK) assert(!f_close(&file));
-    assert(!fs.dir_pending.phase);
+    assert(!pending_allocation(&fs));
     DWORD free_before_remount;
     FATFS *mounted;
     assert(!f_getfree("0:", &free_before_remount, &mounted) && mounted == &fs);

@@ -40,6 +40,8 @@ class FatFsSeekTests(unittest.TestCase):
             {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()}, indent=2)+'\n')
         flags = ['-O2'] if os.environ.get('SAROO_FIRMWARE_SAVE_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+        if getattr(cls, 'generic_formats', True):
+            flags.append('-DSAROO_FAT32_ONLY=0')
         flags.extend(getattr(cls, 'extra_cflags', ()))
         cls.binary = cls.target / cls.fixture_name
         result = subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',

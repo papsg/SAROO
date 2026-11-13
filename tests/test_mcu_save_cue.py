@@ -35,11 +35,11 @@ class CueParserTests(MCUSaveTest):
             with self.subTest(value=value):self.invoke('path',value)
 
     def test_raw_extent_and_live_handle_ownership(self):
-        for value in range(10):
+        for value in (0, 1, 2, 3, 4, 7, 8, 9):
             with self.subTest(value=value):self.invoke('raw',value)
 
     def test_cue_track_file_extent_boundaries(self):
-        for value in range(5):
+        for value in range(4):
             with self.subTest(value=value):self.invoke('track-extent',value)
 
     def test_index_requires_a_complete_sector_including_preview(self):
@@ -65,5 +65,16 @@ class CueParserTests(MCUSaveTest):
     def test_game_first_mixed_disc_and_signed_empty_identity(self):
         for value in (5,6):
             with self.subTest(value=value): self.invoke('media',value)
+
+class GenericCueExtentTests(MCUSaveTest):
+    fixture = 'cue'
+    generic_formats = True
+    timeout = 30
+
+    def test_above_fat32_raw_and_cue_extents_are_rejected(self):
+        for mode, value in (('raw', 5), ('raw', 6), ('track-extent', 4)):
+            with self.subTest(mode=mode, value=value):
+                self.run_case([mode, value])
+
 
 if __name__ == '__main__': unittest.main()

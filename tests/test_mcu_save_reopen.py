@@ -6,6 +6,7 @@ from mcu_save_support import MCUSaveTest
 
 
 class MCUSaveReopenTests(MCUSaveTest):
+    generic_formats = True
     fixture = 'reopen'
 
     def check_cases(self, modes, kinds):

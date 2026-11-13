@@ -12,6 +12,7 @@ MCU = TESTS.parent / "Firm_MCU"
 
 
 class MenuLoadTests(unittest.TestCase):
+    generic_formats = False
     @classmethod
     def setUpClass(cls):
         tmp = tempfile.TemporaryDirectory()
@@ -32,10 +33,11 @@ class MenuLoadTests(unittest.TestCase):
         assert len(limits) == 2
         (output / "menu_load_limits.inc").write_bytes(b"\n".join(limits) + b"\n")
         cls.bin = output / "menu-load"
+        profile = ["-DSAROO_FAT32_ONLY=0"] if cls.generic_formats else []
         subprocess.run(
             [os.environ.get("CC", "cc"), "-std=c11", "-g", "-Wall", "-Wextra", "-Werror"]
             + shlex.split(os.environ.get("SAROO_TEST_CFLAGS", "-O1 -fsanitize=address,undefined"))
-            + ["-I", output, "-I", MCU / "FatFS", TESTS / "mcu_menu_load.c", "-o", cls.bin],
+            + profile + ["-I", output, "-I", MCU / "FatFS", TESTS / "mcu_menu_load.c", "-o", cls.bin],
             check=True, timeout=60,
         )
 
@@ -52,11 +54,20 @@ class MenuLoadTests(unittest.TestCase):
 
     def test_extent_outside_reservation(self):
         self.cases((0, 1, 7, 524289, 0x80000000, 0xffffffff), (0,))
-        self.cases(((hi << 32) | lo for hi in (1, 2, 0xffffffff)
-                    for lo in (0, 8, 4096, 524288, 0xffffffff)), (0,))
 
     def test_read_must_complete_before_startup(self):
         self.cases((8, 4096, 524288), (2, 3, 4))
 
     def test_missing_file(self):
-        self.cases((0, 8, 0x100000008), (1,))
+        self.cases((0, 8), (1,))
+
+
+class GenericMenuExtentTests(unittest.TestCase):
+    generic_formats = True
+    setUpClass = classmethod(MenuLoadTests.setUpClass.__func__)
+    cases = MenuLoadTests.cases
+
+    def test_extent_outside_32_bit_reservation(self):
+        self.cases(((hi << 32) | lo for hi in (1, 2, 0xffffffff)
+                    for lo in (0, 8, 4096, 524288, 0xffffffff)), (0,))
+        self.cases((0x100000008,), (1,))

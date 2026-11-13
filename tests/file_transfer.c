@@ -1,7 +1,7 @@
 /* Adapted from paps-g 52ba5498. Actual commands/FatFs with synthetic media. */
 #include "ff.h"
 #include "diskio.h"
-_Static_assert(sizeof(FSIZE_t)==8,"Test full-width exFAT sizes");
+_Static_assert(sizeof(FSIZE_t) == (FF_FS_EXFAT ? 8 : 4), "FatFs file-offset width");
 #include <assert.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -172,8 +172,13 @@ static int bounds_case(const char *mode)
         {"write-name-limit", 0x1000, 128, 0, 1, 0, 0, 239, 0},
         {"whole-cross-window", 0xffff81, 0, 0, 0, 0, 1, 0, 0},
         {"whole-cross-request", 0xc6f81, 0, 0, 0, 0, 1, 0, 0},
+#if FF_FS_EXFAT
         {"whole-wide-wrap", 0x1000, 0, 0, 0, 0, 1, 0, ((FSIZE_t)1 << 32) + 17},
         {"whole-wide-zero", 0x1000, 0, 0, 0, 0, 1, 0, (FSIZE_t)1 << 32},
+#else
+        {"whole-uint32-max", 0x1000, 0, 0, 0, 0, 1, 0, 0xffffffffU},
+        {"whole-uint32-high", 0x1000, 0, 0, 0, 0, 1, 0, 0x80000000U},
+#endif
         {"whole-end-exact", 0xffff80, 0, 0, 0, 0, 0, 0, 0},
         {"whole-tail", 0xffffe4, 0, 100, 0, 0, 0, 0, 0},
         {"whole-eof", 0xffffff, 0, 128, 0, 0, 0, 0, 0},

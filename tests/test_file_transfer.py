@@ -47,6 +47,7 @@ def extract_command_source(raw):
 
 
 class FileTransferTests(unittest.TestCase):
+    generic_formats = False
     @classmethod
     def setUpClass(cls):
         source = Path(os.environ.get('SAROO_FILE_TRANSFER_SOURCE', ROOT/'Firm_MCU/Saturn/saturn_main.c'))
@@ -81,6 +82,8 @@ class FileTransferTests(unittest.TestCase):
             target=cls.target/'inputs'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(blob)
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_FILE_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
+        if getattr(cls, 'generic_formats', False):
+            flags.append('-DSAROO_FAT32_ONLY=0')
         cls.binary=cls.target/'file-transfer'
         args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/c_source),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
@@ -118,8 +121,10 @@ class FileTransferTests(unittest.TestCase):
             with self.subTest(mode=mode):self.invoke('bounds-'+mode)
 
     def test_whole_file_extents_remain_wide_until_checked(self):
-        for mode in ('whole-cross-window','whole-cross-request','whole-wide-wrap','whole-wide-zero',
-                     'whole-end-exact','whole-tail','whole-eof','whole-beyond'):
+        extremes = ('whole-wide-wrap', 'whole-wide-zero') if self.generic_formats else (
+            'whole-uint32-max', 'whole-uint32-high')
+        for mode in ('whole-cross-window', 'whole-cross-request', *extremes,
+                     'whole-end-exact', 'whole-tail', 'whole-eof', 'whole-beyond'):
             with self.subTest(mode=mode):self.invoke('bounds-'+mode)
 
     def test_reads_preserve_whole_file_eof_and_partial_count_semantics(self):
@@ -159,6 +164,17 @@ class FileTransferTests(unittest.TestCase):
 
     def test_existing_log_mask_and_text_remain(self):
         self.invoke('read',logging=False);self.invoke('write',logging=False)
+
+
+class GenericFileExtentTests(unittest.TestCase):
+    generic_formats = True
+    setUpClass = classmethod(FileTransferTests.setUpClass.__func__)
+    tearDownClass = classmethod(FileTransferTests.tearDownClass.__func__)
+    invoke = FileTransferTests.invoke
+
+    def test_64_bit_file_sizes_are_checked_before_narrowing(self):
+        for mode in ('whole-wide-wrap', 'whole-wide-zero'):
+            self.invoke('bounds-' + mode)
 
 
 if __name__=='__main__':unittest.main()

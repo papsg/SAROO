@@ -43,6 +43,8 @@ static int read_track_ip(TRACK_INFO *tk, u8 *out)
 {
     unsigned prefix = TRACK_SIZE(tk) == 2352 ? (tk->mode == 2 ? 24 : 16) :
                       TRACK_SIZE(tk) == 2336 ? 8 : 0;
+    FSIZE_t size = f_size(tk->fp);
+    if (tk->file_offset > size || prefix > size - tk->file_offset) return -1;
     return read_ip(tk->fp, (FSIZE_t)tk->file_offset + prefix, out);
 }
 

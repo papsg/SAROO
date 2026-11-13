@@ -164,6 +164,7 @@ static void fragmented(void)
     assert(!f_close(&other) && !f_mount(NULL,"0:",0));
     printf("fragmented fs=%u nonadjacent_link=%u->%u positions=%u reads=%u writes=%u\n",type,cluster,next,num,reads,writes);
 }
+#if FF_FS_EXFAT
 static void seek_file(void)
 {
     FATFS fs;FIL file,other;UINT count;BYTE marker;
@@ -197,6 +198,8 @@ static void seek_file(void)
     assert(f_close(&other)==0 && f_mount(NULL,"0:",0)==0);
     printf("exFAT wide file bytes=%llu marker_positions=%u reads=%u writes=%u\n",(unsigned long long)end+1,num,reads,writes);
 }
+#endif
+
 static void mount_geometry(int value)
 {
     if(value!=512) {
@@ -302,11 +305,14 @@ static void sync_file(int fat32, int value)
     assert(f_write(&file, payload, 8192, &count) == FR_OK && count == 8192);
     assert(f_sync(&file) == FR_OK);
     check_clean_sync(&file);
-    if (fat32) {
-        fault_sector = file.dir_sect;
-    } else {
+#if FF_FS_EXFAT
+    if (!fat32) {
         DWORD cluster = file.obj.c_scl ? file.obj.c_scl : (DWORD)fs.dirbase;
         fault_sector = fs.database + (cluster - 2) * fs.csize + file.obj.c_ofs / 512;
+    } else
+#endif
+    {
+        fault_sector = file.dir_sect;
     }
     assert(f_write(&file, payload + 8192, 1025, &count) == FR_OK && count == 1025);
     if (value != CLEAN) {
@@ -618,6 +624,125 @@ static void fat32_active(unsigned flags, int one_fat)
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
+/* Format with the generic fixture and mount with the App fixture. */
+static void format_profile_card(int type, int partitioned)
+{
+    BYTE work[32768];
+    MKFS_PARM options = {
+        .fmt = (type == FS_FAT32 ? FM_FAT32 : type == FS_EXFAT ? FM_EXFAT : FM_FAT)
+             | (partitioned ? 0 : FM_SFD),
+        .n_fat = 2, .au_size = 512
+    };
+    assert(f_mkfs("0:", &options, work, sizeof work) == FR_OK);
+    FATFS fs;
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    assert(fs.fs_type == type && !!fs.volbase == partitioned);
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
+static void profile_mount(int type, int partitioned)
+{
+    FATFS fs;
+    BYTE boot[512];
+    if (type == FS_FAT32) {
+        LBA_t sector = 0;
+        if (partitioned) {
+            assert(disk_read(0, boot, 0, 1) == RES_OK);
+            sector = little_word(boot + 454);
+            assert(sector);
+        }
+        assert(disk_read(0, boot, sector, 1) == RES_OK);
+        memset(boot + 82, ' ', 8); /* FAT32 has no authoritative type label. */
+        assert(disk_write(0, boot, sector, 1) == RES_OK);
+    }
+    unsigned before = writes;
+    FRESULT res = f_mount(&fs, "0:", 1);
+    assert(res == (type == FS_FAT32 ? FR_OK : FR_NO_FILESYSTEM));
+    assert(writes == before);
+    if (res == FR_OK) {
+        assert(fs.fs_type == FS_FAT32 && !!fs.volbase == partitioned);
+        /* Fill the first directory cluster and read every file after remount. */
+        for (unsigned i = 0; i < 20; i++) {
+            char name[24];
+            BYTE payload[513];
+            snprintf(name, sizeof name, "/長い名前 %02u.bin", i);
+            memset(payload, i + 1, sizeof payload);
+            create_file(name, payload, sizeof payload);
+        }
+        assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(&fs, "0:", 1) == FR_OK);
+        for (unsigned i = 0; i < 20; i++) {
+            char name[24];
+            BYTE payload[513];
+            snprintf(name, sizeof name, "/長い名前 %02u.bin", i);
+            memset(payload, i + 1, sizeof payload);
+            verify_file(name, payload, sizeof payload);
+        }
+    } else {
+        FIL file;
+        assert(!fs.fs_type);
+        assert(f_open(&file, "/never.bin", FA_CREATE_ALWAYS | FA_WRITE) == FR_NO_FILESYSTEM);
+        assert(writes == before);
+    }
+    assert(f_mount(NULL, "0:", 0) == FR_OK);
+}
+
+static void fat32_max_file(void)
+{
+    /* Synthesize a valid 4 GiB-1 file without writing gigabytes of test data. */
+    enum { SECTORS = 9000000, CLUSTER_SECTORS = 64, FILE_CLUSTERS = 131072, FAT_SECTORS = 1100 };
+    BYTE sector[512] = {0};
+    assert(sectors == SECTORS);
+    sector[0] = 0xeb; sector[2] = 0x90;
+    store_little(sector + 11, 512, 2);
+    sector[13] = CLUSTER_SECTORS;
+    store_little(sector + 14, 32, 2);
+    sector[16] = 1;
+    sector[21] = 0xf8;
+    store_little(sector + 32, SECTORS, 4);
+    store_little(sector + 36, FAT_SECTORS, 4);
+    store_little(sector + 44, 2, 4);
+    store_little(sector + 510, 0xaa55, 2);
+    assert(disk_write(0, sector, 0, 1) == RES_OK);
+
+    for (unsigned i = 0; i <= (FILE_CLUSTERS + 2) / 128; i++) {
+        for (unsigned j = 0; j < 128; j++) {
+            unsigned cluster = i * 128 + j;
+            DWORD entry = cluster == 0 ? 0x0ffffff8 :
+                          cluster <= 2 || cluster == FILE_CLUSTERS + 2 ? 0x0fffffff :
+                          cluster < FILE_CLUSTERS + 2 ? cluster + 1 : 0;
+            store_little(sector + 4 * j, entry, 4);
+        }
+        assert(disk_write(0, sector, 32 + i, 1) == RES_OK);
+    }
+    memset(sector, 0, sizeof sector);
+    memcpy(sector, "MAX     BIN", 11);
+    sector[11] = AM_ARC;
+    store_little(sector + 26, 3, 2);
+    store_little(sector + 28, UINT32_MAX, 4);
+    assert(disk_write(0, sector, 32 + FAT_SECTORS, 1) == RES_OK);
+
+    FATFS fs;
+    FIL file;
+    UINT count;
+    BYTE marker = 0x5a, received = 0;
+    assert(f_mount(&fs, "0:", 1) == FR_OK);
+    assert(f_open(&file, "/MAX.BIN", FA_READ | FA_WRITE) == FR_OK);
+    assert(f_size(&file) == UINT32_MAX);
+    assert(f_lseek(&file, UINT32_MAX - 1u) == FR_OK);
+    assert(f_write(&file, &marker, 1, &count) == FR_OK && count == 1);
+    assert(f_tell(&file) == UINT32_MAX);
+    unsigned before = writes;
+    assert(f_write(&file, &marker, 1, &count) == FR_OK && count == 0);
+    assert(writes == before && f_tell(&file) == UINT32_MAX);
+    assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+    assert(f_mount(&fs, "0:", 1) == FR_OK && f_open(&file, "/MAX.BIN", FA_READ) == FR_OK);
+    assert(f_size(&file) == UINT32_MAX && f_lseek(&file, UINT32_MAX - 1u) == FR_OK);
+    assert(f_read(&file, &received, 1, &count) == FR_OK && count == 1 && received == marker);
+    assert(f_read(&file, &received, 1, &count) == FR_OK && count == 0);
+    assert(f_close(&file) == FR_OK && f_mount(NULL, "0:", 0) == FR_OK);
+}
+
+#if FF_FS_EXFAT
 static void write_exfat_boot(BYTE *boot, LBA_t base)
 {
     uint32_t checksum = 0;
@@ -747,6 +872,8 @@ static void bitmap_case(const char *kind, unsigned value)
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
+#endif
+
 /* Adapted from paps-g 8da2769d. Check admission before any data-area I/O. */
 static void fat_mount_extent(unsigned which)
 {
@@ -791,6 +918,7 @@ static void fat_mount_extent(unsigned which)
     assert(!f_mount(NULL, "0:", 0));
 }
 
+#if FF_FS_EXFAT
 static void exfat_mount_extent(unsigned which)
 {
     enum { SHORT_FAT, EARLY_FAT, FAT_HEAP_OVERLAP, EXACT_FAT, FORMATTED_FAT };
@@ -832,6 +960,8 @@ static void exfat_mount_extent(unsigned which)
     assert(!f_mount(NULL, "0:", 0));
 }
 
+#endif
+
 /* Adapted from paps-g b483124c. Change only the on-disk size of an
  * empty file, leaving its starting cluster absent. */
 static void set_empty_file_size(FATFS *fs, FIL *file, unsigned size)
@@ -839,11 +969,14 @@ static void set_empty_file_size(FATFS *fs, FIL *file, unsigned size)
     LBA_t sector;
     unsigned offset;
     int exfat = fs->fs_type == FS_EXFAT;
+#if FF_FS_EXFAT
     if (exfat) {
         DWORD root = file->obj.c_scl ? file->obj.c_scl : (DWORD)fs->dirbase;
         sector = fs->database + (root - 2) * fs->csize + file->obj.c_ofs / 512;
         offset = file->obj.c_ofs % 512;
-    } else {
+    } else
+#endif
+    {
         sector = file->dir_sect;
         offset = (unsigned)(file->dir_ptr - fs->win);
     }
@@ -989,7 +1122,13 @@ int main(int argc,char **argv)
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
     int value = atoi(argv[3]);
-    if (!strcmp(argv[2], "active-fat32") || !strcmp(argv[2], "single-fat32")) {
+    if (!strcmp(argv[2], "format-profile")) {
+        format_profile_card(value & 7, value >> 3);
+    } else if (!strcmp(argv[2], "mount-profile")) {
+        profile_mount(value & 7, value >> 3);
+    } else if (!strcmp(argv[2], "max-fat32-file")) {
+        fat32_max_file();
+    } else if (!strcmp(argv[2], "active-fat32") || !strcmp(argv[2], "single-fat32")) {
         fat32_active((unsigned)value, !strcmp(argv[2], "single-fat32"));
     } else if (!strcmp(argv[2], "retained-media")) {
         retained_media(value & 1, value & 2);
@@ -1006,10 +1145,12 @@ int main(int argc,char **argv)
         readonly_seek_case(type, (unsigned)value);
     } else if (!strcmp(argv[2], "mount-fat-extent")) {
         fat_mount_extent((unsigned)value);
+#if FF_FS_EXFAT
     } else if (!strcmp(argv[2], "mount-exfat-extent")) {
         exfat_mount_extent((unsigned)value);
     } else if (!strncmp(argv[2], "bitmap-", 7)) {
         bitmap_case(argv[2] + 7, (unsigned)value);
+#endif
     } else if (!strncmp(argv[2], "metadata-", 9)) {
         const char *name = argv[2] + 9;
         if (!strcmp(name, "fat12")) sync_metadata(FS_FAT12, value);
@@ -1018,8 +1159,11 @@ int main(int argc,char **argv)
     } else {
         int fat32 = !strcmp(argv[2], "fragmented") && value;
         format_volume(fat32 ? FM_FAT32 : FM_EXFAT, 1, fat32 ? 512 : 65536);
+#if FF_FS_EXFAT
         if (!strcmp(argv[2], "seek")) seek_file();
-        else if (!strcmp(argv[2], "fragmented")) fragmented();
+        else
+#endif
+        if (!strcmp(argv[2], "fragmented")) fragmented();
         else { assert(!strcmp(argv[2], "mount")); mount_geometry(value); }
     }
     assert(!fclose(disk));return 0;

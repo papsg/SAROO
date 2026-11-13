@@ -195,6 +195,8 @@ typedef struct {
 	BYTE	win[FF_MAX_SS];	/* Disk access window for Directory, FAT (and file data at tiny cfg) */
 #if FF_FS_EXFAT && !FF_FS_READONLY
     FF_DIR_PENDING dir_pending;
+#elif !FF_FS_READONLY
+    DWORD growth_cluster, growth_tail; /* Uncounted allocation awaiting rollback. */
 #endif
 } FATFS;
 

@@ -72,3 +72,22 @@ class FatFsGrowthTests(unittest.TestCase):
 
     def test_mirrored_fat_recovery(self):
         self.sweep('fat32', 'fragmented', 'write', fats=2)
+
+
+class Fat32AppGrowthTests(unittest.TestCase):
+    generic_formats = False
+    fixture_name = 'fat32-app-growth'
+    fixture_sources = FatFsGrowthTests.fixture_sources
+    setUpClass = classmethod(support.FatFsSeekTests.setUpClass.__func__)
+    tearDownClass = classmethod(support.FatFsSeekTests.tearDownClass.__func__)
+    case = FatFsGrowthTests.case
+    sweep = FatFsGrowthTests.sweep
+
+    def test_fragmented_write_rollback_and_repeated_failures(self):
+        for copies in (1, 2):
+            self.case('fat32', 'fragmented', 'write', 'read', 2, fats=copies)
+            self.sweep('fat32', 'fragmented', 'write', fats=copies)
+
+    def test_seek_prefix_survives_a_later_failed_allocation(self):
+        for copies in (1, 2):
+            self.sweep('fat32', 'prefix', 'seek', fats=copies)

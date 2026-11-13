@@ -11,6 +11,7 @@ from test_menu_file_cache import host_cache_operations
 
 class MenuSaveOwnerTests(MCUSaveTest):
     fixture = 'owner'
+    generic_formats = True
     c_source = 'menu_save_owner.c'
 
     @classmethod

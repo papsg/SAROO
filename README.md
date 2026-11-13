@@ -1,6 +1,9 @@
 
 [English documentation](README_EN.md)
 
+本分支的 MCU 应用程序只支持 FAT32 格式的 SD 卡。格式化会清除数据，
+请先备份并确认备份可读，再将卡格式化为 FAT32 并恢复原有文件。
+
 ### SAROO is a HDLoader for SEGA Saturn.
 
 SAROO是一个土星光驱模拟器。SAROO插在卡槽上，实现原主板的CDBLOCK的功能，从SD卡装载游戏并运行。
@@ -41,7 +44,7 @@ FPGA内部也经过重构，抛弃了qsys系统，使用自己实现的SDRAM与�
 
 测试的几十个游戏可以完美运行。  
 1MB/4MB加速卡功能可以正常使用。  
-SD卡支持FAT32/ExFAT文件系统。  
+原版固件支持FAT32/ExFAT文件系统；本分支的MCU应用程序仅支持FAT32。<br>
 支持cue/bin格式的镜像文件。单bin或多bin。  
 部分游戏会卡在加载/片头动画界面。  
 部分游戏会卡在进行游戏时。  

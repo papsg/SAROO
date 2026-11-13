@@ -60,7 +60,7 @@ static void full_fault(int value)
 }
 static void full_end_boundary(void)
 {
-    _Static_assert(sizeof(FSIZE_t)==8,"Exercise the public exFAT file-offset width");
+    _Static_assert(sizeof(FSIZE_t) == (FF_FS_EXFAT ? 8 : 4), "FatFs file-offset width");
     make_header(1,1);
     u8 data[3*2352];memset(data,0x5c,sizeof(data));
     memcpy(data+file_offset+prefix,expected,sizeof(expected));

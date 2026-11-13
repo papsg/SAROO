@@ -3,6 +3,7 @@ import unittest
 from mcu_save_support import MCUSaveTest
 
 class MCUExtentTests(MCUSaveTest):
+    generic_formats = True
     fixture = 'extents'
 
     def case(self, filesystem, mode):
