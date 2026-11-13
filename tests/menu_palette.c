@@ -306,6 +306,35 @@ static void cover_bank(void)
     guards();
 }
 
+static void compositing(void)
+{
+    const unsigned pairs[] = {0x24, 0x2c, 0xd0, 0xd4, 0xe0, 0xe8,
+                              0xec, 0xf0, 0xf4, 0x110};
+    for (int pal = 0; pal <= 1; ++pal) {
+        for (int logo = 0; logo <= 1; ++logo) {
+            seed(logo);
+            TVSTAT = VBLANK | (pal ? PAL : 0);
+            PRIR = 0x5678;
+            registers[0x100 / 4] = 0x87654321;
+            conio_init();
+            assert(MZCTL == 0 && PRINA == 0x0707 && BGON == 1);
+            for (unsigned i = 0; i < sizeof pairs / sizeof pairs[0]; ++i)
+                assert(registers[pairs[i] / 4] == 0);
+            assert(PRIR == 0x5678 && registers[0x100 / 4] == 0x87654321);
+
+            nbg1_on();
+            assert(BGON == 3 && CCCTL == 2 && CCRNA == 0x700);
+            vdp2_win0(1, 1, 12, 24, 60, 80);
+            assert(WCTLA == 0x0300 && WCTLB == 0);
+            assert(WPSX0 == 24 && WPSY0 == 24 && WPEX0 == 120 && WPEY0 == 80);
+            vdp2_win0(-1, 0, 0, 0, 0, 0);
+            assert(WCTLA == 0 && CCCTL == 2);
+            text_bank();
+            guards();
+        }
+    }
+}
+
 static void ntsc_display(void)
 {
     for (unsigned line = 0; line < 263; ++line) {
@@ -383,6 +412,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "erase-bounds")) erase_bounds();
     else if (!strcmp(argv[1], "stop-drawing")) stop_drawing();
     else if (!strcmp(argv[1], "coordinates")) coordinates();
+    else if (!strcmp(argv[1], "compositing")) compositing();
     else if (!strcmp(argv[1], "vram-cycles")) vram_cycles();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();

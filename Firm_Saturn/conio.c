@@ -134,10 +134,21 @@ void vdp_init(void)
 	// Priority: 7
 	PRINA = 0x0707;
 
+	/* Establish compositing defaults before either menu layer is visible. */
+	volatile u32 *vdp2_regs = (volatile u32 *)VDP2_REGISTER_BASE;
+	MZCTL = 0;
+	vdp2_regs[0x24 / 4] = 0;  /* SFSEL, SFCODE */
+	vdp2_regs[0x2c / 4] = 0;  /* BMPNA, BMPNB */
+	vdp2_regs[0xd0 / 4] = 0;  /* WCTLA, WCTLB */
+	vdp2_regs[0xd4 / 4] = 0;  /* WCTLC, WCTLD */
+	vdp2_regs[0xe0 / 4] = 0;  /* SPCTL, SDCTL */
+	for (i = 0; i < 4; ++i)
+		vdp2_regs[0xe8 / 4 + i] = 0; /* Line color, blending, sprite priority */
+	vdp2_regs[0x110 / 4] = 0; /* CLOFEN, CLOFSL */
+
 	/* NBG0 and NBG1 each use two scroll pairs and two increment pairs. */
-	volatile u32 *coordinates = (volatile u32 *)(VDP2_REGISTER_BASE + 0x70);
 	for (i = 0; i < 8; ++i)
-		coordinates[i] = (i & 2) ? 0x00010000 : 0;
+		vdp2_regs[0x70 / 4 + i] = (i & 2) ? 0x00010000 : 0;
 	ZMCTL = 0;
 	SCRCTL = 0;
 

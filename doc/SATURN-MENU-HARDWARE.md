@@ -266,3 +266,28 @@ regions, with nine adjacent cover methods and 48 linked ROM clock checks.
 The linked menu has 85,028 code/data bytes, up 16. Disassembly shows all
 eight big-endian coordinate longword stores. Physical rendering of the
 public build remains unqualified.
+
+## Set VDP2 menu compositing defaults
+
+SATURN-VDP2-004, adapted from paps-g `b0177efe`. The menu now initializes
+mosaic, bitmap palette selection, windows, sprite and shadow interpretation,
+line-color insertion, special priority, blending, and color-offset controls
+while the display is off. It sets sprite priorities to zero before displaying
+the menu. Inherited values could otherwise tint, clip, blend, or distort the
+menu. The BIOS logo transition runs first, and the cover path still explicitly
+sets its own window and blend ratio.
+
+[Sega VDP2 User's Manual ST-058-R2-060194, bitmap palette and mosaic, printed pp. 110–119](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=128),
+[windows, printed pp. 179–193](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=197),
+[sprite control, printed p. 207](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=225),
+and [priority, color calculation, color offsets and shadow, printed pp. 227–259](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=245)
+define these controls. Writes stay within the selected registers and skip the
+reserved word after the rotation priority register.
+
+The parent fails the seeded compositing test and passes the other twelve
+[palette methods](#initialize-the-vdp1-erase-rectangle). Both port profiles
+pass all thirteen. The new test checks the affected registers, neighboring
+canaries and intentional cover clipping and blend controls. All 20 adjacent
+cover and peripheral methods and 48 linked ROM clock cases pass. The full
+menu has 85,076 code/data bytes, up 48. Host checks model register values and
+do not establish physical image quality.

@@ -20,7 +20,8 @@ class MenuPaletteTests(unittest.TestCase):
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
         palette = data[data.index(b'static const unsigned int vga_pal['):data.index(b'#include "font_latin.h"')]
         startup = data[data.index(b'void logo_trans(void)'):data.index(b'void nbg1_on(void)')]
-        cover = data[data.index(b'void nbg1_on(void)'):data.index(b'void vdp2_win0(')]
+        window = data.index(b'void vdp2_win0(')
+        cover = data[data.index(b'void nbg1_on(void)'):data.index(b'\n}', window) + 3]
         (cls.target / 'palette.inc').write_bytes(palette + startup + cover)
         inputs = {'conio.c': data}
         counter = source.parent / 'vdp2_display.h'
@@ -63,6 +64,7 @@ class MenuPaletteTests(unittest.TestCase):
     def test_vdp1_minimal_erase_rectangle_is_defined_on_every_startup(self): self.invoke('erase-bounds')
     def test_vdp1_drawing_stops_before_replacing_commands(self): self.invoke('stop-drawing')
     def test_vdp2_menu_layers_start_with_identity_coordinates(self): self.invoke('coordinates')
+    def test_vdp2_initializes_compositing_and_keeps_cover_effects(self): self.invoke('compositing')
     def test_vdp2_bitmap_and_cpu_slots_obey_the_partition_schedule(self): self.invoke('vram-cycles')
     def test_original_logo_palette_and_tile_upload_remain_intact(self): self.invoke('logo')
     def test_cover_palette_endpoints_do_not_change_text_colors(self): self.invoke('cover')
