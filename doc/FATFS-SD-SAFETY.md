@@ -295,3 +295,22 @@ mismatches. The corrected build also accepts both valid echoes,
 including the control with a reserved upper bit set. Both
 48-method disk profiles pass. The GNU App uses 65,424 load bytes,
 with 112 bytes free. Physical negotiation and MDK remain unqualified.
+
+## Keep legacy SD cards on byte addressing
+
+MCU-SD-010, adapted from paps-g `76c94c6c`. Interpret the ready
+ACMD41 capacity bit only after a successful CMD8. A card that
+skipped CMD8 confirmation continues to use byte addresses even
+if the response has that bit set.
+
+[SD Physical Layer Simplified Specification 3.01, §4.2.3, printed p. 21](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=33)
+defines when the capacity bit is valid.
+
+Run `make -C tests check-mcu-diskio`. The
+`capacity_flag_requires` test in `test_sd_safety.py` checks
+both response values with and without CMD8 confirmation. With
+`SAROO_SD_SOURCE` set to the parent driver, the legacy case with
+the capacity bit set incorrectly selects block addressing. Both
+corrected 49-method disk profiles pass, including standard- and
+high-capacity controls. The GNU App uses 65,436 load bytes, with
+100 bytes free. Physical addressing and MDK remain unqualified.

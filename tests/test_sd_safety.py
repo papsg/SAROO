@@ -134,6 +134,12 @@ class SDSafetyTests(unittest.TestCase):
             with self.subTest(echo=echo):
                 self.invoke('interface-echo', 1, echo)
 
+    def test_capacity_flag_requires_a_card_that_answered_cmd8(self):
+        for legacy in (0, 1):
+            for ccs in (0, 1):
+                with self.subTest(legacy=legacy, ccs=ccs):
+                    self.invoke('capacity', legacy, ccs)
+
     def test_not_ready_retries_are_bounded_including_tick_wrap(self):
         for wrap in (0, 1):
             with self.subTest(wrap=wrap):

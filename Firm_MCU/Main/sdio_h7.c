@@ -441,7 +441,8 @@ int sdcard_identify(void)
 		printk("ACMD41 error! %08x\n", retv);
 		return -1;
 	}
-	int high_capacity = (cmd_resp[0] & 0x40000000) != 0;
+	/* CCS is valid only after a successful CMD8 and a ready ACMD41. */
+	int high_capacity = (cmd_resp[0] & hcs) != 0;
 
 	// Send CID
 	retv = sd_cmd(CMD_02, 0x00000000);

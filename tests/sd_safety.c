@@ -51,7 +51,7 @@ static struct {
     u32 cmd8_echo;
     unsigned prefixes, requests, retry_delays, post_ready;
     unsigned fail_prefix, fail_request;
-    int active, legacy;
+    int active, legacy, ocr_ccs;
 } identify;
 
 static void printk(const char *format, ...)
@@ -117,7 +117,7 @@ static osStatus_t identify_completion(void)
             return osOK;
         }
         if ((u32)(identify.tick - identify.first_tick) >= identify.ready_after)
-            SDIO->RESP1 = identify.legacy ? 0x80000000u : 0xc0000000u;
+            SDIO->RESP1 = 0x80000000u | (identify.ocr_ccs ? 0x40000000u : 0);
         return osOK;
     }
     assert(identify.requests && (identify.post_ready || (cmd_resp[0] & 0x80000000)));
@@ -267,6 +267,11 @@ static void check_identification(const char *mode, unsigned shape, int value)
         identify.legacy = shape != 0;
         identify.ready_after = times[value];
         expect_ready = 1;
+    } else if (!strcmp(mode, "capacity")) {
+        assert(shape < 2 && value >= 0 && value < 2);
+        identify.legacy = shape;
+        identify.ready_after = 0;
+        expect_ready = 1;
     } else if (!strcmp(mode, "not-ready") || !strcmp(mode, "wrap-ready")) {
         if (shape) identify.tick = UINT32_MAX - (30u + OS_TICK_FREQ / 2u);
         if (!strcmp(mode, "wrap-ready")) {
@@ -293,12 +298,13 @@ static void check_identification(const char *mode, unsigned shape, int value)
         else identify.fail_prefix = (unsigned)value;
     }
 
+    identify.ocr_ccs = !strcmp(mode, "capacity") ? value : !identify.legacy;
     int result = sdcard_identify();
     assert(!SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
     u32 elapsed = identify.last_tick - identify.first_tick;
     if (expect_ready) {
         assert(result == 0 && identify.post_ready == 8);
-        assert(sd_rca == 0x1234 && is_sdhc == !identify.legacy);
+        assert(sd_rca == 0x1234 && is_sdhc == (!identify.legacy && identify.ocr_ccs));
 #ifdef HAS_CSD_CAPACITY_PRINT
         assert(bsize == 512);
 #endif
@@ -336,6 +342,7 @@ static void check_interface_echo(u32 echo, int valid)
     const u32 initial_clock = SDCLK_LOW | (1u << 16);
     identify.active = 1;
     identify.cmd8_echo = echo;
+    identify.ocr_ccs = 1;
     SDIO->CLKCR = initial_clock;
     int result = sdcard_identify();
     assert(!SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
