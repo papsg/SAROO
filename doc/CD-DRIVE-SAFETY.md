@@ -515,3 +515,23 @@ reduced its lookup table from 904 to 472 bytes while preserving
 the returned labels. The final GNU App uses 65,408 load bytes,
 with 128 bytes free. The result adds eight bytes to the DTCM span.
 Physical command timing and original MDK output remain unqualified.
+
+## Reject invalid CD sector length selectors
+
+MCU-CDC-R19, adapted from paps-g `043223c0`. Command `0x60`
+admits four transfer sizes and `FF` for no change. Validate both
+selector bytes before updating either setting. An invalid selector
+returns REJECT and keeps both lengths, even if the other byte is
+valid.
+
+[Sega ST-162 §8.2.7, function 7.1, printed p. 95](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83)
+defines the lengths and no-change option.
+[§3.3, printed p. 31](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=19)
+defines REJECT for malformed requests.
+
+Run `make -C tests check-cdc-command-buffer`. The
+`sector_length_selector` test in `test_cdc_connections.py` covers
+all 65,536 pairs. Set `SAROO_CDC_CONNECTION_SOURCE` to the parent
+`saturn_cdc.c` to reproduce its acknowledgment of an invalid request.
+The GNU App uses 65,436 load bytes and leaves 100 bytes free.
+Physical transfer timing and original MDK output remain unqualified.

@@ -266,11 +266,17 @@ static void every_sector_length(void)
         setup();cdb.sector_size=2340;cdb.put_sector_size=2352;
         reply[0]=(u16)(0x6000|get);reply[1]=(u16)((put<<8)|0xa5);
         CDBLOCK expected; memcpy(&expected, &cdb, sizeof expected);
-        if (get<4) expected.sector_size=lengths[get];
-        if (put<4) expected.put_sector_size=lengths[put];
-        assert(set_sector_length()==HIRQ_ESEL);
+        if ((get < 4 || get == 0xff) && (put < 4 || put == 0xff)) {
+            if (get < 4) expected.sector_size = lengths[get];
+            if (put < 4) expected.put_sector_size = lengths[put];
+            assert(set_sector_length() == HIRQ_ESEL);
+            assert(reply[0] == (0x6000 | get));
+        } else {
+            assert(set_sector_length() == 0);
+            assert(reply[0] == (STAT_REJECT << 8 | get));
+        }
         assert(!memcmp(&expected,&cdb,sizeof cdb));
-        assert(reply[0]==(0x6000|get) && reply[1]==((put<<8)|0xa5));
+        assert(reply[1] == ((put << 8) | 0xa5));
         assert(!irq_depth);
     }
 }

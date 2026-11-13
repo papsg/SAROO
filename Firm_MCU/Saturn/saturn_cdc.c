@@ -1487,6 +1487,11 @@ int set_sector_length(void)
 	id_put = SSCR2>>8;
 
 	SSLOG(_INFO, "set_sector_length:  get=%d put=%d\n", id_get, id_put);
+	if ((id_get >= 4 && id_get != 0xff) ||
+	    (id_put >= 4 && id_put != 0xff)) {
+		set_status(STAT_REJECT);
+		return 0;
+	}
 	if(id_get<4){
 		cdb.sector_size = sector_len_table[id_get];
 	}
