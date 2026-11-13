@@ -28,10 +28,16 @@ static inline __attribute__((unused)) void legacy_file_info_wire(void *wire)
 static int old_numblocks,min_num;
 static u16 fifo_status,fifo_rcnt;
 static u16 fifo_output[MAX_BLOCKS*1176];
+static u16 fifo_input[3*1176];
+static unsigned fifo_input_count,fifo_input_pos;
 static unsigned fifo_words,wake_count,track_count;
 static int check_fifo_publication;
 static u16 *fifo_slot(void)
 {
+    if (fifo_input_pos<fifo_input_count) {
+        assert(!irq_depth);
+        return &fifo_input[fifo_input_pos++];
+    }
     assert(!irq_depth && fifo_words<sizeof fifo_output/sizeof *fifo_output);
     if (check_fifo_publication) {
         assert(!fifo_rcnt && !(st_control & (0x0200 | STIRQ_DAT)));
@@ -45,7 +51,13 @@ static u16 *fifo_slot(void)
 #undef ST_STAT
 #undef printk
 #define FIFO_DATA (*fifo_slot())
-#define FIFO_STAT fifo_status
+static unsigned fifo_status_word(void)
+{
+    if (!fifo_input_count) return fifo_status;
+    unsigned remaining=fifo_input_count-fifo_input_pos;
+    return remaining>=2048 ? 0x0800 : remaining;
+}
+#define FIFO_STAT fifo_status_word()
 #define FIFO_RCNT fifo_rcnt
 #define ST_STAT st_status
 #define printk(...) ((void)0)
@@ -333,12 +345,64 @@ static void toc_busy(void)
     }
 }
 
+/* Adapted from paps-g ba472965. Compare the actual FIFO bytes with the
+ * different header and user-data offsets in Sega ST-162 §5.4. */
+static void host_put_readback(void)
+{
+    const unsigned lengths[]={2048,2336,2340,2352};
+    for (unsigned put=0;put<4;put++)
+    for (unsigned mode=0;mode<4;mode++)
+    for (unsigned get=0;get<4;get++)
+    for (unsigned moving=0;moving<2;moving++) {
+        seed(0,0);
+        memset(sector_bytes,0xa5,sizeof sector_bytes);
+        u8 expected[3][2352];
+        unsigned size=lengths[put],offset=put ? 2352-size : 24;
+        fifo_input_count=fifo_input_pos=0;
+        for (unsigned n=0;n<3;n++) {
+            for (unsigned j=0;j<2352;j++) expected[n][j]=(u8)(j*7+n*29);
+            expected[n][15]=mode;
+            expected[n][18]&=~0x20; /* Mode 2 Form 1 control. */
+            for (unsigned j=offset;j<offset+size;j+=2)
+                fifo_input[fifo_input_count++]=expected[n][j] | (u16)expected[n][j+1]<<8;
+            memset(expected[n],0,offset);
+            memset(expected[n]+offset+size,0xa5,2352-offset-size);
+        }
+        cdb.put_sector_size=size;cdb.cr3=0;cdb.cr4=3;
+        assert(put_sector_data()==HIRQ_DRDY);
+        unsigned steps=0;
+        while (cdb.trans_bk) { assert(++steps<=3);trans_handle(); }
+        assert(end_trans()==HIRQ_EHST && fifo_input_pos==fifo_input_count);
+        assert(reply[1]==3*size/2 && !cdb.trans_type && !fifo_words);
+        fifo_input_count=fifo_input_pos=0;
+        check_owners();
+
+        command(moving,0,1,0,3);
+        assert(execute(moving)==HIRQ_ECPY);
+        cdb.sector_size=lengths[get];cdb.cr3=1<<8;cdb.cr2=0;cdb.cr4=3;
+        assert(cal_actual_size()==HIRQ_ESEL && cdb.actsize==(int)(3*lengths[get]));
+        assert(get_sector_data()==HIRQ_DRDY);
+        steps=0;
+        while (!cdb.trans_finish) { assert(++steps<=3);trans_handle(); }
+        assert(fifo_words==3*lengths[get]/2);
+        offset=get ? 2352-lengths[get] : (put>=2 && mode==1 ? 16 : 24);
+        unsigned pos=0;
+        for (unsigned n=0;n<3;n++)
+            for (unsigned j=offset;j<offset+lengths[get];j+=2) {
+                u16 want=expected[n][j] | (u16)expected[n][j+1]<<8;
+                assert(fifo_output[pos++]==want);
+            }
+        assert(end_trans()==HIRQ_EHST && reply[1]==3*lengths[get]/2);
+        check_owners();
+    }
+}
+
 #ifndef CDC_BOUNDS_MAIN
 #define CDC_BOUNDS_MAIN main
 #endif
 int CDC_BOUNDS_MAIN(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<14);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<15);
     if(test==0)invalid_selectors();else if(test==1)valid_filter_registers();
     else if(test==2)sector_positions();else if(test==3)empty_and_broken_info();
     else if(test==4)busy_precedence();else if(test==5)read_delete_controls();
@@ -346,6 +410,6 @@ int CDC_BOUNDS_MAIN(int argc,char **argv)
     else if(test==8)calculation_ranges();else if(test==9)calculation_matches_fifo();
     else if(test==10)incomplete_calculation_and_reset();
     else if(test==11)toc_unavailable();else if(test==12)toc_mounted();
-    else toc_busy();
+    else if(test==13)toc_busy();else host_put_readback();
     puts("pass: actual command selector bounds, positions and valid controls");return 0;
 }

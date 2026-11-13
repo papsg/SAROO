@@ -582,3 +582,29 @@ checks that the valid mounted session still reports its leadout.
 Both 248-method profiles pass. The GNU App remains 65,440 load bytes,
 with 96 bytes free. Physical startup timing and original MDK output
 remain unqualified.
+
+## Keep the Mode 1 layout for sectors written by the host
+
+MCU-CDC-R25, adapted from paps-g `ba472965`. A 2,340- or 2,352-byte
+PUT can supply a Mode 1 header. The block used to lose that layout at
+DataEnd, so a later 2,048-byte GET skipped the first eight payload
+bytes. DataEnd now keeps the existing Mode 1 marker for the supplied
+mode byte. COPY and MOVE carry the marker with the sector. Shorter
+PUTs still have a zeroed prefix, and early DataEnd retains the existing
+rules for unwritten bytes.
+
+[Sega ST-162-062094 §5.4(2), printed p. 48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
+places Mode 1 user data immediately after the header.
+[§8.2.7, function 7.1, printed p. 95](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83)
+defines the selectable PUT and GET lengths.
+
+Run `make -C tests check-cdc-command-buffer` in the default and
+`SAROO_CDC_PROFILE=release` profiles. To reproduce the wrong bytes,
+set `SAROO_CDC_BOUNDS_SOURCE` to the parent's `saturn_cdc.c` and
+select `-k host_put_header_layout` in `test_cdc_bounds.py`. The fixture
+uses three distinct sectors per case and compares the returned bytes
+for 128 combinations of header mode, PUT length, GET length and COPY
+or MOVE. The separate metadata fixture checks the length apart from
+the layout bit. Both 249-method CD/CUE profiles pass. The GNU App
+adds 16 load bytes (65,488 used, 48 free), with unchanged static
+DTCM. The results cover host transfer behavior and the GNU link.

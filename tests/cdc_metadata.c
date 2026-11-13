@@ -146,7 +146,7 @@ static void host_cases(int check_metadata,int headers)
             assert(cdb.part[1].numblocks==4 && !irq_depth);
             BLOCK *b=cdb.part[1].head;
             for(unsigned n=0;n<4;n++,b=b->next) {
-                assert(b && b->size==(int)size);
+                assert(b && (b->size & ~BLOCK_RAW_MODE1)==(int)size);
                 assert(!memcmp(b->data+offset,expected[n]+offset,size));
                 if(check_metadata) {
                     unsigned mode2=type>=2 && (!headers || raw_mode==2);

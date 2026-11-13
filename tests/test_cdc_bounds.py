@@ -34,7 +34,7 @@ class CDBoundsTests(unittest.TestCase):
         file_fifo = b'static __attribute__((noinline)) void fill_file_info_fifo('
         if file_fifo in raw:
             code += bswap_source(header, b'') + function(file_fifo)
-        code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',b'int get_toc_info(',
+        code+=b''.join(function(sig) for sig in (b'void fill_fifo(',b'void trans_start(',b'void trans_handle(',b'int end_trans(',b'int put_sector_data(',b'int get_toc_info(',
             b'int set_filter_range(',b'int get_filter_range(',b'int set_filter_subheader(',b'int get_filter_mode(',
             b'int get_filter_connection(',b'int get_sector_num(',b'int cal_actual_size(',b'int get_actual_size(',
             b'int get_sector_info(',b'static __attribute__((noinline)) int get_sector_data_common(',
@@ -92,6 +92,7 @@ class CDBoundsTests(unittest.TestCase):
     def test_toc_unavailable_streams_all_ones_and_keeps_cache(self):self.run_case(11)
     def test_toc_mounted_states_stream_original_words(self):self.run_case(12)
     def test_toc_busy_transfer_preserves_fifo_and_owner(self):self.run_case(13)
+    def test_host_put_header_layout_survives_copy_move_and_readback(self):self.run_case(14)
 
 
 if __name__=='__main__':unittest.main()

@@ -763,6 +763,8 @@ int end_trans(void)
             /* Early DataEnd incorporates all reserved sectors. Unwritten
              * payload stays undefined; only absent prefixes were initialized. */
             bt->size = cdb.trans_size;
+            /* Short PUTs zero the mode byte. Keep a supplied Mode 1 header. */
+            if (data[15] == 1) bt->size |= BLOCK_RAW_MODE1;
             bt->fad = ((data[12] >> 4)*10 + (data[12] & 15))*4500 +
                       ((data[13] >> 4)*10 + (data[13] & 15))*75 +
                       ((data[14] >> 4)*10 + (data[14] & 15));
