@@ -2506,3 +2506,9 @@ The full `make -j6 -C tests check` passed on an archive matching all 680 tracked
 The final menu archive reproduces the verified 488,770-byte image and ELF byte for byte and passes all 48 linked ROM clock controls. The menu has 84,900 code/data bytes, 9,488 static BSS bytes, a 16,384-byte stack and 20,296 bytes of body margin. MCU and FPGA source inputs match the previous series. Historical NTSC phase captures support the display algorithm. This public build and PAL display admission remain physically unqualified.
 
 The private checkout's HEAD, branch, refs and stash, status and tracked diff match the starting fingerprints. The Saturn was untouched. The published deltas passed the secret scan and public identity review.
+
+## Saturn menu handoff and rendering series
+
+Six ordered checkpoints after [`9b7bfb1`](https://github.com/papsg/SAROO/commit/9b7bfb100716e051419a86f93cc53e2c427c8f18). The linked notes record provenance, Sega documentation, verification and hardware limits.
+
+- [x] `f822fc1e` + `33014804` (SATURN-SMPC-002/004) — [`35c06d1`](https://github.com/papsg/SAROO/commit/35c06d11c22ae0b29cf38c80e7d009d237e94179), [complete reset disable before BIOS player handoff](https://github.com/papsg/SAROO/blob/35c06d11c22ae0b29cf38c80e7d009d237e94179/doc/SATURN-MENU-HARDWARE.md#complete-reset-disable-before-handing-off-to-the-bios-player). The parent fails both new methods. The port passes both seven-method profiles, 38 adjacent checks and 48 linked ROM clock checks. The historical private Astal test reached the player. Physical qualification of the public image remains open.
