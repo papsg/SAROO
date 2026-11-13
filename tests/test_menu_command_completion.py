@@ -135,7 +135,7 @@ class MenuCommandCompletionTests(unittest.TestCase):
         dut.write_bytes(
             b'module command_dut(input mclk,NRESET,SS_RST,st_wr_start,ss_wr_start,ss_reg_cs,\n'
             b'input [24:0] fsmc_addr, input [23:0] SS_ADDR,\n'
-            b'input [15:0] ST_AD,SS_DATA,\n'
+            b'input [15:0] st_wdata,SS_DATA,\n'
             b'output reg [15:0] ss_reg_cmd,ss_reg_data, output pending);\n'
             + irq + registers + b'\nassign pending=st_irq_cmd;\nendmodule\n')
         binary = self.target / 'menu-command.vvp'

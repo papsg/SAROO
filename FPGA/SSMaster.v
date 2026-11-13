@@ -174,41 +174,58 @@ module SSMaster(
 // STM32 FSMC                                        //
 ///////////////////////////////////////////////////////
 
-	// fsmc address latch
+	// NADV latches the address and publishes one event per FMC halfword.
+	reg[24:0] fsmc_addr_latched;
+	reg ale_toggle;
+	always @(negedge NRESET or posedge ST_ALE)
+	begin
+		if(!NRESET) begin
+			fsmc_addr_latched <= 0;
+			ale_toggle <= 0;
+		end else if(!ST_CS) begin
+			fsmc_addr_latched <= {ST_ADDR, ST_AD, 1'b0};
+			ale_toggle <= ~ale_toggle;
+		end
+	end
+
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ale_meta;
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ale_sync;
+	reg ale_accepted;
 	reg[24:0] fsmc_addr;
-	reg fsmc_cs;
+	reg[1:0] st_mask_held;
+	reg[15:0] st_wdata_held;
+	wire st_access_start = ale_sync ^ ale_accepted;
 
-	always @(posedge ST_ALE)
+	always @(negedge NRESET or posedge mclk)
 	begin
-		fsmc_addr <= {ST_ADDR, ST_AD, 1'b0};
+		if(!NRESET) begin
+			ale_meta <= 0;
+			ale_sync <= 0;
+			ale_accepted <= 0;
+			fsmc_addr <= 0;
+			st_mask_held <= 0;
+			st_wdata_held <= 0;
+		end else begin
+			ale_meta <= ale_toggle;
+			ale_sync <= ale_meta;
+			// Settle the address while the event crosses both registers.
+			fsmc_addr <= fsmc_addr_latched;
+			if(st_access_start) begin
+				st_mask_held <= {ST_BL1, ST_BL0};
+				st_wdata_held <= ST_AD;
+				ale_accepted <= ale_sync;
+			end
+		end
 	end
 
-	always @(posedge ST_CS or posedge ST_ALE)
-	begin
-		if(ST_CS==1)
-			fsmc_cs <= 1;
-		else
-			fsmc_cs <= 0;
-	end
-
-	// fsmc read/write sync
-	reg ale_set, ale_ack;
-	always @(posedge ale_ack or posedge ST_ALE)
-	begin
-		if(ale_ack==1)
-			ale_set <= 0;
-		else
-			ale_set <= 1;
-	end
-
-	//reg st_wr_start;
-	always @(posedge mclk)
-	begin
-		ale_ack <= ale_set;
-		//st_wr_start <= (ale_ack==1 && ST_WR==0);
-	end
-	wire st_rd_start = (ale_ack==1 && ST_WR==1);
-	wire st_wr_start = (ale_ack==1 && ST_WR==0);
+	// The MCU holds the data phase while NWAIT is asserted. Consumers on
+	// the admission edge see the settled pins. Later consumers use the copy.
+	wire st_rd_start = st_access_start && ST_WR;
+	wire st_wr_start = st_access_start && !ST_WR;
+	wire[1:0] st_mask = st_access_start ? {ST_BL1, ST_BL0} : st_mask_held;
+	wire[15:0] st_wdata = st_access_start ? ST_AD : st_wdata_held;
 
 
 ///////////////////////////////////////////////////////
@@ -233,12 +250,12 @@ module SSMaster(
 			st_reg_spi <= 3'b111;
 			st_reg_sdram <= 12'b11_1100001101; // type:64MB  refcnt: 0x30d(7.81us)
 		end else if(st_wr_start==1) begin
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h04) st_reg_ctrl <= ST_AD;
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h16) {st_reg_sdram, st_reg_spi} <= ST_AD[15:1];
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h20) ss_resp1 <= ST_AD;
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h22) ss_resp2 <= ST_AD;
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h24) ss_resp3 <= ST_AD;
-			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h26) ss_resp4 <= ST_AD;
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h04) st_reg_ctrl <= st_wdata;
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h16) {st_reg_sdram, st_reg_spi} <= st_wdata[15:1];
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h20) ss_resp1 <= st_wdata;
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h22) ss_resp2 <= st_wdata;
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h24) ss_resp3 <= st_wdata;
+			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h26) ss_resp4 <= st_wdata;
 		end
 	end
 
@@ -258,10 +275,10 @@ module SSMaster(
 		end else begin
 			if(     st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h28)
 				// STM32 set
-				ss_hirq <= ss_hirq|ST_AD;
+				ss_hirq <= ss_hirq|st_wdata;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h2c)
 				// Both simultaneous clear requests must take effect.
-				ss_hirq <= ss_hirq&(~ST_AD)&
+				ss_hirq <= ss_hirq&(~st_wdata)&
 					((ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10) ? SS_DATA : 16'hffff);
 			else if(ss_wr_start==1 && ss_cdc_cs==1 && SS_ADDR[5:2]==4'b00_10)
 				// Saturn reset
@@ -289,7 +306,7 @@ module SSMaster(
 				// SS write CR4 and not a getStatus command
 				st_irq_cdc <= 1'b1;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h06)
-				st_irq_cdc <= st_irq_cdc&(~ST_AD[0]);
+				st_irq_cdc <= st_irq_cdc&(~st_wdata[0]);
 		end
 	end
 
@@ -307,7 +324,7 @@ module SSMaster(
 			if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b01_00)
 				st_irq_cmd <= 1'b1;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h06)
-				st_irq_cmd <= st_irq_cmd&(~ST_AD[1]);
+				st_irq_cmd <= st_irq_cmd&(~st_wdata[1]);
 		end
 	end
 
@@ -340,7 +357,7 @@ module SSMaster(
 				// 1023->1024
 				st_irq_fifo <= 1'b1;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h06)
-				st_irq_fifo <= st_irq_fifo&(~ST_AD[2]);
+				st_irq_fifo <= st_irq_fifo&(~st_wdata[2]);
 		end
 	end
 
@@ -403,19 +420,22 @@ module SSMaster(
 	end
 
 
-	reg st_rd_delay;
-
-	always @(posedge mclk)
+	reg st_read_enable;
+	wire st_read_reset = !NRESET || ST_CS || !ST_ALE || ST_RD;
+	always @(posedge st_read_reset or posedge mclk)
 	begin
-		st_rd_delay <= (ST_RD==0 && ST_CS==0) ? 1'b0: 1'b1;
+		if(st_read_reset)
+			st_read_enable <= 0;
+		else if(st_rd_start)
+			st_read_enable <= 1;
 	end
 
-	assign ST_AD = (st_rd_delay==0)? (
+	assign ST_AD = st_read_enable? (
 						(fsmc_addr[24]==0)? st_reg_data_out : st_ram_data_out
 					) : 16'hzzzz;
 
 
-	wire st_ram_cs = (fsmc_cs==0 && ST_ADDR[7]==1);
+	wire st_ram_cs = !ST_CS && fsmc_addr[24];
 
 	wire[15:0] st_reg_stat = {
 		pll_locked, ST_IRQ, 1'b0, ss_in_cmd, 4'b0,
@@ -544,7 +564,7 @@ module SSMaster(
 			if(ss_wr_start==1 && ss_reg_cs==1 && SS_ADDR[5:2]==4'b01_01)
 				ss_reg_data <= SS_DATA;
 			else if(st_wr_start==1 && fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h12)
-				ss_reg_data <= ST_AD;
+				ss_reg_data <= st_wdata;
 		end
 	end
 
@@ -583,7 +603,7 @@ module SSMaster(
 	wire fifo_rd = (st_fifo_dir)? st_fifo_read  : ss_fifo_read;
 	wire fifo_wr = (st_fifo_dir)? ss_fifo_write : st_fifo_write;
 	wire[15:0] fifo_q;
-	wire[15:0] fifo_wdata = (st_fifo_dir)? {SS_DATA[7:0], SS_DATA[15:8]} : ST_AD;
+	wire[15:0] fifo_wdata = (st_fifo_dir)? {SS_DATA[7:0], SS_DATA[15:8]} : st_wdata;
 	wire[10:0] fifo_usedw;
 
 	wire[15:0] ss_fifo_data_out = {fifo_q[7:0], fifo_q[15:8]};
@@ -673,9 +693,8 @@ module SSMaster(
 
 	// STM32 is LittleEndian system
 	wire[25:0] st_ram_addr = {2'b0, fsmc_addr[23:0]};
-	wire[ 1:0] st_mask = {ST_BL1,ST_BL0};
 	wire[15:0] st_ram_data_out;
-	wire st_ram_wait;
+	wire st_ram_ready;
 	
 	// Saturn CS0 memmap:
 	// 02000000 - 02400000 :  4MB ROM Cart
@@ -709,16 +728,32 @@ module SSMaster(
 	memhub _mh(
 		NRESET, mclk, sdclk,
 		ss_ram_cs, ss_rd_start, ss_wr_start, ss_mask, ss_ram_wait, ss_ram_addr, ss_ram_din, ss_ram_dout,
-		st_ram_cs, st_rd_start, st_wr_start, st_mask, st_ram_wait, st_ram_addr, ST_AD,      st_ram_data_out,
+		st_ram_cs, st_rd_start, st_wr_start, st_mask, , st_ram_addr, st_wdata, st_ram_data_out,
 		SD_CKE, SD_CS, SD_RAS, SD_CAS, SD_WE, SD_ADDR, SD_BA, SD_DQM, SD_DQ,
-		ss_refresh, st_reg_sdram, ~ssfc1_s1 | ~ssfc1_s2
+		ss_refresh, st_reg_sdram, ~ssfc1_s1 | ~ssfc1_s2, st_ram_ready
 	);
 
 	assign SD_CLK = sdclk;
 	assign PSRAM_CS = 1'b1;
-	
+
+	// NEx asserts NWAIT immediately. NADV also re-arms it for each
+	// halfword of a wider transfer with NEx held low.
+	wire st_wait_reset = !NRESET || ST_CS || !ST_ALE;
+	reg st_wait_ready;
+	reg st_wait_address_seen;
+	always @(posedge st_wait_reset or posedge mclk)
+	begin
+		if(st_wait_reset) begin
+			st_wait_ready <= 0;
+			st_wait_address_seen <= 0;
+		end else begin
+			if(st_access_start) st_wait_address_seen <= 1;
+			if(st_wait_address_seen && st_ram_ready) st_wait_ready <= 1;
+		end
+	end
+
 	assign SS_WAIT = ss_ram_wait;
-	assign ST_WAIT = st_ram_wait & ~ale_set & ~ale_ack;
+	assign ST_WAIT = ST_CS | (ST_ALE & st_wait_ready);
 
 endmodule
 

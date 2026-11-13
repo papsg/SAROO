@@ -7,7 +7,7 @@ module cachebus(
 	reset, clk, cache_flush,
 	cs, rd, wr, nwait, addr, wdata, rdata,
 	cmd_req, cmd_ack, cache_invalid,
-	cache_addr, cache_data_1d, cache_valid
+	cache_addr, cache_data_1d, cache_valid, read_complete
 );
 
 ///////////////////////////////////////////////////////
@@ -37,6 +37,7 @@ module cachebus(
 	input[25:3] cache_addr;
 	input[63:0] cache_data_1d;
 	input[ 3:0] cache_valid;
+	output read_complete;
 
 
 ///////////////////////////////////////////////////////
@@ -59,6 +60,7 @@ module cachebus(
 
 	localparam B_IDLE=0, B_WAITDATA=1, B_READ=2, B_WRITE=3;
 	localparam CMD_IDLE=2'd0, CMD_WRITE=2'd1, CMD_READ=2'd2;
+	assign read_complete = state==B_WAITDATA && cache_valid[addr[2:1]];
 
 	always @(negedge reset or posedge clk)
 	begin
@@ -108,7 +110,7 @@ module cachebus(
 			end
 
 			B_WAITDATA: begin
-				if(cache_valid[addr[2:1]]) begin
+				if(read_complete) begin
 					nwait <= 1;
 					rdata <= cache_data[addr[2:1]];
 					state <= B_IDLE;

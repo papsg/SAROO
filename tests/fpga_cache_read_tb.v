@@ -29,6 +29,9 @@ module tb;
 `ifdef SAROO_FC1_WINDOW
         ,1'b0
 `endif
+`ifdef SAROO_FMC_READY
+        ,
+`endif
     );
 
     function [15:0] contents(input [25:0] address);

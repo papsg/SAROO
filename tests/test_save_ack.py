@@ -119,7 +119,7 @@ class SaveAcknowledgmentTests(unittest.TestCase):
         end = raw.index(b'\treg[6:0] ss_timer_feed;', start)
         wrapper = self.target / 'command.v'
         wrapper.write_bytes(b'''module command_dut(input mclk,NRESET,st_wr_start,ss_wr_start,ss_reg_cs,
-input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] ST_AD,SS_DATA,
+input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] st_wdata,SS_DATA,
 output reg [15:0] ss_reg_cmd,ss_reg_data);
 ''' + raw[start:end] + b'\nendmodule\n')
         binary = self.target / 'save-ack.vvp'

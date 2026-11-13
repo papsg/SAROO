@@ -30,6 +30,9 @@ module tb;
 `ifdef SAROO_FC1_WINDOW
         ,1'b0
 `endif
+`ifdef SAROO_FMC_READY
+        ,
+`endif
     );
 
     reg [12:0] rows [0:3];

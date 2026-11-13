@@ -297,3 +297,57 @@ development image with the excess validity stage failed physical
 post-eviction reads. A later development build with the corrected
 burst alignment passed scoped register, cache and SD-transfer checks.
 Physical qualification for the public bitstream remains open.
+
+## Keep MCU halfwords coherent across the FMC bus
+
+FPGA-FMC-001 through FPGA-FMC-003 and the throughput follow-up,
+adapted from paps-g `bcd2ae55`, `f491d0ee`, `f1f20c0e` and
+`44fe8abd`. The former top level asserted NWAIT only after NADV
+had reached its request logic. A single destination register then
+fed the write and read paths. The port asserts NWAIT directly
+from NEx or the active NADV phase. It re-arms on every NADV phase,
+including a second halfword with NEx held low.
+
+The NADV latch sends a toggle through two preserved registers.
+The address settles in parallel, and the admission edge captures
+the data and byte lanes for downstream consumers. Register and
+FIFO operations use the same admission edge as the RAM request.
+For RAM, the pin releases on the cache-data or accepted SDRAM
+write edge. The public port keeps this early completion signal
+separate from the ordinary cache wait output and preserves the
+existing FC1 refresh priority and address map.
+
+[ST RM0433 Rev. 8, §22.5, printed pp. 800–801, Figures 110–113,
+printed pp. 828–831](https://www.st.com/resource/en/reference_manual/rm0433-stm32h743-753-and-stm32h750-value-line-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf#page=800)
+describes split AXI transfers, held NEx, multiplexed NADV and
+asynchronous NWAIT. [ST DS12556 Rev. 8, Tables 155–158, printed
+pp. 244–245](https://www.st.com/resource/en/datasheet/stm32h750ib.pdf#page=244)
+lists the separate read and write NWAIT timing limits.
+[Intel Quartus Prime Standard Edition User Guide, Metastability
+Analysis](https://www.intel.com/content/www/us/en/docs/programmable/683068/18-1/metastability-analysis.html)
+describes destination-register synchronizer chains.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_fmc_stream.py -v
+```
+
+Set `SAROO_FPGA_FMC_SOURCE` to the parent checkout's `FPGA`
+directory and use `-k grouped` to reproduce its late NWAIT.
+The pin-level fixture passes 30 streams across ten relative
+clock phases, single and grouped halfwords, byte masks, register
+reads and Saturn refresh contention. Each stream checks 576
+SDRAM writes, 67 read requests, and the exact write release edge.
+The grouped access and late completion controls both fail as
+expected. Modeled write rates are 13.20–14.19 MB/s at the selected
+20/30 ns return tails.
+
+All five offline Quartus stages and 39 reported timing checks
+pass. The first fit missed the 5 ns registered NWAIT release
+constraint by 0.150 ns. Pin-adjacent placement from the original
+correction gives +0.210 ns with the same constraint. Minimum
+reported hold slack is +0.163 ns. The fit uses 1,548 logic elements,
+928 registers, 32,768 memory bits, 150 pins and one PLL.
+The earlier development image with the full FMC repair passed
+scoped cold boot, register/cache, and ten SD-transfer checks.
+Model rates and fitted paths do not measure board timing or
+qualify the public bitstream.

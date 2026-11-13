@@ -31,6 +31,9 @@ module tb;
 `ifdef SAROO_FC1_WINDOW
         ,1'b0
 `endif
+`ifdef SAROO_FMC_READY
+        ,
+`endif
     );
 
     reg [15:0] memory [0:255];

@@ -27,6 +27,9 @@ module tb;
 `ifdef SAROO_FC1_WINDOW
         ,refresh_active
 `endif
+`ifdef SAROO_FMC_READY
+        ,
+`endif
     );
 
     integer cycle=0, base=0, edge_cycle=-1, start_cycle=-1, cmd_cycle=-1, ack_cycle=-1;

@@ -230,6 +230,10 @@ set_global_assignment -name VERILOG_FILE cachebus.v
 set_global_assignment -name VERILOG_FILE cdcfifo.v
 set_global_assignment -name SDC_FILE SSMaster.sdc
 set_global_assignment -name SDC_FILE saroo-sdram-interface.sdc
+set_global_assignment -name SDC_FILE saroo-fmc-interface.sdc
+# Keep the registered FMC release path adjacent to pin C9.
+set_location_assignment FF_X18_Y23_N29 -to st_wait_ready
+set_location_assignment LCCOMB_X18_Y23_N2 -to ST_WAIT~0
 set_global_assignment -name VERILOG_FILE SSMaster.v
 set_global_assignment -name SIGNALTAP_FILE fsmc.stp
 set_global_assignment -name SIGNALTAP_FILE ss_abus.stp

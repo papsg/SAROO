@@ -8,7 +8,7 @@ module memhub(
 	cs_a, rd_a, wr_a, mask_a, nwait_a, addr_a, wdata_a, rdata_a,
 	cs_b, rd_b, wr_b, mask_b, nwait_b, addr_b, wdata_b, rdata_b,
 	sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data,
-	ext_refresh, reg_sdram, ext_refresh_active
+	ext_refresh, reg_sdram, ext_refresh_active, ready_b
 );
 
 ///////////////////////////////////////////////////////
@@ -36,6 +36,7 @@ module memhub(
 	input wr_b;
 	input[1:0] mask_b;
 	output nwait_b;
+	output ready_b;
 	input[25:0] addr_b;
 	input[15:0] wdata_b;
 	output[15:0] rdata_b;
@@ -82,7 +83,7 @@ module memhub(
 	cachebus busa(reset, clk, geometry_switch,
 		cs_a, rd_a, wr_a, nwait_a, physical_addr_a, wdata_a, rdata_a,
 		cmd_req_a, cmd_ack_a, cache_invalid_a,
-		cache_addr_a, cache_data1d_a, cache_valid_a
+		cache_addr_a, cache_data1d_a, cache_valid_a,
 	);
 
 	wire[25:3] cache_addr_a;
@@ -103,11 +104,12 @@ module memhub(
 
 	wire[ 1:0] cmd_req_b;
 	wire cache_invalid_b;
+	wire read_complete_b;
 
 	cachebus busb(reset, clk, geometry_switch,
 		cs_b, rd_b, wr_b, nwait_b, physical_addr_b, wdata_b, rdata_b,
 		cmd_req_b, cmd_ack_b, cache_invalid_b,
-		cache_addr_b, cache_data1d_b, cache_valid_b
+		cache_addr_b, cache_data1d_b, cache_valid_b, read_complete_b
 	);
 
 
@@ -140,6 +142,11 @@ module memhub(
 
 
 	localparam C_IDLE=0, C_WAITACK=1, C_END=2;
+
+	// A registered FMC pin can release on the read-data or cache-snoop
+	// edge. Direct users of nwait_b still see the cache state.
+	wire write_complete_b = state==C_WAITACK && act_ab && cmd_ack && cmd_req[0];
+	assign ready_b = nwait_b | read_complete_b | write_complete_b;
 
 	// Command ACK precedes the four read words. Do not change geometry
 	// or discard cache validity while any of that fill is still arriving.

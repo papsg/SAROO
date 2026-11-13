@@ -19,9 +19,9 @@ REFRESH_STALL = 'write never completed: state=0 ref_ack=1 ref_count='
 
 def declarations_first(raw):
     """Put declarations before use for Icarus, keeping net assignments in place."""
-    raw = re.sub(rb'^(\twire\s+)(\w+)\s*=\s*([^;\n]+);\n',
+    raw = re.sub(rb'^(\twire(?:\[[^\]\n]+\])?[ \t]+)(\w+)\s*=\s*([^;]+);\n',
                  rb'\1\2;\n\tassign \2 = \3;\n', raw, flags=re.M)
-    pattern = rb'^\t(?:\(\*[^\n]*?\*\) )?(?:wire|reg)[^=;\n]+;\n'
+    pattern = rb'^\t(?:\(\*[^\n]*?\*\)[ \t\n]+)?(?:wire|reg)[^=;\n]+;\n'
     declarations = re.findall(pattern, raw, re.M)
     body = re.sub(pattern, b'', raw, flags=re.M)
     first = re.search(rb'^\t(?:wire|reg|assign|always|cachebus)\b', body, re.M)
@@ -66,7 +66,8 @@ def build_memory_model(inputs, target, bench, includes=None):
         (target / name).write_bytes(raw)
     binary = target / 'memory.vvp'
     window_port = ['-DSAROO_FC1_WINDOW'] if b'input ext_refresh_active;' in inputs['memhub.v'] else []
-    command = ['iverilog', '-g2012', *window_port, *capture_flag(inputs['tsdram.v']),
+    fmc_port = ['-DSAROO_FMC_READY'] if b'output ready_b;' in inputs['memhub.v'] else []
+    command = ['iverilog', '-g2012', *window_port, *fmc_port, *capture_flag(inputs['tsdram.v']),
                '-I', str(target), '-s', 'tb', '-o', str(binary),
                *[str(target / name) for name in MODULES], str(ROOT / 'tests' / bench)]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)

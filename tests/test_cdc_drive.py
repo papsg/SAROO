@@ -134,7 +134,7 @@ class CDDriveTests(unittest.TestCase):
         dut = self.target / 'cd-shadow.v'
         dut.write_bytes(
             b'module cd_shadow(input mclk,NRESET,st_wr_start,ss_wr_start,SS_CS2,\n'
-            b'input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] ST_AD,SS_DATA,\n'
+            b'input [24:0] fsmc_addr, input [23:0] SS_ADDR, input [15:0] st_wdata,SS_DATA,\n'
             b'output [15:0] value, output request,enabled);\nreg [15:0] ss_reg_ctrl;\n'
             + b'\n'.join(decoders) + b'\n' + control + hirq_and_irq
             + b'\nassign value=ss_hirq, request=st_irq_cdc, enabled=ss_cdc_en;\nendmodule\n')

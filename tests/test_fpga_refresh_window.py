@@ -25,7 +25,7 @@ class FPGARefreshWindowTests(unittest.TestCase):
         start = top.index(b'\treg sscs_s0,')
         marker = b'\twire ss_rd_start ='
         end = top.index(b'\n', top.index(marker, start))
-        pattern = rb'\bss_refresh,\s*st_reg_sdram,\s*([^\n]+)'
+        pattern = rb'\bss_refresh,\s*st_reg_sdram,\s*([^,\n]+)'
         active = re.search(pattern, top[top.index(b'\tmemhub _mh('):])
         signal = active[1] if active else b"1'b0"
         include = top[start:end] + b'\nwire refresh_active = ' + signal + b';\n'
