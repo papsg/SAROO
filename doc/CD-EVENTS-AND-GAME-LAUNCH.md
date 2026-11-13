@@ -202,3 +202,27 @@ of body margin) and passes the linked clock tail and 48 ROM clock cases.
 
 The historical private menu passed the reported soft-reset sequence
 on the development Saturn. This port has host and link verification.
+
+## Declare the complete Vandal Hearts and Bio Hazard callback payload
+
+The built-in callback shared by the Chinese Vandal Hearts and Bio Hazard
+entries checks the original instruction before changing game RAM. Its copy
+uses twelve longwords, but the inherited literal declared eleven. In the
+stock Yaul/GCC build the next word happened to be the compiler's RTS/NOP.
+The callback now declares that word as part of the payload, preserving all
+48 bytes and both existing guards. The abandoned 44-byte variant changed
+the RAM output.
+
+The original [Vandal Hearts addition](https://github.com/tpunix/SAROO/commit/f6a35a4)
+credits yzb. This port adapts paps-g `a1f65f2a` (MENU-GAME-VANDAL-STUB-001),
+the successor to `55ed020f`. See the
+[Hitachi SH7604 instruction tables](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=48),
+tables 2.12 and 2.16, printed pp. 33 and 39.
+
+Build the parent and current stock menus with
+[`firmware-build menu`](../tools/README.md#isolated-firmware-qualification).
+Run `python3 -B tests/check_vandal_stub_sh2.py CURRENT_ELF --baseline PARENT_ELF`.
+The parent fails the declared-payload check. The corrected ELF declares all
+48 bytes, with identical linked guards, copy instructions and historical RAM
+payload. This verifies the compiled change. Behavior in the exact modified
+game revisions remains unverified.

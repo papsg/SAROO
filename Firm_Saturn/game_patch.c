@@ -989,7 +989,15 @@ void VANDAL_HEARTS_CN_patch(void)
 	__asm volatile ( ".align 2"        :: );
 	__asm volatile ( "d_6002F5e:.long	0x6002F5e"        :: );
 	__asm volatile ( "d_6002d00:.long	0x6002d00"        :: );	
-	__asm volatile ( "VANDAL_HEARTS_hex:.long 0xD1096112,0x410BE401,0xBC440009,0xE301C71B,0x91096202,0x2211BAE5,0x1032E009,0x61C37154,0x71704C2B,0x21018001,0x06000320" :: );
+	/* The callback copies twelve longwords. Include the historical RTS/NOP
+	 * explicitly so the last word does not depend on the compiler's epilogue. */
+	__asm volatile (
+		".type VANDAL_HEARTS_hex,@object\n"
+		"VANDAL_HEARTS_hex:\n"
+		".long 0xD1096112,0x410BE401,0xBC440009,0xE301C71B\n"
+		".long 0x91096202,0x2211BAE5,0x1032E009,0x61C37154\n"
+		".long 0x71704C2B,0x21018001,0x06000320,0x000B0009\n"
+		".size VANDAL_HEARTS_hex,.-VANDAL_HEARTS_hex" :: );
 
 }
 
