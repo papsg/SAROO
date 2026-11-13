@@ -234,6 +234,7 @@ class CDDriveTests(unittest.TestCase):
     def test_wait_reports_invalidate_unavailable_fields_and_retain_valid_fields(self): self.run_case(53)
     def test_frame_address_search_commands_and_result_lifetime(self): self.run_case(54)
     def test_command_trace_labels_at_lookup_boundaries(self): self.run_case(55)
+    def test_unsupported_emulated_commands_reject_before_completion(self): self.run_case(56)
 
 
 if __name__=='__main__':unittest.main()

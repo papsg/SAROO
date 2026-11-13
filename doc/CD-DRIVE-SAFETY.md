@@ -535,3 +535,25 @@ all 65,536 pairs. Set `SAROO_CDC_CONNECTION_SOURCE` to the parent
 `saturn_cdc.c` to reproduce its acknowledgment of an invalid request.
 The GNU App uses 65,436 load bytes and leaves 100 bytes free.
 Physical transfer timing and original MDK output remain unqualified.
+
+## Reject unsupported emulated CD commands
+
+Adapted from paps-g `7360fa4c`. The emulated dispatcher used to raise
+CMOK on an unimplemented opcode while leaving the last command's status
+in the reply. A caller could see an old success. The default handler
+now writes REJECT before signaling completion. Buffer-ready signaling,
+the drive state and original-drive passthrough are unchanged.
+[Sega ST-162 §3.3, printed p. 31](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=19)
+defines the invalid-command response. [§7.2.4, printed pp. 59–60](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=47)
+defines status `FF` and makes the remaining report invalid for REJECT.
+
+Run `make -C tests check-cdc-command-buffer` in the default and
+`SAROO_CDC_PROFILE=release` profiles. With `SAROO_CDC_DRIVE_DIR` set to
+the parent's Saturn sources, `-k unsupported_emulated` in
+`test_cdc_drive.py` reproduces the stale success. Five unsupported
+opcodes now return REJECT with and without buffered data. The fixture
+observes the write before CMOK, verifies partition ownership and follows
+each rejection with a valid status command. Both 247-method profiles,
+including the original-drive controls, pass. The GNU App remains
+65,440 load bytes, with 96 bytes free. Physical command timing and
+original MDK output remain unqualified.

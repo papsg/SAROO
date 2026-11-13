@@ -1585,6 +1585,44 @@ static void command_names(void)
     assert(!strcmp(cmd_str(0xe2), "unkonw_cmd"));
 }
 
+static void rejection_precedes_completion(void)
+{
+    assert((reply[0] >> 8) == STAT_REJECT && !(hirq & HIRQ_CMOK));
+}
+
+/* Unsupported-command controls adapted from paps-g 7360fa4c. */
+static void unsupported_commands(void)
+{
+    const u8 opcodes[] = {0x07, 0x13, 0x7f, 0xe2, 0xff};
+    for (unsigned buffered = 0; buffered < 2; ++buffered) {
+        for (unsigned i = 0; i < sizeof opcodes / sizeof *opcodes; ++i) {
+            setup(buffered, MAX_BLOCKS - buffered);
+            ss_control = 0x8000;
+            hirq_clear = 0;
+            cdb.cr1 = opcodes[i] << 8;
+            cdb.cr2 = 0x1234;
+            cdb.cr3 = 0x5678;
+            cdb.cr4 = 0x9abc;
+            reply[0] = 0x0109; /* Prior successful PAUSE response. */
+            reply[1] = 0x4101;
+            reply[2] = 0x0100;
+            reply[3] = 150;
+            const CDBLOCK before = cdb;
+            irq_restore_hook = rejection_precedes_completion;
+            cdc_cmd_process();
+            assert((reply[0] >> 8) == STAT_REJECT);
+            assert(!irq_restore_hook && !irq_depth && !hirq_clear);
+            assert(hirq == (HIRQ_CMOK | (buffered ? HIRQ_SCDQ : 0)));
+            assert(!memcmp(&cdb, &before, sizeof cdb));
+            check_owners();
+
+            cdb.cr1 = 0;
+            cdc_cmd_process();
+            assert((reply[0] >> 8) == STAT_PAUSE);
+        }
+    }
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1631,6 +1669,7 @@ int main(int argc,char **argv)
     case 53:unavailable_wait();break;
     case 54:fad_search_commands();break;
     case 55:command_names();break;
+    case 56:unsupported_commands();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

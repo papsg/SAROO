@@ -2380,6 +2380,7 @@ void cdc_cmd_process(void)
 	default:
 		printk("SS CDC: unknow cmd!  CR1=%04x CR2=%04x CR3=%04x CR4=%04x\n",
 			cdb.cr1, cdb.cr2, cdb.cr3, cdb.cr4);
+		set_status(STAT_REJECT);
 		hirq = 0;
 		break;
 	}
