@@ -178,6 +178,7 @@ check-host-tools:
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_sdram_capture.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_fmc_stream.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fpga_abus_write.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fpga_data_direction.py -v
 
 check-peripherals:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_peripherals.py -v

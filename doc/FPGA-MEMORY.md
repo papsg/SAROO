@@ -397,3 +397,38 @@ elements, 1,061 registers, 32,768 memory bits, 150 pins and one
 PLL. The fixture uses a digital model and a bounded arbitration
 delay. PCB behavior, RAM-cartridge game timing and the public
 bitstream's hardware qualification remain open.
+
+## Set Saturn data direction before chip select
+
+FPGA-ABUS-002, adapted from paps-g `92f619b0`. The original FPGA
+selected the direction toward Saturn whenever both write strobes
+were idle. That left the transceiver pointing toward Saturn until
+the write strobe arrived at the same time as chip select. The port
+defaults to Saturn-to-FPGA direction and changes to FPGA-to-Saturn
+on the early RD signal. Either asserted write lane takes priority.
+Chip select, refresh isolation and native CD passthrough keep the
+existing output-enable behavior.
+
+The [original SAROO schematic, U3](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/HW/ssmaster_v2.PDF)
+shows how DIR and active-low OE select the two sides.
+[TI SN74LVC16245A, SCES062Q, §9.4 Table 3, p. 11](https://www.ti.com/lit/ds/symlink/sn74lvc16245a.pdf#page=11)
+defines the transceiver direction and isolation truth table.
+The [SAROO timing notebook](DEVELOPMENT_EN.md#reading-the-historical-technical-notebook)
+places RD one A-bus clock ahead of chip select.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_data_direction.py -v
+```
+
+Set `SAROO_FPGA_DIRECTION_SOURCE` to the preceding checkout's FPGA
+directory to reproduce the idle-direction failure. The port passes
+13 cases, covering reads, both byte lanes, whole-word writes, refresh,
+CD passthrough and overlapping strobes. Six adjacent A-bus, FMC
+and timer methods pass.
+
+The slow/hot Quartus report gives 6.390 ns from RD to DIR and
+7.045 ns on the slowest constrained DIR input against a 12 ns
+limit. The fit uses 1,647 logic elements and 1,061 registers,
+with minimum setup and hold slack of +0.197 ns and +0.168 ns.
+The transceiver datasheet gives no numeric DIR turnaround maximum.
+Board-level direction settling and game behavior remain unqualified.

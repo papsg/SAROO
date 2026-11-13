@@ -562,7 +562,8 @@ module SSMaster(
 
 	assign SS_DATA_OE = ~SS_FC1 | (SS_CS0==1 && SS_CS1==1 && (SS_CS2==1 || (ss_cdc_cs==1 && SS_RD==0 && ss_cdc_en==0)));
 
-	assign SS_DATA_DIR = (SS_WR0 & SS_WR1);
+	// RD leads chip select. Select read direction while the bus is isolated.
+	assign SS_DATA_DIR = (~SS_RD & SS_WR0 & SS_WR1);
 
 ///////////////////////////////////////////////////////
 // SATURN System Control                             //
