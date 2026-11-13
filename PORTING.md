@@ -2532,3 +2532,9 @@ The archived public tip matches all 682 tracked files. The full `make -j6 -C tes
 A fresh SH-2 link reproduces the 488,770-byte menu image and its ELF byte for byte. The final image uses 85,076 code/data bytes, 9,488 static BSS bytes, a 16,384-byte reserved stack and 20,120 bytes of body margin. All 48 linked ROM clock cases pass. The private Astal result is historical evidence for the reset admission approach. Public-build hardware qualification remains open.
 
 The published delta and ledger passed the secret scan and public identity review. The private checkout's HEAD, branch, refs and stash, status and tracked diff match the starting fingerprints. The Saturn was untouched.
+
+## Saturn CPU and FPGA bus timing series
+
+Six ordered checkpoints after [`5b5409b`](https://github.com/papsg/SAROO/commit/5b5409bb58814ac59e223c03b934994a4b85aa10). The linked notes record attribution, primary references, verification and hardware limits.
+
+- [x] `aece1be2` (SATURN-CACHE-001) — [`41ce86f`](https://github.com/papsg/SAROO/commit/41ce86f3ca04bc140afb246b331cd1d8659ba893), [purge the SH-2 cache during BIOS player handoff](https://github.com/papsg/SAROO/blob/41ce86f3ca04bc140afb246b331cd1d8659ba893/doc/SATURN-MENU-HARDWARE.md#purge-the-sh-2-cache-during-bios-player-handoff). The parent links only the enable store. Both eight-method profiles and 48 linked clock checks pass on the port with all three CCR stores. Menu image and allocations retain their sizes. Hardware remains unqualified.
