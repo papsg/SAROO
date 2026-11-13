@@ -897,7 +897,11 @@ static void change_cover_layer(void)
 		BGON  = 0x0203;
 		int x = 176;
 		int y = (last_h>128)? 24 : 88;
-		vdp2_win0(1, 1, x, y, x+last_w-1, y+last_h-1);
+		/* Match the viewport clipping applied when gif_timer drew the cover. */
+		int ex = x + last_w - 1;
+		int ey = y + last_h - 1;
+		vdp2_win0(1, 1, x, y, ex < fbw ? ex : fbw - 1,
+		          ey < fbh ? ey : fbh - 1);
 	}
 }
 

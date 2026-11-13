@@ -20,7 +20,8 @@ class CoverDisplayTests(unittest.TestCase):
         source=Path(os.environ.get('SAROO_COVER_MENU_SOURCE',ROOT/'Firm_Saturn/main.c')).read_bytes()
         (cls.target/'main.c').write_bytes(source)
         begin=source.index(b'static int last_w, last_h, last_f;')
-        selected=source[begin:source.index(b'static void change_cover_layer(',begin)]
+        toggle=source.index(b'static void change_cover_layer(',begin)
+        selected=source[begin:source.index(b'\n}\n',toggle)+3]
         selected=re.sub(rb'0x224([0-9a-fA-F]{5})',lambda m:b'(TEST_GFX_BASE + 0x'+m[1]+b')',selected)
         (cls.target/'cover-display.inc').write_bytes(selected)
         inputs={'main.c':hashlib.sha256(source).hexdigest()}
@@ -39,8 +40,8 @@ class CoverDisplayTests(unittest.TestCase):
     def tearDownClass(cls):
         (cls.target/'results.json').write_text(json.dumps(cls.results,indent=2)+'\n')
 
-    def invoke(self,value):
-        r=subprocess.run([str(self.binary),str(value)],capture_output=True,timeout=10,
+    def invoke(self,value,*args):
+        r=subprocess.run([str(self.binary),str(value),*args],capture_output=True,timeout=10,
             env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1','ASAN_OPTIONS':'detect_leaks=0'})
         self.results.append(dict(value=value,returncode=r.returncode,stdout=r.stdout.decode(errors='replace'),stderr=r.stderr.decode(errors='replace')))
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
@@ -62,6 +63,10 @@ class CoverDisplayTests(unittest.TestCase):
     def test_fully_clipped_gifs_release_without_dma_and_allow_the_next_frame(self):
         for value in range(11,17):
             with self.subTest(value=value):self.invoke(value)
+
+    def test_cover_layer_toggle_restores_the_visible_window(self):
+        for value in (0,1,2,4,5,17,18,19,20):
+            with self.subTest(value=value):self.invoke(value,'toggle')
 
 
 if __name__=='__main__':unittest.main()

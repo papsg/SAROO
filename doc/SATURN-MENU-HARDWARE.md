@@ -440,3 +440,30 @@ cache-through address `0x25fe007c`. The linked body grows by 32 bytes to
 85,164, with 9,488 static bytes, 16,384 stack bytes and 20,032 bytes of
 body margin. The complete image remains 488,770 bytes. Physical VBlank
 copy timing and display behavior remain unqualified.
+
+## Restore the cover window within the viewport
+
+Adapted from paps-g `14b12636`. A large cover is clipped when its pixels
+are drawn. Hiding the cover layer and showing it again used the original
+width and height to restore the VDP2 window, so its end could extend beyond
+the pixels drawn and the horizontal end could exceed the register field.
+The restored inclusive end now stays within the same 320×240 viewport.
+Cover placement, layer priority, transparency and pixel transfer are
+unchanged.
+
+[Sega VDP2 User's Manual ST-058-R2-060194 §8.1, printed pp. 180–181](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=198)
+defines inclusive rectangular windows and their position registers.
+[§8.2, printed p. 190](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=208)
+defines the transparency operation.
+
+Run `make -C tests check-cover-display check-gif check-menu-safety check-menu-binary`.
+To reproduce, set `SAROO_COVER_MENU_SOURCE` to the parent's `Firm_Saturn/main.c`
+and select `-k cover_layer_toggle` in `test_cover_display.py`. Four of
+nine cases fail on the old window end; all nine now restore the actual
+drawn window or keep the window disabled for non-cover images. The test
+also checks the layer controls and that toggling adds no pixel transfers.
+All 157 focused methods and all 10 optimized cover methods pass.
+The linked stock menu passes the ordinary clock tail and 48 relocated ROM
+clock cases. The menu remains 488,770 bytes, with 85,212 code/data bytes
+(48 more), 19,988 bytes of body margin, and unchanged BSS and stack.
+Physical display behavior remains unqualified.

@@ -43,13 +43,33 @@ static void put16(unsigned offset,int value)
 { gfx.data[offset]=value;gfx.data[offset+1]=(unsigned)value>>8; }
 static void nbg1_set_cram(int index,int r,int g,int b)
 { assert(index>=0 && index<256);palette[index]=(b<<16)|(g<<8)|r; }
+static struct window { int scr,outside,sx,sy,ex,ey; } win;
 static void vdp2_win0(int scr,int outside,int sx,int sy,int ex,int ey)
 {
-    (void)outside;
-    assert(scr==-1 || (scr==1 && sx>=0 && sy>=0 && ex<fbw && ey<fbh));
+    assert(scr==-1 || (scr==1 && sx>=0 && sy>=0 && sx<=ex && sy<=ey && ex<fbw && ey<fbh));
+    win=(struct window){scr,outside,sx,sy,ex,ey};
 }
 #include "cover-display.inc"
 static u8 pixel(unsigned row,unsigned col) { return (row*71+col*17+(row^col)*3+9)%251; }
+
+/* Adapted from paps-g 14b12636. Compare to the original draw's actual window. */
+static void check_cover_window_toggle(unsigned flag)
+{
+    const struct window drawn=win;
+    const unsigned previous_transfers=transfers;
+    cover_top=0;
+    change_cover_layer();
+    assert(win.scr==-1 && PRINA==0x0707 && CCCTL==0x0002 && BGON==0x0003);
+    cover_top=1;
+    change_cover_layer();
+    if(flag==3) {
+        assert(win.scr==1 && win.outside==1 && PRINA==0x0706 && CCCTL==0 && BGON==0x0203);
+        assert(win.sx==drawn.sx && win.sy==drawn.sy && win.ex==drawn.ex && win.ey==drawn.ey);
+    } else {
+        assert(win.scr==-1 && PRINA==0x0707 && CCCTL==0x0002 && BGON==0x0003);
+    }
+    assert(transfers==previous_transfers && !dma_pending && !gfx.data[0]);
+}
 
 int main(int argc,char **argv)
 {
@@ -61,8 +81,10 @@ int main(int argc,char **argv)
         /* Empty GIF intersections adapted from paps-g a3a14724. */
         {8,5,1,320,10}, {8,5,1,384,10}, {8,5,1,-8,10}, {8,5,1,-9,10},
         {8,5,1,176,240}, {8,5,1,176,-6},
+        {144,216,3,176,24}, {145,217,3,176,24},
+        {337,128,3,176,88}, {128,240,3,176,24},
     };
-    assert(argc==2);
+    assert(argc==2 || (argc==3 && !strcmp(argv[2],"toggle")));
     unsigned value=atoi(argv[1]);
     assert(value<sizeof(cases)/sizeof(cases[0]));
     unsigned w=cases[value].w,h=cases[value].h,flag=cases[value].flag;
@@ -95,6 +117,7 @@ int main(int argc,char **argv)
         ((u32)gfx.data[0x100+4*i]<<16|(u32)gfx.data[0x101+4*i]<<8|gfx.data[0x102+4*i]));
     for(unsigned i=0;i<32;i++)
         assert(screen.before[i]==0xa5 && screen.after[i]==0xa5 && gfx.before[i]==0xa5 && gfx.after[i]==0xa5);
+    if(argc==3)check_cover_window_toggle(flag);
     printf("display case=%u flag=%u size=%ux%u rows=%u polls=%u complete=1\n",value,flag,w,h,transfers,polls);
 
     if(!rows) {
