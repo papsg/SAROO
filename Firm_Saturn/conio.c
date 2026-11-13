@@ -134,11 +134,12 @@ void vdp_init(void)
 	// Priority: 7
 	PRINA = 0x0707;
 
-	// Screen Scroll Value Registers: No scroll
-	SCXIN0 = 0;
-	SCXDN0 = 0;
-	SCYIN0 = 0;
-	SCYDN0 = 0;
+	/* NBG0 and NBG1 each use two scroll pairs and two increment pairs. */
+	volatile u32 *coordinates = (volatile u32 *)(VDP2_REGISTER_BASE + 0x70);
+	for (i = 0; i < 8; ++i)
+		coordinates[i] = (i & 2) ? 0x00010000 : 0;
+	ZMCTL = 0;
+	SCRCTL = 0;
 
 	// BackScreen mode
 	LCTA = 0x7fffe>>1;

@@ -62,6 +62,7 @@ class MenuPaletteTests(unittest.TestCase):
     def test_startup_after_logo_sets_text_bank_and_preserves_other_banks(self): self.invoke('startup-logo')
     def test_vdp1_minimal_erase_rectangle_is_defined_on_every_startup(self): self.invoke('erase-bounds')
     def test_vdp1_drawing_stops_before_replacing_commands(self): self.invoke('stop-drawing')
+    def test_vdp2_menu_layers_start_with_identity_coordinates(self): self.invoke('coordinates')
     def test_vdp2_bitmap_and_cpu_slots_obey_the_partition_schedule(self): self.invoke('vram-cycles')
     def test_original_logo_palette_and_tile_upload_remain_intact(self): self.invoke('logo')
     def test_cover_palette_endpoints_do_not_change_text_colors(self): self.invoke('cover')

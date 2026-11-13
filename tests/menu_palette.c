@@ -225,6 +225,26 @@ static void stop_drawing(void)
     }
 }
 
+static void coordinates(void)
+{
+    /* Longword values use the target's big-endian integer/fraction layout. */
+    const u32 expected[] = {0, 0, 0x10000, 0x10000, 0, 0, 0x10000, 0x10000};
+    for (int pal = 0; pal <= 1; ++pal) {
+        for (int logo = 0; logo <= 1; ++logo) {
+            seed(logo);
+            TVSTAT = VBLANK | (pal ? PAL : 0);
+            SCXN2 = 0x4321;
+            SCYN3 = 0x1234;
+            conio_init();
+            for (unsigned i = 0; i < sizeof expected / sizeof expected[0]; ++i)
+                assert(registers[0x70 / 4 + i] == expected[i]);
+            assert(ZMCTL == 0 && SCRCTL == 0);
+            assert(SCXN2 == 0x4321 && SCYN3 == 0x1234);
+            guards();
+        }
+    }
+}
+
 static unsigned slot(u32 schedule, unsigned timing)
 {
     return (schedule >> (28 - 4 * timing)) & 0xf;
@@ -362,6 +382,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "startup-logo")) startup(1);
     else if (!strcmp(argv[1], "erase-bounds")) erase_bounds();
     else if (!strcmp(argv[1], "stop-drawing")) stop_drawing();
+    else if (!strcmp(argv[1], "coordinates")) coordinates();
     else if (!strcmp(argv[1], "vram-cycles")) vram_cycles();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();

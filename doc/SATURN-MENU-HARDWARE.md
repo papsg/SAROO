@@ -243,3 +243,26 @@ SCU DMA methods and 48 linked ROM clock cases pass. The SH-2 menu adds
 32 code/data bytes, reaching 85,012. The linked sequence contains the
 word store, 64-read loop and command replacement. Physical settling
 and output behavior remain unqualified.
+
+## Initialize both VDP2 menu layer transforms
+
+SATURN-VDP2-003, adapted from paps-g `db0f31aa`. The menu previously
+set only NBG0's scroll origin. It now sets the horizontal and vertical
+origins of both NBG0 and NBG1 to zero and all four coordinate increments
+to 1.0. Reset or inherited values could otherwise leave the layers
+shifted, zoomed, or sampling a single source coordinate. The menu also
+disables reduction and line/vertical-cell scrolling.
+
+[Sega VDP2 User's Manual ST-058-R2-060194, §1 register access, printed p. 4](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=22)
+permits word and longword access. [§5.1, printed pp. 122–125](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=140),
+[§5.2, printed pp. 126–128](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=144)
+and [§5.3, printed pp. 136–137](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=154)
+define the scroll, coordinate increment and line/cell-scroll registers.
+
+The parent fails the new seeded coordinate check and passes the other
+eleven [palette methods](#initialize-the-vdp1-erase-rectangle). Both port
+profiles pass all twelve, including cold and logo paths for both modeled
+regions, with nine adjacent cover methods and 48 linked ROM clock checks.
+The linked menu has 85,028 code/data bytes, up 16. Disassembly shows all
+eight big-endian coordinate longword stores. Physical rendering of the
+public build remains unqualified.
