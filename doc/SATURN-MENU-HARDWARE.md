@@ -495,3 +495,21 @@ the linked clock tail and 48 ROM clock cases.
 A historical private RAM trial reached SAROO after the Astal reset
 sequence and BIOS player return. This public menu build has host and
 link verification.
+
+## Align the menu's initial SH-2 stack
+
+Startup loads R15 from the end of the linker-reserved stack. With a
+byte-aligned or halfword-aligned BSS tail, the inherited linker could place
+that pointer at an address that faults on the first longword stack write.
+The stock linker now aligns the stack to four bytes and checks both
+boundaries, the 16 KiB reservation, and the end of the 128 KiB menu body.
+The stock menu already linked at aligned addresses in the verified build.
+Its ELF and image bytes are unchanged.
+
+Adapted from paps-g `75919b29`. See [Hitachi SH7604 §2.2.2 and §4.8.1,
+printed pp. 18 and 76](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=33).
+Run `sh tests/check_menu_stack_sh2.sh` from the repository root with the SH-2
+binutils on PATH. Set `SH2_PREFIX` for a different toolchain prefix. The check
+links four BSS tails against the actual script and reports a misaligned R15
+with the parent script. Removing the alignment while retaining the assertions
+causes the linker itself to reject the same case. These are link checks.

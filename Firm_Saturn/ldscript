@@ -37,6 +37,8 @@ SECTIONS
 	{
 	    __bss_start = .;
 		*(.bss);
+		/* SH7604 sections 2.2.2 and 4.8.1 require a longword-aligned SP. */
+		. = ALIGN(4);
 		__stack_start = .;
 		. = . + 16384;
 		__stack_end = .;
@@ -50,3 +52,8 @@ SECTIONS
 	}
 }
 
+
+ASSERT((__stack_start & 3) == 0, "Menu stack base is not longword aligned")
+ASSERT((__stack_end & 3) == 0, "Menu stack pointer is not longword aligned")
+ASSERT(__stack_end - __stack_start == 16384, "Menu stack reservation changed")
+ASSERT(__bss_end <= __ip_start + 0x20000 - 4, "Menu stack exceeds the fixed body")
