@@ -136,6 +136,8 @@
 #define BIN_ROOT "/SAROO/BIN"
 #define ARCHIVE_IO_VERSION 0x534f5731u
 #define MENU_ACK_VERSION 1u
+#define SD_OVERLAY_VERSION 1u
+#define SD_OVERLAY_REQUEST 0x8000u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 
@@ -416,6 +418,7 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk);
 
 
 void fs_lock(void);
+void invalidate_sector_cache(void);
 void fs_unlock(void);
 
 

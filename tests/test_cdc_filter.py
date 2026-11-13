@@ -10,6 +10,11 @@ import tempfile
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
+OVERLAY = ROOT / 'Firm_MCU/Saturn/sector_overlay.c'
+
+
+def overlay_source():
+    return b'#include "sector_overlay.h"\n'
 
 
 def filter_source(raw):
@@ -33,7 +38,9 @@ class CDFilterTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         code=function(b'BLOCK *alloc_block(void)')+function(b'void append_block(')
         if b'static int sector_destination(' in raw:code+=function(b'static int sector_destination(')
-        code+=filter_source(raw)
+        if b'sector_overlay_apply(' in raw:
+            code += b'#define TEST_FILTER_OVERLAY 1\n' + function(b'void free_block(')
+        code+=overlay_source() + filter_source(raw)
         (cls.target/'filter.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'cdc.h':header,'cdc_filter.c':(ROOT/'tests/cdc_filter.c').read_bytes(),'test_cdc_filter.py':Path(__file__).read_bytes()}
@@ -42,7 +49,7 @@ class CDFilterTests(unittest.TestCase):
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'filter'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),str(cls.target/'cdc_filter.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),str(cls.target/'cdc_filter.c'),'-I',str(OVERLAY.parent),str(OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60);(cls.target/'compile.log').write_bytes(result.stdout+result.stderr);(cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
 
     @classmethod

@@ -38,3 +38,34 @@ See the [compiler commands](../tools/README.md#sd-sector-overlay-compiler).
 Run `make -C tests check-sector-overlay` for the compiler and actual C
 decoder checks. The fixtures generate synthetic raw sectors, derive
 parity independently, and compare all 2,352 bytes after delivery.
+
+## Disc mount and sector delivery
+
+An overlay-capable menu requests the feature when loading a game. The MCU
+advertises capability 1 at SYSINFO offset `3ch`; the menu sets bit 15 of
+the existing load-disc argument only when that capability is present. The
+catalog's maximum index fits below this bit, and `ffffh` still unloads.
+Automatic disc changes retain the current launch's overlay preference.
+
+After identifying the disc and loading its configuration, the MCU opens one
+bounded pack from `/SAROO/PATCHES/`. It checks every targeted sector before
+arming the pack. Missing or incompatible packs leave the base disc available.
+An open, read, seek or close I/O error fails the load. Preflight reuses the
+existing sector workspace under the filesystem lock.
+
+The CD worker edits the newly allocated CD block after copying from the
+read cache and before publishing it. There are no additional SD reads or
+writes for the overlay during playback. A runtime mismatch frees the
+unpublished block and terminates the read with an error. The mounted pack
+stays selected so a retry cannot silently deliver unpatched data. Disc
+retirement, replacement and tray open clear the selection. Audio, Mode 2,
+host PUT and subsequent CD-buffer copy or move are outside this hook.
+
+The failure corrections come from paps-g `4da85af3`, `8eac58b1` and
+`a3f25d5a`. The original private failure released the pack after a bad
+sector, allowing a later PLAY to deliver the unpatched version. Host
+fixtures exercise the actual CUE loader, FatFs, router and allocator,
+including missing or oversized packs, I/O faults, changed-source retries,
+disc replacement, source immutability and audio control. The public GNU
+App build uses 57,944 load bytes and has 7,592 bytes free. Static DTCM spans
+49,496 bytes. These are host and link checks.

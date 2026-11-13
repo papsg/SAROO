@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from test_cdc_copy import copy_source
-from test_cdc_filter import filter_source
+from test_cdc_filter import OVERLAY, filter_source, overlay_source
 from test_cdc_sector_input import reader_source
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ class CDRoutingTests(unittest.TestCase):
             start=data.index(signature)
             return data[start:data.index(b'\n}',start)+2]+b'\n'
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',)))
-        code=filter_source(raw)
+        code=overlay_source() + filter_source(raw)
         code+=b'#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wsign-compare"\n'
         code+=reader_source(main)+b'#pragma GCC diagnostic pop\n'
         if b'static int sector_destination(' in raw:code+=b'#define TEST_HAS_SHARED_ROUTE 1\n'
@@ -41,7 +41,7 @@ class CDRoutingTests(unittest.TestCase):
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'routing'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror','-Wno-unused-variable',*flags,'-I',str(cls.target),str(cls.target/'cdc_routing.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror','-Wno-unused-variable',*flags,'-I',str(cls.target),str(cls.target/'cdc_routing.c'),'-I',str(OVERLAY.parent),str(OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

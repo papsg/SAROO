@@ -56,7 +56,8 @@ class CDXATests(unittest.TestCase):
         cls.binary=cls.target/'xa'
         args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
               '-Wno-unused-function','-Wno-unused-variable','-Wno-unused-label','-Wno-parentheses',*flags,
-              '-I',str(cls.target),str(cls.target/'cdc_xa.c'),'-o',str(cls.binary)]
+              '-I',str(cls.target),str(cls.target/'cdc_xa.c'),'-I',str(directory.OVERLAY.parent),
+              str(directory.OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 from test_cdc_copy import copy_source
+from test_cdc_filter import OVERLAY, overlay_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -31,7 +32,9 @@ class CDDriveTests(unittest.TestCase):
         if b'u8 track_subindex(' in main:code=function(main,b'u8 track_subindex(')+code
         if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
-        code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
+        code+=overlay_source()+function(main,b'int pause_disc(')+function(raw,b'void set_report(')
+        if b'void invalidate_sector_cache(' in main:
+            code+=function(main,b'void invalidate_sector_cache(')
         (cls.target/'periodic.inc').write_bytes(function(main,b'void set_peri_report('))
         for sig in (b'static __attribute__((noinline)) void clear_drive_position(',
                     b'void publish_open_tray(', b'int open_tray('):
@@ -129,7 +132,7 @@ class CDDriveTests(unittest.TestCase):
         cls.binary=cls.target/'drive'
         args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
               '-Wno-unused-variable','-Wno-unused-function','-Wno-unused-label','-Wno-parentheses',*flags,
-              '-I',str(cls.target),str(cls.target/'cdc_drive.c'),'-o',str(cls.binary)]
+              '-I',str(cls.target),str(cls.target/'cdc_drive.c'),'-I',str(OVERLAY.parent),str(OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

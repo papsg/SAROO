@@ -128,6 +128,10 @@ static u16 buf_fad_offset = 0;
 static u16 buf_fad_size = 0;
 static u8 buf_subcode_mode = 0;
 
+void invalidate_sector_cache(void)
+{
+    buf_fad_start = buf_fad_end = 0;
+}
 
 static u8 reorder[24] = {
 	0x00, 0x42, 0x7d, 0xbf, 0x64, 0x32, 0x96, 0xaf,
@@ -585,6 +589,11 @@ _play_checkpoint:
 					if (hw_delay(sector_delay)) goto _delay_error;
 				}
 				retv = filter_sector(cdb.play_track, &wblk);
+                if (retv < 0) {
+                    invalidate_sector_cache();
+                    cdb.status = STAT_ERROR;
+                    goto _read_error;
+                }
 				HIRQ = HIRQ_CSCT;
 
 				if(retv==2){
@@ -1346,6 +1355,7 @@ void saturn_config(void)
     *(u32*)(SYSINFO_ADDR+0x18) = ARCHIVE_IO_VERSION;
     *(u32*)(SYSINFO_ADDR+0x2c) = MENU_ACK_VERSION;
     *(u32*)(SYSINFO_ADDR+0x34) = BIN_DIRECTORY_VERSION;
+    *(u32*)(SYSINFO_ADDR+0x3c) = SD_OVERLAY_VERSION;
 
     if (cd_sync_init()) return;
     ss_sw_init();

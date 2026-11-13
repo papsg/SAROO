@@ -5,6 +5,7 @@
 #include "cdc_bounds.c"
 #undef main
 static void memcpy32(void *out,const void *in,unsigned count) { assert(!irq_depth);copied_bytes+=count;memcpy(out,in,count); }
+static inline void invalidate_sector_cache(void);
 #define pause_drive pause_disc
 #include "directory.inc"
 #undef pause_drive
@@ -19,6 +20,7 @@ static __attribute__((unused)) void set_peri_report(void)
 #include "input-error.inc"
 #undef get_sector
 static u32 buf_fad_start,buf_fad_end;
+static inline void invalidate_sector_cache(void) { buf_fad_start=buf_fad_end=0; }
 static unsigned pause_signals;
 static void set_pause_ok(void) { pause_signals++; }
 #include "pause.inc"

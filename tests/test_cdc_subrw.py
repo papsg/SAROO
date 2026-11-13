@@ -28,6 +28,8 @@ class CDSubrwTests(unittest.TestCase):
             return main[start:main.index(b"\n}", start) + 2] + b"\n"
 
         producer = function(b"int get_sector(")
+        if b"void invalidate_sector_cache(" in main:
+            producer += function(b"void invalidate_sector_cache(")
         if b"static void publish_subrw(" in main:
             producer += function(b"static void publish_subrw(")
         # Evaluate each selected load once, then let the command task run

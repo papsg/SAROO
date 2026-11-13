@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from cdc_reply_source import bswap_source
 import test_cdc_bounds as bounds
-from test_cdc_filter import filter_source
+from test_cdc_filter import OVERLAY, filter_source, overlay_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -36,7 +36,7 @@ class CDDirectoryTests(unittest.TestCase):
         (cls.target/'disc-unload.inc').write_bytes(b''.join(function(image,sig) for sig in (
             b'static int close_tracks(int count)\n{',b'int unload_disc(')))
         retired = b'int finish_read(' in raw
-        code=b''.join(function(raw,sig) for sig in (
+        code=overlay_source()+b''.join(function(raw,sig) for sig in (
             b'static u32 isonum_733(',b'static int read_directory_record(',
             b'int finish_read(' if retired else b'int finish_directory(',
             b'static __attribute__((noinline)) void log_directory_record(',
@@ -54,7 +54,8 @@ class CDDirectoryTests(unittest.TestCase):
         start=main.index(b'\t\t\t\tretv = filter_sector(')
         end=main.index(b'\n\t\t\t}\n\n\t\t\tcdb.',start)
         (cls.target/'dispatch.inc').write_bytes(b'static int dispatch(BLOCK wblk) {\nint retv;\n'+
-            main[start:end]+b'\nreturn 1;\n_restart_wait: return 0;\n_restart_nowait: return 2;\n}\n')
+            main[start:end]+b'\nreturn 1;\n_restart_wait: return 0;\n_restart_nowait: return 2;\n'+
+            (b'_read_error: finish_read(0); return 0;\n' if b'goto _read_error;' in main[start:end] else b'')+b'}\n')
         if retired:
             error_start = main.index(b'\n_read_error:')
             error_exit = main[error_start:main.index(b'\n_delay_error:',error_start)]
@@ -92,7 +93,7 @@ class CDDirectoryTests(unittest.TestCase):
         cls.binary=cls.target/'directory'
         args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
               '-Wno-unused-variable','-Wno-unused-label','-Wno-parentheses',*flags,
-              '-I',str(cls.target),str(cls.target/'cdc_directory.c'),'-o',str(cls.binary)]
+              '-I',str(cls.target),str(cls.target/'cdc_directory.c'),'-I',str(OVERLAY.parent),str(OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

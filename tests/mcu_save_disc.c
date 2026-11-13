@@ -70,6 +70,12 @@ static int find_disc(char *name) { (void)name;return 0; }
 /* Actual worker/helper bodies; notifications/preemption are deterministic stubs. */
 static int pause_waits,pause_wakes,pause_acks,pause_allow_ack=1,pause_after=3;
 static int buf_fad_start,buf_fad_end,require_quiescence,pause_active;
+#if __has_include("sector_overlay.h")
+#include "sector_overlay.h"
+static inline void invalidate_sector_cache(void) { buf_fad_start=buf_fad_end=0; }
+static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
+#define sector_overlay_mount ordinary_overlay_mount
+#endif
 static int pause_irq_mask,inject_publication,pending_publication,publication_attempts,published_requests;
 static void publish_new_request(void)
 { cdb.play_type=1;cdb.pause_request=1;cdb.play_wait=0;published_requests++; }

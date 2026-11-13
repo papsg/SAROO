@@ -78,6 +78,14 @@ static int sprintk(char *out,const char *format,...)
 static int next_disc;
 static volatile int mounted_disc = -1;
 static volatile u8 disc_removed;
+#if __has_include("sector_overlay.h")
+#include "sector_overlay.h"
+static void invalidate_sector_cache(void);
+#ifndef MCU_OVERLAY_TEST
+static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
+#define sector_overlay_mount ordinary_overlay_mount
+#endif
+#endif
 #include "token.inc"
 #include "toc.inc"
 #define f_open cue_open
@@ -122,6 +130,9 @@ static int pause_disc(void) { assert(media_case);media_pauses++;return 0; }
 #define malloc cue_alloc
 #define free cue_free
 #include "load.inc"
+#ifdef sector_overlay_mount
+#undef sector_overlay_mount
+#endif
 #define f_read cue_read
 #define f_close cue_close
 #define f_lseek cue_seek
@@ -133,6 +144,9 @@ static int pause_disc(void) { assert(media_case);media_pauses++;return 0; }
 #undef free
 #undef f_open
 #undef load_savefile
+#if __has_include("sector_overlay.h") && !defined(MCU_OVERLAY_TEST)
+static void invalidate_sector_cache(void) {}
+#endif
 static void create(const char *name,const void *data,unsigned size)
 {
     FIL fp;UINT count;assert(f_open(&fp,name,FA_CREATE_ALWAYS|FA_WRITE)==0);

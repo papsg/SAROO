@@ -44,6 +44,7 @@ static void *copy_payload(void *to,const void *from,size_t bytes)
     assert(!irq_depth); payload_bytes+=bytes; return memcpy(to,from,bytes);
 }
 #define memcpy32 copy_payload
+static inline void disk_task_wakeup(void) { assert(0); }
 #include "filter.inc"
 
 static void setup(unsigned format)
@@ -160,7 +161,8 @@ static void publication(void)
 
 int main(int argc,char **argv)
 {
-    assert(argc==2); int test=atoi(argv[1]); assert(test>=0 && test<=13);
+    assert(argc>=2); int test=atoi(argv[1]); assert(test>=0 && test<=14);
+    assert(argc == (test == 14 ? 5 : 2));
     assert(MAX_SELECTORS==24 && MAX_BLOCKS==200);
     if(test==0) {
         for(unsigned f=0;f<MAX_SELECTORS;f++) {
@@ -279,6 +281,46 @@ int main(int argc,char **argv)
         assert(!payload_bytes && !irq_entries && !log_lines);owners();
     }
     if(test==13)publication();
+#ifdef TEST_FILTER_OVERLAY
+    if (test == 14) {
+        assert(argc == 5);
+        setup(1);
+        FILE *fp = fopen(argv[2], "rb");
+        assert(fp);
+        size_t bytes = fread(sector_overlay_staging(), 1, SECTOR_OVERLAY_MAX_BYTES, fp);
+        assert(!ferror(fp) && fgetc(fp) == EOF && !fclose(fp));
+        assert(!sector_overlay_validate(bytes, "T-TEST    "));
+        sector_overlay_arm();
+        fp = fopen(argv[3], "rb");
+        assert(fp && fread(incoming, 1, sizeof incoming, fp) == sizeof incoming && !fclose(fp));
+        uint8_t original[2352], expected[2352];
+        memcpy(original, incoming, sizeof original);
+        fp = fopen(argv[4], "rb");
+        assert(fp && fread(expected, 1, sizeof expected, fp) == sizeof expected && !fclose(fp));
+        sector.fad = sector_overlay_fad(0);
+
+        incoming[600] ^= 1;
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            assert(filter_sector(&track, &sector) == -1);
+            assert(cdb.block_free == MAX_BLOCKS && !cdb.part[0].head && cdb.last_buffer == 19);
+            assert(incoming[600] == (original[600] ^ 1));
+            owners();
+        }
+        memcpy(incoming, original, sizeof incoming);
+        assert(filter_sector(&track, &sector) == 0);
+        assert(cdb.block_free == MAX_BLOCKS - 1 && cdb.part[0].head);
+        assert(!memcmp(cdb.part[0].head->data, expected, sizeof expected));
+        assert(!memcmp(incoming, original, sizeof original));
+        owners();
+
+        setup(4);
+        memcpy(incoming, original, sizeof incoming);
+        sector.fad = sector_overlay_fad(0);
+        assert(filter_sector(&track, &sector) == 0);
+        assert(cdb.part[0].head->size & BLOCK_AUDIO);
+        assert(!memcmp(cdb.part[0].head->data, original, sizeof original));
+    }
+#endif
     puts("pass: incoming routing bounds, discard, retry, payload and ownership");
     return 0;
 }

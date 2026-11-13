@@ -21,5 +21,7 @@ int sector_overlay_check(unsigned index, const uint8_t sector[2352]);
 void sector_overlay_arm(void);
 /* A negative result leaves both the destination and the mounted pack intact. */
 int sector_overlay_apply(uint32_t fad, uint8_t sector[2352]);
+/* Runs after the new CUE/ISO tracks are open and before disc publication. */
+int sector_overlay_mount(const char product[10]);
 
 #endif

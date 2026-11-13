@@ -2,6 +2,7 @@
 #include "main.h"
 #include "ff.h"
 #include "cdc.h"
+#include "sector_overlay.h"
 
 
 /******************************************************************************/
@@ -521,6 +522,10 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 		if (track->mode == 3) blk->size |= BLOCK_AUDIO;
 		else if (wblk->data[15] != 2) blk->size |= BLOCK_RAW_MODE1;
 		else if (wblk->sm & 0x20) blk->size = 2324;
+        if (track->mode == 1 && sector_overlay_apply(blk->fad, blk->data) < 0) {
+            free_block(blk);
+            return -1;
+        }
 	}
 
 	irqs = disable_irq();
@@ -720,6 +725,7 @@ static __attribute__((noinline)) void clear_drive_position(void)
 /* Call after the reader has stopped, before publishing OPEN. */
 void publish_open_tray(void)
 {
+    sector_overlay_clear();
     if (cdb.status == STAT_OPEN) return;
     invalidate_directory();
     cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;

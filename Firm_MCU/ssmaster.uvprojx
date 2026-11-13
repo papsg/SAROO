@@ -625,6 +625,16 @@
               <FilePath>.\Saturn\saturn_cdc.c</FilePath>
             </File>
             <File>
+              <FileName>sector_overlay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Saturn\sector_overlay.c</FilePath>
+            </File>
+            <File>
+              <FileName>sector_overlay_media.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Saturn\sector_overlay_media.c</FilePath>
+            </File>
+            <File>
               <FileName>cdimg.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Saturn\cdimg.c</FilePath>

@@ -51,8 +51,8 @@ adds no Rust code to either processor's firmware. Tests are available with
 ### Original MCU App compile/link check
 
 The `mcu` command stages public MCU inputs unchanged and offline CMSIS/STM32/RTX
-dependencies supplied explicitly by the caller. It compiles the original MDK
-App's nineteen C units, configured `RTX_Config.c`, the RTX sources/tick provider
+dependencies supplied explicitly by the caller. It compiles the MDK App
+target's C units, configured `RTX_Config.c`, the RTX sources/tick provider
 and assembly into `qualification.elf`. It checks the 64 KiB ITCM/128 KiB DTCM
 limits from the original [App memory settings](../Firm_MCU/ssmaster.uvprojx) and all
 166 entries from the [ST startup table](../Firm_MCU/Startup/startup_stm32h750xx.s), including strong RTX

@@ -141,7 +141,8 @@ class MCUSaveTest(unittest.TestCase):
                 parts.append(disc[disc.index(b'static int game_dir('):disc.index(b'int load_disc(')])
             (cls.target / 'disc-core.inc').write_bytes(catalog_definitions +
                 b''.join(parts).replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
-            (cls.target / 'disc-load.inc').write_bytes(disc[disc.index(b'int load_disc('):])
+            overlay = re.search(rb'^#define SD_OVERLAY_REQUEST .+$', header, re.M)
+            (cls.target / 'disc-load.inc').write_bytes((overlay[0] + b'\n' if overlay else b'') + disc[disc.index(b'int load_disc('):])
             signature = b'int load_disc(int index, int start_save)' in disc
             (cls.target / 'disc-api.h').write_text('#define DISC_STARTS_SAVE %d\n' % signature)
             if b'int pause_disc(void)' in main:
@@ -253,8 +254,18 @@ class MCUSaveTest(unittest.TestCase):
             code = re.sub(rb'0x224([0-9a-fA-F]{5})',
                           lambda m: b'(TEST_GFX_BASE + 0x' + m[1] + b')', code)
             (cls.target / 'cover-display.inc').write_bytes(code)
+        if cls.fixture in ('disc', 'cue', 'header') and (source / 'sector_overlay_media.c').exists():
+            for name in ('sector_overlay.h', 'sector_overlay.c', 'sector_overlay_media.c'):
+                data = (source / name).read_bytes()
+                (cls.target / name).write_bytes(data)
+                inputs['Saturn/' + name] = data
         if cls.fixture in ('cue', 'header'):
             harnesses += ['mcu_save_cue.c', 'test_mcu_save_cue.py', 'cdc_reply_source.py']
+            if getattr(cls, 'overlay_fixture', False):
+                harnesses += ['sector_overlay_mount.c', 'test_sector_overlay_mount.py']
+                data = (cls.target / 'sector_overlay_media.c').read_bytes()
+                code = data[data.index(b'static void overlay_path('):]
+                (cls.target / 'overlay-media.inc').write_bytes(code.replace(b'0x24002000', b'TEST_SCRATCH_ADDR'))
             if cls.fixture == 'header':
                 harnesses += ['mcu_save_header.c', 'test_mcu_save_header.py']
             data = (source / 'cdimg.c').read_bytes(); inputs['Saturn/cdimg.c'] = data
@@ -267,7 +278,8 @@ class MCUSaveTest(unittest.TestCase):
                 code = code.replace(old, new)
             (cls.target / 'cue.inc').write_bytes(invalidate_directory + code)
             begin = data.index(b'static int game_dir(')
-            (cls.target / 'load.inc').write_bytes(catalog_definitions + data[begin:data.index(b'int get_disc_ip(', begin)])
+            overlay = re.search(rb'^#define SD_OVERLAY_REQUEST .+$', header, re.M)
+            (cls.target / 'load.inc').write_bytes(catalog_definitions + (overlay[0] + b'\n' if overlay else b'') + data[begin:data.index(b'int get_disc_ip(', begin)])
             (cls.target / 'preview.inc').write_bytes(data[data.index(b'int get_disc_ip('):])
             begin = main.index(b'void init_toc('); end = main.index(b'u32 track_to_fad(', begin)
             (cls.target / 'toc.inc').write_bytes(bswap_source(header, main) + main[begin:end])
@@ -312,6 +324,9 @@ class MCUSaveTest(unittest.TestCase):
         args = [os.environ.get('CC', 'cc'), '-std=gnu11', '-g', *flags, '-pthread',
                 '-I', str(cls.target), '-I', str(fatfs), str(cls.target / getattr(cls, 'c_source', 'mcu_save_'+cls.fixture+'.c')),
                 str(fatfs / 'ff.c'), str(fatfs / 'ffunicode.c'), '-o', str(cls.binary)]
+        core = cls.target / 'sector_overlay.c'
+        if core.exists():
+            args.insert(-2, str(core))
         result = subprocess.run(args, capture_output=True)
         (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr)
         result.check_returncode()

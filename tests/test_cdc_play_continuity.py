@@ -30,7 +30,8 @@ class CDPlayContinuityTests(unittest.TestCase):
                    '-Wall', '-Wextra', '-Werror', '-Wno-unused-function',
                    '-Wno-unused-label', '-Wno-unused-parameter', '-Wno-unused-variable',
                    '-pthread', *flags, '-I', str(target),
-                   str(tests / 'cdc_play_continuity.c'), '-o', str(cls.binary)]
+                   str(tests / 'cdc_play_continuity.c'), '-I', str(drive.OVERLAY.parent), str(drive.OVERLAY),
+                   '-o', str(cls.binary)]
         build = subprocess.run(command, capture_output=True, text=True, timeout=60)
         (target / 'continuity-compile.log').write_text(build.stdout + build.stderr)
         if build.returncode:

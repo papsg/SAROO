@@ -9,7 +9,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 import test_cdc_bounds as bounds
-from test_cdc_filter import filter_source
+from test_cdc_filter import OVERLAY, filter_source, overlay_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -24,7 +24,7 @@ class CDReadOwnershipTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        ownership = function(b'int reset_filter(') + filter_source(raw)
+        ownership = function(b'int reset_filter(') + overlay_source() + filter_source(raw)
         if b'static int execute_fad_search(' in raw:
             ownership += b'#define HAS_FAD_SEARCH 1\n'
             ownership += function(b'static int execute_fad_search(')
@@ -40,7 +40,7 @@ class CDReadOwnershipTests(unittest.TestCase):
         flags=['-O2'] if os.environ.get('SAROO_CDC_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'read-ownership'
         args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',
-              '-Wno-unused-variable','-Wno-parentheses',*flags,'-I',str(cls.target),str(cls.target/'cdc_read_ownership.c'),'-o',str(cls.binary)]
+              '-Wno-unused-variable','-Wno-parentheses',*flags,'-I',str(cls.target),str(cls.target/'cdc_read_ownership.c'),'-I',str(OVERLAY.parent),str(OVERLAY),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60)
         (cls.target/'ownership-compile.log').write_bytes(result.stdout+result.stderr)
         (cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()

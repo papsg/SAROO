@@ -3,6 +3,7 @@
 #include "ff.h"
 #include <stdlib.h>
 #include "cdc.h"
+#include "sector_overlay.h"
 
 
 /******************************************************************************/
@@ -492,6 +493,8 @@ static int close_tracks(int count)
 
 int unload_disc(void)
 {
+    sector_overlay_clear();
+    invalidate_sector_cache();
     /* Extents and file IDs belong to the retired image, even on close error. */
     invalidate_directory();
     cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;
@@ -571,6 +574,13 @@ static int game_dir(int index, char *out)
 
 int load_disc(int index, int start_save)
 {
+    static unsigned overlay_session;
+    unsigned overlay_requested = overlay_session;
+    int open_disc = start_save;
+    if (start_save) {
+        overlay_requested = index & SD_OVERLAY_REQUEST;
+        index &= ~SD_OVERLAY_REQUEST;
+    }
 	int retv;
 	char *fname;
 	char cat_dir[256];
@@ -634,6 +644,11 @@ int load_disc(int index, int start_save)
 
 		retv = parse_config("/SAROO/saroocfg.txt", gameid);
 		if (retv) { unload_disc(); goto _exit; }
+        if (overlay_requested && gameid[0] && sector_overlay_mount(gameid)) {
+            retv = -1;
+            unload_disc();
+            goto _exit;
+        }
 		
 		if(mdisc_str[0]){
 			int mlen = strlen(mdisc_str);
@@ -664,6 +679,7 @@ int load_disc(int index, int start_save)
 		}
 
         /* Automatic changes retain the running game's save session. */
+        if (open_disc) overlay_session = overlay_requested;
         mounted_disc = index;
         if (disc_removed) {
             cdb.status = STAT_PAUSE;
