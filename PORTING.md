@@ -2621,3 +2621,9 @@ All six changes landed in order through [`82edd43`](https://github.com/papsg/SAR
 All five MCU links and the stock SH-2 menu match their committed source hashes. The final GNU App has 166 vectors, uses 65,440 of 65,536 ITCM load bytes and spans 50,744 DTCM bytes for data and BSS. The BootLoader target excludes the changed Saturn source group. The stock menu links with 19,988 bytes of body margin and passes the ordinary clock tail and 48 linked ROM clock cases. Original MDK output and physical Saturn behavior were not qualified.
 
 The published changes passed secret and commit identity checks. The private repository and Saturn were untouched.
+
+## BIOS player return, disc reader ownership and CD transfers
+
+Six ordered checkpoints after [`82edd43`](https://github.com/papsg/SAROO/commit/82edd435fa48dfe37f1e26221fd4d076cbebdaa4).
+
+- `7f626020` (paps-g, SATURN-MENU-013) → [`28bb157`](https://github.com/papsg/SAROO/commit/28bb1577f025e6578e78ccb83ba9954de1bc95ef). Mask the retiring player's SCU interrupts and restore the BIOS callback before menu BSS initialization. The parent and a restore-only control fail independently. All 143 focused methods, 10 optimized player methods and 48 linked ROM clock cases pass. Stock menu has 85,244 code/data bytes and 19,956 bytes of body margin. A historical private RAM trial reached SAROO after Astal and the BIOS player. Public hardware behavior remains unverified. [Sega ST-162-R1-092994, printed pp. 2 and 10](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=15). [Reproduction and limits](https://github.com/papsg/SAROO/blob/28bb1577f025e6578e78ccb83ba9954de1bc95ef/doc/SATURN-MENU-HARDWARE.md).
