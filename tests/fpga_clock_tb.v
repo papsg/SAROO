@@ -1,6 +1,7 @@
 // Adapted from paps-g fb67ac50 and 86e2af4e. FPGA register-level model.
 module tb;
     reg mclk=0, ss_wr_start=0, SS_CS2=0;
+    reg NRESET=1;
     reg [23:0] SS_ADDR=24'h89700c;
     wire [15:0] value;
     clock_dut dut(.*);

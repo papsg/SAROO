@@ -169,6 +169,22 @@ module SSMaster(
 	wire pll_locked;
 	mainpll _mpll(CLK_50M, mclk, sdclk, pll_locked);
 
+	// CKCHG also asserts cartridge SYSRES. Quiesce A-bus access while
+	// retaining the CD block, cartridge map and MCU-owned transactions.
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ss_reset_meta;
+	(* altera_attribute = "-name ADV_NETLIST_OPT_ALLOWED NEVER_ALLOW; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS; -name DONT_MERGE_REGISTER ON; -name PRESERVE_REGISTER ON" *)
+	reg ss_bus_ready;
+	always @(negedge NRESET or posedge mclk)
+	begin
+		if(!NRESET) begin
+			ss_reset_meta <= 0;
+			ss_bus_ready <= 0;
+		end else begin
+			ss_reset_meta <= SS_RST;
+			ss_bus_ready <= ss_reset_meta;
+		end
+	end
 
 ///////////////////////////////////////////////////////
 // STM32 FSMC                                        //
@@ -249,6 +265,10 @@ module SSMaster(
 			st_reg_ctrl <= 0;
 			st_reg_spi <= 3'b111;
 			st_reg_sdram <= 12'b11_1100001101; // type:64MB  refcnt: 0x30d(7.81us)
+			ss_resp1 <= 0;
+			ss_resp2 <= 0;
+			ss_resp3 <= 0;
+			ss_resp4 <= 0;
 		end else if(st_wr_start==1) begin
 			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h04) st_reg_ctrl <= st_wdata;
 			if(fsmc_addr[24]==0 && fsmc_addr[7:0]==8'h16) {st_reg_sdram, st_reg_spi} <= st_wdata[15:1];
@@ -467,6 +487,8 @@ module SSMaster(
 
 	always @(posedge mclk)
 	begin
+		// Observe the live select through reset so a held select is
+		// not mistaken for a new transfer when the bus resumes.
 		sscs_s0 <= (SS_CS0 & SS_CS1 & SS_CS2) | ~SS_FC1;
 		sscs_s1 <= sscs_s0;
 		sscs_s2 <= sscs_s1;
@@ -478,7 +500,7 @@ module SSMaster(
 
 	wire ss_refresh = (ssfc1_s2==1 && ssfc1_s1==0);
 
-	wire ss_rd_start = (sscs_s2==1 && sscs_s1==0 && SS_RD==0);
+	wire ss_rd_start = ss_bus_ready && sscs_s2 && !sscs_s1 && !SS_RD;
 
 	// TIM1 marks the write data phase. Synchronize the event and sample
 	// the settled bus bundle before sending one write to the consumers.
@@ -489,7 +511,8 @@ module SSMaster(
 	reg ss_tim1_previous;
 	reg ss_write_armed;
 	reg ss_write_pending;
-	reg ss_wr_start;
+	reg ss_write_ready;
+	wire ss_wr_start = ss_bus_ready && ss_write_ready;
 	reg[23:0] ss_addr_sample;
 	reg[15:0] ss_data_sample;
 	reg[2:0] ss_cs_sample;
@@ -512,7 +535,7 @@ module SSMaster(
 			ss_tim1_previous <= 0;
 			ss_write_armed <= 0;
 			ss_write_pending <= 0;
-			ss_wr_start <= 0;
+			ss_write_ready <= 0;
 			ss_addr_sample <= 0;
 			ss_data_sample <= 0;
 			ss_cs_sample <= 3'b111;
@@ -530,10 +553,12 @@ module SSMaster(
 			ss_data_sample <= SS_DATA;
 			ss_cs_sample <= {SS_CS2, SS_CS1, SS_CS0};
 			ss_mask_sample <= {SS_WR0, SS_WR1};
-			ss_wr_start <= 0;
+			ss_write_ready <= 0;
 			ss_write_pending <= 0;
 
-			if(ss_select_start)
+			if(!ss_bus_ready)
+				ss_write_armed <= 0;
+			else if(ss_select_start)
 				ss_write_armed <= 1;
 			else if(ss_select_end)
 				ss_write_armed <= 0;
@@ -542,8 +567,8 @@ module SSMaster(
 				ss_write_pending <= 1;
 			end
 
-			if(ss_write_pending && ss_cs_sample!=3'b111 && ss_mask_sample!=2'b11) begin
-				ss_wr_start <= 1;
+			if(ss_bus_ready && ss_write_pending && ss_cs_sample!=3'b111 && ss_mask_sample!=2'b11) begin
+				ss_write_ready <= 1;
 				ss_write_addr <= ss_addr_sample;
 				ss_write_data <= ss_data_sample;
 				ss_write_cs <= ss_cs_sample;
@@ -553,17 +578,17 @@ module SSMaster(
 		end
 	end
 
-	assign SS_DATA =
+	assign SS_DATA = !ss_bus_ready ? 16'hzzzz :
 					(SS_RD==0 && SS_CS0==0)? ss_ram_data_out :
 					(SS_RD==0 && SS_CS1==0)? ss_cs1_data_out :
 					(SS_RD==0 && ss_reg_cs==1)? ss_bcr_data_out :
 					(SS_RD==0 && ss_cdc_cs==1)? ss_cdc_data_out :
 					16'hzzzz;
 
-	assign SS_DATA_OE = ~SS_FC1 | (SS_CS0==1 && SS_CS1==1 && (SS_CS2==1 || (ss_cdc_cs==1 && SS_RD==0 && ss_cdc_en==0)));
+	assign SS_DATA_OE = ~ss_bus_ready | ~SS_FC1 | (SS_CS0==1 && SS_CS1==1 && (SS_CS2==1 || (ss_cdc_cs==1 && SS_RD==0 && ss_cdc_en==0)));
 
 	// RD leads chip select. Select read direction while the bus is isolated.
-	assign SS_DATA_DIR = (~SS_RD & SS_WR0 & SS_WR1);
+	assign SS_DATA_DIR = ss_bus_ready & ~SS_RD & SS_WR0 & SS_WR1;
 
 ///////////////////////////////////////////////////////
 // SATURN System Control                             //
@@ -644,17 +669,21 @@ module SSMaster(
 
 	reg[6:0] ss_timer_feed;
 
-	always @(posedge mclk)
+	always @(negedge NRESET or posedge mclk)
 	begin
-		if(ss_timer_feed==7'd99)
+		if(!NRESET)
+			ss_timer_feed <= 0;
+		else if(ss_timer_feed==7'd99)
 			ss_timer_feed <= 0;
 		else
 			ss_timer_feed <= ss_timer_feed+7'b1;
 	end
 
-	always @(posedge mclk)
+	always @(negedge NRESET or posedge mclk)
 	begin
-		if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b00_11)
+		if(!NRESET)
+			ss_reg_timer <= 0;
+		else if(ss_wr_start && ss_write_reg_cs && ss_write_addr[5:2]==4'b00_11)
 			ss_reg_timer <= 0;
 		else if(ss_timer_feed==0) begin
 			ss_reg_timer <= ss_reg_timer+32'b1;
@@ -724,9 +753,15 @@ module SSMaster(
 	wire ss_cdc_cs = (SS_CS2==0 && SS_ADDR[14:12]==3'b000);
 	wire ss_write_cdc_cs = (!ss_write_cs[2] && ss_write_addr[14:12]==3'b000);
 
-	always @(posedge mclk)
+	always @(negedge NRESET or posedge mclk)
 	begin
-		if(ss_wr_start && ss_write_cdc_cs) begin
+		if(!NRESET) begin
+			ss_hirq_mask <= 0;
+			ss_cr1 <= 0;
+			ss_cr2 <= 0;
+			ss_cr3 <= 0;
+			ss_cr4 <= 0;
+		end else if(ss_wr_start && ss_write_cdc_cs) begin
 			if(ss_write_addr[5:2]==4'b00_11) ss_hirq_mask <= ss_write_data;
 			if(ss_write_addr[5:2]==4'b01_10) ss_cr1 <= ss_write_data;
 			if(ss_write_addr[5:2]==4'b01_11) ss_cr2 <= ss_write_data;
@@ -750,7 +785,7 @@ module SSMaster(
 
 	assign SS_SSEL = ~ss_cdc_en;
 
-	assign SS_IRQ = (ss_hirq&ss_hirq_mask)==0? 1'b0: 1'b1;
+	assign SS_IRQ = ss_bus_ready && (ss_hirq & ss_hirq_mask)!=0;
 
 	assign SS_OUTEN = ~ss_cdc_en;
 
@@ -776,7 +811,7 @@ module SSMaster(
 	// 03000000 - 04000000 : 16MB Free Space
 	// Saturn is BigEndian system
 	wire ss_ram_wr_start = ss_wr_start && !ss_write_cs[0];
-	wire ss_ram_cs = !SS_CS0 || ss_ram_wr_start;
+	wire ss_ram_cs = ss_bus_ready && (!SS_CS0 || ss_ram_wr_start);
 	wire[15:0] ss_ram_din = {ss_write_data[7:0], ss_write_data[15:8]};
 	wire[25:0] ss_write_ram_addr = {
 		2'b0, ss_write_addr[23:21],
@@ -828,7 +863,7 @@ module SSMaster(
 		end
 	end
 
-	assign SS_WAIT = ss_ram_wait;
+	assign SS_WAIT = !ss_bus_ready || ss_ram_wait;
 	assign ST_WAIT = ST_CS | (ST_ALE & st_wait_ready);
 
 endmodule

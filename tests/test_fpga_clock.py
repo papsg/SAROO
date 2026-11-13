@@ -18,7 +18,7 @@ class FPGAClockTests(unittest.TestCase):
         counter = raw[start:raw.index(b'\n///////////////////////////////////////////////////////', start)]
         start = raw.index(b'\twire ss_reg_cs =')
         mux = raw[start:raw.index(b'\n\talways @(negedge NRESET', start)]
-        module = b'''module clock_dut(input mclk, ss_wr_start, SS_CS2,
+        module = b'''module clock_dut(input mclk, NRESET, ss_wr_start, SS_CS2,
 input [23:0] SS_ADDR, output [15:0] value);
 reg [31:0] ss_reg_timer;
 reg [15:0] ss_bcr_data_out;

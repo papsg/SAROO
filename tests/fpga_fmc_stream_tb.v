@@ -11,6 +11,7 @@ module mainpll(input inclk0, output reg c0 = 0, c1 = 0, output locked);
     assign locked = 1'b1;
 endmodule
 
+`ifndef SAROO_FIFO_MODEL
 module cdcfifo(input sclr, clock, rdreq, wrreq, input [15:0] data,
                output [15:0] q, output empty, full, output [10:0] usedw);
     assign q = 0;
@@ -18,6 +19,7 @@ module cdcfifo(input sclr, clock, rdreq, wrreq, input [15:0] data,
     assign full = 0;
     assign usedw = 0;
 endmodule
+`endif
 
 `ifndef SAROO_ABUS_TEST
 module tb;

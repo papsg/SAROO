@@ -44,7 +44,11 @@ module tb;
         check(1, 1, "FC1 refresh isolates the transceiver");
         SS_FC1 = 1; SS_WR0 = 0;
         check(0, 0, "a write lane overrides overlapping RD");
-        $display("PASS 13 Saturn data-direction and isolation cases");
+        SS_WR0 = 1; ss_bus_ready = 0;
+        check(1, 0, "cartridge reset isolates a selected read");
+        ss_bus_ready = 1;
+        check(0, 1, "read resumes after reset release");
+        $display("PASS 15 Saturn data-direction and isolation cases");
         $finish;
     end
 endmodule

@@ -5,6 +5,7 @@ module tb;
     always #5 mclk=~mclk;
     reg SS_FC1=1, SS_CS0=1, SS_RD=1;
     wire SS_CS1=1'b1, SS_CS2=1'b1;
+    wire ss_bus_ready=1'b1;
     `include "fc1-synchronizer.inc"
 
     reg st_cs=0, st_rd=0, st_wr=0;

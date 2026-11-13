@@ -432,3 +432,44 @@ limit. The fit uses 1,647 logic elements and 1,061 registers,
 with minimum setup and hold slack of +0.197 ns and +0.168 ns.
 The transceiver datasheet gives no numeric DIR turnaround maximum.
 Board-level direction settling and game behavior remain unqualified.
+
+## Quiet the Saturn bus during reset and retain CD state
+
+FPGA-RESET-001 and FPGA-RESET-003, adapted from paps-g `5e95a7cc`
+and `bd0aab2e`. The previous public FPGA ignored cartridge SYSRES.
+The port synchronizes it through two registers, isolates the data
+bus, releases WAIT, masks the Saturn IRQ pin and retires incomplete
+write captures. The select and TIM1 samplers keep observing the bus
+so a select held across the pulse cannot start a new transfer on release.
+SDRAM refresh and the MCU interface continue to run.
+
+CKCHG320/352 use the same cartridge reset wire while the CD block and
+work RAM retain their state. The final behavior keeps the CD selection,
+cartridge map, FIFO, command and response registers, and retained mailbox.
+The MCU can finish an accepted command while the Saturn bus is isolated.
+Full FPGA reset and explicit FIFO reset still clear their own state.
+The board has no separate CDRES input. Full-system software can still
+initialize the emulated CD through its ordinary command interface.
+
+[Sega SMPC User's Manual ST-169-R1-072694, SYSRES and CKCHG,
+printed pp. 29–31](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=39)
+describes whole-system reset, clock changes and their different CD retention
+rules. The [SAROO schematic, FSYSRES](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/HW/ssmaster_v2.PDF)
+shows the cartridge reset input used here.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_fpga_clock_retention.py -v
+```
+
+Set `SAROO_FPGA_RESET_SOURCE` to the preceding checkout's FPGA directory
+and select `-k quiets` to reproduce the active bus outputs during SYSRES.
+The full-top fixture passes three modeled pulses at each of three phases,
+covering retained mapping and CD state, live MCU completion, a write
+straddling the pulse and full FPGA reset. A control that resets the mapping
+fails the retention check. Eight FC1 tests retain their timing, and the
+adjacent FMC, A-bus, mailbox, timer, direction and HIRQ checks pass.
+The complete offline Quartus fit uses 1,677 logic elements and 1,063
+registers. Minimum reported setup and hold slack are +0.197 ns and
++0.162 ns.
+Historical Astal observations established the need to preserve the CD
+mapping. They do not qualify the public FPGA on a physical board.
