@@ -1195,7 +1195,48 @@ void (*sys_bup_get_date)(u32 date, BUPDATE *bdt);
 u32 (*sys_bup_set_date)(BUPDATE *bdt);
 
 
-int bup_sel_part(int dev, int num)
+/* Game callers follow the Sega/Hitachi calling convention. Protect the
+ * multiply registers across the ordinary GCC bodies and their nested calls.
+ * These entries use up to four register arguments and return in R0. */
+#ifdef __sh__
+__asm__(
+    ".text\n"
+    ".balign 4\n"
+    ".type bup_abi_call,@function\n"
+    "bup_abi_call:\n"
+    "sts.l mach,@-r15\n"
+    "sts.l macl,@-r15\n"
+    "sts.l pr,@-r15\n"
+    "jsr @r0\n"
+    "nop\n"
+    "lds.l @r15+,pr\n"
+    "lds.l @r15+,macl\n"
+    "rts\n"
+    "lds.l @r15+,mach\n"
+    ".size bup_abi_call,.-bup_abi_call\n"
+);
+
+#define BUP_ENTRY(type, name, args) \
+    type name args; \
+    __asm__( \
+        ".text\n" \
+        ".balign 4\n" \
+        ".global _" #name "\n" \
+        ".type _" #name ",@function\n" \
+        "_" #name ":\n" \
+        "mov.l 1f,r0\n" \
+        "bra bup_abi_call\n" \
+        "nop\n" \
+        ".balign 4\n" \
+        "1: .long _" #name "_impl\n" \
+        ".size _" #name ",.-_" #name "\n" \
+    ); \
+    type name##_impl args
+#else
+#define BUP_ENTRY(type, name, args) type name args
+#endif
+
+BUP_ENTRY(int, bup_sel_part, (int dev, int num))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_sel_part(dev, num);
@@ -1205,7 +1246,7 @@ int bup_sel_part(int dev, int num)
 }
 
 
-int bup_format(int dev)
+BUP_ENTRY(int, bup_format, (int dev))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_format(dev);
@@ -1215,7 +1256,7 @@ int bup_format(int dev)
 }
 
 
-int bup_stat(int dev, int dsize, BUPSTAT *stat)
+BUP_ENTRY(int, bup_stat, (int dev, int dsize, BUPSTAT *stat))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_stat(dev, dsize, stat);
@@ -1225,7 +1266,7 @@ int bup_stat(int dev, int dsize, BUPSTAT *stat)
 }
 
 
-int bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
+BUP_ENTRY(int, bup_write, (int dev, BUPDIR *dir, u8 *data, int mode))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_write(dev, dir, data, mode);
@@ -1235,7 +1276,7 @@ int bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 }
 
 
-int bup_read(int dev, char *file_name, u8 *data)
+BUP_ENTRY(int, bup_read, (int dev, char *file_name, u8 *data))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_read(dev, file_name, data);
@@ -1245,7 +1286,7 @@ int bup_read(int dev, char *file_name, u8 *data)
 }
 
 
-int bup_delete(int dev, char *file_name)
+BUP_ENTRY(int, bup_delete, (int dev, char *file_name))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_delete(dev, file_name);
@@ -1255,7 +1296,7 @@ int bup_delete(int dev, char *file_name)
 }
 
 
-int bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
+BUP_ENTRY(int, bup_dir, (int dev, char *file_name, int tbsize, BUPDIR *dir))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_dir(dev, file_name, tbsize, dir);
@@ -1265,7 +1306,7 @@ int bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 }
 
 
-int bup_verify(int dev, char *file_name, u8 *data)
+BUP_ENTRY(int, bup_verify, (int dev, char *file_name, u8 *data))
 {
 	if(use_sys_bup && dev==0){
 		return sys_bup_verify(dev, file_name, data);
@@ -1275,7 +1316,7 @@ int bup_verify(int dev, char *file_name, u8 *data)
 }
 
 
-void bup_get_date(u32 date, BUPDATE *bdt)
+BUP_ENTRY(void, bup_get_date, (u32 date, BUPDATE *bdt))
 {
 	if(use_sys_bup){
 		return sys_bup_get_date(date, bdt);
@@ -1285,7 +1326,7 @@ void bup_get_date(u32 date, BUPDATE *bdt)
 }
 
 
-u32 bup_set_date(BUPDATE *bdt)
+BUP_ENTRY(u32, bup_set_date, (BUPDATE *bdt))
 {
 	if(use_sys_bup){
 		return sys_bup_set_date(bdt);
@@ -1298,7 +1339,7 @@ u32 bup_set_date(BUPDATE *bdt)
 /******************************************************************************/
 
 
-void bup_init(u8 *lib_addr, u8 *work_addr, void *cfg_ptr)
+BUP_ENTRY(void, bup_init, (u8 *lib_addr, u8 *work_addr, void *cfg_ptr))
 {
 	BUPCFG *cfg = (BUPCFG*)cfg_ptr;
 

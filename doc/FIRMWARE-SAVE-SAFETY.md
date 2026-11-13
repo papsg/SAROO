@@ -756,3 +756,29 @@ The generated saves compare directory counts with actual allocation,
 verify writes and reloads across the 960/961-byte boundary, and check the
 unchanged internal-device geometry. The parent fails nine cases. The
 corrected cases pass under ASan/UBSan and an optimized host build.
+
+## Preserve the game's SH-2 registers across backup calls
+
+Games that use the Hitachi calling convention can keep arithmetic state in
+MACH and MACL across a backup library call. The inherited GCC entries could
+reach code such as the date conversion's double-length multiply without
+preserving those registers. A shared assembly boundary now saves MACH,
+MACL and PR, calls the existing C body and restores the saved values. The
+entry passes R4–R7 through unchanged and leaves the result in R0. This
+covers the init entry, both backup devices and BIOS forwarding.
+
+Adapted from paps-g `24a4b069` (BUP-ABI-001) for the inherited SAROO backup
+service. The public entries load the C body addresses from aligned literals.
+See [Hitachi SH C Compiler, table 2-5, printed p. 35](https://antime.kapsi.fi/sega/files/shccomp.pdf)
+for the register contract, and [Sega ST-162-R1-092994, Backup Library §2.3,
+printed pp. 43–48](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=48)
+for the published calls.
+
+Run `python3 -B tests/check_backup_abi_sh2.py MENU_ELF` on the stock linked
+menu. It checks the resolved branches and C targets of all eleven entries
+and executes the common instruction sequence with modeled callees that
+overwrite the multiply registers. Three broken restore controls must fail.
+The wrapper uses 12 additional stack bytes per entry and no persistent
+storage. Existing save tests exercise both devices and BIOS forwarding on
+the host. The check does not establish a particular retail game failure
+or measure physical execution.

@@ -204,7 +204,7 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
     raise ValueError('Clock hook exceeded bounded execution fixture')
 
 
-def linked_symbols(path, selected):
+def linked_symbol_records(path, selected):
     image = path.read_bytes()
     if image[:7] != b'\x7fELF\x01\x02\x01':
         raise ValueError('Expected a big-endian ELF32 menu')
@@ -224,8 +224,12 @@ def linked_symbols(path, selected):
             owner = sections[section]
             location = owner[4] + address - owner[3]
             assert owner[4] <= location <= owner[4] + owner[5] - size
-            found[name] = image[location:location + size]
+            found[name] = (address, image[location:location + size])
     return tuple(found[name] for name in selected)
+
+
+def linked_symbols(path, selected):
+    return tuple(data for _, data in linked_symbol_records(path, selected))
 
 
 def linked_fragments(path):
