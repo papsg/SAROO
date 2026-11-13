@@ -12,7 +12,15 @@ module tb;
     wire [15:0] ss_rdata, st_rdata, data;
     wire [12:0] address;
     wire [1:0] bank, mask;
+`ifdef SAROO_SDRAM_CAPTURE
+    reg capture_clk = 0;
+    always @(mclk) capture_clk <= #6.5 mclk;
+`endif
     memhub dut(reset,mclk,
+`ifdef SAROO_SDRAM_CAPTURE
+        capture_clk,
+`endif
+
         1'b1,ss_rd_start,1'b0,2'b00,ss_wait,26'h1000,16'b0,ss_rdata,
         st_cs,st_rd,st_wr,2'b01,st_wait,26'h2000,16'hface,st_rdata,
         cke,cs,ras,cas,we,address,bank,mask,data,ss_refresh,12'hf0d

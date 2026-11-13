@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from test_fpga_memory import ROOT, declarations_first
+from test_fpga_memory import ROOT, capture_flag, declarations_first
 
 
 @unittest.skipUnless(shutil.which('iverilog') and shutil.which('vvp'), 'requires Icarus Verilog')
@@ -19,9 +19,10 @@ class FPGARefreshIntervalTests(unittest.TestCase):
         cls.addClassCleanup(tmp.cleanup)
         out = Path(tmp.name)
         controller = out / 'tsdram.v'
-        controller.write_bytes(declarations_first((source / controller.name).read_bytes()))
+        raw = (source / controller.name).read_bytes()
+        controller.write_bytes(declarations_first(raw))
         cls.binary = out / 'refresh.vvp'
-        run = subprocess.run(['iverilog', '-g2012', '-s', 'tb', '-o', cls.binary,
+        run = subprocess.run(['iverilog', '-g2012', *capture_flag(raw), '-s', 'tb', '-o', cls.binary,
                               controller, ROOT / 'tests/fpga_refresh_interval_tb.v'],
                              capture_output=True, text=True, timeout=30)
         if run.returncode:

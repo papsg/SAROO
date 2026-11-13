@@ -15,7 +15,15 @@ module tb;
     wire [1:0] sd_ba,sd_dqm;
     wire [15:0] sd_dout;
 
-    tsdram dut(reset,clk,cfg,ext_refresh,cmd_req,cmd_ack,cmd_mask,
+`ifdef SAROO_SDRAM_CAPTURE
+    reg capture_clk = 0;
+    always @(clk) capture_clk <= #6.5 clk;
+`endif
+    tsdram dut(reset,clk,
+`ifdef SAROO_SDRAM_CAPTURE
+        capture_clk,
+`endif
+        cfg,ext_refresh,cmd_req,cmd_ack,cmd_mask,
         cmd_addr,cmd_din,cmd_dout,data_valid,sd_cke,sd_cs,sd_ras,sd_cas,
         sd_we,sd_addr,sd_ba,sd_dqm,16'h1234,sd_dout,sd_oe);
 

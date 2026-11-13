@@ -21,7 +21,7 @@ def declarations_first(raw):
     """Put declarations before use for Icarus, keeping net assignments in place."""
     raw = re.sub(rb'^(\twire\s+)(\w+)\s*=\s*([^;\n]+);\n',
                  rb'\1\2;\n\tassign \2 = \3;\n', raw, flags=re.M)
-    pattern = rb'^\t(?:wire|reg)[^=;\n]+;\n'
+    pattern = rb'^\t(?:\(\*[^\n]*?\*\) )?(?:wire|reg)[^=;\n]+;\n'
     declarations = re.findall(pattern, raw, re.M)
     body = re.sub(pattern, b'', raw, flags=re.M)
     first = re.search(rb'^\t(?:wire|reg|assign|always|cachebus)\b', body, re.M)
@@ -66,7 +66,8 @@ def build_memory_model(inputs, target, bench, includes=None):
         (target / name).write_bytes(raw)
     binary = target / 'memory.vvp'
     window_port = ['-DSAROO_FC1_WINDOW'] if b'input ext_refresh_active;' in inputs['memhub.v'] else []
-    command = ['iverilog', '-g2012', *window_port, '-I', str(target), '-s', 'tb', '-o', str(binary),
+    command = ['iverilog', '-g2012', *window_port, *capture_flag(inputs['tsdram.v']),
+               '-I', str(target), '-s', 'tb', '-o', str(binary),
                *[str(target / name) for name in MODULES], str(ROOT / 'tests' / bench)]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     log = result.stdout + result.stderr
@@ -74,6 +75,10 @@ def build_memory_model(inputs, target, bench, includes=None):
     if result.returncode:
         raise RuntimeError(log)
     return binary
+
+
+def capture_flag(source):
+    return ['-DSAROO_SDRAM_CAPTURE'] if b'input capture_clk;' in source else []
 
 
 @unittest.skipUnless(shutil.which('iverilog') and shutil.which('vvp'), 'requires Icarus Verilog')
@@ -86,13 +91,12 @@ class FPGAMemoryTests(unittest.TestCase):
         cls.sources = {name: (ROOT / 'FPGA' / name).read_bytes() for name in MODULES}
         cls.variants = {}
         baseline = os.environ.get('SAROO_FPGA_MEMORY_BASELINE')
-        if baseline:
-            cls.baseline = (Path(baseline) / 'memhub.v').read_bytes()
-        else:
-            cls.baseline = omit_ack_reset(cls.sources['memhub.v'], 'ab')
+        cls.baseline = ({name: (Path(baseline) / name).read_bytes() for name in MODULES}
+                        if baseline else {**cls.sources, 'memhub.v': omit_ack_reset(cls.sources['memhub.v'], 'ab')})
         refresh = os.environ.get('SAROO_FPGA_REFRESH_BASELINE')
-        cls.refresh_baseline = ((Path(refresh) / 'tsdram.v').read_bytes() if refresh
-                                else retain_refresh_ack_on_reset(cls.sources['tsdram.v']))
+        cls.refresh_baseline = (
+            {name: (Path(refresh) / name).read_bytes() for name in MODULES} if refresh
+            else {**cls.sources, 'tsdram.v': retain_refresh_ack_on_reset(cls.sources['tsdram.v'])})
 
     def build(self, variant):
         if variant in self.variants:
@@ -100,9 +104,9 @@ class FPGAMemoryTests(unittest.TestCase):
         target = self.target / variant
         inputs = dict(self.sources)
         if variant == 'baseline':
-            inputs['memhub.v'] = self.baseline
+            inputs = self.baseline
         elif variant == 'refresh-baseline':
-            inputs['tsdram.v'] = self.refresh_baseline
+            inputs = self.refresh_baseline
         elif variant in ('omit-a', 'omit-b'):
             inputs['memhub.v'] = omit_ack_reset(inputs['memhub.v'], variant[-1])
         binary = build_memory_model(inputs, target, 'fpga_memory_reset_tb.v')

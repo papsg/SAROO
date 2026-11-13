@@ -6,6 +6,7 @@
 module tsdram(
 	reset,
 	clk,
+	capture_clk,
 	reg_sdram,
 
 	ext_refresh,
@@ -38,6 +39,7 @@ module tsdram(
 
 	input reset;
 	input clk;
+	input capture_clk;
 	input [11:0] reg_sdram;
 
 	input ext_refresh;
@@ -187,16 +189,16 @@ module tsdram(
 // Main state                                        //
 ///////////////////////////////////////////////////////
 
-	reg[ 3:0] m_cmd;
-	reg[ 1:0] m_dqm;
-	reg[ 1:0] m_ba;
-	reg[12:0] m_addr;
-	reg[15:0] m_dout;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg[ 3:0] m_cmd;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg[ 1:0] m_dqm;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg[ 1:0] m_ba;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg[12:0] m_addr;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg[15:0] m_dout;
 	reg[ 3:0] m_state;
 	reg[ 3:0] m_next;
 	reg[ 3:0] m_count;
-	reg m_cke;
-	reg m_oe;
+	(* altera_attribute = "-name FAST_OUTPUT_REGISTER ON" *) reg m_cke;
+	(* altera_attribute = "-name FAST_OUTPUT_ENABLE_REGISTER ON" *) reg m_oe;
 	reg cmd_ack;
 
 	localparam  M_POR=0,
@@ -336,6 +338,7 @@ module tsdram(
 
 
 	reg[2:0] cl_count;
+	reg data_window;
 	reg data_valid;
 
 	always @(negedge reset or posedge clk)
@@ -356,20 +359,25 @@ module tsdram(
 	always @(negedge reset or posedge clk)
 	begin
 		if(reset==0) begin
+			data_window <= 0;
 			data_valid <= 0;
-		end else if (cl_count==tCL) begin
-			data_valid <= 1;
-		end else if (cl_count==tCL+BL) begin
-			data_valid <= 0;
+		end else begin
+			// One valid delay aligns cache fills with the registered DQ path.
+			data_valid <= data_window;
+			if (cl_count==tCL)
+				data_window <= 1;
+			else if (cl_count==tCL+BL)
+				data_window <= 0;
 		end
 	end
 
-//	reg[15:0] cmd_dout;
-//	always @(posedge clk)
-//	begin
-//		cmd_dout <= sd_din;
-//	end
-	wire[15:0] cmd_dout = sd_din;
+	(* altera_attribute = "-name FAST_INPUT_REGISTER ON" *) reg[15:0] sd_capture;
+	reg[15:0] cmd_dout;
+	always @(posedge capture_clk)
+		sd_capture <= sd_din;
+
+	always @(posedge clk)
+		cmd_dout <= sd_capture;
 
 
 ///////////////////////////////////////////////////////

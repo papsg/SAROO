@@ -257,3 +257,43 @@ The historical development build addressed issue #349's reproduced
 five seconds and the corrected FPGA80 build ran the reported case
 for at least two minutes. That observation belongs to that build and
 workload. The public port has RTL and internal fit verification.
+
+## Capture SDRAM read bursts at the pins
+
+FPGA-SDRAM-001 and FPGA-SDRAM-003, adapted from paps-g `41a2fe2f`
+and `3abb5c6c`. The original 100 MHz design sampled DQ through
+combinational routing five nominal nanoseconds after a memory clock
+edge. The SDRAM can take six nanoseconds to drive valid data. The
+port uses I/O registers, moves the forwarded clock to 6.5 ns, and
+captures read data on that clock before transferring it into the
+main clock domain. The cache-valid window follows the captured
+four-word burst by one register delay.
+
+Samsung K4S511632D, Rev. 1.0 (November 2005), §16.0, PDF p. 13
+gives the CL2 values for `tSAC`, `tOH`, `tSS` and `tSH` used in
+the project constraints. [Micron 512Mb SDRAM Rev. Q, Figure 13,
+printed p. 39](https://datasheet.lcsc.com/datasheet/pdf/9cb5539f5d98c9bea79785026615c4e1.pdf?productCode=C20519822)
+shows the CL2 word boundaries. The pin fixture places the first
+word at T1 plus access delay, then marks the uncertain interval
+before each next word.
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_fpga_*.py' -v
+```
+
+Set `SAROO_FPGA_SDRAM_SOURCE` to the parent checkout's `FPGA` directory
+and select `-k access_time` in `test_fpga_sdram_capture.py` to reproduce
+the four original failures. The port receives all four words in order
+at each delay from 3 through 6 ns. An added validity stage drops the
+first word. The 35 adjacent FPGA methods retain their cache, reset,
+geometry, arbitration and refresh results.
+
+The [offline Quartus build](../tools/README.md#original-fpga-project-comparison)
+packs 16 input and 54 output-side registers and passes all 30 reported
+timing checks. Minimum setup and hold slack are +0.578 ns and +0.159 ns.
+The fit uses 1,510 logic elements, 883 registers, 32,768 memory bits,
+150 pins and one PLL. PCB skew is outside this fit. A historical
+development image with the excess validity stage failed physical
+post-eviction reads. A later development build with the corrected
+burst alignment passed scoped register, cache and SD-transfer checks.
+Physical qualification for the public bitstream remains open.

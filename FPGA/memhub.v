@@ -4,7 +4,7 @@
 ///////////////////////////////////////////////////////
 
 module memhub(
-	reset, clk,
+	reset, clk, capture_clk,
 	cs_a, rd_a, wr_a, mask_a, nwait_a, addr_a, wdata_a, rdata_a,
 	cs_b, rd_b, wr_b, mask_b, nwait_b, addr_b, wdata_b, rdata_b,
 	sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data,
@@ -18,6 +18,7 @@ module memhub(
 	// system
 	input reset;
 	input clk;
+	input capture_clk;
 
 	// bus a
 	input cs_a;
@@ -215,7 +216,7 @@ module memhub(
 	wire sd_oe;
 
 	tsdram _tsd(
-		reset, clk, active_reg_sdram,
+		reset, clk, capture_clk, active_reg_sdram,
 		ext_refresh, cmd_req, cmd_ack, cmd_mask, cmd_addr, cmd_din, cmd_dout, data_valid,
 		sd_cke, sd_cs, sd_ras, sd_cas, sd_we, sd_addr, sd_ba, sd_dqm, sd_data, sd_dout, sd_oe
 	);

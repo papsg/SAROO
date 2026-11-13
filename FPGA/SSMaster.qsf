@@ -229,6 +229,7 @@ set_global_assignment -name VERILOG_FILE memhub.v
 set_global_assignment -name VERILOG_FILE cachebus.v
 set_global_assignment -name VERILOG_FILE cdcfifo.v
 set_global_assignment -name SDC_FILE SSMaster.sdc
+set_global_assignment -name SDC_FILE saroo-sdram-interface.sdc
 set_global_assignment -name VERILOG_FILE SSMaster.v
 set_global_assignment -name SIGNALTAP_FILE fsmc.stp
 set_global_assignment -name SIGNALTAP_FILE ss_abus.stp

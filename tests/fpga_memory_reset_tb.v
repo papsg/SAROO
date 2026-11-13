@@ -14,7 +14,15 @@ module tb;
     wire sd_cke,sd_cs,sd_ras,sd_cas,sd_we;
     wire [12:0] sd_addr;
     wire [1:0] sd_ba,sd_dqm;
+`ifdef SAROO_SDRAM_CAPTURE
+    reg capture_clk = 0;
+    always @(clk) capture_clk <= #6.5 clk;
+`endif
     memhub dut(reset,clk,
+`ifdef SAROO_SDRAM_CAPTURE
+        capture_clk,
+`endif
+
         cs[0],rd[0],wr[0],mask_a,wait_a,addr_a,data_a,read_a,
         cs[1],rd[1],wr[1],mask_b,wait_b,addr_b,data_b,read_b,
         sd_cke,sd_cs,sd_ras,sd_cas,sd_we,sd_addr,sd_ba,sd_dqm,sd_data,
