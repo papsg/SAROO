@@ -90,6 +90,12 @@ void KAITEI_DAISENSOU_patch(void)
 
 void DND2_patch(void)
 {
+	/* These discs share their product ID with an unpatched sibling.
+	 * Check the complete original first file before either write. */
+	if(crc32((u8*)0x26010000, 179656, 0) != 0x15e2d749 ||
+	   REG16(0x060151a6) != 0x2131 ||
+	   REG16(0x060151ae) != 0x2301)
+		return;
 	//*(u32*)(0x06015228) = 0x34403440;
 	*(u16*)(0x060151A6) = 0x09;
 	*(u16*)(0x060151AE) = 0x09;
@@ -111,6 +117,12 @@ void NOEL3_patch(void)
 
 void FRIENDS_patch(void)
 {
+	/* These discs share their product ID with an unpatched sibling.
+	 * Check the complete original first file before either write. */
+	if(crc32((u8*)0x26010000, 244484, 0) != 0xf4bfcb42 ||
+	   REG16(0x060428e8) != 0x2122 ||
+	   REG16(0x0604298a) != 0x2122)
+		return;
 	//*(u32*)(0x06042928) = 0x34403440;
 	//*(u32*)(0x060429B4) = 0x34403440;
 	*(u16*)(0x060428E8) = 0x09;

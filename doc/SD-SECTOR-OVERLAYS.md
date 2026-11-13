@@ -17,6 +17,12 @@ Offsets refer to the complete raw sector, with an allowed data range of
 offsets, FADs and CRC32 fields. The standard Mode 1 EDC within the raw
 tail has its disc byte order. A pack is 372–4,200 bytes.
 
+ABI 2 also admits a guard record with no edits. Its complete sector CRC must
+match at mount and at delivery, and it returns the original sector unchanged.
+ABI 3 admits a single contiguous edit of 5–44 bytes in one record. The compiler
+checks its entire preimage, and the MCU checks the original complete sector CRC.
+Both forms are used by the corrected Pocket Fighter recipe.
+
 The compiler accepts stored Mode 1 data at or after INDEX 01 and handles
 shared CUE FILEs with different sector widths, generated gaps and stored
 INDEX 00 offsets. It uses the firmware's bounded track, index, file-size
@@ -131,3 +137,56 @@ recipes. Its tests reproduce the old capacity and lookup limits and cover
 the twelfth and thirteenth records, both IP versions, legacy fallback,
 exact-pack refusal, and a final-sector mismatch that prevents the entire
 pack and its callback replacement from taking effect.
+
+## Stock callback recipes
+
+The [reviewed recipes](../recipes/README.md) move the inherited menu writes
+into the matching raw sectors. The original BIN/CUE stays available for
+compilation and ordinary loading. Compile and copy only the pack for the exact
+disc you intend to use. A fully admitted recipe replaces its built-in callback.
+Without that admission, the menu uses its retained callback.
+
+The first group adapts paps-g `5d5cd0e8`. Pocket Fighter includes the
+`cdf6dba9` correction, restoring all three routine writes as well as the NOP,
+and authenticates the neighboring sector containing its PC-relative literal.
+Its earlier one-edit recipe fails the complete callback-memory comparison.
+Shichuu uses the source reviewed in `3fafb587`. Its historical native-drive
+emulator comparison leaves both paths waiting in BUSY, so physical acceptance
+and its startup behavior remain open. The recipes preserve the attribution
+to the original SAROO source in their `origin` field.
+
+For one-sector alternatives such as Noel 3, the compiler's `bundle` command
+checks each complete source and creates one pack under the shared lookup key.
+Header byte 6 is one for this form. Records are ordered by FAD and original
+CRC. At mount, exactly one complete original sector must match. Zero matches,
+multiple matches and duplicate source records cannot arm the pack. A transport
+error fails launch even if an earlier record matched. Runtime checks retain
+the chosen record across bad reads and retries, and unload clears it.
+
+The Dungeons & Dragons and Friends discs share their product IDs with siblings.
+Their retained callbacks now check the complete original first-file CRC and
+both original instructions before either write. D&D uses the 179,656-byte
+Disc 2 executable with CRC `15e2d749`. Friends uses the 244,484-byte game
+executable with CRC `f4bfcb42`. The corresponding preserved first-file
+SHA-256 values are `503dba35ec64dba164a4a5446e9d2fa58c86394577a4bfd0240ff11d1094d67c`
+and `22fbac5c6cd52c1193d56566614ebf77b72485caf9fba8549b0b17667e0b9bcb`.
+The different D&D Disc 1 instructions and the Friends special disc remain
+intact when their pack is absent or rejected.
+
+These fallback guards use Sega ST-040 §4.3, printed p. 29, and §4.7,
+printed p. 31, for the first-file destination and CD file identifier [2].
+The IP's first-read size is ignored for CDs. CRC reads use the uncached P2
+alias, and instruction writes use P1, following Hitachi SH7604 §8.4.2,
+printed p. 219. The exact source executable and original instructions supply
+the game-specific bounds and preimages.
+[Sega Disc Format Standards](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf),
+[Hitachi SH7604 manual](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=235).
+
+`make -C tests check-sector-overlay` compares all 2,352 delivered bytes,
+tests real FatFs mount/failure/retry paths and checks every recipe against
+the retained C callback's memory effects using synthetic data and explicit
+SH-2 byte order. `test_menu_vdp1_order.py` exercises the normal launch caller,
+guarded sibling callbacks, user overrides and physical-disc branch.
+These checks qualify the port's source delivery and memory operations.
+Game execution, physical cache timing and whole-game acceptance require
+separate hardware qualification.

@@ -95,8 +95,11 @@ static __attribute__((unused)) u8 *cnc_image_at(u32 address)
 }
 static __attribute__((unused)) u32 crc32(u8 *data, int size, u32 seed)
 {
-    assert(data==cnc_image && size==CNC_IMAGE_BYTES && !seed);
-    cnc_reads++;
+    assert(!seed);
+    if(data == cnc_image) {
+        assert(size == CNC_IMAGE_BYTES);
+        cnc_reads++;
+    } else assert(data == high + 0x10000 && (size == 179656 || size == 244484));
     return menu_crc32(data,size,seed);
 }
 static __attribute__((unused)) u16 *cnc_instruction_at(u32 address)
@@ -199,6 +202,56 @@ static void cnc_reset(void)
     }
 }
 
+#include "shared-fixtures.inc"
+
+static void shared_id_callbacks(void)
+{
+    static const struct {
+        const char *id;
+        unsigned size, first, second;
+        u32 checksum;
+        u16 before[2];
+    } cases[] = {
+        {"T-1245G   V1.000", 179656, 0x51a6, 0x51ae, 0x15e2d749, {0x2131, 0x2301}},
+        {"T-20109G  V1.003", 244484, 0x328e8, 0x3298a, 0xf4bfcb42, {0x2122, 0x2122}}
+    };
+    u8 reference[244484];
+    for(unsigned game = 0; game < 2; ++game) {
+        const unsigned size = cases[game].size;
+        const unsigned first = cases[game].first, second = cases[game].second;
+        for(unsigned words = 0; words < 4; ++words) {
+            for(unsigned damage = 0; damage < 4; ++damage) {
+                for(unsigned admitted = 0; admitted < 2; ++admitted) {
+                    reset(cases[game].id, 37);
+                    u8 *image = high + 0x10000;
+                    memset(image, 0, size);
+                    *(u16*)(image + first) = cases[game].before[0] ^ !!(words & 1);
+                    *(u16*)(image + second) = cases[game].before[1] ^ !!(words & 2);
+                    memcpy(image + size - 4, sibling_suffix[game][words], 4);
+                    assert(menu_crc32(image, size, 0) == cases[game].checksum);
+                    const unsigned offsets[] = {0, 1, size / 2, size - 1};
+                    if(damage) image[offsets[damage]] ^= 1;
+                    memcpy(reference, image, size);
+                    if(!admitted && !words && !damage) {
+                        *(u16*)(reference + first) = 0x0009;
+                        *(u16*)(reference + second) = 0x0009;
+                    }
+                    overlay_handoff = admitted ? __builtin_bswap32(SD_OVERLAY_REPLACEMENT) : 0;
+                    read_1st(); finished();
+                    assert(!memcmp(image, reference, size) && !others);
+                }
+            }
+        }
+        /* Sibling discs carry different code, or no first-file extent here. */
+        reset(cases[game].id, 53);
+        REG16(0x06010000 + first) = game ? 0xa5a5 : 0x6014;
+        REG16(0x06010000 + second) = game ? 0xa5a5 : 0x6014;
+        memcpy(reference, high + 0x10000, size);
+        read_1st(); finished();
+        assert(!memcmp(high + 0x10000, reference, size));
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -263,12 +316,16 @@ int main(int argc, char **argv)
             }
         }
 #endif
+    }else if(!strcmp(mode, "siblings")){
+        shared_id_callbacks();
     }else if(!strcmp(mode, "cnc")){
         cnc_reset();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){
-            if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch || g->patch_func == kof95_patch) continue;
+            if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch ||
+               g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
+               g->patch_func == FRIENDS_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

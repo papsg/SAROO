@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-9515H-50",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Whizz (Europe): built-in compatibility edit",
+  "summary": "Carry the upstream IP byte edit into the initial-program read.",
+  "rationale": "The upstream comment attributes its patch to missing VDP1 initialization. The target is in the initial program, before the first-read file.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "950e74c8e5498d34402fa522693768008430bf5fed6ccc3fa11fac6c127ae98c"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 152,
+      "offset": 419,
+      "before": "09",
+      "after": "08",
+      "effect": "Apply the upstream WHIZZ_patch write at 06003193.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

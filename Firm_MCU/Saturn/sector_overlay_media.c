@@ -61,29 +61,37 @@ int sector_overlay_mount(const char gameid[16])
 
     uint8_t *scratch = (uint8_t *)0x24002000;
     unsigned track_index = 0;
+    unsigned matches = 0, chosen = 0;
+    int alternatives = sector_overlay_alternatives();
     for (unsigned i = 0; i < sector_overlay_count(); ++i) {
         uint32_t fad = sector_overlay_fad(i);
         while (track_index < (unsigned)cdb.track_num &&
                fad > cdb.tracks[track_index].fad_end)
             ++track_index;
-        if (track_index == (unsigned)cdb.track_num) goto rejected;
+        if (track_index == (unsigned)cdb.track_num) goto mismatch;
         const TRACK_INFO *track = &cdb.tracks[track_index];
         if (track->mode != 1 || TRACK_SIZE(track) != 2352 || fad < track->fad_start ||
             track->postgap > track->fad_end || fad > track->fad_end - track->postgap)
-            goto rejected;
+            goto mismatch;
 
         FSIZE_t extent = f_size(track->fp);
         uint32_t delta = fad - track->fad_start;
         if (track->file_offset > extent || delta >= (extent - track->file_offset) / 2352)
-            goto rejected;
+            goto mismatch;
         uint32_t offset = track->file_offset + delta * 2352;
         if (f_lseek(track->fp, offset) || f_tell(track->fp) != offset ||
             f_read(track->fp, scratch, 2352, &got) || got != 2352) {
             result = -1;
             goto rejected;
         }
-        if (sector_overlay_check(i, scratch)) goto rejected;
+        if (sector_overlay_check(i, scratch)) goto mismatch;
+        ++matches;
+        chosen = i;
+        continue;
+mismatch:
+        if (!alternatives) goto rejected;
     }
+    if (alternatives && (matches != 1 || sector_overlay_select(chosen))) goto rejected;
     sector_overlay_arm();
     goto done;
 

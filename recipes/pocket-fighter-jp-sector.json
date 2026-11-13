@@ -1,0 +1,40 @@
+{
+  "abi": 2,
+  "product_id": "T-1230G",
+  "disc_id": "T-1230G   V1.002",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Pocket Fighter (Japan): built-in instruction edit",
+  "summary": "Preserve both upstream cartridge-initialization and instruction workarounds during sector delivery.",
+  "rationale": "The original callback makes three adjacent longword writes at 06013F48..06013F50 and a NOP at 0602DD68. The twelve-byte replacement marks the game's existing cartridge-state record present with type 5C and returns, bypassing its ASR0/AREF setup and RAM test. The earlier recipe omitted this routine replacement. Retain both upstream effects for this exact image; the FAD 191 guard binds the reused PC-relative cartridge-state literal. Ordinary Saturn bus setup is not inherently incorrect. This preserves SAROO's compatibility behavior, without changing firmware, cartridge policy or the original BIN/CUE. The corrected source and native comparison from cdf6dba9 supersedes the earlier one-edit recipe. Physical game acceptance remains open.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "b3d8134cb472326dd125821e3795385fa746db7ef303106e46b2dec1f4642d7b"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 190,
+      "offset": 1880,
+      "before": "4f22e500d64a6053d4482450",
+      "after": "d44ae0012400e05c000b8041",
+      "effect": "Replace the first twelve bytes of cartridge initialization with the upstream present/type-5C return routine.",
+      "reason": "Preserve all three upstream longword writes, including the RTS delay-slot store, without running the game's cartridge-bus setup and RAM test."
+    },
+    {
+      "fad": 242,
+      "offset": 1400,
+      "before": "8b0a",
+      "after": "0009",
+      "effect": "Replace the first-read program instruction at 0602DD68 with a SH-2 NOP.",
+      "reason": "Match SAROO's existing Pocket Fighter compatibility edit before the program is loaded."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 191,
+      "reason": "Bind the complete original sector containing the PC-relative cartridge-state literal 060383C0 at raw offset 132 (RAM 06014074)."
+    }
+  ],
+  "replaces_callback": true
+}

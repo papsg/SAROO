@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-22205G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Noel 3 - Not Digital (Japan, Disc 3): built-in instruction edit",
+  "summary": "Carry the upstream first-read NOP into this disc read.",
+  "rationale": "The three Noel 3 discs share one product ID but store different first-read sectors. This exact-disc variant applies the old loaded-address edit only to its matching source.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "b2fbf0bc299512f8e6ed41f9e7ab688ff59cf16ee669cca227fcf7d33d5def70"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 34347,
+      "offset": 276,
+      "before": "8b02",
+      "after": "0009",
+      "effect": "NOP the instruction loaded at 06035104.",
+      "reason": "Preserve the upstream Noel 3 compatibility edit for this disc."
+    }
+  ],
+  "replaces_callback": true
+}

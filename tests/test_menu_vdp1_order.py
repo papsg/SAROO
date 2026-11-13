@@ -6,8 +6,36 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+import sys
+import zlib
 
 from test_menu_cdplayer import ROOT, function
+
+
+def crc_suffix(data, target):
+    """Solve the 32 CRC bit equations for a synthetic four-byte suffix."""
+    data[-4:] = bytes(4)
+    base = zlib.crc32(data)
+    basis = {}
+    for bit in range(32):
+        data[-4:] = (1 << bit).to_bytes(4, 'little')
+        value, source = zlib.crc32(data) ^ base, 1 << bit
+        while value:
+            pivot = value.bit_length() - 1
+            if pivot not in basis:
+                basis[pivot] = value, source
+                break
+            value ^= basis[pivot][0]
+            source ^= basis[pivot][1]
+    value, suffix = target ^ base, 0
+    while value:
+        pivot = value.bit_length() - 1
+        value ^= basis[pivot][0]
+        suffix ^= basis[pivot][1]
+    result = suffix.to_bytes(4, 'little')
+    data[-4:] = result
+    assert zlib.crc32(data) == target
+    return result
 
 
 class MenuVDP1OrderTests(unittest.TestCase):
@@ -20,7 +48,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
         first = patch.index(b'typedef struct _game_db')
         table = patch[first:patch.index(b'void patch_game(', first)]
         names = set(re.findall(rb'"[^"\n]+",\s*([A-Za-z_0-9]+)\}', table))
-        actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch'}
+        actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch',
+                  b'DND2_patch', b'FRIENDS_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -55,6 +84,21 @@ class MenuVDP1OrderTests(unittest.TestCase):
         build = ROOT / 'tests/build/menu-vdp1-order'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
+        # Generated data has the reviewed CRC and words, without containing a
+        # game executable. Wrong-word cases keep the CRC valid independently.
+        fixtures = []
+        for size, crc_value, sites in (
+                (179656, 0x15e2d749, ((0x51a6, 0x2131), (0x51ae, 0x2301))),
+                (244484, 0xf4bfcb42, ((0x328e8, 0x2122), (0x3298a, 0x2122)))):
+            variants = []
+            for changed in range(4):
+                data = bytearray(size)
+                for i, (offset, word) in enumerate(sites):
+                    data[offset:offset + 2] = (word ^ bool(changed & (1 << i))).to_bytes(2, sys.byteorder)
+                variants.append('{' + ','.join(map(str, crc_suffix(data, crc_value))) + '}')
+            fixtures.append('{' + ','.join(variants) + '}')
+        (cls.target / 'shared-fixtures.inc').write_text(
+            'static const u8 sibling_suffix[2][4][4] = {' + ','.join(fixtures) + '};\n')
         (cls.target / 'actual.inc').write_bytes(code)
         (cls.target / 'crc32.inc').write_bytes(crc)
         cls.binary = cls.target / 'menu-vdp1-order'
@@ -102,6 +146,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_only_admitted_virtual_overlay_replaces_builtin_callback(self):
         self.scenario('overlay')
+
+    def test_shared_id_callbacks_require_the_complete_correct_first_file(self):
+        self.scenario('siblings')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-16509G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Super Real Mahjong P7 (Japan): built-in instruction edit",
+  "summary": "Move the P7 first-read instruction edit into an SD sector recipe.",
+  "rationale": "The menu callback NOPs this exact first-read instruction. The P7 Special product ID retains its separate menu route until its source is verified.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "c3b8d5d815250aa6297ab47d741a1a87eb685eb6257779eb838324c367ebfad3"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 176,
+      "offset": 536,
+      "before": "2232",
+      "after": "0009",
+      "effect": "Replace the SH-2 instruction at 06011208 with a NOP.",
+      "reason": "Retain SAROO's existing P7 compatibility edit with a guarded sector preimage."
+    }
+  ],
+  "replaces_callback": true
+}

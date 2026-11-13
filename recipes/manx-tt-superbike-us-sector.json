@@ -1,0 +1,66 @@
+{
+  "abi": 2,
+  "product_id": "MK-81210",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Manx TT SuperBike (USA): built-in compatibility edit",
+  "summary": "Carry the US branch of the upstream six-byte compatibility edit into disc reads.",
+  "rationale": "The upstream callback selects a separate US address set when its branch guard matches. The source does not state the underlying game symptom.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "b2819c77856be6fefe90f48bca8db72f4d0d5ce5ded19414c9f49bcc6b657645"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 206,
+      "offset": 547,
+      "before": "0f",
+      "after": "03",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 06021A13.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    },
+    {
+      "fad": 206,
+      "offset": 599,
+      "before": "0f",
+      "after": "03",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 06021A47.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    },
+    {
+      "fad": 203,
+      "offset": 1005,
+      "before": "4f",
+      "after": "43",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 060203DD.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    },
+    {
+      "fad": 203,
+      "offset": 1133,
+      "before": "4f",
+      "after": "43",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 0602045D.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    },
+    {
+      "fad": 203,
+      "offset": 1353,
+      "before": "4f",
+      "after": "43",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 06020539.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    },
+    {
+      "fad": 203,
+      "offset": 1673,
+      "before": "1f",
+      "after": "13",
+      "effect": "Apply the upstream MANX_TT_SUPER_BIKE_patch write at 06020679.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true,
+  "disc_id": "MK-81210  V1.001"
+}

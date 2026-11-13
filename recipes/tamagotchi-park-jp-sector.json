@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-13325G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Sega Saturn de Hakken!! Tamagotchi Park (Japan): built-in compatibility edit",
+  "summary": "Carry the upstream first-read instruction change into the disc read.",
+  "rationale": "The upstream callback writes E400 at this address but does not document the underlying compatibility symptom.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "8f32c9443c1b95e473a03e86e7809b3470a7b89e522af82a4dfb438b70089b95"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 240,
+      "offset": 1774,
+      "before": "6403",
+      "after": "e400",
+      "effect": "Apply the upstream Tamagotchi_Park_patch write at 06030EDE.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

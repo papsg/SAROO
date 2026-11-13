@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-1246G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Street Fighter Zero 3 (Japan): built-in compatibility edit",
+  "summary": "Carry the upstream first-read instruction NOP into the disc read.",
+  "rationale": "The upstream callback NOPs this loaded first-read instruction. Its underlying compatibility symptom is not stated in source.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "00a081011a03b0d78ea1a162508d76090501cc7a57039d324afc078f3eea3a7b"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 259,
+      "offset": 2058,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Apply the upstream SF_ZERO3_patch write at 0602B7FA.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

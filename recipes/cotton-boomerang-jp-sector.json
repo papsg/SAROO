@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-9906G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Cotton Boomerang (Japan): built-in compatibility edit",
+  "summary": "Carry the upstream first-read instruction NOP into the disc read.",
+  "rationale": "The upstream callback NOPs this loaded first-read instruction. Its underlying compatibility symptom is not stated in source.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "0a3cf0634b020b9c6b8226f553d2d30ca3877487b845b6c68844522cdc225650"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 217,
+      "offset": 1424,
+      "before": "2212",
+      "after": "0009",
+      "effect": "Apply the upstream cotton1_patch write at 06018D80.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

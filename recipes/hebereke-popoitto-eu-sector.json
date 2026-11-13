@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-1502H",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Hebereke's Popoitto (Europe): pause check",
+  "summary": "Use an SD sector recipe for the European pause-status workaround.",
+  "rationale": "The European first-read program has the alternate CMP/EQ preimage used by the built-in patch. The Japanese branch in that callback does not match this image and is not migrated by this recipe.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "a9e2c21243b734f6275093571d19e2060fb1823e7726ccc7003b88c4c7240167"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 197,
+      "offset": 937,
+      "before": "01",
+      "after": "78",
+      "effect": "Change the European CMP/EQ immediate at 0601D398 from 1 to 0x78.",
+      "reason": "Retain the upstream workaround for a PAUSE-status loop without a menu RAM write."
+    }
+  ],
+  "replaces_callback": true
+}

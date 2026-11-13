@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-1245G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Dungeons & Dragons Collection (Japan, Disc 2): built-in instruction edits",
+  "summary": "Apply the Shadow over Mystara edits only to the disc that contains their source instructions.",
+  "rationale": "Both collection discs use product ID T-1245G, but the built-in DND2 callback NOPs the same two RAM addresses on both. Disc 1 has different instructions there. The guarded sector recipe retains the Disc 2 edits while leaving Disc 1 untouched.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "4377d168ee2dad73e43aec8285d71fb2e2c1186ef03d63a65e5d7be75cc020a5"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 214,
+      "offset": 438,
+      "before": "2131",
+      "after": "0009",
+      "effect": "Replace the Disc 2 first-read instruction at 060151A6 with a NOP.",
+      "reason": "Preserve the first upstream DND2 compatibility edit only for its matching disc."
+    },
+    {
+      "fad": 214,
+      "offset": 446,
+      "before": "2301",
+      "after": "0009",
+      "effect": "Replace the Disc 2 first-read instruction at 060151AE with a NOP.",
+      "reason": "Preserve the second upstream DND2 compatibility edit only for its matching disc."
+    }
+  ],
+  "replaces_callback": true
+}

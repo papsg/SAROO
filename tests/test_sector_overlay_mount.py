@@ -92,3 +92,80 @@ class OverlayMountTests(support.MCUSaveTest):
         for value in (22, 23):
             with self.subTest(value=value):
                 self.invoke(value)
+
+    def test_alternative_admission_requires_exactly_one_source_and_retains_retries(self):
+        for value in range(24, 32):
+            with self.subTest(value=value), tempfile.TemporaryDirectory(dir=self.target) as folder:
+                root = Path(folder)
+                card = root / 'card.img'
+                support.make_fat32(card)
+                source = sector(151)
+                edited = bytearray(source)
+                edited[32] = 0xab
+                edited = canonical(edited)
+                candidates = [source, sector(152, 0x72 if value != 26 else 0x71)]
+                if value == 25:
+                    candidates[0] = sector(151, 0x72)
+                if value in (27, 28, 31):
+                    candidates[1] = sector(151, 0x72 if value == 27 else 0x71)
+                if value == 30:
+                    candidates[1] = sector(159)
+                records = []
+                for raw in candidates:
+                    fad = sum((int(f'{byte:02x}') * multiplier for byte, multiplier in
+                               zip(raw[12:15], (4500, 75, 1))))
+                    record = bytearray(RECORD_BYTES)
+                    record[:8] = fad.to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
+                    record[8] = 1
+                    record[12:24] = bytes([0, 32, 1, 0, raw[32], 0, 0, 0, 0xab, 0, 0, 0])
+                    changed = bytearray(raw)
+                    changed[32] = 0xab
+                    record[60:] = canonical(changed)[2064:]
+                    records.append(record)
+                if value == 31:
+                    records[1][20] ^= 1  # Same source with conflicting output.
+                records.sort(key=lambda r: r[:8])
+                pack = bytearray(b'SSO1\x03\x02\x01\x80' + PRODUCT +
+                                 (HEADER_BYTES + 2 * RECORD_BYTES).to_bytes(2, 'big') + bytes(4))
+                pack.extend(b''.join(records))
+                seal(pack)
+                files = root / 'disc', root / 'expected', root / 'pack'
+                for path, data in zip(files, (sector(150, ip=True) + source +
+                                             sector(152) + sector(153), edited, pack)):
+                    path.write_bytes(data)
+                result = subprocess.run([self.binary, card, str(value), *files],
+                                        capture_output=True, text=True, timeout=25)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_guard_sector_controls_complete_mount_and_runtime_retry(self):
+        for value in range(32, 36):
+            with self.subTest(value=value), tempfile.TemporaryDirectory(dir=self.target) as folder:
+                root = Path(folder)
+                card = root / 'card.img'
+                support.make_fat32(card)
+                raw, guard = sector(151), sector(152)
+                edited = bytearray(raw)
+                edited[32:44] = b'\xaa' * 12
+                edited = canonical(edited)
+                pack = bytearray(b'SSO1\x03\x02\0\x80' + PRODUCT +
+                                 (HEADER_BYTES + 2 * RECORD_BYTES).to_bytes(2, 'big') + bytes(4))
+                record = bytearray(RECORD_BYTES)
+                record[:8] = (151).to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
+                record[8] = 0x80 | 12
+                record[12:14] = (32).to_bytes(2, 'big')
+                record[16:28] = b'\xaa' * 12
+                record[60:] = edited[2064:]
+                pack.extend(record)
+                record = bytearray(RECORD_BYTES)
+                record[:8] = (152).to_bytes(4, 'big') + zlib.crc32(guard).to_bytes(4, 'big')
+                pack.extend(record)
+                seal(pack)
+                if value == 33:
+                    guard = sector(152, 0x72)
+                files = root / 'disc', root / 'expected', root / 'pack'
+                for path, data in zip(files, (sector(150, ip=True) + raw + guard +
+                                             sector(153), edited, pack)):
+                    path.write_bytes(data)
+                result = subprocess.run([self.binary, card, str(value), *files],
+                                        capture_output=True, text=True, timeout=25)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

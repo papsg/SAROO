@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-1513G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Amagi Shien (Japan): built-in compatibility edit",
+  "summary": "NOP the upstream PAUSE-check loop instruction in the first-read program.",
+  "rationale": "The original menu source says this game can loop while checking PAUSE status.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "f79cb9339f80fdbd8fe5624ab7aea9493c957fa354f874e2a998100d84b409d6"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 182,
+      "offset": 616,
+      "before": "89f5",
+      "after": "0009",
+      "effect": "Apply the upstream Amagi_Shien_patch write at 06012258.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

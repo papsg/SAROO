@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "GS-9009",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Gotha (Japan, v1.000): built-in instruction edits",
+  "summary": "Move the two built-in Gotha edits to one guarded disc sector.",
+  "rationale": "Both unconditional menu writes target bytes in the exact first-read program. The recipe preserves those bytes and their order without editing the original image; the upstream callback does not document the underlying game failure.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "88dbd616b8415852473964e19e0da5f265293d11847a19ff51c98a81026ca588"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 298,
+      "offset": 988,
+      "before": "430b",
+      "after": "0009",
+      "effect": "Replace the SH-2 JSR at 0604E3CC with a NOP.",
+      "reason": "Match the first of SAROO's two built-in Gotha edits."
+    },
+    {
+      "fad": 298,
+      "offset": 994,
+      "before": "e0",
+      "after": "02",
+      "effect": "Replace the byte at 0604E3D2 as the built-in callback does.",
+      "reason": "Keep the paired instruction sequence equivalent to the existing Gotha workaround."
+    }
+  ],
+  "replaces_callback": true
+}

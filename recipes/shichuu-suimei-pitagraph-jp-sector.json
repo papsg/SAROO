@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "T-19501G",
+  "disc_id": "T-19501G  V1.060",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Shichuu Suimei Pitagraph (Japan): pause check",
+  "summary": "Move the upstream guarded pause-status edit into a disc-sector recipe.",
+  "rationale": "The exact first-read A.BIN contains the 600C8801 preimage required by the inherited menu callback. This preserves its one-byte change from waiting while PAUSE (1) to waiting while BUSY (0). The actual callback and early overlay match all 121 video/audio checkpoints and full PCM in the native-drive emulator; both remain in a BUSY wait there. That native-drive stall is not a migration difference and is not claimed fixed. SAROO MCU/FPGA timing and physical game compatibility remain unqualified.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "8dce9b4a3b129aef6ea31ce703670dd3d12ca838296bc14024d0d914f633c079"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 199,
+      "offset": 2023,
+      "before": "01",
+      "after": "00",
+      "effect": "Change the CMP/EQ immediate at 0601CFD6 from 1 to 0.",
+      "reason": "Retain the upstream workaround for a PAUSE-status loop using a guarded read overlay."
+    }
+  ]
+}

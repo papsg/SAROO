@@ -240,3 +240,158 @@ class SectorOverlayTests(unittest.TestCase):
                 self.output_pack = self.path / f'{zlib.crc32(invalid.encode()):08X}.SOV'
                 self.compile(False)
                 self.assertFalse(self.output_pack.exists())
+
+    def test_contiguous_edit_and_guard_refuse_changed_data_without_writes(self):
+        self.recipe['writes'][0].update(before='71' * 12, after='aa' * 12)
+        self.recipe['guards'] = [{'fad': 157, 'reason': 'Bind the neighboring literal'}]
+        self.recipe['replaces_callback'] = True
+        self.compile()
+        pack = self.output_pack.read_bytes()
+        self.assertEqual(pack[4:8], bytes([3, 2, 0, 0x80]))
+        self.assertEqual(pack[32], 0x80 | 12)
+        original = self.path / 'original'
+        expected = self.path / 'expected'
+        original.write_bytes(self.last)
+        changed = bytearray(self.last)
+        changed[1057:1069] = bytes([0xaa]) * 12
+        expected.write_bytes(canonical(changed))
+        self.run_decoder('apply', self.output_pack, original, expected, '0')
+        original.write_bytes(sector(157, 0x72))
+        expected.write_bytes(original.read_bytes())
+        self.run_decoder('guard', self.output_pack, original, expected, '1')
+        for at, value in ((33, 1), (38, 1), (36, 255), (32, 0x80 | 45),
+                          (RECORD_BYTES + 84, 1)):
+            with self.subTest(at=at):
+                bad = bytearray(pack)
+                bad[at] = value
+                seal(bad)
+                self.output_pack.write_bytes(bad)
+                self.run_decoder('reject', self.output_pack)
+
+    def test_long_replacements_require_a_single_bounded_edit(self):
+        original = copy.deepcopy(self.recipe)
+        for width in (5, 12, 40, 44):
+            self.recipe = copy.deepcopy(original)
+            self.recipe['writes'][0].update(before='71' * width, after='aa' * width)
+            self.compile()
+            raw, edited = self.path / 'original', self.path / 'expected'
+            raw.write_bytes(self.last)
+            value = bytearray(self.last)
+            value[1057:1057 + width] = bytes([0xaa]) * width
+            edited.write_bytes(canonical(value))
+            self.run_decoder('apply', self.output_pack, raw, edited)
+            self.output_pack.unlink()
+        for change in ('too-long', 'past-data', 'same-sector-edit', 'edited-guard',
+                       'duplicate-guard'):
+            with self.subTest(change=change):
+                self.recipe = copy.deepcopy(original)
+                self.recipe['writes'][0].update(before='71' * 12, after='aa' * 12)
+                if change == 'too-long':
+                    self.recipe['writes'][0].update(before='71' * 45, after='aa' * 45)
+                elif change == 'past-data':
+                    self.recipe['writes'][0]['offset'] = 2060
+                elif change == 'same-sector-edit':
+                    self.recipe['writes'].append(dict(original['writes'][0], offset=1200))
+                else:
+                    self.recipe['guards'] = [{'fad': 156 if change == 'edited-guard' else 157,
+                                             'reason': 'Guard collision'}]
+                    if change == 'duplicate-guard':
+                        self.recipe['guards'] *= 2
+                self.compile(False)
+                self.assertFalse(self.output_pack.exists())
+
+    def test_guard_only_abi_two_keeps_short_edits_and_original_guard_sectors(self):
+        self.recipe['guards'] = [{'fad': 157, 'reason': 'Bind another original sector'}]
+        self.compile()
+        self.assertEqual(self.output_pack.read_bytes()[4:8], bytes([2, 2, 0, 0]))
+        original = self.path / 'original'
+        expected = self.path / 'expected'
+        original.write_bytes(sector(157, 0x72))
+        expected.write_bytes(original.read_bytes())
+        self.run_decoder('guard', self.output_pack, original, expected, '1')
+
+    def test_bundle_compiles_each_source_and_preserves_original_sector_guards(self):
+        second = self.path / 'other'
+        second.mkdir()
+        other_sector = sector(156, 0x73)
+        other_cue = second / 'disc.cue'
+        # Use a generated gap to retain FAD 156 without a large data file.
+        (second / 'ip.bin').write_bytes(self.first)
+        (second / 'other.bin').write_bytes(other_sector)
+        other_cue.write_text('FILE "ip.bin" BINARY\n  TRACK 01 MODE1/2352\n'
+                             '    INDEX 01 00:00:00\n    POSTGAP 00:00:05\n'
+                             'FILE "other.bin" BINARY\n  TRACK 02 MODE1/2352\n'
+                             '    INDEX 01 00:00:00\n')
+        other = copy.deepcopy(self.recipe)
+        other['writes'][0]['before'] = '7373'
+        other['tracks'] = [{'number': 2, 'sha256': hashlib.sha256(other_sector).hexdigest()}]
+        other_path = second / 'recipe.json'
+        other_path.write_text(json.dumps(other))
+        self.recipe_path.write_text(json.dumps(self.recipe))
+        command = [self.tool, 'bundle', self.output_pack, self.recipe_path, self.cue,
+                   other_path, other_cue]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pack = self.output_pack.read_bytes()
+        self.assertEqual(pack[4:8], bytes([1, 2, 1, 0]))
+        original, edited = self.path / 'original', self.path / 'expected'
+        records = [pack[HEADER_BYTES + i * RECORD_BYTES:
+                        HEADER_BYTES + (i + 1) * RECORD_BYTES] for i in range(2)]
+        for source in (self.last, other_sector):
+            original.write_bytes(source)
+            value = bytearray(source)
+            value[1057:1059] = b'\xab\x10'
+            edited.write_bytes(canonical(value))
+            index = next(i for i, r in enumerate(records) if
+                         int.from_bytes(r[4:8], 'big') == zlib.crc32(source))
+            self.run_decoder('apply', self.output_pack, original, edited, str(index))
+        self.output_pack.unlink()
+        result = subprocess.run([*command[:5], self.recipe_path, self.cue],
+                                text=True, capture_output=True, timeout=20)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.output_pack.exists())
+        for field, value in (('replaces_callback', True), ('disc_id', 'T-TEST    V1.000'),
+                             ('product_id', 'WRONG')):
+            bad = copy.deepcopy(other)
+            bad[field] = value
+            other_path.write_text(json.dumps(bad))
+            result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(self.output_pack.exists())
+
+    def test_bundle_selects_the_twelfth_record_and_refuses_a_thirteenth(self):
+        command = [self.tool, 'bundle', self.output_pack]
+        originals = {}
+        for index in range(13):
+            path = self.path / str(index)
+            path.mkdir()
+            raw = sector(151, 0x71 + index)
+            originals[zlib.crc32(raw)] = raw
+            (path / 'track.bin').write_bytes(self.first + raw)
+            cue = path / 'source.cue'
+            cue.write_text('FILE "track.bin" BINARY\n  TRACK 01 MODE1/2352\n'
+                           '    INDEX 01 00:00:00\n')
+            recipe = copy.deepcopy(self.recipe)
+            recipe['writes'][0].update(fad=151, before=f'{0x71 + index:02x}' * 2)
+            recipe['tracks'] = [{'number': 1, 'sha256':
+                                 hashlib.sha256((path / 'track.bin').read_bytes()).hexdigest()}]
+            recipe_path = path / 'source.json'
+            recipe_path.write_text(json.dumps(recipe))
+            command += [recipe_path, cue]
+        result = subprocess.run(command[:-2], text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pack = self.output_pack.read_bytes()
+        self.assertEqual(len(pack), 4200)
+        self.assertEqual(pack[5:7], bytes([12, 1]))
+        last_record = pack[HEADER_BYTES + 11 * RECORD_BYTES:]
+        raw = originals[int.from_bytes(last_record[4:8], 'big')]
+        original, edited = self.path / 'original', self.path / 'expected'
+        original.write_bytes(raw)
+        changed = bytearray(raw)
+        changed[1057:1059] = b'\xab\x10'
+        edited.write_bytes(canonical(changed))
+        self.run_decoder('apply', self.output_pack, original, edited, '11')
+        self.output_pack.unlink()
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.output_pack.exists())

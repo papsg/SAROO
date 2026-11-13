@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-9904G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Cotton 2 (Japan): built-in compatibility edit",
+  "summary": "Preserve SAROO's cartridge timing by skipping the game's ASR0 write.",
+  "rationale": "A00.BIN writes 0x23301FF0 to the SCU A-bus CS0/CS1 timing register at 0x25FE00B0. The upstream callback NOPs that store at 0x06004194; this overlay preserves the same edit. Sega's SCU manual, Figure 3.24 (page 62), requires A-bus settings to account for the connected devices. The original source does not identify the specific compatibility symptom.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "ac49e14ec748b2c68353650396dd7b5c7147480ad7528731b9ee6a2e7961697a"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 174,
+      "offset": 420,
+      "before": "2212",
+      "after": "0009",
+      "effect": "Replace MOV.L R1,@R2 at 0x06004194 with NOP, suppressing the 0x23301FF0 ASR0 store.",
+      "reason": "Retain the loader's A-bus timing rather than applying the game's cartridge settings; matches upstream cotton2_patch."
+    }
+  ],
+  "replaces_callback": true
+}

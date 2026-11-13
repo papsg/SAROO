@@ -19,6 +19,8 @@ uint32_t sector_overlay_crc32(const void *data, size_t size);
 int sector_overlay_validate(size_t size, const char product[10]);
 unsigned sector_overlay_count(void);
 uint32_t sector_overlay_fad(unsigned index);
+int sector_overlay_alternatives(void);
+int sector_overlay_select(unsigned index);
 int sector_overlay_replaces_callback(void);
 int sector_overlay_check(unsigned index, const uint8_t sector[2352]);
 void sector_overlay_arm(void);

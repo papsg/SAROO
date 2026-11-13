@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-20109G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Friends - Seishun no Kagayaki (Japan, Disc 1): built-in instruction edits",
+  "summary": "Apply both upstream instruction NOPs only to the game disc.",
+  "rationale": "Both discs share product ID T-20109G. The callback writes both loaded addresses on Disc 2 even though its first-read file ends before them; this recipe applies only to the matching Disc 1 sectors.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "801611500f8ce9055ddc66e9ffaf0aa3577fee9a60de9c2948ab4b99e8bdfdb1"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 272,
+      "offset": 248,
+      "before": "2122",
+      "after": "0009",
+      "effect": "NOP the Disc 1 ADV.BIN instruction loaded at 060428E8.",
+      "reason": "Preserve the upstream Friends game-disc edit on its matching source."
+    },
+    {
+      "fad": 272,
+      "offset": 410,
+      "before": "2122",
+      "after": "0009",
+      "effect": "NOP the Disc 1 ADV.BIN instruction loaded at 0604298A.",
+      "reason": "Preserve the upstream Friends game-disc edit on its matching source."
+    }
+  ],
+  "replaces_callback": true
+}

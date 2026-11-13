@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "GS-7114",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Dragon's Dream (Japan): built-in compatibility edit",
+  "summary": "Carry the upstream modem-compatibility byte change into the disc read.",
+  "rationale": "The upstream callback changes this byte for the modem path. The source does not establish the complete runtime symptom.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "5b79407c8e42aac8ff66c25ecbce5599a69fa58a89942b84af9bac76fc3f42c1"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 311,
+      "offset": 1697,
+      "before": "00",
+      "after": "01",
+      "effect": "Apply the upstream Dragons_Dream_patch write at 06040691.",
+      "reason": "Preserve the exact upstream edit on the matching source image."
+    }
+  ],
+  "replaces_callback": true
+}

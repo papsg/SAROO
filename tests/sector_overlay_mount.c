@@ -97,6 +97,68 @@ int main(int argc, char **argv)
     create("/D/a.bin", original, original_bytes);
     create(cue_name, single, strlen(single));
     int which = atoi(argv[2]);
+    if (which >= 24 && which <= 31) {
+        create(pack_name, pack, pack_bytes);
+        unsigned writes = disk_writes;
+        media_case = 1;
+        if (which == 29) inject_read = 5; /* A later alternative fails after a match. */
+        int result = load_disc(SD_OVERLAY_REQUEST, 1);
+        int admitted = which == 24 || which == 27 || which == 30;
+        assert((result != 0) == (which == 29));
+        assert(overlay_sysinfo[0x38 / 4] == (admitted ? SD_OVERLAY_REPLACEMENT : 0));
+        assert(pack_opens == 2 && !lock_depth);
+        unsigned reads = which == 28 || which == 31 ? 0 : which == 30 ? 1 : 2;
+        assert(preflight_reads == reads);
+        verify_overlay(1, admitted);
+        uint8_t buffer[2352];
+        memcpy(buffer, original[2], sizeof(buffer));
+        assert(!sector_overlay_apply(152, buffer));
+        assert(!memcmp(buffer, original[2], sizeof(buffer)));
+        if (admitted) {
+            memcpy(buffer, original[1], sizeof(buffer));
+            buffer[50] ^= 1;
+            assert(sector_overlay_apply(151, buffer) < 0);
+            assert(sector_overlay_apply(151, buffer) < 0);
+            verify_overlay(1, 1);
+        }
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth);
+        assert(disk_writes == writes && !overlay_sysinfo[0x38 / 4]);
+        verify_overlay(1, 0);
+        assert(!fclose(disk));
+        return 0;
+    }
+    if (which >= 32) {
+        assert(which <= 35);
+        create(pack_name, pack, pack_bytes);
+        unsigned writes = disk_writes;
+        media_case = 1;
+        if (which == 35) inject_read = 5;
+        int result = load_disc(SD_OVERLAY_REQUEST, 1);
+        int admitted = which == 32 || which == 34;
+        assert((result != 0) == (which == 35));
+        assert(overlay_sysinfo[0x38 / 4] == (admitted ? SD_OVERLAY_REPLACEMENT : 0));
+        assert(pack_opens == 2 && preflight_reads == 2 && !lock_depth);
+        verify_overlay(1, admitted);
+        if (admitted) {
+            uint8_t buffer[2352];
+            memcpy(buffer, original[2], sizeof(buffer));
+            assert(!sector_overlay_apply(152, buffer));
+            assert(!memcmp(buffer, original[2], sizeof(buffer)));
+            buffer[128] ^= 1;
+            assert(sector_overlay_apply(152, buffer) < 0);
+            assert(sector_overlay_apply(152, buffer) < 0);
+            buffer[128] ^= 1;
+            assert(!sector_overlay_apply(152, buffer));
+            verify_overlay(1, 1);
+        }
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth);
+        assert(disk_writes == writes && !overlay_sysinfo[0x38 / 4]);
+        verify_overlay(1, 0);
+        assert(!fclose(disk));
+        return 0;
+    }
     if (which < 13 && which != 1) {
         if (which == 2) pack[0] ^= 1;
         if (which == 4) pack_bytes = sizeof(pack);

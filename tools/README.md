@@ -10,12 +10,16 @@ existing output directory. The `name` command gives the expected filename.
 cargo build --offline --locked --manifest-path tools/Cargo.toml -p sector-overlay
 tools/target/debug/sector-overlay name recipe.json
 tools/target/debug/sector-overlay compile recipe.json disc.cue output/1234ABCD.SOV
+tools/target/debug/sector-overlay bundle output/1234ABCD.SOV first.json first.cue second.json second.cue
 make -C tests check-sector-overlay
 ```
 
 Use the actual name returned by `name` in place of `1234ABCD.SOV`.
 An optional `disc_id` field gives the exact sixteen IP product/version
 bytes, including spaces. Omit it to retain the older product-only filename.
+The `bundle` command accepts two to twelve reviewed recipe/CUE pairs. Each
+must edit one sector and share the same product, optional revision and launch
+actions. Mount selects exactly one matching alternative.
 See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
 
 ## Isolated firmware qualification

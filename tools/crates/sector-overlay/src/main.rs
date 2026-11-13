@@ -7,6 +7,7 @@ use mode1::{DATA_START, TAIL_START};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -31,7 +32,16 @@ struct Recipe {
     tracks: Vec<TrackSource>,
     writes: Vec<WriteSource>,
     #[serde(default)]
+    guards: Vec<GuardSource>,
+    #[serde(default)]
     replaces_callback: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GuardSource {
+    fad: u32,
+    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -112,8 +122,12 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
-    if !matches!(value.len(), 2 | 4 | 8) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return fail("Edits require 1, 2 or 4 hex-encoded bytes");
+    let bytes = value.len() / 2;
+    if value.len() % 2 != 0
+        || !(matches!(bytes, 1 | 2 | 4) || (5..=44).contains(&bytes))
+        || !value.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return fail("Edits require 1, 2, 4 or 5–44 hex-encoded bytes");
     }
     (0..value.len())
         .step_by(2)
@@ -157,12 +171,19 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
             after,
         });
     }
+    for guard in &recipe.guards {
+        check_text(&[&guard.reason])?;
+        if !(150..450000).contains(&guard.fad) || by_fad.insert(guard.fad, Vec::new()).is_some() {
+            return fail("Invalid, duplicated or edited guard sector");
+        }
+    }
     if by_fad.len() > MAX_RECORDS {
         return fail("Too many target sectors");
     }
     for edits in by_fad.values_mut() {
         edits.sort_unstable_by_key(|edit| edit.offset);
         if edits.len() > 4
+            || (edits.len() != 1 && edits.iter().any(|edit| edit.before.len() > 4))
             || edits
                 .windows(2)
                 .any(|pair| pair[0].offset + pair[0].before.len() > pair[1].offset)
@@ -278,7 +299,14 @@ fn compile(
     let size = HEADER_BYTES + targets.len() * RECORD_BYTES;
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
-    pack[4] = if recipe.replaces_callback { 3 } else { 1 };
+    let long_edit = targets.values().flatten().any(|edit| edit.before.len() > 4);
+    pack[4] = if recipe.replaces_callback || long_edit {
+        3
+    } else if recipe.guards.is_empty() {
+        1
+    } else {
+        2
+    };
     pack[5] = targets.len() as u8;
     pack[7] = if recipe.replaces_callback { 0x80 } else { 0 };
     pack[8..18].copy_from_slice(&product);
@@ -291,18 +319,31 @@ fn compile(
         mode1::check(&sector, fad)?;
         record[..4].copy_from_slice(&fad.to_be_bytes());
         record[4..8].copy_from_slice(&crc32(&sector).to_be_bytes());
+        if edits.is_empty() {
+            continue;
+        }
         record[8] = edits.len() as u8;
-        for (edit, descriptor) in edits.iter().zip(record[12..60].chunks_exact_mut(12)) {
-            let width = edit.before.len();
-            let bytes = &mut sector[edit.offset..edit.offset + width];
-            if bytes != edit.before {
+        for edit in &edits {
+            if sector[edit.offset..edit.offset + edit.before.len()] != edit.before {
                 return fail(format!("Original bytes differ at FAD {fad}"));
             }
-            descriptor[..2].copy_from_slice(&(edit.offset as u16).to_be_bytes());
-            descriptor[2] = width as u8;
-            descriptor[4..4 + width].copy_from_slice(&edit.before);
-            descriptor[8..8 + width].copy_from_slice(&edit.after);
-            bytes.copy_from_slice(&edit.after);
+        }
+        if edits[0].before.len() > 4 {
+            let edit = &edits[0];
+            record[8] = 0x80 | edit.before.len() as u8;
+            record[12..14].copy_from_slice(&(edit.offset as u16).to_be_bytes());
+            record[16..16 + edit.after.len()].copy_from_slice(&edit.after);
+            sector[edit.offset..edit.offset + edit.after.len()].copy_from_slice(&edit.after);
+        } else {
+            for (edit, descriptor) in edits.iter().zip(record[12..60].chunks_exact_mut(12)) {
+                let width = edit.before.len();
+                let bytes = &mut sector[edit.offset..edit.offset + width];
+                descriptor[..2].copy_from_slice(&(edit.offset as u16).to_be_bytes());
+                descriptor[2] = width as u8;
+                descriptor[4..4 + width].copy_from_slice(&edit.before);
+                descriptor[8..8 + width].copy_from_slice(&edit.after);
+                bytes.copy_from_slice(&edit.after);
+            }
         }
         mode1::rebuild(&mut sector);
         record[60..].copy_from_slice(&sector[TAIL_START..]);
@@ -310,6 +351,67 @@ fn compile(
     let checksum = crc32(&pack);
     pack[20..24].copy_from_slice(&checksum.to_be_bytes());
     Ok(pack)
+}
+
+fn read_recipe(path: &Path) -> Result<Recipe> {
+    Ok(serde_json::from_slice(&disc::read_bounded(
+        path,
+        MAX_RECIPE_BYTES,
+    )?)?)
+}
+
+fn pack_name(recipe: &Recipe) -> Result<String> {
+    let product = product_bytes(&recipe.product_id)?;
+    let disc_id = disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
+    Ok(format!("{:08X}.SOV", crc32(disc_id.unwrap_or(&product))))
+}
+
+fn bundle(args: &[OsString]) -> Result<()> {
+    if args.len() < 5 || args.len() > 1 + MAX_RECORDS * 2 || args.len() % 2 != 1 {
+        return fail("bundle requires an output path and two to twelve recipe/CUE pairs");
+    }
+    let output = Path::new(&args[0]);
+    let mut policy = None;
+    let mut header = Vec::new();
+    let mut records = Vec::new();
+    for pair in args[1..].chunks_exact(2) {
+        let recipe = read_recipe(Path::new(&pair[0]))?;
+        let product = product_bytes(&recipe.product_id)?;
+        let disc_id = disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
+        let name = pack_name(&recipe)?;
+        if output.file_name().is_none_or(|leaf| leaf != name.as_str()) {
+            return fail(format!("Output filename must be {name}"));
+        }
+        let single = compile(&recipe, Path::new(&pair[1]), product, disc_id)?;
+        if single[5] != 1 {
+            return fail("Each alternative must touch exactly one sector");
+        }
+        let identity = (recipe.product_id, recipe.disc_id, single[4], single[7]);
+        if policy.as_ref().is_some_and(|prior| *prior != identity) {
+            return fail("Alternatives must share the product, revision and launch actions");
+        }
+        policy = Some(identity);
+        header = single[..HEADER_BYTES].to_vec();
+        records.push(single[HEADER_BYTES..].to_vec());
+    }
+    records.sort_unstable_by(|a, b| a[..8].cmp(&b[..8]));
+    if records.windows(2).any(|pair| pair[0][..8] == pair[1][..8]) {
+        return fail("Duplicate alternative source sector");
+    }
+    header[5] = records.len() as u8;
+    header[6] = 1;
+    let mut pack = header;
+    for record in records {
+        pack.extend_from_slice(&record);
+    }
+    let size = pack.len() as u16;
+    pack[18..20].copy_from_slice(&size.to_be_bytes());
+    pack[20..24].fill(0);
+    let checksum = crc32(&pack);
+    pack[20..24].copy_from_slice(&checksum.to_be_bytes());
+    write_pack(output, &pack)?;
+    println!("{}: {} bytes", output.display(), pack.len());
+    Ok(())
 }
 
 fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -325,7 +427,10 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]";
+    if args.first().is_some_and(|arg| arg == "bundle") {
+        return bundle(&args[1..]);
+    }
     let (operation, path, extra) = match args.as_slice() {
         [op, path] if op == "name" => (op, path, None),
         [op, path, cue, out] if op == "compile" => {
@@ -337,11 +442,10 @@ fn run() -> Result<()> {
         }
         _ => return fail(usage),
     };
-    let recipe: Recipe =
-        serde_json::from_slice(&disc::read_bounded(Path::new(path), MAX_RECIPE_BYTES)?)?;
+    let recipe = read_recipe(Path::new(path))?;
     let product = product_bytes(&recipe.product_id)?;
     let disc_id = disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
-    let name = format!("{:08X}.SOV", crc32(disc_id.unwrap_or(&product)));
+    let name = pack_name(&recipe)?;
     if operation == "name" {
         println!("{name}");
     } else if let Some((cue, path)) = extra {

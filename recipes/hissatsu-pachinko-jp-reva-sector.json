@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "T-1503G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Hissatsu Pachinko Collection (Japan, Rev A): pause check",
+  "summary": "Use the upstream pause-status workaround from an SD sector recipe.",
+  "rationale": "The first-read program has the guarded compare-immediate site used by SAROO's built-in patch. Its other revision site has different source bytes and is deliberately left alone.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "338bd609954841542d05c39d6d74c02db60cbc7b8516f2645b86743423dcb4c7"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 174,
+      "offset": 109,
+      "before": "01",
+      "after": "56",
+      "effect": "Change the first-read program's CMP/EQ immediate at 0601085C from 1 to 0x56.",
+      "reason": "Retain the upstream workaround for a PAUSE-status loop without editing the original image."
+    }
+  ],
+  "replaces_callback": true
+}

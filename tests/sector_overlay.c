@@ -2,6 +2,7 @@
 #include "sector_overlay.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum { RAW_BYTES = 2352 };
@@ -28,18 +29,26 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(!valid);
-    assert(argc == 5);
+    assert(argc == 5 || argc == 6);
     uint8_t original[RAW_BYTES], expected[RAW_BYTES], sector[RAW_BYTES];
     assert(load(argv[3], original, sizeof(original)) == sizeof(original));
     assert(load(argv[4], expected, sizeof(expected)) == sizeof(expected));
-    unsigned index = sector_overlay_count() - 1;
+    unsigned index = argc == 6 ? (unsigned)atoi(argv[5]) : sector_overlay_count() - 1;
+    assert(index < sector_overlay_count());
     uint32_t fad = sector_overlay_fad(index);
     assert(sector_overlay_check(index, original) == 0);
     memcpy(sector, original, sizeof(sector));
     assert(sector_overlay_apply(fad, sector) == 0);
     assert(!memcmp(sector, original, sizeof(sector)));
+    if (sector_overlay_alternatives()) {
+        sector_overlay_arm();
+        assert(!sector_overlay_apply(fad, sector));
+        assert(sector_overlay_select(sector_overlay_count()) < 0);
+        assert(!sector_overlay_select(index));
+    }
     sector_overlay_arm();
-    assert(sector_overlay_apply(fad + 1, sector) == 0);
+    assert(sector_overlay_select(index) < 0);
+    assert(sector_overlay_apply(149, sector) == 0);
     assert(!memcmp(sector, original, sizeof(sector)));
     sector[2063] ^= 1;
     for (unsigned i = 0; i < 2; ++i) {
@@ -51,7 +60,7 @@ int main(int argc, char **argv)
     }
     for (unsigned i = 0; i < 2; ++i) {
         memcpy(sector, original, sizeof(sector));
-        assert(sector_overlay_apply(fad, sector) == 1);
+        assert(sector_overlay_apply(fad, sector) == (strcmp(argv[1], "guard") != 0));
         assert(!memcmp(sector, expected, sizeof(sector)));
     }
     sector_overlay_clear();
