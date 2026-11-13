@@ -1501,6 +1501,90 @@ static void unavailable_report(void)
 }
 #endif
 
+static void search_request(unsigned part, unsigned start, u32 target)
+{
+    cdb.cr1 = 0x5500;
+    cdb.cr2 = start;
+    cdb.cr3 = part << 8 | (target >> 16);
+    cdb.cr4 = target;
+    cdc_cmd_process();
+}
+
+static void expect_search_result(unsigned part, unsigned pos, u32 fad)
+{
+    memset(reply, 0xa5, sizeof reply);
+    cdb.cr1 = 0x5600;
+    cdc_cmd_process();
+    assert(hirq == (HIRQ_CMOK | (cdb.block_free < MAX_BLOCKS ? HIRQ_SCDQ : 0)));
+    assert(reply[0] == cdb.status << 8 && reply[1] == pos);
+    assert(reply[2] == (part << 8 | (fad >> 16)) && reply[3] == (u16)fad);
+}
+
+static void fad_search_commands(void)
+{
+    const u32 fads[] = {0x10010, 0x10002, 0x10010, 0x10020, 0, 0xffffff};
+    setup(0, MAX_BLOCKS);
+    ss_control = 0x8000;
+    expect_search_result(0, 0, 0);
+    for (unsigned part = 0; part < MAX_SELECTORS; ++part) {
+        setup(6, MAX_BLOCKS - 6);
+        ss_control = 0x8000;
+        if (part) {
+            cdb.part[part] = cdb.part[0];
+            cdb.part[0] = (PARTITION){0};
+        }
+        for (unsigned i = 0; i < sizeof fads / sizeof *fads; ++i) cdb.block[i].fad = fads[i];
+        search_request(part, 0, 0x10015);
+        assert(hirq == (HIRQ_CMOK | HIRQ_SCDQ | HIRQ_ESEL));
+        expect_search_result(part, 0, 0x10010);
+        search_request(part, 1, 0x10010);
+        expect_search_result(part, 2, 0x10010);
+        search_request(part, 0, 0);
+        expect_search_result(part, 4, 0);
+        search_request(part, 0xffff, 0xfffffe);
+        expect_search_result(part, 0xffff, 0);
+        search_request(part, 0xffff, 0xffffff);
+        expect_search_result(part, 5, 0xffffff);
+
+        search_request(MAX_SELECTORS, 0, 0xffffff);
+        assert(reply[0] >> 8 == STAT_REJECT && !(hirq & HIRQ_ESEL));
+        search_request(part, 6, 0xffffff);
+        assert(reply[0] >> 8 == STAT_REJECT && !(hirq & HIRQ_ESEL));
+        search_request((part + 1) % MAX_SELECTORS, 0xffff, 0xffffff);
+        assert(reply[0] >> 8 == STAT_REJECT && !(hirq & HIRQ_ESEL));
+        expect_search_result(part, 5, 0xffffff);
+        cdb.cr1 = 0;
+        assert(init_cdblock() == 0);
+        expect_search_result(part, 5, 0xffffff);
+        check_owners();
+
+        cdb.cr1 = 1;
+        assert(init_cdblock() & HIRQ_ESEL);
+        expect_search_result(0, 0, 0);
+        check_owners();
+    }
+
+    setup(MAX_BLOCKS, 0);
+    cdb.block[MAX_BLOCKS - 1].fad = 0xabcdef;
+    search_request(0, 0, 0xffffff);
+    assert(hirq & HIRQ_ESEL);
+    expect_search_result(0, MAX_BLOCKS - 1, 0xabcdef);
+    check_owners();
+}
+
+static void command_names(void)
+{
+    /* Existing debug lookup labels, including the high opcodes and holes. */
+    assert(!strcmp(cmd_str(0x00), "get_cd_status"));
+    assert(!strcmp(cmd_str(0x54), "get_sector_info"));
+    assert(!strcmp(cmd_str(0x75), "abort_file"));
+    assert(!strcmp(cmd_str(0xe0), "auth_device"));
+    assert(!strcmp(cmd_str(0xe1), "get_auth_status"));
+    for (int cmd = 0x76; cmd < 0xe0; ++cmd)
+        assert(!strcmp(cmd_str(cmd), "unkonw_cmd"));
+    assert(!strcmp(cmd_str(0xe2), "unkonw_cmd"));
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1545,6 +1629,8 @@ int main(int argc,char **argv)
     case 51:scan_refusal();break;
     case 52:unavailable_report();break;
     case 53:unavailable_wait();break;
+    case 54:fad_search_commands();break;
+    case 55:command_names();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

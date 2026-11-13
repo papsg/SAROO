@@ -329,6 +329,10 @@ typedef struct
 
 	FIL subcode_fp; /* Keep the file object behind the CD controls and tables. */
 
+	/* CR3/CR4 hold the partition byte followed by the 24-bit FAD. */
+	u32 fad_search_address;
+	u16 fad_search_position;
+
 }CDBLOCK;
 
 

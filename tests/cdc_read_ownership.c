@@ -362,9 +362,36 @@ static void unrelated_output_reset(void)
     assert(!(hirq & HIRQ_EHST));
 }
 
+static void fad_search_output(void)
+{
+#ifdef HAS_FAD_SEARCH
+    for (unsigned type = TRANS_DATA; type <= TRANS_DATA_DEL; ++type) {
+        setup(4, 194);
+        start_read(type, 0, 1, 2);
+        unsigned produced = fifo_words;
+        cdb.cr3 = 2 << 8;
+        cdb.cr2 = 0;
+        cdb.cr4 = 199;
+        assert(execute_fad_search() == HIRQ_ESEL);
+        assert(cdb.trans_part_index == 0 && !cdb.trans_finish && !(hirq & HIRQ_EHST));
+        cdb.cr3 = 0;
+        cdb.cr4 = 152;
+        assert(execute_fad_search() == HIRQ_ESEL);
+        assert(cdb.trans_part_index == 0xff && cdb.trans_finish && (hirq & HIRQ_EHST));
+        assert(!get_fad_search() && reply[1] == (type == TRANS_DATA ? 2 : 0));
+        assert(reply[3] == (type == TRANS_DATA ? 152 : 150));
+        read_owners(type == TRANS_DATA_DEL ? 2 : 0);
+        trans_handle();
+        assert(fifo_words == produced);
+        assert(end_trans() == HIRQ_EHST && result_words() == 0xffffff);
+        check_owners();
+    }
+#endif
+}
+
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<18);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<19);
     if(test==0)detached_ranges();else if(test==1)cancellation();else if(test==2)preserved_connections();
     else if(test==3)incoming_append();else if(test==4)freeing_preemptions();else if(test==5)logging_boundary();
     else if(test==6)admission_ranges();else if(test==7)software_resets();else if(test==8)valid_log_controls();
@@ -373,6 +400,7 @@ int main(int argc,char **argv)
     else if(test==13)zero_idle_and_retained_put_controls();
     else if(test==14)completion_events();
     else if(test==15 || test==16)reset_partition_outputs(test==16);
-    else unrelated_output_reset();
+    else if(test==17)unrelated_output_reset();
+    else fad_search_output();
     puts("pass: actual read ownership, production counts, release and log boundaries");return 0;
 }

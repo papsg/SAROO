@@ -659,6 +659,8 @@ int init_cdblock(void)
 
 
 	copy_move_error = 0;
+	cdb.fad_search_address = 0;
+	cdb.fad_search_position = 0;
 	cdb.subrw_rp = 0;
 	cdb.subrw_wp = 0;
 
@@ -1428,7 +1430,46 @@ int get_sector_info(void)
 }
 
 // 0x55 [SR]
-// 0x56 [SR]
+static int execute_fad_search(void)
+{
+    unsigned part = cdb.cr3 >> 8;
+    if (part >= MAX_SELECTORS) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+    PARTITION *partition = &cdb.part[part];
+    int start = cdb.cr2;
+    int count = partition->numblocks;
+    if (start == 0xffff) start = count - 1;
+    if (start < 0 || start >= count) {
+        set_status(STAT_REJECT);
+        return 0;
+    }
+
+    disconnect_partition_output(partition);
+    u32 target = ((u32)(cdb.cr3 & 0xff) << 16) | cdb.cr4;
+    u32 best = 0;
+    u16 position = 0xffff;
+    const BLOCK *block = partition->head;
+    for (int i = 0; block && i < count; ++i, block = block->next) {
+        if (i >= start && block->fad <= target &&
+            (position == 0xffff || block->fad > best)) {
+            best = block->fad;
+            position = i;
+        }
+    }
+    cdb.fad_search_address = (part << 24) | best;
+    cdb.fad_search_position = position;
+    return HIRQ_ESEL;
+}
+
+// 0x56 [S-]
+static int get_fad_search(void)
+{
+    command_reply(cdb.status << 8, cdb.fad_search_position,
+                  reply_pair(cdb.fad_search_address >> 16, cdb.fad_search_address));
+    return 0;
+}
 
 
 /******************************************************************************/
@@ -2139,6 +2180,10 @@ int get_auth_status(void)
 
 char *cmd_str(int cmd)
 {
+    /* Keep these two distant opcodes outside the dense name lookup. */
+    if (cmd == 0xe0) return "auth_device";
+    if (cmd == 0xe1) return "get_auth_status";
+
 	switch(cmd){
 	// common
 	case 0x00: return "get_cd_status";
@@ -2195,9 +2240,6 @@ char *cmd_str(int cmd)
 	case 0x73: return "get_file_info";
 	case 0x74: return "read_file";
 	case 0x75: return "abort_file";
-
-	case 0xe0: return "auth_device";
-	case 0xe1: return "get_auth_status";
 
 	default  : return "unkonw_cmd";
 	}
@@ -2287,6 +2329,10 @@ void cdc_cmd_process(void)
 	case 0x53: hirq = get_actual_size();
 		break;
 	case 0x54: hirq = get_sector_info();
+		break;
+	case 0x55: hirq = execute_fad_search();
+		break;
+	case 0x56: hirq = get_fad_search();
 		break;
 
 	// buffer io

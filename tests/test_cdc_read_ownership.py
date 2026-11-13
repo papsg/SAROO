@@ -24,7 +24,12 @@ class CDReadOwnershipTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        (cls.target/'ownership.inc').write_bytes(function(b'int reset_filter(')+filter_source(raw))
+        ownership = function(b'int reset_filter(') + filter_source(raw)
+        if b'static int execute_fad_search(' in raw:
+            ownership += b'#define HAS_FAD_SEARCH 1\n'
+            ownership += function(b'static int execute_fad_search(')
+            ownership += function(b'static int get_fad_search(')
+        (cls.target/'ownership.inc').write_bytes(ownership)
         types=cls.target/'types.h'
         types.write_bytes(types.read_bytes()+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs=json.loads((cls.target/'inputs.json').read_text())
@@ -71,6 +76,8 @@ class CDReadOwnershipTests(unittest.TestCase):
                 self.run_case(case)
 
     def test_other_selector_resets_and_put_preserve_unrelated_transfer(self):self.run_case(17)
+
+    def test_fad_search_disconnects_matching_output_and_preserves_private_sectors(self):self.run_case(18)
 
 
 if __name__=='__main__':unittest.main()

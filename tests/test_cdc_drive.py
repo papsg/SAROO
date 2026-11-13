@@ -65,17 +65,18 @@ class CDDriveTests(unittest.TestCase):
         scan = b'static int scan_sector('
         (cls.target/'scan-worker.inc').write_bytes(function(main, scan) if scan in main else b'')
         dispatch = function(raw, b'void cdc_cmd_process(')
-        selected = (b'case 0x00:', b'case 0x05:', b'case 0x11:', b'case 0x12:', b'case 0x75:')
+        selected = (b'case 0x00:', b'case 0x05:', b'case 0x11:', b'case 0x12:',
+                    b'case 0x55:', b'case 0x56:', b'case 0x75:')
         cases = b''.join(dispatch[dispatch.index(start):dispatch.index(b'break;', dispatch.index(start)) + 6]
                          for start in selected if start in dispatch)
-        if b'case 0x12:' not in dispatch:
-            # For the parent exercise its actual unknown-command branch.
-            cases += dispatch[dispatch.index(b'default:'):dispatch.index(b'\n\t}', dispatch.index(b'default:'))]
-        else:
-            cases += b'default: abort();\n'
+        default = dispatch.index(b'default:')
+        cases += dispatch[default:dispatch.index(b'\n\t}', default)]
         start = dispatch.index(b'switch(cmd){') + len(b'switch(cmd){')
         end = dispatch.index(b'if(cdb.block_free!=MAX_BLOCKS)', start)
         code = b''.join(function(raw, name) for name in (b'int get_cd_status(', b'int abort_file(', b'char *cmd_str('))
+        for signature in (b'static int execute_fad_search(', b'static int get_fad_search('):
+            if signature in raw:
+                code += function(raw, signature)
         (cls.target/'drive-dispatch.inc').write_bytes(code + dispatch[:start] + cases +
                                                      b'}\n' + dispatch[end:])
         start=main.index(b'_restart_nowait:')
@@ -231,6 +232,8 @@ class CDDriveTests(unittest.TestCase):
     def test_scan_rejection_and_timeout_preserve_current_reader(self): self.run_case(51)
     def test_unavailable_status_and_periodic_reports_invalidate_every_field(self): self.run_case(52)
     def test_wait_reports_invalidate_unavailable_fields_and_retain_valid_fields(self): self.run_case(53)
+    def test_frame_address_search_commands_and_result_lifetime(self): self.run_case(54)
+    def test_command_trace_labels_at_lookup_boundaries(self): self.run_case(55)
 
 
 if __name__=='__main__':unittest.main()

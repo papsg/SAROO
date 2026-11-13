@@ -484,3 +484,34 @@ partitions, the private ownership and completion paths, and
 the neighboring reset flags and PUT. The GNU App uses 65,500
 load bytes and leaves 36 bytes free. Physical HIRQ timing and
 original MDK output remain unqualified.
+
+## Search a CD buffer partition by frame address
+
+MCU-CDC-R18, adapted from paps-g `a42241e3`. Command `0x55`
+searches forward from the requested sector position and saves the
+first sector with the greatest frame address at or below the target.
+Command `0x56` returns the partition, position and address. A
+search with no match reports position `FFFF`. Power-on and CD
+software reset clear the result. Invalid parameters are rejected
+with the previous result intact.
+
+An accepted search disconnects only the specified partition's host
+output. GETDEL keeps its private sectors until DataEnd. The search
+walks at most the partition's block count and copies no sector data.
+The command direction, result and reset behavior follow [Sega
+ST-162 §8.2.6, functions 6.6 and 6.7, printed p. 94](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=82).
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. Point `SAROO_CDC_DRIVE_DIR` at the
+parent's Saturn source and select `frame_address_search` in
+`test_cdc_drive.py` to reproduce the missing commands. Both
+246-test profiles pass, including a full 200-block partition,
+24 selectors, duplicate and zero addresses, and GET/GETDEL
+ownership.
+
+The first GNU link exceeded 64 KiB by 288 bytes. Moving the two
+high-numbered command labels out of the dense trace-name switch
+reduced its lookup table from 904 to 472 bytes while preserving
+the returned labels. The final GNU App uses 65,408 load bytes,
+with 128 bytes free. The result adds eight bytes to the DTCM span.
+Physical command timing and original MDK output remain unqualified.
