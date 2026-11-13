@@ -50,6 +50,9 @@ CASES = {
     'samurai-spirits-3-jp': (33, 0x0600A000, 559004, 'smrsp3_patch'),
     'samurai-spirits-4-jp': (36, 0x06016000, 519696, 'smrsp4_patch'),
     'waku-waku-7-jp': (37, 0x06010000, 885332, 'WAKU7_patch'),
+    'astra-superstars-jp': (42, 0x06003000, 476996, 'ASTRA_SUPERSTARS_patch'),
+    'fighters-megamix-us': (21, 0x06004000, 571480, 'FIGHTERS_MEGAMIX_USA_patch'),
+    'fighting-vipers-us': (28, 0x06004000, 575324, 'Fighting_Vipers_USA_patch'),
 }
 
 

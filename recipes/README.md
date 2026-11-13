@@ -62,3 +62,13 @@ the later `e2029f04` linked-reader review. It includes the full 40-byte
 routine, the other three writes and 1 MB setup. The routine depends on the
 existing SAROO sector-reader pointer. Physical qualification remains open.
 [Reader dependency and historical comparison](../doc/SD-SECTOR-OVERLAYS.md#waku-waku-7).
+
+The three timing-related sources adapt paps-g `d7cfe9cf`. Each preserves
+its inherited NOP outside the complete IP range.
+[Load geometry, Sega references and source checks](../doc/SD-SECTOR-OVERLAYS.md#three-timing-related-source-edits).
+
+| Recipe | Original instruction |
+| --- | --- |
+| [Astra Superstars JP](astra-superstars-jp-sector.json) | `2032` at `06028974`. |
+| [Fighters Megamix USA](fighters-megamix-us-sector.json) | `400b` at `06020408`. |
+| [Fighting Vipers USA](fighting-vipers-us-sector.json) | `400b` at `060229ac`. |

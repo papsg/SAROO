@@ -252,3 +252,35 @@ Public verification compares the current recipe's complete raw postimages,
 all callback memory writes and the 1 MB action, and links the existing reader
 into the menu. Natural paired boot, concurrent MCU/FPGA service, physical
 cartridge timing and long play remain unqualified.
+
+## Three timing-related source edits
+
+The Astra Superstars JP, Fighters Megamix USA and Fighting Vipers USA recipes
+adapt paps-g `d7cfe9cf`. Each preserves one inherited NOP. Their declared
+first-file load addresses fall inside their IP ranges, so the migration uses
+the reviewed raw sector and original executable instead of changing general
+load-placement rules.
+
+| Exact IP | First-file LBA / bytes | Declared load | Edited address / original word |
+| --- | --- | --- | --- |
+| `T-1521G   V1.001` | 42 / 476,996 | `06003000` | `06028974` / `2032` |
+| `MK-81073  V1.004` | 21 / 571,480 | `06004000` | `06020408` / `400b` |
+| `MK-81041  V2.000` | 28 / 575,324 | `06004000` | `060229ac` / `400b` |
+
+Rechecked preserved first-file hashes and original words against their pinned
+source receipts. The frozen inspectors enforce an IP size of at most `8000h`,
+ending at or before `0600a000h`. All three edits lie beyond that bound and
+inside their respective first files. Reconstructing the complete original
+Mode 1 sectors from those files also matches the archived sector CRCs.
+The public fixtures compare each replacement sector and its complete
+callback memory effect.
+
+Sega ST-040 §4.3, printed pp. 28–29, defines IP size and the first-read load
+address. Its normal placement rule requires the first file above the IP.
+The original SAROO callbacks describe these exact edits as ASR workarounds.
+SCU ST-097-R5 §3.2, Figure 3.24, printed p. 62, specifies A-bus timing
+according to the attached devices. These recipes preserve the inherited
+operations for the identified sources.
+[Sega Disc Format Standards](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf),
+[SCU User's Manual](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf),
+[Original callbacks](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).

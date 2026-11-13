@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "MK-81041",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Fighting Vipers (USA): built-in compatibility edit",
+  "summary": "NOP the upstream US call associated with its ASR workaround. Keep the original BIN/CUE unchanged.",
+  "rationale": "This original image declares a first-read load address inside the IP address range, outside Sega’s published placement range. The edited address is beyond the entire IP and inside the exact first-read file; source bytes and full-track identity are checked before packaging.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "b067e10eda5433c7b78d8bd93440f9b4f190e2cd06d456052f36a21a016a103e"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 239,
+      "offset": 444,
+      "before": "400b",
+      "after": "0009",
+      "effect": "NOP the upstream US call associated with its ASR workaround.",
+      "reason": "Carry the upstream edit only for the reviewed exact disc image."
+    }
+  ],
+  "replaces_callback": true
+}

@@ -1,0 +1,25 @@
+{
+  "abi": 2,
+  "product_id": "MK-81073",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Fighters Megamix (USA): built-in compatibility edit",
+  "summary": "NOP the upstream US call associated with its ASR workaround. Keep the original BIN/CUE unchanged.",
+  "rationale": "This original image declares a first-read load address inside the IP address range, outside Sega’s published placement range. The edited address is beyond the entire IP and inside the exact first-read file; source bytes and full-track identity are checked before packaging.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "5d2778200cfea7089893617db0ffd4a880c8679d3f244b67131fc8079eb07fda"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 227,
+      "offset": 1048,
+      "before": "400b",
+      "after": "0009",
+      "effect": "NOP the upstream US call associated with its ASR workaround.",
+      "reason": "Carry the upstream edit only for the reviewed exact disc image."
+    }
+  ],
+  "replaces_callback": true
+}
