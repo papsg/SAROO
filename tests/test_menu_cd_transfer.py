@@ -80,7 +80,7 @@ class MenuCDTransferTests(unittest.TestCase):
     def test_reader_propagates_all_command_failures(self):
         self.scenario('errors')
 
-    def test_reader_rejects_invalid_completion_counts(self):
+    def test_reader_accepts_only_bounded_completion_counts(self):
         self.scenario('counts')
 
     def test_reader_admission_and_size_arithmetic(self):

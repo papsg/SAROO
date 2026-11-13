@@ -355,10 +355,12 @@ static void sector(unsigned index, unsigned bytes, int failure, int error, unsig
     if(failure==5) return;
     expect(0x0600, failure==6 ? error : 0,reported_words);
 }
-static void read_script(unsigned size, unsigned wire_bytes)
+static void read_script(unsigned size, unsigned wire_bytes, unsigned final_words)
 {
     setup(size,-1,0);
-    for(unsigned i=0;i<(size+2047)/2048;++i) sector(i,wire_bytes,-1,0,wire_bytes/2);
+    unsigned sectors=(size+2047)/2048;
+    for(unsigned i=0;i<sectors;++i)
+        sector(i,wire_bytes,-1,0,i+1==sectors ? final_words : wire_bytes/2);
 }
 static void test_read(void)
 {
@@ -367,7 +369,7 @@ static void test_read(void)
     for(unsigned k=0;k<sizeof sizes/sizeof *sizes;++k) {
         unsigned size=sizes[k],prefix=32+alignment,wire=form ? 2324 : 2048;
         u8 *buffer=malloc(prefix+size+32); assert(buffer);
-        memset(buffer,0xcc,prefix+size+32);reset();read_script(size,wire);
+        memset(buffer,0xcc,prefix+size+32);reset();read_script(size,wire,wire/2);
         assert(cdc_read_sector(play_fad,size,buffer+prefix)==(int)size);
         assert(next==used && !timer_reads);
         for(unsigned i=0;i<size;++i) assert(buffer[prefix+i]==stream[(i/2048)*wire+i%2048]);
@@ -389,11 +391,25 @@ static void test_errors(void)
 }
 static void test_counts(void)
 {
-    const unsigned counts[]={0,1,1023,1025,1161,1163,65535,0x010400,0xffffff};
-    u8 buffer[32];
-    for(unsigned i=0;i<sizeof counts/sizeof *counts;++i) {
-        reset();setup(3,-1,0);sector(0,2048,-1,0,counts[i]);
-        assert(cdc_read_sector(play_fad,3,buffer)==-1 && next==used);
+    const unsigned sizes[]={1,2,3,127,2047,2048,2049,4097};
+    u8 buffer[4098];
+    for (unsigned i=0;i<sizeof sizes/sizeof *sizes;i++) {
+        unsigned size=sizes[i];
+        unsigned last=(size-1)%2048+1;
+        unsigned consumed=(last+1)/2;
+        const unsigned accepted[]={consumed,consumed+1,1024,1025,1161,1162};
+        const unsigned rejected[]={0,consumed-1,1163,65535,0x010400,0xffffff};
+        for (unsigned j=0;j<sizeof accepted/sizeof *accepted;j++) {
+            reset();memset(buffer,0xcc,sizeof buffer);read_script(size,2048,accepted[j]);
+            assert(cdc_read_sector(play_fad,size,buffer)==(int)size && next==used);
+            assert(!memcmp(buffer,stream,size) && buffer[size]==0xcc);
+            assert(read_words==(size+1)/2);
+        }
+        for (unsigned j=0;j<sizeof rejected/sizeof *rejected;j++) {
+            reset();memset(buffer,0xcc,sizeof buffer);read_script(size,2048,rejected[j]);
+            assert(cdc_read_sector(play_fad,size,buffer)==-1 && next==used);
+            assert(buffer[size]==0xcc && read_words==(size+1)/2);
+        }
     }
 }
 static void test_admission(void)
@@ -442,7 +458,7 @@ static void test_hooks(void)
     memset(hook_ram,0xa5,sizeof hook_ram);memset(hook_game,0xcc,sizeof hook_game);
     KAITEI_DAISENSOU_handle2();
     for(unsigned i=0;i<sizeof hook_game;++i) assert(hook_game[i]==0xcc);
-    reset();read_script(sizeof hook_ram,2048);KAITEI_DAISENSOU_handle1();
+    reset();read_script(sizeof hook_ram,2048,896);KAITEI_DAISENSOU_handle1();
     assert(next==used);KAITEI_DAISENSOU_handle2();
     assert(!memcmp(hook_game,stream,sizeof hook_game));
     /* A successfully cached preload remains reusable within this session. */
@@ -453,7 +469,7 @@ static void test_hooks(void)
     assert(hook_install[1]==(u32)(uintptr_t)KAITEI_DAISENSOU_handle2);
     memset(hook_game,0xcc,sizeof hook_game);KAITEI_DAISENSOU_handle2();
     for(unsigned i=0;i<sizeof hook_game;++i) assert(hook_game[i]==0xcc);
-    reset();read_script(sizeof hook_ram,2048);KAITEI_DAISENSOU_handle1();
+    reset();read_script(sizeof hook_ram,2048,1024);KAITEI_DAISENSOU_handle1();
     assert(next==used);
     for(int stage=0;stage<7;++stage) {
         memset(hook_game,0xcc,sizeof hook_game);reset();setup(sizeof hook_ram,stage,-3);

@@ -920,9 +920,9 @@ int cdc_read_sector(int fad, int size, u8 *buf)
         cdc_trans_data(buf, bytes);
         result = cdc_end_trans(&words);
         if (result) return result;
-        /* SAROO reports the entire sector in size mode zero, including
-         * the remainder of a partially consumed final sector. */
-        if (words != 1024 && words != 1162) return -1;
+        /* DataEnd may include read-ahead. Require the consumed words and
+         * cap the count at the 2,324-byte Form 2 limit for size mode zero. */
+        if (words < (bytes + 1)/2 || words > 1162) return -1;
         buf += bytes;
         remaining -= bytes;
     }

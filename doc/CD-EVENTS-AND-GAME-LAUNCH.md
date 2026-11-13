@@ -77,6 +77,33 @@ bits and optional output on failure, success, and arrival of DRDY during
 cleanup. The SH-2 menu retains 80,852 code/data and 9,244 BSS bytes.
 Physical interrupt timing and recovery remain unqualified.
 
+## Accept valid completion counts on partial sector reads
+
+SATURN-CD-004, adapted from paps-g `482d27d8`. The menu copies just
+the requested bytes from the final sector. It used to reject any
+DataEnd count other than 1,024 or 1,162 words, even after the requested
+bytes had arrived. It now accepts at least the words it consumed
+and at most 1,162. This preserves the odd-byte tail and the original
+setup, transfer and DataEnd errors.
+
+[Sega ST-162-062094 §8.2.1, function 1.10, printed p. 81](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=69)
+allows a CD block to report read-ahead on an interrupted transfer.
+[§8.2.7, function 7.1, printed p. 95](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83)
+defines the 2,048-byte and 2,324-byte payloads in size mode zero.
+The public MCU already reports the words it produced.
+[MCU producer-count verification](CD-READ-SAFETY.md#mcu-cdc-012-cd-produced-read-counts-and-pending-windows).
+
+With `SAROO_MENU_CD_SOURCE` set to the parent's `Firm_Saturn`,
+select `-k bounded_completion` in `test_menu_cd_transfer.py` to
+reproduce a valid copied read being rejected. The fixture covers
+96 accepted and rejected count cases, destination bounds, and the
+existing Kaitei Daisensou music preload with its 896-word final
+reply. All 143 focused menu and peripheral methods and 70 optimized
+CD menu methods pass. The stock menu still links with 85,244
+code/data bytes and 19,956 bytes of body margin, and passes the
+linked clock tail and 48 ROM clock cases. Physical playback has
+not been verified for this port.
+
 ## Signal sector-read completion at DataEnd
 
 Adapted from paps-g `35cf0b88` (MCU-CDC-019). The MCU used to return
