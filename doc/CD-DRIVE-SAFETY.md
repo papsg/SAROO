@@ -382,3 +382,29 @@ reply word, the retained state, tray-close refusals, and valid
 PAUSE, PLAY and REJECT controls. The GNU App uses 65,244 load bytes,
 with 292 bytes of ITCM free. Physical report timing and MDK are
 unqualified.
+
+## Preserve raw Mode 1 image sectors and CD audio length
+
+MCU-CDC-R11 and MCU-CDC-R13, adapted from paps-g `7d543dac`.
+The image-to-partition path retains all 2,352 source bytes for raw
+Mode 1. Two layout bits in the existing block-size field identify
+raw Mode 1 and audio without expanding the sector pool. The
+2,048-byte read and directory paths take Mode 1 user data at
+offset 16. Wider reads use the selected header or full-sector
+range. The audio marker keeps sample bytes resembling an XA
+header from changing a 2,048-byte read to 2,324 bytes.
+
+Sega documents these layouts, widths and size calculations in
+[ST-162 §5.4, printed p. 48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
+and [§8.2.7, printed p. 95](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=83).
+The older shifted Mode 1 layout appears in [the v0.8 baseline](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_cdc.c).
+
+Run `make -C tests check-cdc-command-buffer`. The regression
+compares every FIFO word for all four read lengths using a mixed
+Mode 1, CD audio and XA list through direct, copy and move paths.
+It also checks that the directory parser uses the original Mode 1
+payload. The parent fails the sector-byte and audio-size checks.
+The GNU App uses 65,260 load bytes, with 276 bytes of ITCM free.
+This checkpoint covers sectors from mounted images. Host PUT
+normalization, cooked-image raw-field synthesis, playback timing
+and MDK are outside its verification.

@@ -29,6 +29,8 @@ class CDBoundsTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'detach_sector_range(',b'free_block_list(',b'disconnect_filter_input(')))
         code=function(b'static int sector_transfer_size(') if b'static int sector_transfer_size(' in raw else b''
+        if b'static inline u8 *sector_read_data(' in raw:
+            code = function(b'static inline u8 *sector_read_data(') + code
         file_fifo = b'static __attribute__((noinline)) void fill_file_info_fifo('
         if file_fifo in raw:
             code += bswap_source(header, b'') + function(file_fifo)

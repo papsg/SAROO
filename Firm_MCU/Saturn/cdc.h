@@ -146,6 +146,10 @@
 /* Internal XA-presence bit; mask it from file-information replies. */
 #define FILE_ATTR_XA 0x01
 
+/* Buffered image layouts. Sector lengths fit below these bits. */
+#define BLOCK_RAW_MODE1 0x1000
+#define BLOCK_AUDIO     0x2000
+
 typedef struct BLOCK_T
 {
 	s32 size;

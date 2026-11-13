@@ -27,6 +27,8 @@ class CDPutTests(unittest.TestCase):
         (cls.target/'copy.inc').write_bytes(copy_source(raw,required=(b'sector_destination(',b'disconnect_filter_input(',b'free_block_list(')))
         code=b''.join(function(raw,sig) for sig in (b'void free_partition(',b'int reset_filter(',b'int set_cdev_connect(',b'int set_filter_connection(',b'void trans_handle(',b'int put_sector_data(',b'int end_trans('))
         if b'static int sector_transfer_size(' in raw:code=function(raw,b'static int sector_transfer_size(')+code
+        if b'static inline u8 *sector_read_data(' in raw:
+            code = function(raw, b'static inline u8 *sector_read_data(') + code
         init=function(main,b'void ss_sw_init(')
         for old,new in {b'(u8*)(0x2400a000+i*2352)':b'sector_bytes[i]',b'(u8*)0x2400a000+MAX_BLOCKS*2352':b'startup_info'}.items():
             assert init.count(old)==1,old

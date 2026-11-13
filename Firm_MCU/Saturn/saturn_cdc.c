@@ -226,10 +226,19 @@ static int sector_range(PARTITION *part, int *start, int *count)
            *count <= part->numblocks-*start;
 }
 
+/* ST-162 §5.4. Mode 1 user data follows the four-byte header. */
+static inline u8 *sector_read_data(const BLOCK *block, unsigned length)
+{
+    if (length == 2048)
+        return block->data + (block->size & BLOCK_RAW_MODE1 ? 16 : 24);
+    return block->data + (2352 - length);
+}
+
 /* Keep calculation and both FIFO producers on the same selected-length rule. */
 static int sector_transfer_size(const BLOCK *block)
 {
-    if (cdb.sector_size == 2048 && block->data[15] == 2 &&
+    if (cdb.sector_size == 2048 && !(block->size & BLOCK_AUDIO) &&
+        block->data[15] == 2 &&
         (block->data[18] & 0x20)) return 2324;
     return cdb.sector_size;
 }
@@ -248,15 +257,7 @@ void trans_start(void)
         BLOCK *bt = cdb.trans_block;
         cdb.trans_bk = 0;
 
-		if(cdb.sector_size==2352){
-			dp = bt->data;
-		}else if(cdb.sector_size==2340){
-			dp = bt->data+12;
-		}else if(cdb.sector_size==2336){
-			dp = bt->data+16;
-		}else{
-			dp = bt->data+24;
-		}
+		dp = sector_read_data(bt, cdb.sector_size);
 
 		cdb.trans_size = sector_transfer_size(bt);
 
@@ -346,18 +347,8 @@ void trans_handle(void)
 			ST_CTRL &= ~STIRQ_DAT;
 		}else{
 			BLOCK *bt = cdb.trans_block->next;
-			u8 *dp;
+			u8 *dp = sector_read_data(bt, cdb.sector_size);
 			int stat;
-
-			if(cdb.sector_size==2352){
-				dp = bt->data;
-			}else if(cdb.sector_size==2340){
-				dp = bt->data+12;
-			}else if(cdb.sector_size==2336){
-				dp = bt->data+16;
-			}else{
-				dp = bt->data+24;
-			}
 
 			cdb.trans_size = sector_transfer_size(bt);
 
@@ -504,18 +495,10 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
         memset(blk->data+2348, 0, 4);
         blk->size = 2324;
 	}else if(wblk->size==2352){
-		if(track->mode==3 || wblk->data[15]==2){
-			// MODE2 or AUDIO
-			memcpy32(blk->data, wblk->data, 2352);
-			if(wblk->sm & 0x20){
-				blk->size = 2324;
-			}
-		}else{
-			// MODE1
-			memcpy32(blk->data, wblk->data, 16);
-			memset(blk->data+16, 0, 8);
-			memcpy32(blk->data+24, wblk->data+16, 2048);
-		}
+		memcpy32(blk->data, wblk->data, 2352);
+		if (track->mode == 3) blk->size |= BLOCK_AUDIO;
+		else if (wblk->data[15] != 2) blk->size |= BLOCK_RAW_MODE1;
+		else if (wblk->sm & 0x20) blk->size = 2324;
 	}
 
 	irqs = disable_irq();
@@ -1896,7 +1879,7 @@ int handle_diread(void)
     disconnect_partition_output(pt);
     unlink_block(pt, NULL, blk);
     restore_irq(irqs);
-    const u8 *buf = blk->data+24;
+    const u8 *buf = sector_read_data(blk, 2048);
     int result = -1;
     if (cdb.rdir_state == 1) {
         FILE_INFO root;

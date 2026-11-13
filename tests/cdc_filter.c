@@ -104,6 +104,8 @@ static void delivered(unsigned partition,unsigned count,unsigned format)
     assert(cdb.last_buffer==partition && cdb.block_free==(int)(MAX_BLOCKS-count));
     PARTITION *p=&cdb.part[partition]; BLOCK *b=p->head;
     unsigned size=format==3?2324:2048;
+    if (format == 1) size |= BLOCK_RAW_MODE1;
+    if (format == 4) size |= BLOCK_AUDIO;
     assert(p->numblocks==(int)count);
     for(unsigned i=0;i<count;i++) {
         assert(b && b->fad==sector.fad && b->fn==sector.fn && b->cn==sector.cn);
@@ -111,10 +113,6 @@ static void delivered(unsigned partition,unsigned count,unsigned format)
         if(format==0) {
             for(unsigned j=0;j<24;j++) assert(!b->data[j]);
             assert(!memcmp(b->data+24,incoming,2048));
-        } else if(format==1) {
-            assert(!memcmp(b->data,incoming,16));
-            for(unsigned j=16;j<24;j++) assert(!b->data[j]);
-            assert(!memcmp(b->data+24,incoming+16,2048));
         } else assert(!memcmp(b->data,incoming,2352));
         b=b->next;
     }
@@ -227,7 +225,7 @@ int main(int argc,char **argv)
             }
             BLOCK *b=cdb.part[17].head;
             for(unsigned n=0;n<4;n++,b=b->next) {
-                unsigned offset=format==0?124:format==1?108:100;
+                unsigned offset=format==0?124:100;
                 assert(b && b->fad==250+n && b->data[offset]==n);
             }
             assert(!b); owners();

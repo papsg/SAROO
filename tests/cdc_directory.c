@@ -152,6 +152,85 @@ static void descriptors(void)
         assert(cdb.block_free==200);
     }
 }
+
+static void raw_mode1_descriptor(void)
+{
+    setup(0, 200);
+    cdb.cr3 = 5 << 8 | 255;
+    cdb.cr4 = 65535;
+    assert(change_dir() == 0 && cdb.rdir_state == 1 && cdb.dir_filter == 5);
+    _Alignas(4) u8 raw[2352] = {0};
+    raw[15] = 1;
+    u8 *data = raw + 16;
+    data[0] = 1;
+    memcpy(data + 1, "CD001", 5);
+    data[6] = 1;
+    data[129] = 8;
+    record(data + 156, 0, 34);
+    le32(data + 158, 100);
+    le32(data + 166, 4096);
+    cdb.play_track = &directory_track;
+    BLOCK w = {.data = raw, .size = sizeof raw, .fad = cdb.fad};
+    assert(dispatch(w) == 2 && cdb.rdir_state == 2 && cdb.fad == 250);
+    assert(cdb.root_lba == 100 && cdb.root_size == 4096 && cdb.block_free == MAX_BLOCKS);
+    assert(!memcmp(sector_bytes[0], raw, sizeof raw));
+    check_owners();
+}
+
+static void raw_image_fifo(unsigned first)
+{
+    const unsigned lengths[] = {2048, 2336, 2340, 2352};
+    TRACK_INFO tracks[3] = {{.mode = 1}, {.mode = 3}, {.mode = 2}};
+    _Alignas(4) u8 raw[3][2352];
+    for (unsigned n = 0; n < 3; ++n) {
+        for (unsigned i = 0; i < sizeof raw[n]; ++i)
+            raw[n][i] = (u8)(i * 11 + i / 17 + 43 * n);
+        raw[n][15] = n ? 2 : 1;
+        raw[n][18] = 0x20; /* Valid XA on data track, sample bytes on audio. */
+    }
+    for (unsigned l = 0; l < sizeof lengths / sizeof *lengths; ++l) {
+        unsigned length = lengths[l];
+        seed(0, 0);
+        cdb.sector_size = length;
+        cdb.filter[0].c_true = 0;
+        unsigned total = 0;
+        for (unsigned i = 0; i < 3; ++i) {
+            unsigned n = (i + first) % 3;
+            BLOCK w = {.data = raw[n], .size = sizeof raw[n], .fad = 150 + i,
+                       .sm = n == 2 ? 0x20 : 0};
+            assert(filter_sector(&tracks[n], &w) == 0);
+            total += length == 2048 && n == 2 ? 2324 : length;
+        }
+        unsigned selector = 0;
+        if (first) {
+            selector = 4;
+            command(first == 2, 0, selector, 0, 3);
+            assert(execute(first == 2) == HIRQ_ECPY);
+            assert(cdb.part[selector].numblocks == 3);
+        }
+        cdb.cr2 = 0;
+        cdb.cr3 = selector << 8;
+        cdb.cr4 = 3;
+        assert(cal_actual_size() == HIRQ_ESEL);
+        size_reply(total / 2);
+        assert(get_sector_data() == HIRQ_DRDY);
+        for (unsigned i = 0; i < 3; ++i) trans_handle();
+        assert(cdb.trans_finish && fifo_words == total / 2 && cdb.cdwnum == (int)total);
+        unsigned pos = 0;
+        for (unsigned i = 0; i < 3; ++i) {
+            unsigned n = (i + first) % 3;
+            unsigned offset = length == 2048 ? (n == 0 ? 16 : 24) : 2352 - length;
+            unsigned bytes = length == 2048 && n == 2 ? 2324 : length;
+            const u8 *data = raw[n] + offset;
+            for (unsigned b = 0; b < bytes; b += 2)
+                assert(fifo_output[pos++] == (data[b] | ((u16)data[b + 1] << 8)));
+        }
+        assert(pos == fifo_words && end_trans() == HIRQ_EHST);
+        assert((((unsigned)(reply[0] & 255) << 16) | reply[1]) == total / 2);
+        check_owners();
+    }
+}
+
 static void check_file_words(unsigned first, const u8 expected[12])
 {
     for (unsigned k = 0; k < 6; ++k)
@@ -371,6 +450,8 @@ int main(int argc,char **argv)
     case 4:queries();break;case 5:file_reads();break;case 6:aborts();break;case 7:preemption();break;
     case 8:pauses();break;case 9:logging();break;case 10:span_controls();break;
     case 11:directory_startup();break;
+    case 12:raw_mode1_descriptor();break;
+    case 13:raw_image_fifo(0);raw_image_fifo(1);raw_image_fifo(2);break;
     default:abort();}
 #ifdef TEST_AXI_FILE_INFO
     if (cdb.fi == directory_memory.table)
