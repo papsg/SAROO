@@ -98,6 +98,11 @@ void vdp_init(void)
 
 	// Disable VDP1
 	VDP1_REG_PTMR = 0;
+	/* PTMR stops future starts. Let forced termination settle before
+	 * reusing command RAM, with a fixed number of status reads. */
+	VDP1_REG_ENDR = 0;
+	for (unsigned settle = 64; settle; --settle)
+		(void)VDP1_REG_EDSR;
 	*((volatile u16 *)(VDP1_RAM)) = 0x8000;
 	VDP1_REG_FBCR = 0x0000;
  	VDP1_REG_TVMR = 0x0000;

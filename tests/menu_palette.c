@@ -20,6 +20,8 @@ static u16 vdp1_ram[2];
 #undef VDP1_REG_EWDR
 #undef VDP1_REG_EWLR
 #undef VDP1_REG_EWRR
+#undef VDP1_REG_ENDR
+#undef VDP1_REG_EDSR
 #undef VDP1_RAM
 static volatile u16 VDP1_REG_PTMR, VDP1_REG_FBCR, VDP1_REG_TVMR;
 static volatile u16 VDP1_REG_EWDR, VDP1_REG_EWLR, VDP1_REG_EWRR;
@@ -29,7 +31,35 @@ static volatile u16 VDP1_REG_EWDR, VDP1_REG_EWLR, VDP1_REG_EWRR;
 #define VDP2_VRAM ((uintptr_t)vram.data)
 #define VDP2_CRAM ((uintptr_t)cram.data)
 #define VDP2_REGISTER_BASE ((uintptr_t)registers)
-#define VDP1_RAM ((uintptr_t)vdp1_ram)
+static int check_vdp1_stop;
+static unsigned end_writes, settle_reads;
+static volatile u16 end_register, draw_status;
+
+static volatile u16 *force_end_register(void)
+{
+    assert(VDP1_REG_PTMR == 0);
+    assert(!end_writes && !settle_reads && vdp1_ram[0] == 0x1234);
+    ++end_writes;
+    return &end_register;
+}
+
+static u16 read_draw_status(void)
+{
+    assert(end_writes == 1 && end_register == 0 && vdp1_ram[0] == 0x1234);
+    ++settle_reads;
+    return draw_status;
+}
+
+static u16 *command_ram(void)
+{
+    if (check_vdp1_stop)
+        assert(end_writes == 1 && settle_reads == 64);
+    return vdp1_ram;
+}
+
+#define VDP1_REG_ENDR (*force_end_register())
+#define VDP1_REG_EDSR read_draw_status()
+#define VDP1_RAM ((uintptr_t)command_ram())
 
 static unsigned scanline, samples, enable_writes, irq_locks, status_register;
 static unsigned fbtest_calls;
@@ -125,6 +155,10 @@ static void seed(int logo)
     vram.before = cram.before = 0x12345678;
     vram.after = cram.after = 0x87654321;
     vdp1_ram[0] = vdp1_ram[1] = 0x1234;
+    check_vdp1_stop = 0;
+    end_writes = settle_reads = 0;
+    end_register = 0xffff;
+    draw_status = 0;
     if (logo) {
         *(u16 *)(VDP2_VRAM + 0x848) = 13;
         *(u16 *)(VDP2_VRAM + 0x84c) = 13;
@@ -172,6 +206,20 @@ static void erase_bounds(void)
         assert(VDP1_REG_PTMR == 0 && VDP1_REG_FBCR == 0 && VDP1_REG_TVMR == 0);
         assert(VDP1_REG_EWDR == 0 && VDP1_REG_EWLR == 0);
         assert(VDP1_REG_EWRR == 0x0200);
+        assert(vdp1_ram[0] == 0x8000 && vdp1_ram[1] == 0x1234);
+        guards();
+    }
+}
+
+static void stop_drawing(void)
+{
+    for (unsigned status = 0; status < 4; ++status) {
+        seed(status & 1);
+        check_vdp1_stop = 1;
+        VDP1_REG_PTMR = 1;
+        draw_status = status;
+        vdp_init();
+        assert(end_register == 0 && end_writes == 1 && settle_reads == 64);
         assert(vdp1_ram[0] == 0x8000 && vdp1_ram[1] == 0x1234);
         guards();
     }
@@ -313,6 +361,7 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "startup")) startup(0);
     else if (!strcmp(argv[1], "startup-logo")) startup(1);
     else if (!strcmp(argv[1], "erase-bounds")) erase_bounds();
+    else if (!strcmp(argv[1], "stop-drawing")) stop_drawing();
     else if (!strcmp(argv[1], "vram-cycles")) vram_cycles();
     else if (!strcmp(argv[1], "logo")) logo_only();
     else if (!strcmp(argv[1], "cover")) cover_bank();

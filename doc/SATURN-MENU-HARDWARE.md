@@ -219,3 +219,27 @@ and pass all 48 linked checks. The historical private Astal trial reached
 the BIOS player after two reset combinations. Hardware behavior of this
 public build and timeout recovery after the BIOS clock change remain
 unqualified.
+
+## Stop the active VDP1 draw before replacing command RAM
+
+SATURN-VDP1-003, adapted from paps-g `99806a35`. A change to PTMR
+prevents the next automatic draw start. A draw already in flight can
+continue reading the old command table. Menu initialization now writes
+zero to ENDR, performs 64 serialized reads of EDSR, then replaces the
+first command with draw-end. The fixed read count allows the documented
+termination interval to elapse without waiting for a particular
+completion flag.
+
+[Sega VDP1 User's Manual ST-013-R3-061694, §4.3, printed p. 45](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf#page=60)
+defines when the trigger change takes effect. [§4.5, printed p. 51](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf#page=66)
+specifies zero for ENDR and approximately 30 VDP1 clocks for termination.
+
+The [palette fixture](#initialize-the-vdp1-erase-rectangle) checks the
+actual register and RAM access order across four starting EDSR values,
+with cold and logo paths. The parent reaches the command RAM write
+without terminating the draw and passes the other ten methods. Both
+port profiles pass all eleven methods. Ten adjacent VDP1 handoff and
+SCU DMA methods and 48 linked ROM clock cases pass. The SH-2 menu adds
+32 code/data bytes, reaching 85,012. The linked sequence contains the
+word store, 64-read loop and command replacement. Physical settling
+and output behavior remain unqualified.
