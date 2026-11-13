@@ -126,6 +126,14 @@ class SDSafetyTests(unittest.TestCase):
                 with self.subTest(legacy=legacy, position=position):
                     self.invoke('ready', legacy, position)
 
+    def test_interface_echo_must_match_the_requested_voltage_and_pattern(self):
+        for echo in (0, 0x1ab, 0x0aa, 0x2aa, 0xfaa, 0x1001ab):
+            with self.subTest(echo=echo):
+                self.invoke('interface-echo', 0, echo)
+        for echo in (0x1aa, 0x1001aa):
+            with self.subTest(echo=echo):
+                self.invoke('interface-echo', 1, echo)
+
     def test_not_ready_retries_are_bounded_including_tick_wrap(self):
         for wrap in (0, 1):
             with self.subTest(wrap=wrap):

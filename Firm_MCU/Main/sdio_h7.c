@@ -412,6 +412,8 @@ int sdcard_identify(void)
 	osDelay(10);
 
 	retv = sd_cmd(CMD_08, 0x000001aa);
+	/* R7 echoes the requested voltage and the eight-bit check pattern. */
+	if (!retv && (cmd_resp[0] & 0xfffu) != 0x1aau) return -1;
 	if(retv)
 		hcs = 0;
 	else

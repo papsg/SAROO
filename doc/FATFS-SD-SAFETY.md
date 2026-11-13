@@ -277,3 +277,21 @@ The GNU App uses 65,184 load bytes, with 352 bytes of ITCM free
 and a 50,736-byte DTCM data and BSS span. Removal and reinsertion
 entirely between samples, cloned CIDs, interrupted physical writes
 and MDK remain unqualified.
+
+## Check the SD interface-condition echo before initialization
+
+MCU-SD-009, adapted from paps-g `8e5ea8ce`. A completed CMD8 must
+echo both the requested voltage code and the eight-bit pattern.
+Reject a mismatch before issuing CMD55 or ACMD41. The reserved
+upper response bits are outside the echo comparison.
+
+[SD Physical Layer Simplified Specification 3.01, §4.3.13, printed p. 51](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=63)
+defines the request and R7 echo.
+
+Run `make -C tests check-mcu-diskio`. To reproduce the defect,
+point `SAROO_SD_SOURCE` at the parent's driver and select
+`interface_echo` in `test_sd_safety.py`. The parent accepts six
+mismatches. The corrected build also accepts both valid echoes,
+including the control with a reserved upper bit set. Both
+48-method disk profiles pass. The GNU App uses 65,424 load bytes,
+with 112 bytes free. Physical negotiation and MDK remain unqualified.

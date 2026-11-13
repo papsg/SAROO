@@ -48,6 +48,7 @@ static u8 sd_known;
 #endif
 static struct {
     u32 tick, first_tick, last_tick, ready_after, prefix_ticks, command_ticks;
+    u32 cmd8_echo;
     unsigned prefixes, requests, retry_delays, post_ready;
     unsigned fail_prefix, fail_request;
     int active, legacy;
@@ -90,7 +91,10 @@ static osStatus_t identify_completion(void)
     SDIO->RESP1 = 0;
     if (command == 0 || command == 8) {
         assert(!identify.prefixes && argument == (command ? 0x1aau : 0));
-        if (command == 8 && identify.legacy) SDIO->STA |= SDMMC_STA_CTIMEOUT;
+        if (command == 8) {
+            SDIO->RESP1 = identify.cmd8_echo;
+            if (identify.legacy) SDIO->STA |= SDMMC_STA_CTIMEOUT;
+        }
         return osOK;
     }
     if (command == 55 && !identify.post_ready) {
@@ -252,6 +256,7 @@ static void check_identification(const char *mode, unsigned shape, int value)
     const u32 initial_clock = SDCLK_LOW | (1u << 16);
     int expect_ready = 0;
     identify.active = 1;
+    identify.cmd8_echo = 0x1aa;
     identify.ready_after = UINT32_MAX;
     SDIO->CLKCR = initial_clock;
 
@@ -326,6 +331,24 @@ static void check_identification(const char *mode, unsigned shape, int value)
            mode, shape, value, identify.requests, elapsed);
 }
 
+static void check_interface_echo(u32 echo, int valid)
+{
+    const u32 initial_clock = SDCLK_LOW | (1u << 16);
+    identify.active = 1;
+    identify.cmd8_echo = echo;
+    SDIO->CLKCR = initial_clock;
+    int result = sdcard_identify();
+    assert(!SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
+    if (valid) {
+        assert(result == 0 && sd_rca == 0x1234 && is_sdhc);
+        assert(identify.prefixes == 1 && identify.requests == 1 && identify.post_ready == 8);
+    } else {
+        assert(result && !sd_rca && !is_sdhc);
+        assert(!identify.prefixes && !identify.requests && !identify.post_ready);
+        assert(SDIO->CLKCR == initial_clock);
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -336,6 +359,8 @@ int main(int argc, char **argv)
         !strcmp(mode, "hardware") || !strcmp(mode, "no-crc") ||
         !strcmp(mode, "card-error") || !strcmp(mode, "card-ok"))
         check_command(mode, shape, value);
+    else if (!strcmp(mode, "interface-echo"))
+        check_interface_echo((u32)value, shape);
     else
         check_identification(mode, shape, value);
     return 0;
