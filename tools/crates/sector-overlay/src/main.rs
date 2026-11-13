@@ -35,6 +35,8 @@ struct Recipe {
     guards: Vec<GuardSource>,
     #[serde(default)]
     replaces_callback: bool,
+    #[serde(default)]
+    cart_mode: u8,
 }
 
 #[derive(Deserialize)]
@@ -143,7 +145,11 @@ fn check_text(fields: &[&str]) -> Result<()> {
 }
 
 fn targets(recipe: &Recipe) -> Result<Targets> {
-    if recipe.abi != 2 || recipe.writes.is_empty() || recipe.writes.len() > MAX_RECORDS * 4 {
+    if recipe.abi != 2
+        || recipe.writes.is_empty()
+        || recipe.writes.len() > MAX_RECORDS * 4
+        || !matches!(recipe.cart_mode, 0 | 1 | 4)
+    {
         return fail("Unsupported recipe ABI or write count");
     }
     check_text(&[
@@ -308,7 +314,7 @@ fn compile(
         2
     };
     pack[5] = targets.len() as u8;
-    pack[7] = if recipe.replaces_callback { 0x80 } else { 0 };
+    pack[7] = recipe.cart_mode | if recipe.replaces_callback { 0x80 } else { 0 };
     pack[8..18].copy_from_slice(&product);
     pack[18..20].copy_from_slice(&(size as u16).to_be_bytes());
     for ((fad, edits), record) in targets

@@ -41,6 +41,14 @@ CASES = {
     'super-real-mahjong-p7-jp': (24, 0x06010000, 541236, 'srmp7_patch'),
     'tamagotchi-park-jp': (25, 0x06010000, 214588, 'Tamagotchi_Park_patch'),
     'whizz-eu': (0, 0x06002000, 6144, 'WHIZZ_patch'),
+    'fighters-history-dynamite-jp': (24, 0x06050000, 66624, 'FIGHTERS_HISTORY_patch'),
+    'kof96-jp': (35, 0x06010000, 447884, 'kof96_patch'),
+    'metal-slug-reva-jp': (26, 0x06029500, 540800, 'Metal_Slug_A_patch'),
+    'real-bout-jp': (31, 0x06020000, 502156, 'REAL_BOUT_patch'),
+    'real-bout-special-jp-v1001': (29701, 0x06033800, 589824, 'REAL_BOUT_SP_v1_patch'),
+    'real-bout-special-jp-v1002': (29701, 0x06033800, 589824, 'REAL_BOUT_SP_v2_patch'),
+    'samurai-spirits-3-jp': (33, 0x0600A000, 559004, 'smrsp3_patch'),
+    'samurai-spirits-4-jp': (36, 0x06016000, 519696, 'smrsp4_patch'),
 }
 
 

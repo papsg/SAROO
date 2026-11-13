@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "T-3119G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Real Bout Garou Densetsu Special (Japan): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and carry the matching upstream instruction edits into the disc read.",
+  "rationale": "The original menu callback selected 1 MB cartridge mode and changed these loaded instructions. The bounded launch action is published only after the same pack passes sector preflight. This preserves both operations without changing the original image.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "4fe77c5cba27b093e2a565333ad90c2e7463a06dcaadc47d365c8aead472b8f5"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 30038,
+      "offset": 532,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Apply the original REAL_BOUT_SP_v1_patch instruction edit at 06091204.",
+      "reason": "Preserve the matching built-in compatibility edit before the game loads this sector."
+    }
+  ],
+  "replaces_callback": true
+}

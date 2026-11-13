@@ -485,9 +485,18 @@ static void read_1st(void)
 	go();
 
 	/* SYSINFO is little-endian and shared with the MCU. */
-	int replace = disc_type == 0 &&
-	              REG32(SYSINFO_ADDR + 0x38) == __builtin_bswap32(SD_OVERLAY_REPLACEMENT);
-	patch_game((char*)0x06002020, replace);
+	u32 action = disc_type == 0 ? __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38)) : 0;
+	switch(action) {
+	case SD_OVERLAY_REPLACEMENT:
+	case SD_OVERLAY_TAG | 1:
+	case SD_OVERLAY_TAG | 4:
+	case SD_OVERLAY_REPLACEMENT | 1:
+	case SD_OVERLAY_REPLACEMENT | 4:
+		break;
+	default:
+		action = 0;
+	}
+	patch_game((char*)0x06002020, !!(action & 0x80), action & 0x7f);
 	if(need_bup){
 		*(u32*)(0x06000358) = (u32)bup_init;
 		*(u32*)(0x0600026c) = (u32)my_cdplayer;

@@ -310,6 +310,27 @@ class SectorOverlayTests(unittest.TestCase):
         expected.write_bytes(original.read_bytes())
         self.run_decoder('guard', self.output_pack, original, expected, '1')
 
+    def test_only_supported_cartridge_actions_are_compiled_and_decoded(self):
+        for mode in (0, 1, 4):
+            for replace in (False, True):
+                with self.subTest(mode=mode, replace=replace):
+                    self.recipe['cart_mode'] = mode
+                    self.recipe['replaces_callback'] = replace
+                    self.compile()
+                    pack = self.output_pack.read_bytes()
+                    self.assertEqual(pack[7], mode | (0x80 if replace else 0))
+                    raw, edited = self.path / 'original', self.path / 'expected'
+                    raw.write_bytes(self.last)
+                    value = bytearray(self.last)
+                    value[1057:1059] = b'\xab\x10'
+                    edited.write_bytes(canonical(value))
+                    self.run_decoder('apply', self.output_pack, raw, edited)
+                    self.output_pack.unlink()
+        for mode in (-1, 2, 3, 5, 255, 256, True, '1'):
+            self.recipe['cart_mode'] = mode
+            self.compile(False)
+            self.assertFalse(self.output_pack.exists())
+
     def test_bundle_compiles_each_source_and_preserves_original_sector_guards(self):
         second = self.path / 'other'
         second.mkdir()
@@ -351,7 +372,7 @@ class SectorOverlayTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.output_pack.exists())
         for field, value in (('replaces_callback', True), ('disc_id', 'T-TEST    V1.000'),
-                             ('product_id', 'WRONG')):
+                             ('product_id', 'WRONG'), ('cart_mode', 4)):
             bad = copy.deepcopy(other)
             bad[field] = value
             other_path.write_text(json.dumps(bad))
@@ -395,3 +416,53 @@ class SectorOverlayTests(unittest.TestCase):
         result = subprocess.run(command, text=True, capture_output=True, timeout=20)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.output_pack.exists())
+
+    def test_real_bout_special_bundle_preserves_the_common_cartridge_action(self):
+        command = [self.tool, 'bundle', self.output_pack]
+        originals, postimages = {}, {}
+        for index, revision in enumerate(('v1001', 'v1002')):
+            recipe = json.loads((ROOT / 'recipes' /
+                                 f'real-bout-special-jp-{revision}-sector.json').read_text())
+            recipe['product_id'] = 'T-TEST'
+            recipe.pop('disc_id', None)
+            path = self.path / revision
+            path.mkdir()
+            fad = recipe['writes'][0]['fad']
+            self.assertTrue(all(w['fad'] == fad for w in recipe['writes']))
+            raw = bytearray(sector(fad, 0x61 + index))
+            for write in recipe['writes']:
+                start = write['offset']
+                data = bytes.fromhex(write['before'])
+                raw[start:start + len(data)] = data
+            raw = canonical(raw)
+            changed = bytearray(raw)
+            for write in recipe['writes']:
+                start = write['offset']
+                data = bytes.fromhex(write['after'])
+                changed[start:start + len(data)] = data
+            originals[zlib.crc32(raw)] = raw
+            postimages[zlib.crc32(raw)] = canonical(changed)
+            (path / 'raw.bin').write_bytes(raw)
+            (path / 'ip.bin').write_bytes(self.first)
+            gap = fad - 151
+            cue = path / 'source.cue'
+            cue.write_text('FILE "ip.bin" BINARY\n  TRACK 01 MODE1/2352\n'
+                           '    INDEX 01 00:00:00\n'
+                           f'    POSTGAP {gap // 4500:02}:{gap // 75 % 60:02}:{gap % 75:02}\n'
+                           'FILE "raw.bin" BINARY\n  TRACK 02 MODE1/2352\n'
+                           '    INDEX 01 00:00:00\n')
+            recipe['tracks'] = [{'number': 2, 'sha256': hashlib.sha256(raw).hexdigest()}]
+            recipe_path = path / 'recipe.json'
+            recipe_path.write_text(json.dumps(recipe))
+            command += [recipe_path, cue]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pack = self.output_pack.read_bytes()
+        self.assertEqual(pack[4:8], bytes([3, 2, 1, 0x81]))
+        for index in range(2):
+            start = HEADER_BYTES + index * RECORD_BYTES
+            crc = int.from_bytes(pack[start + 4:start + 8], 'big')
+            raw, edited = self.path / 'original', self.path / 'expected'
+            raw.write_bytes(originals[crc])
+            edited.write_bytes(postimages[crc])
+            self.run_decoder('apply', self.output_pack, raw, edited, str(index))

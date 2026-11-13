@@ -12,7 +12,8 @@ void sector_overlay_reset_handoff(void)
 
 void sector_overlay_publish_handoff(void)
 {
-    REG(SYSINFO_ADDR + 0x38) = SD_OVERLAY_REPLACEMENT;
+    unsigned action = sector_overlay_action();
+    REG(SYSINFO_ADDR + 0x38) = action ? SD_OVERLAY_TAG | action : 0;
 }
 
 static void overlay_path(char path[28], const char *gameid, size_t id_bytes)

@@ -190,3 +190,37 @@ guarded sibling callbacks, user overrides and physical-disc branch.
 These checks qualify the port's source delivery and memory operations.
 Game execution, physical cache timing and whole-game acceptance require
 separate hardware qualification.
+
+## Recipe cartridge setup
+
+The expansion RAM recipes adapt paps-g `4ac082e1` and preserve the original
+callback's cartridge selection along with its instruction edits. Header byte
+7 uses values 0, 1 and 4 for no action, 1 MB and 4 MB. ABI 3 can combine
+those values with bit `80h` for callback replacement. Other values are refused
+before source delivery. A bundle must use identical actions for every source.
+
+After complete pack admission and successful save selection, the MCU publishes
+`534f5601h` or `534f5604h`, or `534f5681h`/`534f5684h` when the callback
+is also replaced. The menu accepts only these exact values and the existing
+`534f5680h` replacement value on virtual-disc launches. It applies the recipe's
+RAM mode after the callback stage and before explicit user configuration.
+The existing `CS0_RAM1M` and `CS0_RAM4M` settings perform the selection.
+These tags form SAROO's own MCU/menu contract.
+
+Overlay capability 2 advertises cartridge actions. This menu also requests
+overlays from capability 1 firmware, whose decoder refuses action packs.
+An earlier menu, which requests overlays only for capability 1, uses the
+retained callback route with capability 2 firmware. Missing, incompatible
+and rejected packs retain that same fallback. A save or transport failure
+publishes no action. Disc unload and the tray retirement entry clear it.
+Automatic disc changes can retain the selected overlay policy without
+publishing a new startup action.
+
+The public tests cover both RAM settings, replacement and edit-only packs,
+invalid action values, complete source admission, failure cleanup, both
+menu/MCU capability directions and the override order. The Real Bout Special
+two-source bundle checks its shared 1 MB action and both raw postimages.
+All eight recipes match the retained callback's complete memory operations
+and cartridge setting in the host fixture. Physical cartridge timing remains
+unqualified.
+[Original SAROO callbacks and cartridge setup](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).

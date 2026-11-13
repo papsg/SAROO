@@ -41,3 +41,18 @@ Underlying game symptoms are documented only where the retained evidence
 identifies them. Existing Terra Cresta 3D and UMK3 pilot sources remain
 available in this directory.
 [Original SAROO source](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+
+The expansion RAM group adapts paps-g `4ac082e1`. These eight sources select
+1 MB and preserve the corresponding inherited instruction writes. An explicit
+user cartridge configuration takes precedence.
+[Cartridge handoff and pairing](../doc/SD-SECTOR-OVERLAYS.md#recipe-cartridge-setup).
+
+| Recipe | Inherited operation |
+| --- | --- |
+| [Fighter's History Dynamite JP](fighters-history-dynamite-jp-sector.json) | 1 MB and four NOPs. |
+| [KOF '96 JP](kof96-jp-sector.json) | 1 MB and one NOP. |
+| [Metal Slug Rev A JP](metal-slug-reva-jp-sector.json) | 1 MB and one NOP for this revision. |
+| [Real Bout JP](real-bout-jp-sector.json) | 1 MB and two NOPs. |
+| Real Bout Special JP [v1.001](real-bout-special-jp-v1001-sector.json) and [v1.002](real-bout-special-jp-v1002-sector.json) | 1 MB and one NOP per revision. Bundle the two one-sector alternatives under their shared product key. |
+| [Samurai Spirits 3 JP](samurai-spirits-3-jp-sector.json) | 1 MB and two NOPs. |
+| [Samurai Spirits 4 JP](samurai-spirits-4-jp-sector.json) | 1 MB and one NOP. |

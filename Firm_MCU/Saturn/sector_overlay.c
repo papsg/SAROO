@@ -83,7 +83,12 @@ static int nonzero(const uint8_t *bytes, unsigned size)
 
 int sector_overlay_replaces_callback(void)
 {
-    return armed && pack[7] == 0x80;
+    return (sector_overlay_action() & 0x80) != 0;
+}
+
+unsigned sector_overlay_action(void)
+{
+    return armed ? pack[7] : 0;
 }
 
 int sector_overlay_validate(size_t size, const char product[10])
@@ -93,8 +98,9 @@ int sector_overlay_validate(size_t size, const char product[10])
         memcmp(pack, "SSO1", 4) || !pack[5] ||
         pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] > 1 ||
         (pack[6] && pack[5] < 2) ||
-        !((pack[4] >= 1 && pack[4] <= 3) &&
-          (pack[7] == 0 || (pack[4] == 3 && pack[7] == 0x80))) ||
+        pack[4] < 1 || pack[4] > 3 ||
+        ((pack[7] & 0x7f) != 0 && (pack[7] & 0x7f) != 1 && (pack[7] & 0x7f) != 4) ||
+        (pack[7] & 0x80 && pack[4] != 3) ||
         size != SECTOR_OVERLAY_HEADER_BYTES + pack[5] * SECTOR_OVERLAY_RECORD_BYTES ||
         be16(pack + 18) != size || memcmp(pack + 8, product, 10)) return -1;
 

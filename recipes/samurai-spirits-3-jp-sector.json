@@ -1,0 +1,34 @@
+{
+  "abi": 2,
+  "product_id": "T-3104G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Samurai Spirits - Zankurou Musouken (Japan): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and carry the matching upstream instruction edits into the disc read.",
+  "rationale": "The original menu callback selected 1 MB cartridge mode and changed these loaded instructions. The bounded launch action is published only after the same pack passes sector preflight. This preserves both operations without changing the original image.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "5c7609bc6d37b9a5dd3d6e81a657df7048bf974f46306bf83ef69b9b4ffcaf01"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 189,
+      "offset": 424,
+      "before": "2322",
+      "after": "0009",
+      "effect": "Apply the original smrsp3_patch instruction edit at 0600D198.",
+      "reason": "Preserve the matching built-in compatibility edit before the game loads this sector."
+    },
+    {
+      "fad": 344,
+      "offset": 1350,
+      "before": "2012",
+      "after": "0009",
+      "effect": "Apply the original smrsp3_patch instruction edit at 0605AD36.",
+      "reason": "Preserve the matching built-in compatibility edit before the game loads this sector."
+    }
+  ],
+  "replaces_callback": true
+}

@@ -21,12 +21,13 @@ static int clears;
 static int jump_returns;
 static u32 mailbox;
 static u32 overlay_handoff;
+static unsigned cart_writes[8], cart_count;
 static jmp_buf takeover;
 
 #define SYSINFO_ADDR ((uintptr_t)config - 0x100)
 #define MASK_EXMEM 0x3000
-#define CS0_RAM1M 0x1000
-#define CS0_RAM4M 0x2000
+#define CS0_RAM1M 0x2000
+#define CS0_RAM4M 0x3000
 #define REG16(a) (*(u16*)memory_at(a))
 #define REG32(a) (*(u32*)memory_at(a))
 static void *memory_at(uintptr_t address)
@@ -52,7 +53,12 @@ static void *observed_memset(void *dest, int value, size_t bytes)
     ++clears;
     return memset(dest, value, bytes);
 }
-static void ssctrl_set(int mask, int value) { assert(mask == MASK_EXMEM); assert(value == CS0_RAM1M || value == CS0_RAM4M); }
+static void ssctrl_set(int mask, int value)
+{
+    assert(mask == MASK_EXMEM && (value == CS0_RAM1M || value == CS0_RAM4M));
+    assert(cart_count < sizeof(cart_writes) / sizeof(cart_writes[0]));
+    cart_writes[cart_count++] = value;
+}
 static void bup_init(void) { assert(0); }
 static void my_cdplayer(void) { assert(0); }
 static void my_06b0(void) { assert(0); }
@@ -110,6 +116,9 @@ static __attribute__((unused)) u16 *cnc_instruction_at(u32 address)
 }
 
 #include "actual.inc"
+#ifndef SD_OVERLAY_TAG
+#define SD_OVERLAY_TAG 0x534f5600u
+#endif
 
 static const u32 clock_callback = 0x060006b8 + sizeof code_06b8;
 
@@ -137,6 +146,7 @@ static void reset(const char *id, unsigned seed)
     game_break_pc = 0; to_stm32 = gets_from_stm32 = 0; mailbox = 0x76543210;
     disc_type = 0;
     overlay_handoff = 0;
+    cart_count = 0;
 }
 static void finished(void)
 {
@@ -252,6 +262,42 @@ static void shared_id_callbacks(void)
     }
 }
 
+static void cartridge_actions(void)
+{
+    static const u32 tags[] = {
+        SD_OVERLAY_REPLACEMENT, SD_OVERLAY_TAG | 1, SD_OVERLAY_TAG | 4,
+        SD_OVERLAY_REPLACEMENT | 1, SD_OVERLAY_REPLACEMENT | 4,
+        0, SD_OVERLAY_TAG, SD_OVERLAY_TAG | 2, SD_OVERLAY_TAG | 5,
+        SD_OVERLAY_REPLACEMENT | 2, SD_OVERLAY_REPLACEMENT | 5,
+        SD_OVERLAY_REPLACEMENT ^ 0x100, 0x81564f53, 0xffffffff
+    };
+    for(unsigned i = 0; i < sizeof(tags) / sizeof(tags[0]); ++i) {
+        for(unsigned physical = 0; physical < 2; ++physical) {
+            for(unsigned override = 0; override < 3; ++override) {
+                reset("T-7102G", 31);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[i]);
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                int valid = i < 5 && !physical;
+                unsigned mode = valid ? tags[i] & 0x7f : 0;
+                unsigned replacements = valid && (tags[i] & 0x80);
+                assert(others == !replacements);
+                assert(cart_count == (mode != 0) + (override != 0));
+                if(mode) assert(cart_writes[0] == (mode == 1 ? CS0_RAM1M : CS0_RAM4M));
+                if(override)
+                    assert(cart_writes[cart_count - 1] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+            }
+        }
+    }
+    reset("T-7102G", 31);
+    skip_patch = 1;
+    overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT | 1);
+    put32(0, 0x30000004);
+    read_1st(); finished();
+    assert(!cart_count && !others);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -310,12 +356,14 @@ int main(int argc, char **argv)
             for (int valid = 0; valid <= 1; ++valid) {
                 reset("T-7102G", 77);
                 disc_type = type;
-                overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT ^ (valid ? 0 : 1u));
+                overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT ^ (valid ? 0 : 2u));
                 read_1st(); finished();
                 assert(others == (type || !valid) && cfg_reads == 1 && need_bup);
             }
         }
 #endif
+    }else if(!strcmp(mode, "cart-action")){
+        cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
         shared_id_callbacks();
     }else if(!strcmp(mode, "cnc")){

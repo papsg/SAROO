@@ -19,7 +19,7 @@ class OverlayMountTests(support.MCUSaveTest):
         super().setUpClass()
         filter_fixture.CDFilterTests.setUpClass()
 
-    def invoke(self, value):
+    def invoke(self, value, action=0):
         with tempfile.TemporaryDirectory(dir=self.target) as folder:
             root = Path(folder)
             card = root / 'card.img'
@@ -32,6 +32,9 @@ class OverlayMountTests(support.MCUSaveTest):
             pack[:20] = b'SSO1\x01' + bytes([count, 0, 0]) + PRODUCT + len(pack).to_bytes(2, 'big')
             if value in (11, 12, 22, 23):
                 pack[4], pack[7] = 3, 0x80
+            if action:
+                pack[4] = 3 if action & 0x80 else 1
+                pack[7] = action
             for index, raw in enumerate(sources):
                 edited = bytearray(raw)
                 edited[32] = 0xab
@@ -44,6 +47,8 @@ class OverlayMountTests(support.MCUSaveTest):
             seal(pack)
             if value == 23:
                 sources[-1] = sector(162, 0x72)
+            if value == 40:
+                sources[0] = sector(151, 0x72)
             files = root / 'disc', root / 'expected', root / 'pack'
             for path, data in zip(files, (first + b''.join(sources) + last, edited, pack)):
                 path.write_bytes(data)
@@ -92,6 +97,14 @@ class OverlayMountTests(support.MCUSaveTest):
         for value in (22, 23):
             with self.subTest(value=value):
                 self.invoke(value)
+
+    def test_cartridge_actions_require_admission_and_retire_with_the_launch(self):
+        for value, action in ((36, 0x81), (37, 0x84), (38, 1), (39, 4),
+                              (40, 0x81), (41, 0x81), (42, 0x81), (43, 0x81),
+                              (44, 0x81), (45, 0x82), (46, 5), (47, 0x85),
+                              (48, 0x81)):
+            with self.subTest(value=value, action=action):
+                self.invoke(value, action)
 
     def test_alternative_admission_requires_exactly_one_source_and_retains_retries(self):
         for value in range(24, 32):

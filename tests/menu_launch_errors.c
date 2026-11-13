@@ -104,9 +104,10 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "power")) { check_power_gate();return 0; }
 #ifdef SD_OVERLAY_REQUEST
     if (!strcmp(argv[1], "overlay")) {
-        for (unsigned capability = 0; capability <= 2; ++capability) {
+        for (unsigned capability = 0; capability <= 3; ++capability) {
             sysinfo[0x3c] = capability;
-            expected_overlay_bit = capability == SD_OVERLAY_VERSION ? SD_OVERLAY_REQUEST : 0;
+            expected_overlay_bit = capability >= 1 && capability <= SD_OVERLAY_VERSION ?
+                                   SD_OVERLAY_REQUEST : 0;
             check(PAD_A, 0, 0);
             expected_overlay_bit = 0;
             check(PAD_Z, 0, 0);

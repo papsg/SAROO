@@ -128,8 +128,7 @@ int main(int argc, char **argv)
         assert(!fclose(disk));
         return 0;
     }
-    if (which >= 32) {
-        assert(which <= 35);
+    if (which >= 32 && which <= 35) {
         create(pack_name, pack, pack_bytes);
         unsigned writes = disk_writes;
         media_case = 1;
@@ -155,6 +154,39 @@ int main(int argc, char **argv)
         verify_image();
         assert(!unload_disc() && !handles_count && !lock_depth);
         assert(disk_writes == writes && !overlay_sysinfo[0x38 / 4]);
+        verify_overlay(1, 0);
+        assert(!fclose(disk));
+        return 0;
+    }
+    if (which >= 36) {
+        assert(which <= 48);
+        create(pack_name, pack, pack_bytes);
+        unsigned writes = disk_writes;
+        media_case = 1;
+        if (which == 41) fail_overlay_save = 1;
+        if (which == 48) inject_read = 4;
+        int result = load_disc(which == 44 ? 0 : SD_OVERLAY_REQUEST, 1);
+        int admitted = which <= 39 || which == 42 || which == 43;
+        assert((result != 0) == (which == 41 || which == 48));
+        unsigned action = admitted ? pack[7] : 0;
+        assert(sector_overlay_action() == action);
+        assert(overlay_sysinfo[0x38 / 4] == (action ? SD_OVERLAY_TAG | action : 0));
+        assert(pack_opens == (which == 44 ? 0 : 2));
+        assert(preflight_reads == (which == 44 || (which >= 45 && which <= 47) ? 0 : 1));
+        verify_overlay(1, admitted);
+        if (which == 42) {
+            assert(!load_disc(0, 0));
+            assert(!overlay_sysinfo[0x38 / 4] && sector_overlay_action() == pack[7]);
+            verify_overlay(1, 1);
+        }
+        if (which == 43) {
+            sector_overlay_reset_handoff(); /* The tray command's retirement entry. */
+            assert(!overlay_sysinfo[0x38 / 4] && !sector_overlay_action());
+            verify_overlay(1, 0);
+        }
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth);
+        assert(!sector_overlay_action() && !overlay_sysinfo[0x38 / 4] && disk_writes == writes);
         verify_overlay(1, 0);
         assert(!fclose(disk));
         return 0;

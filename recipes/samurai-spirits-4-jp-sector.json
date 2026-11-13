@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "T-3116G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Samurai Spirits - Amakusa Kourin (Japan) (En,Ja,Es,Pt): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and carry the matching upstream instruction edits into the disc read.",
+  "rationale": "The original menu callback selected 1 MB cartridge mode and changed these loaded instructions. The bounded launch action is published only after the same pack passes sector preflight. This preserves both operations without changing the original image.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "984d0d635a0432e7e3f836c00289d6a22773406014840c4b67bcbc83204acb00"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 349,
+      "offset": 1604,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Apply the original smrsp4_patch instruction edit at 06067E34.",
+      "reason": "Preserve the matching built-in compatibility edit before the game loads this sector."
+    }
+  ],
+  "replaces_callback": true
+}

@@ -111,7 +111,7 @@ class MCUSaveTest(unittest.TestCase):
                 # is exercised separately with its actual mount and handoff.
                 tail = re.sub(rb'        if \(overlay_requested && retv\) \{\n'
                               rb'            unload_disc\(\);\n            goto _exit;\n        \}\n'
-                              rb'        if \(open_disc && overlay_requested && sector_overlay_replaces_callback\(\)\)\n'
+                              rb'        if \(open_disc && overlay_requested && sector_overlay_(?:replaces_callback|action)\(\)\)\n'
                               rb'            sector_overlay_publish_handoff\(\);\n', b'', tail)
             (cls.target / 'disc-finish.inc').write_bytes(tail)
             harnesses += ['mcu_save_runtime.c', 'test_mcu_save_runtime.py']

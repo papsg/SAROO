@@ -64,6 +64,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
             header = (source / 'main.h').read_bytes()
             define = re.search(rb'^#define SD_OVERLAY_REPLACEMENT .+$', header, re.M)
             code = define[0] + b'\n#define TEST_OVERLAY_HANDOFF 1\n' + code
+            if b'SD_OVERLAY_TAG' in code:
+                code = re.search(rb'^#define SD_OVERLAY_TAG .+$', header, re.M)[0] + b'\n' + code
 
         # Keep the real dispatch and memory writes while mapping the bus
         # pointers and executable targets to the host fixture.
@@ -149,6 +151,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_shared_id_callbacks_require_the_complete_correct_first_file(self):
         self.scenario('siblings')
+
+    def test_recipe_cartridge_actions_precede_user_overrides_and_require_exact_tags(self):
+        self.scenario('cart-action')
 
 
 if __name__ == '__main__':

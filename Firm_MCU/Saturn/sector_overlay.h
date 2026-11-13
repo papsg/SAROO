@@ -11,6 +11,7 @@
                                  SECTOR_OVERLAY_MAX_RECORDS * SECTOR_OVERLAY_RECORD_BYTES)
 /* Part of the MCU/menu SYSINFO contract. */
 #define SD_OVERLAY_REPLACEMENT 0x534f5680u
+#define SD_OVERLAY_TAG 0x534f5600u
 
 /* The disc owner stages and checks a pack before arming it for delivery. */
 void sector_overlay_clear(void);
@@ -22,6 +23,7 @@ uint32_t sector_overlay_fad(unsigned index);
 int sector_overlay_alternatives(void);
 int sector_overlay_select(unsigned index);
 int sector_overlay_replaces_callback(void);
+unsigned sector_overlay_action(void);
 int sector_overlay_check(unsigned index, const uint8_t sector[2352]);
 void sector_overlay_arm(void);
 /* A negative result leaves both the destination and the mounted pack intact. */

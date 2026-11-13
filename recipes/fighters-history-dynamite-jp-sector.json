@@ -1,0 +1,50 @@
+{
+  "abi": 2,
+  "product_id": "GS-9107",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Fighter's History Dynamite (Japan): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and carry four original instruction edits into disc reads.",
+  "rationale": "All four addresses are inside the exact first-read file. The old callback selected 1 MB mode and unconditionally NOPed them; the guarded recipe keeps both operations with the original image untouched.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "ac86dab82c76294859ecfd9f7afa2a0cec4eefbd61204f66ebff3b40ba330a40"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 174,
+      "offset": 62,
+      "before": "2802",
+      "after": "0009",
+      "effect": "Apply the original Fighter's History instruction NOP at 0605002E.",
+      "reason": "Preserve the menu callback edit only for this exact first-read program."
+    },
+    {
+      "fad": 187,
+      "offset": 2044,
+      "before": "2802",
+      "after": "0009",
+      "effect": "Apply the original Fighter's History instruction NOP at 06056FEC.",
+      "reason": "Preserve the menu callback edit only for this exact first-read program."
+    },
+    {
+      "fad": 188,
+      "offset": 56,
+      "before": "2802",
+      "after": "0009",
+      "effect": "Apply the original Fighter's History instruction NOP at 06057028.",
+      "reason": "Preserve the menu callback edit only for this exact first-read program."
+    },
+    {
+      "fad": 188,
+      "offset": 202,
+      "before": "2802",
+      "after": "0009",
+      "effect": "Apply the original Fighter's History instruction NOP at 060570BA.",
+      "reason": "Preserve the menu callback edit only for this exact first-read program."
+    }
+  ],
+  "replaces_callback": true
+}

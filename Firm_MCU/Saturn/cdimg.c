@@ -691,7 +691,7 @@ int load_disc(int index, int start_save)
             unload_disc();
             goto _exit;
         }
-        if (open_disc && overlay_requested && sector_overlay_replaces_callback())
+        if (open_disc && overlay_requested && sector_overlay_action())
             sector_overlay_publish_handoff();
 	}
 

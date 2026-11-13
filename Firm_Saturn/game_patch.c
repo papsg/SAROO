@@ -1354,7 +1354,7 @@ GAME_DB game_dbs[] = {
 };
 
 
-void patch_game(char *id, int replace_callback)
+void patch_game(char *id, int replace_callback, unsigned cart_mode)
 {
 	void (*patch_func)(void) = NULL;
 
@@ -1388,6 +1388,12 @@ void patch_game(char *id, int replace_callback)
 		return;
 	if(patch_func)
 		patch_func();
+
+	/* The admitted recipe runs before explicit user cartridge overrides. */
+	if(cart_mode == 1)
+		ssctrl_set(MASK_EXMEM, CS0_RAM1M);
+	else if(cart_mode == 4)
+		ssctrl_set(MASK_EXMEM, CS0_RAM4M);
 
 	u32 *cfgword = (u32*)(SYSINFO_ADDR+0x0100);
 	while(1){
