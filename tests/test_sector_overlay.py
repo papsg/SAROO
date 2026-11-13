@@ -64,14 +64,14 @@ def canonical(raw):
     return bytes(result)
 
 
-def sector(fad, byte=0x71, ip=False):
+def sector(fad, byte=0x71, ip=False, version=b'V1.000'):
     raw = bytearray(2352)
     raw[:12] = b'\0' + b'\xff' * 10 + b'\0'
     raw[12:16] = bytes.fromhex(f'{fad // 4500:02}{fad // 75 % 60:02}{fad % 75:02}01')
     raw[16:2064] = bytes([byte]) * 2048
     if ip:
         raw[16:32] = b'SEGA SEGASATURN '
-        raw[48:64] = PRODUCT + b'V1.000'
+        raw[48:64] = PRODUCT + version
     return canonical(raw)
 
 
@@ -181,7 +181,7 @@ class SectorOverlayTests(unittest.TestCase):
     def test_decoder_rejects_structural_errors_with_valid_pack_checksum(self):
         self.compile()
         pack = self.output_pack.read_bytes()
-        for at, value in [(4, 4), (5, 9), (6, 1), (7, 0x80), (32, 5), (33, 1),
+        for at, value in [(4, 4), (5, 13), (6, 1), (7, 0x80), (32, 5), (33, 1),
                           (36, 8), (38, 3), (39, 1), (56, 1), (88, 1)]:
             with self.subTest(at=at, value=value):
                 corrupt = bytearray(pack)
@@ -193,3 +193,50 @@ class SectorOverlayTests(unittest.TestCase):
         self.run_decoder('reject', self.output_pack)
         self.output_pack.write_bytes(pack[:-1] + bytes([pack[-1] ^ 1]))
         self.run_decoder('reject', self.output_pack)
+
+    def test_twelve_records_include_the_last_sector_and_reject_thirteen(self):
+        sectors = [sector(fad, ip=fad == 150) for fad in range(150, 164)]
+        self.track.write_bytes(b''.join(sectors))
+        self.cue.write_text('FILE "mixed data.bin" BINARY\n'
+                            '  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n')
+        self.recipe['tracks'] = [{'number': 1, 'sha256':
+                                  hashlib.sha256(self.track.read_bytes()).hexdigest()}]
+        self.recipe['writes'] = [dict(self.recipe['writes'][0], fad=fad)
+                                 for fad in range(162, 150, -1)]
+        self.compile()
+        pack = self.output_pack.read_bytes()
+        self.assertEqual(len(pack), 4200)
+        self.assertEqual(pack[5], 12)
+        for index in range(12):
+            offset = HEADER_BYTES + index * RECORD_BYTES
+            self.assertEqual(int.from_bytes(pack[offset:offset + 4], 'big'), 151 + index)
+        original = self.path / 'original'
+        expected = self.path / 'expected'
+        original.write_bytes(sectors[12])
+        edited = bytearray(sectors[12])
+        edited[1057:1059] = b'\xab\x10'
+        expected.write_bytes(canonical(edited))
+        self.run_decoder('apply', self.output_pack, original, expected)
+        self.output_pack.unlink()
+        self.recipe['writes'].append(dict(self.recipe['writes'][0], fad=163))
+        self.compile(False)
+        self.assertFalse(self.output_pack.exists())
+
+    def test_exact_ip_version_changes_only_the_filename(self):
+        self.compile()
+        legacy = self.output_pack.read_bytes()
+        disc_id = PRODUCT + b'V1.000'
+        self.recipe['disc_id'] = disc_id.decode()
+        self.output_pack = self.path / f'{zlib.crc32(disc_id):08X}.SOV'
+        self.compile()
+        self.assertEqual(self.output_pack.read_bytes(), legacy)
+        self.assertEqual(subprocess.check_output(
+            [self.tool, 'name', self.recipe_path], text=True, timeout=10).strip(),
+            self.output_pack.name)
+        for invalid in ('WRONG     V1.000', 'T-TEST    V1.00\n', 'T-TEST V1.000',
+                        'T-TEST    V1.001'):
+            with self.subTest(disc_id=repr(invalid)):
+                self.recipe['disc_id'] = invalid
+                self.output_pack = self.path / f'{zlib.crc32(invalid.encode()):08X}.SOV'
+                self.compile(False)
+                self.assertFalse(self.output_pack.exists())

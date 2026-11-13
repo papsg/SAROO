@@ -15,10 +15,10 @@ void sector_overlay_publish_handoff(void)
     REG(SYSINFO_ADDR + 0x38) = SD_OVERLAY_REPLACEMENT;
 }
 
-static void overlay_path(char path[28], const char product[10])
+static void overlay_path(char path[28], const char *gameid, size_t id_bytes)
 {
     static const char digits[] = "0123456789ABCDEF";
-    uint32_t key = sector_overlay_crc32(product, 10);
+    uint32_t key = sector_overlay_crc32(gameid, id_bytes);
     memcpy(path, "/SAROO/PATCHES/", 15);
     for (unsigned i = 0; i < 8; ++i)
         path[15 + i] = digits[(key >> (28 - 4 * i)) & 15];
@@ -27,10 +27,10 @@ static void overlay_path(char path[28], const char product[10])
 
 /* The old reader is stopped. The lock also owns the shared sector workspace
  * across both f_read and its preimage check. */
-int sector_overlay_mount(const char product[10])
+int sector_overlay_mount(const char gameid[16])
 {
     char path[28];
-    overlay_path(path, product);
+    overlay_path(path, gameid, 16);
     uint8_t *pack = sector_overlay_staging();
     FIL fp;
     UINT got = 0;
@@ -38,6 +38,12 @@ int sector_overlay_mount(const char product[10])
 
     fs_lock();
     FRESULT opened = f_open(&fp, path, FA_READ);
+    /* An existing exact pack must pass its own guards. Only absence can
+     * select the product-only filename used by earlier recipes. */
+    if (opened == FR_NO_FILE || opened == FR_NO_PATH) {
+        overlay_path(path, gameid, 10);
+        opened = f_open(&fp, path, FA_READ);
+    }
     if (opened != FR_OK) {
         result = opened == FR_NO_FILE || opened == FR_NO_PATH ? 0 : -1;
         goto done;
@@ -51,7 +57,7 @@ int sector_overlay_mount(const char product[10])
     if (length < SECTOR_OVERLAY_HEADER_BYTES || length > SECTOR_OVERLAY_MAX_BYTES)
         goto done;
     if (got != length) { result = -1; goto done; }
-    if (sector_overlay_validate(length, product)) goto done;
+    if (sector_overlay_validate(length, gameid)) goto done;
 
     uint8_t *scratch = (uint8_t *)0x24002000;
     unsigned track_index = 0;

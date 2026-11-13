@@ -6,7 +6,7 @@
 
 #define SECTOR_OVERLAY_HEADER_BYTES 24u
 #define SECTOR_OVERLAY_RECORD_BYTES 348u
-#define SECTOR_OVERLAY_MAX_RECORDS 8u
+#define SECTOR_OVERLAY_MAX_RECORDS 12u
 #define SECTOR_OVERLAY_MAX_BYTES (SECTOR_OVERLAY_HEADER_BYTES + \
                                  SECTOR_OVERLAY_MAX_RECORDS * SECTOR_OVERLAY_RECORD_BYTES)
 /* Part of the MCU/menu SYSINFO contract. */
@@ -25,7 +25,7 @@ void sector_overlay_arm(void);
 /* A negative result leaves both the destination and the mounted pack intact. */
 int sector_overlay_apply(uint32_t fad, uint8_t sector[2352]);
 /* Runs after the new CUE/ISO tracks are open and before disc publication. */
-int sector_overlay_mount(const char product[10]);
+int sector_overlay_mount(const char gameid[16]);
 void sector_overlay_reset_handoff(void);
 void sector_overlay_publish_handoff(void);
 

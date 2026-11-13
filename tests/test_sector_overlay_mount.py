@@ -24,29 +24,35 @@ class OverlayMountTests(support.MCUSaveTest):
             root = Path(folder)
             card = root / 'card.img'
             support.make_fat32(card)
-            raw = sector(151, 0x71)
-            edited = bytearray(raw)
-            edited[32] = 0xab
-            edited = canonical(edited)
-            first, last = sector(150, ip=True), sector(152, 0x72)
-            pack = bytearray(HEADER_BYTES + RECORD_BYTES)
-            pack[:20] = b'SSO1\x01\x01\0\0' + PRODUCT + b'\x01\x74'
-            if value in (11, 12):
+            count = 12 if value in (22, 23) else 1
+            first = sector(150, ip=True, version=b'V1.001' if value == 14 else b'V1.000')
+            sources = [sector(fad) for fad in range(151, 151 + count)]
+            last = sector(151 + count, 0x72)
+            pack = bytearray(HEADER_BYTES + count * RECORD_BYTES)
+            pack[:20] = b'SSO1\x01' + bytes([count, 0, 0]) + PRODUCT + len(pack).to_bytes(2, 'big')
+            if value in (11, 12, 22, 23):
                 pack[4], pack[7] = 3, 0x80
-            pack[24:32] = (151).to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
-            pack[32] = 1
-            pack[36:48] = b'\0\x20\x01\0\x71\0\0\0\xab\0\0\0'
-            pack[84:] = edited[2064:]
+            for index, raw in enumerate(sources):
+                edited = bytearray(raw)
+                edited[32] = 0xab
+                edited = canonical(edited)
+                offset = HEADER_BYTES + index * RECORD_BYTES
+                pack[offset:offset + 8] = (151 + index).to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
+                pack[offset + 8] = 1
+                pack[offset + 12:offset + 24] = b'\0\x20\x01\0\x71\0\0\0\xab\0\0\0'
+                pack[offset + 60:offset + RECORD_BYTES] = edited[2064:]
             seal(pack)
+            if value == 23:
+                sources[-1] = sector(162, 0x72)
             files = root / 'disc', root / 'expected', root / 'pack'
-            for path, data in zip(files, (first + raw + last, edited, pack)):
+            for path, data in zip(files, (first + b''.join(sources) + last, edited, pack)):
                 path.write_bytes(data)
             result = subprocess.run([self.binary, card, str(value), *files], capture_output=True,
                                     text=True, timeout=25)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             if value == 0:
                 source = root / 'sector'
-                source.write_bytes(raw)
+                source.write_bytes(sources[0])
                 result = subprocess.run(
                     [filter_fixture.CDFilterTests.binary, '14', files[2], source, files[1]],
                     capture_output=True, text=True, timeout=10)
@@ -69,5 +75,20 @@ class OverlayMountTests(support.MCUSaveTest):
 
     def test_replacement_handoff_requires_complete_mount_and_save_selection(self):
         for value in (11, 12):
+            with self.subTest(value=value):
+                self.invoke(value)
+
+    def test_full_ip_lookup_selects_each_revision_and_falls_back_only_on_absence(self):
+        for value in (13, 14, 19, 21):
+            with self.subTest(value=value):
+                self.invoke(value)
+
+    def test_specific_pack_rejection_and_io_never_try_legacy(self):
+        for value in (15, 16, 17, 18, 20):
+            with self.subTest(value=value):
+                self.invoke(value)
+
+    def test_twelve_record_preflight_admits_all_or_none(self):
+        for value in (22, 23):
             with self.subTest(value=value):
                 self.invoke(value)

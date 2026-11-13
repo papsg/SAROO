@@ -14,6 +14,8 @@ make -C tests check-sector-overlay
 ```
 
 Use the actual name returned by `name` in place of `1234ABCD.SOV`.
+An optional `disc_id` field gives the exact sixteen IP product/version
+bytes, including spaces. Omit it to retain the older product-only filename.
 See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
 
 ## Isolated firmware qualification

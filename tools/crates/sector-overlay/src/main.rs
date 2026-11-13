@@ -15,7 +15,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const HEADER_BYTES: usize = 24;
 const RECORD_BYTES: usize = 348;
-const MAX_RECORDS: usize = 8;
+const MAX_RECORDS: usize = 12;
 const MAX_RECIPE_BYTES: usize = 64 * 1024;
 
 #[derive(Deserialize)]
@@ -23,6 +23,7 @@ const MAX_RECIPE_BYTES: usize = 64 * 1024;
 struct Recipe {
     abi: u8,
     product_id: String,
+    disc_id: Option<String>,
     origin: String,
     title: String,
     summary: String,
@@ -75,6 +76,18 @@ fn product_bytes(id: &str) -> Result<[u8; 10]> {
     let mut product = [b' '; 10];
     product[..id.len()].copy_from_slice(id.as_bytes());
     Ok(product)
+}
+
+fn disc_id_bytes<'a>(id: Option<&'a str>, product: &[u8; 10]) -> Result<Option<&'a [u8]>> {
+    let Some(id) = id else { return Ok(None) };
+    let bytes = id.as_bytes();
+    if bytes.len() != 16
+        || !bytes.starts_with(product)
+        || !bytes.iter().all(|b| (b' '..=b'~').contains(b))
+    {
+        return fail("Invalid full disc ID: use the exact 16 printable IP bytes");
+    }
+    Ok(Some(bytes))
 }
 
 fn crc32(data: &[u8]) -> u32 {
@@ -246,11 +259,20 @@ fn hash_bytes(
     Ok(())
 }
 
-fn compile(recipe: &Recipe, cue: &Path, product: [u8; 10]) -> Result<Vec<u8>> {
+fn compile(
+    recipe: &Recipe,
+    cue: &Path,
+    product: [u8; 10],
+    disc_id: Option<&[u8]>,
+) -> Result<Vec<u8>> {
     let targets = targets(recipe)?;
     let disc = Disc::read(cue)?;
-    if disc.read_ip()?[..10] != product {
+    let ip = disc.read_ip()?;
+    if ip[..10] != product {
         return fail("Recipe product ID disagrees with the original Saturn IP");
+    }
+    if disc_id.is_some_and(|id| ip != id) {
+        return fail("Full disc ID disagrees with the original Saturn IP");
     }
     let mut originals = read_targets(&disc, recipe, &targets)?;
     let size = HEADER_BYTES + targets.len() * RECORD_BYTES;
@@ -318,14 +340,15 @@ fn run() -> Result<()> {
     let recipe: Recipe =
         serde_json::from_slice(&disc::read_bounded(Path::new(path), MAX_RECIPE_BYTES)?)?;
     let product = product_bytes(&recipe.product_id)?;
-    let name = format!("{:08X}.SOV", crc32(&product));
+    let disc_id = disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
+    let name = format!("{:08X}.SOV", crc32(disc_id.unwrap_or(&product)));
     if operation == "name" {
         println!("{name}");
     } else if let Some((cue, path)) = extra {
         if path.file_name().is_none_or(|leaf| leaf != name.as_str()) {
             return fail(format!("Output filename must be {name}"));
         }
-        let pack = compile(&recipe, cue, product)?;
+        let pack = compile(&recipe, cue, product, disc_id)?;
         write_pack(path, &pack)?;
         println!(
             "{name}: {} bytes, SHA-256 {}",

@@ -7,15 +7,15 @@ and the complete original error detection and correction fields. It writes
 a new `.SOV` file and never opens source media for writing. A pack contains
 the original sector CRC and preimages, replacement bytes, and the rebuilt
 Mode 1 EDC and ECC. Its filename is the eight uppercase hex digits of the
-CRC32 of the space-padded ten-byte product number, followed by `.SOV`.
-CRC32 detects mismatches and accidental corruption. It is a checksum.
+CRC32 of the disc lookup key, followed by `.SOV`. CRC32 detects mismatches
+and accidental corruption. It is a checksum.
 
-The initial ABI 1 decoder admits up to eight strictly ordered FAD records
+The decoder admits up to twelve strictly ordered FAD records
 with up to four nonoverlapping edits of one, two or four bytes per record.
 Offsets refer to the complete raw sector, with an allowed data range of
 16–2063. The 24-byte header and 348-byte records use big-endian lengths,
 offsets, FADs and CRC32 fields. The standard Mode 1 EDC within the raw
-tail has its disc byte order. A pack is 372–2,808 bytes.
+tail has its disc byte order. A pack is 372–4,200 bytes.
 
 The compiler accepts stored Mode 1 data at or after INDEX 01 and handles
 shared CUE FILEs with different sector widths, generated gaps and stored
@@ -29,7 +29,8 @@ Adapted from paps-g `f7791566` and the standalone checksum in `7afd1bea`.
 §§2.1 and 5.4, printed pp. 24–25 and 48, defines the frame address and
 CD buffer sector layouts.
 [Sega Disc Format Standards ST-040-R4-051795](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf#page=29),
-§4.2, printed pp. 25–27, places the product number at IP offset `20h`.
+§4.2, printed pp. 25–27, places the ten-byte product number at IP offset
+`20h` and the six-byte version at `2ah`.
 [ECMA-130, 2nd edition](https://ecma-international.org/wp-content/uploads/ECMA-130_2nd_edition_june_1996.pdf),
 §§14.1–14.6, printed pp. 15–16, and Annex A, printed p. 25 onward, define
 the raw sector header, EDC and two sets of Reed-Solomon parity.
@@ -100,3 +101,33 @@ their EDC/ECC, from the exact preserved first raw track. For UMK3, both
 preimages and edits agree with the archived SOV and preserved first-file
 instructions. Its full raw track was unavailable for a fresh compile.
 The public port uses host regressions and target links for qualification.
+
+## Capacity and disc revision
+
+The compiler can target up to twelve distinct sectors in one pack. Its
+earlier short record layouts and legacy output bytes are unchanged. This
+raises the fixed pack buffer from 2,808 to 4,200 bytes. An earlier
+eight-record MCU refuses a larger pack and leaves the built-in callback
+available. The public MCU continues using the standalone CRC.
+
+For a revision-specific pack, add `disc_id` to the recipe with all sixteen
+printable bytes from the disc's IP. For example, `"MK-81210  V1.001"`
+contains the space-padded ten-byte product followed by the six-byte version.
+The compiler requires the prefix to match `product_id` and the whole field
+to match the source disc. Only the filename changes; the header and sector
+guards keep their existing format.
+
+Mount first tries the full product/version filename. It tries the older
+ten-byte product filename only if FatFs reports that the file or directory
+is absent. A present but invalid pack leaves the built-in route available;
+an I/O error fails the launch. Neither case falls back to another pack.
+The name is a lookup key. The preflight still checks the ten-byte product,
+each complete target sector and every short preimage before admission.
+
+Adapted from paps-g `f8786c36` and `4c6b8ed8`; see the IP layout in Sega
+ST-040 §4.2 above. The earlier private Manx TT and Japanese Die Hard
+candidates motivated these changes; this checkpoint adds no new game
+recipes. Its tests reproduce the old capacity and lookup limits and cover
+the twelfth and thirteenth records, both IP versions, legacy fallback,
+exact-pack refusal, and a final-sector mismatch that prevents the entire
+pack and its callback replacement from taking effect.
