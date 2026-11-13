@@ -254,8 +254,10 @@ void my_cdplayer(void)
 	printk("\nLoad my multiPlayer ...\n");
 
 
-	*(u8*)(0xfffffe92)  =  0x10;
-	*(u8*)(0xfffffe92)  =  0x1;
+	/* Disable the cache before purging it, then enable normal four-way mode. */
+	REG8(0xfffffe92u) = 0x00;
+	REG8(0xfffffe92u) = 0x10;
+	REG8(0xfffffe92u) = 0x01;
 
 	*(u32*)(0xffffff40) = 0x00;
 	*(u32*)(0xffffff44) = 0x00;

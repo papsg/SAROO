@@ -14,6 +14,8 @@ static u32 asr, aref, save_vector, player_vector, published;
 static unsigned copies;
 static int rom_path, player_path;
 static unsigned suspended, clock_copied, work_ram_replaced, reject_reply;
+static unsigned cache_writes;
+static int check_cache;
 #define EXLTEN 0x0200
 static void jump_06b0(void);
 static void jump_copy_code(int type) { (void)type; assert(0); }
@@ -104,6 +106,7 @@ static void pad_suspend(void)
 static void player_prepare(int type)
 {
     assert(suspended && !calls && type == 3);
+    if (check_cache) assert(cache_writes == 3);
     calls = 1;
 }
 
@@ -122,8 +125,12 @@ static void player_clock(int type)
 
 static void player_write(u32 address, u32 value)
 {
-    (void)value;
     assert(suspended && (address >= 0xffff0000u || address == 0x06000348u));
+    if (check_cache && address == 0xfffffe92u) {
+        static const u8 sequence[] = {0, 0x10, 1};
+        assert(!calls && cache_writes < sizeof sequence);
+        assert(value == sequence[cache_writes++]);
+    }
 }
 
 static void player_replace_work_ram(void)
@@ -150,6 +157,7 @@ static void reset(int path)
     sf_reads = latch_reads = counter_reads = pre_busy = post_busy = unsafe = 0;
     calls = issued = completed = external = last_busy = last_line = 0;
     sf = command = reply = 0;
+    cache_writes = check_cache = 0;
     asr = aref = 0;
     line = 32;
 }
@@ -196,6 +204,13 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *test = argv[1];
+    if (!strcmp(test, "cache")) {
+        reset(2);
+        check_cache = 1;
+        my_cdplayer();
+        assert(cache_writes == 3 && work_ram_replaced == 1);
+        return 0;
+    }
     if (!strcmp(test, "player") || !strcmp(test, "player-failure")) {
         player(!strcmp(test, "player-failure"));
         return 0;

@@ -40,6 +40,8 @@ class MenuClockResetTests(unittest.TestCase):
                                 b'player_copy_clock();')
         player = re.sub(rb'\*\((?:u8|u16|u32)\s*\*\)\((0x[\da-f]+)\)\s*=\s*([^;]+);',
                         rb'player_write(\1, \2);', player)
+        player = re.sub(rb'REG8\((0x[\da-f]+)u?\)\s*=\s*([^;]+);',
+                        rb'player_write(\1, \2);', player)
         code += player + b'player_replace_work_ram();\n}\n'
         for original, replacement in (
             (b'(void*)(0x04c8)', b'bios_clock'), (b'(void*)0x1800', b'bios_scu'),
@@ -77,6 +79,7 @@ class MenuClockResetTests(unittest.TestCase):
     def test_valid_hooks_preserve_bios_calls_and_bus_restore(self): self.scenario('healthy')
     def test_rom_clock_vector_publishes_after_both_copies(self): self.scenario('install')
     def test_player_waits_for_reset_disable_with_display_off(self): self.scenario('player')
+    def test_player_disables_then_purges_then_enables_cache(self): self.scenario('cache')
     def test_player_does_not_replace_work_ram_on_reset_failure(self): self.scenario('player-failure')
 
 

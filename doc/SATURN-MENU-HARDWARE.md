@@ -322,3 +322,25 @@ stereo test. Both profiles pass all three methods on the port. Another
 linked menu stays at 85,076 code/data bytes and emits aligned word stores
 with the corrected values. Physical CD audio balance and level on the
 public build remain unqualified.
+
+## Purge the SH-2 cache during BIOS player handoff
+
+SATURN-CACHE-001, adapted from paps-g `aece1be2`. The old CD player
+handoff wrote the purge and enable values through ordinary pointers.
+The optimized SH-2 build emitted only the final enable. The handoff
+now issues three volatile byte writes to CCR in order. It disables
+the cache, purges tags and replacement state while the cache is off,
+then enables the normal four-way cache before BIOS preparation.
+
+[Hitachi SH7604 Hardware Manual, §8.4.6, printed p. 224](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=240),
+[§8.5.1, printed p. 226](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=242)
+and [§8.5.5, printed p. 229](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=245)
+describe the control sequence and instruction-fetch considerations.
+
+The parent fails the new order case and passes seven existing
+[clock and player methods](#complete-reset-disable-before-handing-off-to-the-bios-player).
+Both port profiles pass all eight, and all eight file-cache methods pass.
+The linked function retains writes of 0, 16 and 1 at CCR, while the parent
+contains only 1. All 48 linked ROM clock checks pass. The complete menu
+remains 488,770 bytes with 85,076 code/data bytes and 20,120 bytes of body
+margin. Physical cache and BIOS player behavior remain unqualified.
