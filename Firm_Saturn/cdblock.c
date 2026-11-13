@@ -190,7 +190,7 @@ int cdc_end_trans(int *cdwnum)
 int cdc_get_toc(u8 *buf)
 {
 	CDCMD cmd, resp;
-	int i, retv;
+	int retv;
 
 	cmd.cr1 = 0x0200;
 	cmd.cr2 = 0x0000;
@@ -200,9 +200,7 @@ int cdc_get_toc(u8 *buf)
 	retv = cdc_cmd(HIRQ_DRDY, &cmd, &resp, "cdc_get_toc");
 	if(retv) return retv;
 
-	for(i=0; i<102*4; i+=2){
-		*(u16*)(buf+i) = REG16(0x25898000);
-	}
+	cdc_trans_data(buf, 102 * 4);
 
 	retv = cdc_end_trans(NULL);
 
@@ -523,7 +521,7 @@ int cdc_put_data(int bufnum, int snum)
 void cdc_trans_data(u8 *buf, int length)
 {
     if (length <= 0) return;
-    /* Preserve aligned longword reads and use the word FIFO for tails. */
+    /* Sega Bulletin #8 requires longword FIFO accesses even for tails. */
     if (((u32)buf & 3) == 0) {
         unsigned count = (unsigned)length >> 2;
         length &= 3;
@@ -532,15 +530,20 @@ void cdc_trans_data(u8 *buf, int length)
             buf += 4;
         }
     }
-    unsigned count = (unsigned)length >> 1;
-    while (count--) {
-        u16 word = REG16(0x25898000);
-        buf[0] = word >> 8;
-        buf[1] = word;
-        buf += 2;
+    while (length > 0) {
+        union { u32 word; u8 bytes[4]; } data;
+        data.word = REG(0x25818000);
+        /* The SH-2 is big-endian. Copy only the admitted bytes. */
+        buf[0] = data.bytes[0];
+        if (length == 1) break;
+        buf[1] = data.bytes[1];
+        if (length == 2) break;
+        buf[2] = data.bytes[2];
+        if (length == 3) break;
+        buf[3] = data.bytes[3];
+        buf += 4;
+        length -= 4;
     }
-    if (length & 1)
-        *buf = REG16(0x25898000) >> 8;
 }
 
 /**********************************************************/

@@ -226,3 +226,25 @@ The parent fails the declared-payload check. The corrected ELF declares all
 48 bytes, with identical linked guards, copy instructions and historical RAM
 payload. This verifies the compiled change. Behavior in the exact modified
 game revisions remains unverified.
+
+## Use longword reads for the native CD data FIFO
+
+The menu now reads the 408-byte table of contents and unaligned or short
+transfer tails through the common 32-bit FIFO at `25818000h`. The aligned
+bulk path retains its direct longword loads and stores. An unaligned read
+copies the upper bytes in order, stopping at the requested length. The
+existing DataEnd ownership and bounds remain in force, including a count
+that excludes the undefined word of an odd-length transfer.
+
+Adapted from paps-g `d5fbaaea` (SSR-001). [Sega Technical Bulletin #8,
+replacement function 9.1](https://antime.kapsi.fi/sega/files/Sattechs.pdf#page=17),
+PDF pp. 17–18, requires 32-bit accesses for CPU software transfers and
+specifies the order and odd-word behavior. The newer bulletin supersedes
+the earlier 16-bit description.
+
+Run `make -C tests check-menu-safety` and build the stock SH-2 menu. The
+actual TOC and data-copy fixtures reject the parent's halfword accesses
+and check aligned and unaligned output, untouched canaries, command
+failure, DataEnd failure and final counts. The linked copier contains
+longword FIFO reads and no external copy call. The tests model the FIFO
+and do not establish physical timing or game acceptance.

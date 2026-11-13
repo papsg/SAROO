@@ -39,13 +39,6 @@ static int cdc_end_trans(int *count) {
     if(count) *count = words;
     return end_result;
 }
-static u16 toc_word(void) {
-    u16 v;
-    assert(reads < 204);
-    memcpy(&v, toc + reads++ * 2, 2);
-    return v;
-}
-#define REG16(address) toc_word()
 static int __attribute__((unused)) cdc_get_toc(u8 *buf) { memcpy(buf, toc, sizeof(toc)); return toc_result; }
 static int cdc_reset_selector(int mode, int id) { (void)mode; (void)id; return selector_result; }
 static int cdc_cddev_connect(int id) { (void)id; return connect_result; }
@@ -62,9 +55,14 @@ static int cdc_get_del_data(int id, int start, int sectors) {
     return get_result;
 }
 static void cdc_trans_data(u8 *buf, int length) {
-    assert(!get_result && length==32768);
-    transfers++;
-    memcpy(buf, payload, length);
+    if (length == sizeof toc) {
+        reads++;
+        memcpy(buf, toc, length);
+    } else {
+        assert(!get_result && length==32768);
+        transfers++;
+        memcpy(buf, payload, length);
+    }
 }
 static int my_bios_loadcd_init(void) { return 0; }
 static __attribute__((unused)) int cdblock_off(void) { return 0; }
@@ -182,7 +180,7 @@ int main(int argc, char **argv) {
         if(n==6) end_result=-3;
         result=actual_get_toc(buf);
         assert(result == (n==5 ? -5 : n==6 ? -3 : 0));
-        assert(reads == (n==5 ? 0 : 204));
+        assert(reads == (n==5 ? 0 : 1));
         assert(ends == (n==5 ? 0 : 1));
         if(n==5) { for(unsigned i=0;i<sizeof(buf);i++) assert(buf[i]==0x5a); }
         else assert(!memcmp(buf,toc,sizeof(buf)));

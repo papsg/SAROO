@@ -277,7 +277,7 @@ static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name)
     assert(next < used);
     struct step *step=&steps[next++];
     assert(cmd->cr1 == step->cmd);
-    assert(wait == ((step->cmd==0x6300 || step->cmd==0x7300) ? HIRQ_DRDY :
+    assert(wait == ((step->cmd==0x6300 || step->cmd==0x7300 || step->cmd==0x0200) ? HIRQ_DRDY :
                     (step->cmd==0x6000 || step->cmd==0x4800 || step->cmd==0x3000) ? HIRQ_ESEL : 0));
     if((cmd->cr1 & 0xff00) == 0x1000) {
         assert(cmd->cr2 == (play_fad & 0xffff));
@@ -286,6 +286,11 @@ static int cdc_cmd(int wait, CDCMD *cmd, CDCMD *resp, char *name)
     if(cmd->cr1 == 0x6300) {
         assert(!cmd->cr2 && !cmd->cr3 && cmd->cr4 == 1);
         fifo_pos=step->offset; fifo_limit=step->offset+step->extent;
+    }
+    if (cmd->cr1 == 0x0200) {
+        assert(!cmd->cr2 && !cmd->cr3 && !cmd->cr4);
+        fifo_pos = 0;
+        fifo_limit = step->result ? 0 : 408;
     }
     CR1=step->status<<8;
     *resp=(CDCMD){CR1,step->words,0,0};
@@ -301,17 +306,15 @@ static u32 read32(void)
 {
     assert(fifo_pos+4 <= fifo_limit);
     /* Native scalar value yields the same byte stream on this host as the
-     * SH-2's big-endian longword load/store pair. Halfword tails use wire order. */
+     * SH-2's big-endian longword load/store pair. */
     u32 value; memcpy(&value,stream+fifo_pos,4);
     fifo_pos+=4; read_words+=2; ++long_reads;
     return value;
 }
 static u16 __attribute__((unused)) read16(void)
 {
-    assert(fifo_pos+2 <= fifo_limit);
-    u16 value=(stream[fifo_pos]<<8)|stream[fifo_pos+1];
-    fifo_pos+=2; ++read_words;
-    return value;
+    assert(!"Sega Bulletin #8 requires longword FIFO reads");
+    return 0;
 }
 #define REG(addr) (assert((addr)==0x25818000), read32())
 #define REG16(addr) (assert((addr)==0x25898000), read16())
@@ -324,17 +327,36 @@ static void test_copy(void)
         unsigned length=sizes[k], prefix=32+alignment;
         u8 *buffer=malloc(prefix+length+32); assert(buffer);
         memset(buffer,0xcc,prefix+length+32); reset();
-        fifo_limit=(length+1)&~1u;
+        fifo_limit=(length+3)&~3u;
         cdc_trans_data(buffer+prefix,length);
         assert(!memcmp(buffer+prefix,stream,length));
         for(unsigned i=0;i<prefix;++i) assert(buffer[i]==0xcc);
         for(unsigned i=0;i<32;++i) assert(buffer[prefix+length+i]==0xcc);
-        assert(read_words==(length+1)/2);
-        assert(long_reads==(alignment ? 0 : length/4));
+        assert(long_reads==(length+3)/4 && read_words==2*long_reads);
         free(buffer);
     }
     reset(); cdc_trans_data(NULL,0); cdc_trans_data(NULL,-1);
     assert(!read_words);
+}
+
+static void test_toc(void)
+{
+    _Alignas(4) u8 output[4 + 408 + 4];
+    const int errors[] = {0, -3, -5};
+    for (unsigned align = 0; align < 4; ++align) {
+        for (unsigned i = 0; i < sizeof errors / sizeof *errors; ++i) {
+            reset();
+            memset(output, 0xcc, sizeof output);
+            expect(0x0200, i == 2 ? errors[i] : 0, 0);
+            if (i != 2) expect(0x0600, errors[i], 0);
+            assert(cdc_get_toc(output + align) == errors[i]);
+            assert(next == used && long_reads == (i == 2 ? 0u : 102u));
+            unsigned copied = i == 2 ? 0 : 408;
+            assert(!memcmp(output + align, stream, copied));
+            for (unsigned k = 0; k < align; ++k) assert(output[k] == 0xcc);
+            for (unsigned k = align + copied; k < sizeof output; ++k) assert(output[k] == 0xcc);
+        }
+    }
 }
 
 static void setup(unsigned length, int failure, int error)
@@ -375,7 +397,7 @@ static void test_read(void)
         for(unsigned i=0;i<size;++i) assert(buffer[prefix+i]==stream[(i/2048)*wire+i%2048]);
         for(unsigned i=0;i<prefix;++i) assert(buffer[i]==0xcc);
         for(unsigned i=0;i<32;++i) assert(buffer[prefix+size+i]==0xcc);
-        assert(read_words==(size+1)/2);free(buffer);
+        assert(read_words==2*((size+3)/4));free(buffer);
     }
 }
 static void test_errors(void)
@@ -403,12 +425,12 @@ static void test_counts(void)
             reset();memset(buffer,0xcc,sizeof buffer);read_script(size,2048,accepted[j]);
             assert(cdc_read_sector(play_fad,size,buffer)==(int)size && next==used);
             assert(!memcmp(buffer,stream,size) && buffer[size]==0xcc);
-            assert(read_words==(size+1)/2);
+            assert(read_words==2*((size+3)/4));
         }
         for (unsigned j=0;j<sizeof rejected/sizeof *rejected;j++) {
             reset();memset(buffer,0xcc,sizeof buffer);read_script(size,2048,rejected[j]);
             assert(cdc_read_sector(play_fad,size,buffer)==-1 && next==used);
-            assert(buffer[size]==0xcc && read_words==(size+1)/2);
+            assert(buffer[size]==0xcc && read_words==2*((size+3)/4));
         }
     }
 }
@@ -496,7 +518,7 @@ static void test_terminal_read(void)
                 if (!terminal) sector(prefix, 2048, -1, 0, 1024);
                 assert(cdc_read_sector(play_fad, length, buffer) == (terminal ? -1 : (int)length));
                 unsigned copied = terminal ? prefix * 2048 : length;
-                assert(next == used && read_words == (copied + 1) / 2);
+                assert(next == used && read_words == 2*((copied + 3)/4));
                 assert(!memcmp(buffer, stream, copied));
                 for (unsigned i = copied; i < sizeof buffer; ++i)
                     assert(buffer[i] == 0xcc);
@@ -513,7 +535,7 @@ static void test_terminal_read(void)
         sector(0, 2048, -1, 0, 1024);
         steps[query].status = status;
         assert(cdc_read_sector(play_fad, 1, buffer) == 1 && next == used);
-        assert(read_words == 1 && buffer[0] == stream[0] && buffer[1] == 0xcc);
+        assert(read_words == 2 && buffer[0] == stream[0] && buffer[1] == 0xcc);
     }
 }
 
@@ -588,6 +610,7 @@ int main(int argc,char **argv)
 {
     assert(argc==2);reset();
     if(!strcmp(argv[1],"copy")) test_copy();
+    else if(!strcmp(argv[1],"toc")) test_toc();
     else if(!strcmp(argv[1],"read")) test_read();
     else if(!strcmp(argv[1],"errors")) test_errors();
     else if(!strcmp(argv[1],"counts")) test_counts();

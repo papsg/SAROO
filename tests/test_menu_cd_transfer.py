@@ -16,7 +16,7 @@ class MenuCDTransferTests(unittest.TestCase):
         raw = (source / 'cdblock.c').read_bytes()
         names = ('cdc_set_size', 'cdc_reset_selector', 'cdc_cddev_connect',
                  'cdc_play_fad', 'cdc_get_numsector', 'cdc_get_del_data',
-                 'cdc_end_trans', 'cdc_trans_data')
+                 'cdc_end_trans', 'cdc_trans_data', 'cdc_get_toc')
         code = b''.join(function(raw, name) for name in names)
         if b'static int cdc_file_info(' in raw:
             code += b'\n#define HAS_FILE_INFO_COUNT 1\n' + function(raw, 'cdc_file_info')
@@ -73,6 +73,9 @@ class MenuCDTransferTests(unittest.TestCase):
 
     def test_fifo_copy_preserves_alignment_and_byte_extent(self):
         self.scenario('copy')
+
+    def test_toc_uses_longwords_and_releases_the_transfer(self):
+        self.scenario('toc')
 
     def test_reads_preserve_partial_tails_and_form2_slicing(self):
         self.scenario('read')
