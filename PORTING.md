@@ -2640,3 +2640,9 @@ All six checkpoints landed in order through [`6c7c5cd`](https://github.com/papsg
 The three GNU App links and three stock SH-2 menu links match their committed source hashes. The final App contains 166 vectors and uses 65,504 of 65,536 ITCM load bytes. Its DTCM data and BSS span remains 50,744 bytes. The stock menu has 85,352 code/data bytes and 19,848 bytes of body margin. It passes the ordinary linked clock tail and all 48 ROM clock cases. The public builds have host and link verification. Historical hardware observations apply to the corresponding private trials.
 
 The public source and ledger changes pass secret and public commit identity checks. The private repository fingerprint matches the starting checkout.
+
+## Menu callback and stack, backup compatibility, CD FIFO and FAT32
+
+Six ordered checkpoints after [`6c7c5cd`](https://github.com/papsg/SAROO/commit/6c7c5cdc77b6018c2064521c9fe510522914dae0).
+
+- `a1f65f2a` (paps-g, MENU-GAME-VANDAL-STUB-001) → [`45e78c9`](https://github.com/papsg/SAROO/commit/45e78c98a463e436480d7677e4d86addf84c433e). Declare all 48 bytes copied by the inherited yzb callback. The parent fails the declared-payload check. The linked guards, 12 stores and full payload match after the change. The earlier 44-byte version is superseded. All 144 focused checks and 48 linked ROM clock cases pass. Menu code/data is 85,368 bytes with 19,832 bytes of body margin. The exact modified game revisions remain unverified. [Original yzb contribution](https://github.com/tpunix/SAROO/commit/f6a35a4). [Hitachi SH7604 tables 2.12 and 2.16, printed pp. 33 and 39](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=48). [Reproduction](https://github.com/papsg/SAROO/blob/45e78c98a463e436480d7677e4d86addf84c433e/doc/CD-EVENTS-AND-GAME-LAUNCH.md#declare-the-complete-vandal-hearts-and-bio-hazard-callback-payload).
