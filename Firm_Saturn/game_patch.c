@@ -282,6 +282,10 @@ __asm__(
 "\tmov.l r0,@(8,r2)\n"
 "\tmov.l 3f,r1\n"
 "\tmov.l 4f,r2\n"
+/* ASR0 address AND setting yields 0x24400000 without a new literal. */
+"\tmov r1,r0\n"
+"\tand r2,r0\n"
+"\tmov.l @r0,r0\n"
 "\tmov.l r2,@r1\n"
 "\tmov #19,r0\n"
 "\tmov.l r0,@(8,r1)\n"
@@ -326,7 +330,7 @@ void jump_06b0(void)
 	go = (void*)0x1800;
 	go();
 
-	*(u32*)(0x25fe00b0) = 0x34403440;
+	scu_set_asr0(0x34403440);
 	*(u32*)(0x25fe00b8) = 0x13;
 
     (void)smpc_enable_reset(128);

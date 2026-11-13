@@ -369,3 +369,43 @@ boot, launch and VDP1 controls pass. The SH-2 build grows by 16 code/data
 bytes to 85,092 and all 48 linked ROM clock checks pass. Private reset
 observations informed the address correction. The public build has
 host and link verification.
+
+## Restore cartridge timing from WRAM after a clock change
+
+SATURN-SCU-003 and SATURN-SCU-005, adapted from paps-g `843c51bf` and
+`d604fb88`. Menu startup and all BIOS clock paths complete an uncached
+CS1 read before writing ASR0. That address returns open cartridge data
+and is outside the cartridge ID window. The ordinary game tail runs
+the read and timing restore in Saturn WRAM before fetching the
+cartridge callback. The callback restores ASR0 again after BIOS SCU
+initialization. The ROM-game path keeps its 96-byte entry and 36-byte
+reset helper, with the existing bounded reset-enable sequence.
+
+[Sega Saturn SCU Final Specifications ST-210-110194, precautions
+09 and 11, printed p. 5](https://antime.kapsi.fi/sega/files/ST-210-110194.pdf#page=9)
+specify the ASR reserved bits and the completed-read requirement.
+[Sega SMPC User's Manual ST-169-R1-072694, CKCHG352/320,
+printed pp. 30–31](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=40)
+specifies SCU reset and WRAM retention.
+[Sega SCU User's Manual ST-097-R5-072694, §3.6, printed
+pp. 62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=78)
+defines the ASR0 timing fields and reset value.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_clock_reset.py -v
+SAROO_MENU_CD_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_clock_reset.py -v
+python3 -B -m unittest discover -s tests -p test_menu_vdp1_order.py -v
+python3 -B tests/check_menu_clock_sh2.py Firm_Saturn/ssfirm.elf
+```
+
+The parent fails the new access-order case and both linked WRAM
+checks. The port passes both ten-method clock profiles, all 15
+adjacent VDP1 and CD-player methods, the linked ordinary tail and 48
+relocated ROM clock cases. Omitting the tail read, ASR0 store or
+return-register restore is rejected. The installed tail and callback
+occupy 32 bytes through `0x060006d7` and leave the BIOS literal at
+`0x060006dc` intact. The linked CD-player fragment occupies 40 of its
+64 copied bytes. The image remains 488,770 bytes, with 85,132 code/data
+bytes and 20,064 bytes of body margin. A prior development RAM trial
+reached the game in *6 Inch My Darling* after the WRAM correction.
+Physical timing and game behavior for this public build remain unqualified.

@@ -78,6 +78,8 @@ static void rom_target(int address)
 
 #include "actual.inc"
 
+static const u32 clock_callback = 0x060006b8 + sizeof code_06b8;
+
 static void put32(unsigned offset, u32 value)
 {
     for(unsigned i=0;i<4;++i) config[offset+i] = value >> (8*i);
@@ -106,7 +108,8 @@ static void finished(void)
     assert(loads == 1 && CHEAT_ADDRES == 0 && clears == 1);
     assert(!memcmp(vram, expected, sizeof vram));
     assert(!memcmp(high+0x6b8, code_06b8, sizeof code_06b8));
-    assert(REG32(0x060006cc) == (u32)(uintptr_t)my_06b0);
+    assert(REG32(clock_callback) == (u32)(uintptr_t)my_06b0);
+    assert(clock_callback + 4 <= 0x060006dc && REG32(0x060006dc) == 0xa5a5a5a5);
     if(need_bup){
         assert(REG32(0x06000358) == (u32)(uintptr_t)bup_init);
         assert(REG32(0x0600026c) == (u32)(uintptr_t)my_cdplayer);
@@ -154,7 +157,7 @@ int main(int argc, char **argv)
         if(!setjmp(takeover)){ read_1st(); assert(0); }
         assert(loads == 1 && jumps == 1 && cards == 1 && !need_bup && !clears);
         assert(!memcmp(vram, untouched, sizeof vram));
-        assert(REG32(0x060006cc) == 0xa5a5a5a5 && !cfg_reads && !breaks && !installs);
+        assert(REG32(clock_callback) == 0xa5a5a5a5 && !cfg_reads && !breaks && !installs);
     }else if(!strcmp(mode, "rom-return")){
         for(int ready=ROM_NONE;ready<=ROM_ULTRAMAN;++ready) for(int stock=0;stock<2;++stock) for(int skip=0;skip<2;++skip){
             reset("T-13308G", 37); rom_ready = ready; skip_patch = skip; jump_returns = 1;

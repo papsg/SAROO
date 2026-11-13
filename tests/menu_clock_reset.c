@@ -17,8 +17,11 @@ static unsigned suspended, clock_copied, work_ram_replaced, reject_reply;
 static unsigned cache_writes;
 static int check_cache, check_dma;
 static unsigned dma_step;
+static unsigned abus_reads, asr_writes;
+static int check_abus;
 #define EXLTEN 0x0200
 static void jump_06b0(void);
+static void _call_04c8(void);
 static void jump_copy_code(int type) { (void)type; assert(0); }
 static __attribute__((unused)) void rom_reset_issue(void) { assert(0); }
 
@@ -68,7 +71,7 @@ static __attribute__((unused)) unsigned counter(void)
 
 static void bios_clock(void)
 {
-    assert(rom_path && !calls++);
+    assert((rom_path || player_path) && calls++ == (player_path ? 1u : 0u));
     asr = aref = 0;
 }
 
@@ -78,6 +81,20 @@ static void bios_scu(void)
     if (rom_path) assert(aref == 0x13);
     asr = 0x1ff01ff0;
     aref = 0x1f;
+}
+
+static __attribute__((unused)) void abus_read(u32 address)
+{
+    assert(address == 0x24400000u);
+    assert(calls == ((rom_path || player_path) ? 2u : 1u));
+    assert(abus_reads++ == asr_writes);
+}
+
+static u32 *asr_write_port(void)
+{
+    if (check_abus) assert(abus_reads == asr_writes + 1);
+    ++asr_writes;
+    return &asr;
 }
 
 static void sci_init(void) { assert(0); }
@@ -121,8 +138,7 @@ static void player_copy_clock(void)
 static void player_clock(int type)
 {
     assert(clock_copied && calls == 1 && type == 0);
-    calls = 2;
-    asr = 0x38803880u;
+    _call_04c8();
 }
 
 static void dma_access(u32 address, unsigned width, int write, u32 value)
@@ -194,6 +210,7 @@ static void reset(int path)
     calls = issued = completed = external = last_busy = last_line = 0;
     sf = command = reply = 0;
     cache_writes = check_cache = dma_step = check_dma = 0;
+    abus_reads = asr_writes = check_abus = 0;
     asr = aref = 0;
     line = 32;
 }
@@ -201,7 +218,11 @@ static void reset(int path)
 static void run(void)
 {
     if (rom_path) jump_06b0();
-    else my_06b0();
+    else {
+        /* The separate linked-WRAM fixture verifies the entry sequence. */
+        asr = 0x38803880u;
+        my_06b0();
+    }
     assert(calls == (rom_path ? 2u : 1u));
     assert(asr == (rom_path ? 0x34403440u : 0x38803880u));
 }
@@ -240,6 +261,16 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *test = argv[1];
+    if (!strcmp(test, "abus")) {
+        for (int path = 0; path < 3; path++) {
+            reset(path);
+            check_abus = 1;
+            if (player_path) my_cdplayer();
+            else run();
+            assert(abus_reads == 1 && asr_writes == 1 && completed);
+        }
+        return 0;
+    }
     if (!strcmp(test, "dma")) {
         reset(2);
         check_dma = 1;

@@ -1,6 +1,6 @@
-"""Test the linked ROM clock hook at its actual WRAM destinations.
+"""Test the linked clock fragments at their actual WRAM destinations.
 
-Adapted from paps-g ff3f9d2f. Only the instructions in these two fragments,
+Adapted from paps-g ff3f9d2f and d604fb88. Only the fragment instructions,
 BIOS calls and MMIO are modeled.
 """
 from pathlib import Path
@@ -9,6 +9,8 @@ import sys
 
 HOOK = 0x06000c80
 ISSUE = 0x060006b8
+BIOS_LITERAL = 0x060006dc
+DUMMY = 0x24400000
 ASR = 0x25fe00b0
 AREF = ASR + 8
 SF = 0x20100063
@@ -50,6 +52,11 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
     def read(address, width):
         nonlocal before_reads, after_reads, completed
         nonlocal latch_reads, last_busy, last_unsafe, budget_seen
+        if address == DUMMY:
+            require(width == 4 and events == ['clock', 'aref', 'scu'],
+                    'Invalid A-bus read before ROM timing restore')
+            events.append('dummy')
+            return 0xffffffff
         if address == SF:
             require(width == 1, 'SF must use byte access')
             if not budget_seen:
@@ -84,6 +91,7 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
         value &= (1 << (8*width))-1
         if address == ASR:
             require(width == 4 and clocked and value == 0x34403440, 'Invalid ASR restore')
+            require(events[-1] == 'dummy', 'ASR0 restore lacks a completed A-bus read')
             asr = value
             events.append('asr')
         elif address == AREF:
@@ -129,7 +137,7 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
                     'Incomplete BIOS/bus handoff')
             require(regs[8:16] == initial[8:16] and pr == caller,
                     'Clock hook damaged callee-saved registers, stack or PR')
-            require(events[:5] == ['clock', 'aref', 'scu', 'asr', 'aref'],
+            require(events[:6] == ['clock', 'aref', 'scu', 'dummy', 'asr', 'aref'],
                     'Bus/refresh ordering changed')
             return dict(submitted=submitted, completed=bool(completed),
                         before_reads=before_reads, after_reads=after_reads,
@@ -152,6 +160,8 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
             width = 1 << (op & 3)
             value = read(regs[m], width)
             regs[n] = signed(value, width*8) & 0xffffffff
+        elif op & 0xf00f == 0x6003:
+            regs[n] = regs[m]
         elif op & 0xf00f in (0x2000, 0x2001, 0x2002):
             write(regs[n], 1 << (op & 3), regs[m])
         elif op >> 12 == 1:
@@ -162,6 +172,8 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
             regs[n] = (regs[m] & 0xffff0000) | ((regs[m]&255)<<8) | ((regs[m]>>8)&255)
         elif op & 0xf00f == 0x2008:
             t = not (regs[n] & regs[m])
+        elif op & 0xf00f == 0x2009:
+            regs[n] &= regs[m]
         elif op & 0xff00 == 0xc800:
             t = not (regs[0] & (op & 255))
         elif op & 0xf0ff in (0x4018, 0x4028):
@@ -192,7 +204,7 @@ def execute(hook, issue, *, before_busy=0, after_busy=0, unsafe=0,
     raise ValueError('Clock hook exceeded bounded execution fixture')
 
 
-def linked_fragments(path):
+def linked_symbols(path, selected):
     image = path.read_bytes()
     if image[:7] != b'\x7fELF\x01\x02\x01':
         raise ValueError('Expected a big-endian ELF32 menu')
@@ -208,12 +220,51 @@ def linked_fragments(path):
         name, address, size, _, _, section = struct.unpack_from('>IIIBBH', image, offset)
         start = names[4] + name
         name = image[start:image.index(b'\0', start)].decode('ascii')
-        if name in ('_jump_06b0', '_rom_reset_issue'):
+        if name in selected:
             owner = sections[section]
             location = owner[4] + address - owner[3]
             assert owner[4] <= location <= owner[4] + owner[5] - size
             found[name] = image[location:location + size]
-    return found['_jump_06b0'], found['_rom_reset_issue']
+    return tuple(found[name] for name in selected)
+
+
+def linked_fragments(path):
+    return linked_symbols(path, ('_jump_06b0', '_rom_reset_issue'))
+
+
+def verify_tail(tail):
+    callback_at = ISSUE + len(tail)
+    if callback_at % 4 or callback_at + 4 > BIOS_LITERAL:
+        raise ValueError('Clock tail overlaps the live BIOS literal')
+
+    callback = 0x02001234
+    ram = tail + struct.pack('>I', callback)
+    regs = [None] * 16
+    events = []
+    for offset in range(0, len(tail), 2):
+        op, = struct.unpack_from('>H', ram, offset)
+        n, m = (op >> 8) & 15, (op >> 4) & 15
+        if op >> 12 == 13:
+            address = ((offset + 4) & ~3) + (op & 255) * 4
+            if address + 4 > len(ram):
+                raise ValueError('Clock tail fetches a literal outside its WRAM')
+            regs[n], = struct.unpack_from('>I', ram, address)
+        elif op & 0xf00f == 0x6002 and regs[m] == DUMMY:
+            events.append('dummy')
+            regs[n] = 0xffffffff
+        elif op & 0xf00f == 0x2002 and regs[n] == ASR and regs[m] == 0x38803880:
+            if events != ['dummy']:
+                raise ValueError('WRAM tail restores ASR0 without a completed A-bus read')
+            events.append('asr')
+        elif op & 0xf0ff == 0x402b:
+            if events != ['dummy', 'asr'] or regs[n] != callback:
+                raise ValueError('WRAM tail jumps before restoring cartridge timing')
+            if ram[offset+2:offset+4] != b'\x4f\x26':
+                raise ValueError('WRAM tail fails to restore PR in the jump delay slot')
+            return
+        elif op != 0x0009:
+            raise ValueError(f'Unsupported WRAM clock-tail opcode {op:04x}')
+    raise ValueError('WRAM tail never calls the cartridge')
 
 
 def verify(hook, issue):
@@ -239,4 +290,7 @@ def verify(hook, issue):
 
 
 if __name__ == '__main__':
-    verify(*linked_fragments(Path(sys.argv[1])))
+    path = Path(sys.argv[1])
+    verify_tail(*linked_symbols(path, ('_code_06b8',)))
+    print('Linked ordinary clock tail restores ASR0 in WRAM before the cartridge jump')
+    verify(*linked_fragments(path))

@@ -242,7 +242,7 @@ static void _call_04c8(void)
 {
 	void (*go)(void) = (void*)(0x04c8);
 	go();
-	*(u32*)(0x25fe00b0) = 0x38803880;
+	scu_set_asr0(0x38803880);
 }
 
 void my_cdplayer(void)
@@ -441,16 +441,22 @@ int my_bios_loadcd_read(void)
 }
 
 
-static u16 code_06b8[10] = {
-	0xd102, // mov.l #0x25fe00b0, r1
-	0xd203, // mov.l #0x38803880, r2
+/* After CKCHG, stay in WRAM until the A-bus read and timing restore finish.
+ * These 28 bytes and the callback pointer fit before the BIOS literal at
+ * 060006dc. */
+static u16 code_06b8[14] = {
+	0xd103, // mov.l dummy, r1 (060006c8)
+	0x6112, // mov.l @r1, r1
+	0xd103, // mov.l asr0, r1 (060006cc)
+	0xd204, // mov.l setting, r2 (060006d0)
 	0x2122, // mov.l r2, @r1
-	0xd103, // mov.l next_call, r1
+	0xd104, // mov.l next_call, r1 (060006d4)
 	0x412b, // jmp   @r1
 	0x4f26, // lds.l @r15+, pr
+	0x2440,0x0000,
 	0x25fe,0x00b0,
 	0x3880,0x3880,
-	// 060006cc: .long next_call
+	// 060006d4: .long next_call
 };
 
 
@@ -462,7 +468,7 @@ static void my_06b0(void)
 	void (*go)(void) = (void*)0x1800;
 	go();
 
-	*(u32*)(0x25fe00b0) = 0x38803880;
+	scu_set_asr0(0x38803880);
 
     (void)smpc_enable_reset(192);
 }
@@ -483,7 +489,7 @@ static void read_1st(void)
 
 	// 0x06000320: 0x060006b0  bios_set_clock_speed
 	memcpy((u8*)0x060006b8, code_06b8, sizeof(code_06b8));
-	*(u32*)(0x060006cc) = (u32)my_06b0;
+	*(u32*)(0x060006d4) = (u32)my_06b0;
 
 
 	if(game_break_pc){

@@ -130,6 +130,15 @@ static inline int smpc_disable_reset(void)
 #define ASR1        REG(SCU_BASE+0xb4)
 #define AREF        REG(SCU_BASE+0xb8)
 
+/* ST-210 No.11 requires a completed A-bus read before writing ASR0.
+ * This cache-through CS1 address is outside the cartridge ID window. */
+#define SCU_ABUS_DUMMY_ADDR 0x24400000u
+static inline __attribute__((always_inline)) void scu_set_asr0(u32 value)
+{
+    (void)REG32(SCU_ABUS_DUMMY_ADDR);
+    ASR0 = value;
+}
+
 /* SCU DMA */
 #define SCU_DMA_BASE  (SCU_BASE+0x0000)
 

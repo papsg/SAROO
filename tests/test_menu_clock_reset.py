@@ -27,6 +27,12 @@ class MenuClockResetTests(unittest.TestCase):
             names = ('smpc_reset_command', 'smpc_enable_reset', 'smpc_disable_reset')
             code += b'\n'.join(function(plain_header, name) for name in names
                                if f'int {name}('.encode() in plain_header)
+        if b'void scu_set_asr0(' in header:
+            code += re.search(rb'^#define SCU_ABUS_DUMMY_ADDR .+$', header, re.M)[0] + b'\n'
+            plain_header = header.replace(b'static inline __attribute__((always_inline)) void',
+                                          b'static void')
+            code += function(plain_header, 'scu_set_asr0')
+        code += function(load, '_call_04c8')
         code += function(load, 'my_06b0') + function(rom, 'jump_06b0') + function(rom, 'card_init')
         # Execute the real player handoff up to its first destructive write.
         player, found, _ = function(load, 'my_cdplayer').partition(
@@ -55,7 +61,10 @@ class MenuClockResetTests(unittest.TestCase):
         code += player + b'player_replace_work_ram();\n}\n'
         for original, replacement in (
             (b'(void*)(0x04c8)', b'bios_clock'), (b'(void*)0x1800', b'bios_scu'),
-            (b'*(u32*)(0x25fe00b0)', b'asr'), (b'*(u32*)(0x25fe00b8)', b'aref'),
+            (b'(void)REG32(SCU_ABUS_DUMMY_ADDR)', b'abus_read(SCU_ABUS_DUMMY_ADDR)'),
+            (b'ASR0 =', b'*asr_write_port() ='),
+            (b'*(u32*)(0x25fe00b0)', b'*asr_write_port()'),
+            (b'*(u32*)(0x25fe00b8)', b'aref'),
             (b'*(u32*)(0x06000324)', b'0'), (b'*(u32*)(0x06000358)', b'save_vector'),
             (b'*(u32*)(0x0600026c)', b'player_vector'),
             (b'*(u32*)(0x06000320)', b'(*clock_vector())'),
@@ -91,6 +100,7 @@ class MenuClockResetTests(unittest.TestCase):
     def test_player_waits_for_reset_disable_with_display_off(self): self.scenario('player')
     def test_player_disables_then_purges_then_enables_cache(self): self.scenario('cache')
     def test_player_stops_dma_before_reconfiguring_channels(self): self.scenario('dma')
+    def test_clock_restores_complete_an_abus_read_before_asr0(self): self.scenario('abus')
     def test_player_does_not_replace_work_ram_on_reset_failure(self): self.scenario('player-failure')
 
 

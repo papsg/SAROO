@@ -47,7 +47,9 @@ _next_start:
 	shll2   r0
 	ldc     r0,sr
 
-	! set ASR0
+	! ST-210 No.11: complete a cache-through A-bus read before ASR0.
+	mov.l   abus_dummy_ptr, r2
+	mov.l   @r2, r2
 	mov.l   asr0_ptr, r0
 	mov.l	asr0_val, r1
 	mov.l	r1, @r0
@@ -107,6 +109,7 @@ main_ptr:   .long __main
 stack_ptr:  .long __stack_end
 bss_start:  .long __bss_start
 bss_end:    .long __bss_end
+abus_dummy_ptr: .long 0x24400000
 asr0_ptr:   .long 0x25fe00b0
 asr0_val:   .long 0x38803880
 
