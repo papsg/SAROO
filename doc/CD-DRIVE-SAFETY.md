@@ -408,3 +408,27 @@ The GNU App uses 65,260 load bytes, with 276 bytes of ITCM free.
 This checkpoint covers sectors from mounted images. Host PUT
 normalization, cooked-image raw-field synthesis, playback timing
 and MDK are outside its verification.
+
+## Clear the unused tail of cooked image sectors
+
+MCU-CDC-R14, adapted from paps-g `6901e3c2`. A 2,048-byte cooked
+image sector or generated data-track gap fills bytes 24–2,071 of
+the internal buffer. Clear the 280 bytes after it before linking
+the block into its partition. This prevents wider reads from
+returning bytes left by a previous occupant of that block.
+
+[Sega ST-162 §5.4, printed p. 48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36)
+defines the read widths and distinguishes user data from the
+complete sector. [ECMA-130 §14 and §§14.1–14.6, printed pp. 14–16](https://ecma-international.org/wp-content/uploads/ECMA-130_2nd_edition_june_1996.pdf#page=24)
+defines the sync, header, error detection and parity fields.
+Those fields require a raw source or separate format-aware
+construction. The cleared tail is padding.
+
+Run `make -C tests check-cdc-command-buffer`. To reproduce the
+stale FIFO bytes, set `SAROO_CDC_DIRECTORY_SOURCE` to the parent
+`saturn_cdc.c` and select `wide_reads_clear` in
+`test_cdc_directory.py`. The test seeds two pool slots and checks
+all four read widths, including the ordinary 2,048-byte payload,
+the gap and the three wider replies. The GNU App uses 65,280 load
+bytes, with 256 bytes of ITCM free. Physical playback and MDK are
+unqualified.

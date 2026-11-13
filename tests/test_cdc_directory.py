@@ -108,6 +108,7 @@ class CDDirectoryTests(unittest.TestCase):
     def test_1512_selector_count_pages_and_one_free_block(self):self.run_case(1)
     def test_raw_mode1_descriptor_uses_its_original_payload(self):self.run_case(12)
     def test_image_fifo_lengths_and_audio_that_resembles_xa(self):self.run_case(13)
+    def test_cooked_image_and_gap_wide_reads_clear_reused_buffer_tail(self):self.run_case(14)
     def test_malformed_missing_empty_and_straddled_records(self):self.run_case(2)
     def test_descriptor_scan_root_bounds_and_transitions(self):self.run_case(3)
     def test_full_ids_self_parent_busy_queries_and_actual_fifo(self):self.run_case(4)

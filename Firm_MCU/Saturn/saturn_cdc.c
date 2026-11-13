@@ -482,6 +482,8 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 	if(wblk->size==2048){
 		memset(blk->data, 0, 24);
 		memcpy32(blk->data+24, wblk->data, 2048);
+		/* Wider reads may expose this tail. The cooked source supplies no bytes for it. */
+		memset(blk->data+2072, 0, 280);
 	}else if(wblk->size==2336){
         memset(blk->data, 0, 16);
         blk->data[15] = 2;

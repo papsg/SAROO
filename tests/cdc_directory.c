@@ -231,6 +231,44 @@ static void raw_image_fifo(unsigned first)
     }
 }
 
+static void cooked_image_tail(void)
+{
+    const unsigned lengths[] = {2048, 2336, 2340, 2352};
+    _Alignas(4) u8 payload[2048];
+    _Alignas(4) u8 gap[2048] = {0};
+    for (unsigned i = 0; i < sizeof payload; ++i) payload[i] = (u8)(i * 13 + i / 17);
+    for (unsigned l = 0; l < sizeof lengths / sizeof *lengths; ++l) {
+        unsigned length = lengths[l];
+        seed(0, 0);
+        cdb.sector_size = length;
+        memset(cdb.block[0].data, 0x5a, 2352);
+        memset(cdb.block[1].data, 0xa5, 2352);
+        BLOCK w = {.data = payload, .size = sizeof payload, .fad = 150};
+        assert(filter_sector(&directory_track, &w) == 0);
+        w.data = gap; /* A synthetic data-track gap. */
+        w.fad++;
+        assert(filter_sector(&directory_track, &w) == 0);
+        cdb.cr2 = 0;
+        cdb.cr4 = 2;
+        assert(cal_actual_size() == HIRQ_ESEL);
+        size_reply(length);
+        assert(get_sector_data() == HIRQ_DRDY);
+        trans_handle();
+        trans_handle();
+        assert(cdb.trans_finish && fifo_words == length && cdb.cdwnum == (int)(length * 2));
+        unsigned offset = length == 2048 ? 24 : 2352 - length;
+        for (unsigned i = 0; i < length; i += 2) {
+            unsigned at = offset + i;
+            u16 expected = at >= 24 && at < 2072 ?
+                           payload[at - 24] | ((u16)payload[at - 23] << 8) : 0;
+            assert(fifo_output[i / 2] == expected);
+            assert(fifo_output[length / 2 + i / 2] == 0);
+        }
+        assert(end_trans() == HIRQ_EHST);
+        check_owners();
+    }
+}
+
 static void check_file_words(unsigned first, const u8 expected[12])
 {
     for (unsigned k = 0; k < 6; ++k)
@@ -452,6 +490,7 @@ int main(int argc,char **argv)
     case 11:directory_startup();break;
     case 12:raw_mode1_descriptor();break;
     case 13:raw_image_fifo(0);raw_image_fifo(1);raw_image_fifo(2);break;
+    case 14:cooked_image_tail();break;
     default:abort();}
 #ifdef TEST_AXI_FILE_INFO
     if (cdb.fi == directory_memory.table)
