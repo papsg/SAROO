@@ -9,6 +9,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 import test_cdc_bounds as bounds
+from test_cdc_filter import filter_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -23,11 +24,11 @@ class CDReadOwnershipTests(unittest.TestCase):
         def function(signature):
             start=raw.index(signature)
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
-        (cls.target/'ownership.inc').write_bytes(function(b'int reset_filter(')+function(b'int filter_sector('))
+        (cls.target/'ownership.inc').write_bytes(function(b'int reset_filter(')+filter_source(raw))
         types=cls.target/'types.h'
         types.write_bytes(types.read_bytes()+header[header.index(b'#define _BUFIO '):header.index(b'#define LOG_MASK_DEFAULT')])
         inputs=json.loads((cls.target/'inputs.json').read_text())
-        for name in ('cdc_read_ownership.c','test_cdc_read_ownership.py'):
+        for name in ('cdc_read_ownership.c','test_cdc_read_ownership.py','test_cdc_filter.py'):
             data=(ROOT/'tests'/name).read_bytes();(cls.target/name).write_bytes(data);inputs[name]=hashlib.sha256(data).hexdigest()
         (cls.target/'inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
         (cls.target/'bounds-command.json').write_bytes((cls.target/'command.json').read_bytes())

@@ -269,6 +269,59 @@ static void cooked_image_tail(void)
     }
 }
 
+static void mode2_header_fifo(void)
+{
+    static const struct {
+        u32 fad;
+        u8 msf[3];
+    } addresses[] = {
+        {150, {0x00, 0x02, 0x00}}, {224, {0x00, 0x02, 0x74}},
+        {225, {0x00, 0x03, 0x00}}, {4499, {0x00, 0x59, 0x74}},
+        {4500, {0x01, 0x00, 0x00}}, {449999, {0x99, 0x59, 0x74}},
+        {450000, {0}}, {0xfffffe, {0}},
+    };
+    const unsigned lengths[] = {2048, 2336, 2340, 2352};
+    _Alignas(4) u8 expected[2352];
+    TRACK_INFO track = {.mode = 2};
+    for (unsigned i = 0; i < sizeof addresses / sizeof *addresses; ++i) {
+        for (unsigned form = 0; form < 2; ++form) {
+            memset(expected, 0, 16);
+            if (addresses[i].fad <= 449999) {
+                memset(expected + 1, 0xff, 10);
+                memcpy(expected + 12, addresses[i].msf, 3);
+            }
+            expected[15] = 2;
+            for (unsigned byte = 16; byte < sizeof expected; ++byte)
+                expected[byte] = (u8)(byte * 23 + byte / 9 + i);
+            expected[18] = expected[22] = form ? 0x28 : 8;
+            for (unsigned l = 0; l < sizeof lengths / sizeof *lengths; ++l) {
+                unsigned length = lengths[l];
+                unsigned offset = length == 2048 ? 24 : 2352 - length;
+                unsigned bytes = length == 2048 && form ? 2324 : length;
+                seed(0, 0);
+                cdb.sector_size = length;
+                memset(cdb.block[0].data, 0xa5, 2352);
+                BLOCK w = {.data = expected + 16, .size = 2336, .fad = addresses[i].fad,
+                           .sm = expected[18]};
+                assert(filter_sector(&track, &w) == 0);
+                assert(cdb.part[0].head->fad == addresses[i].fad);
+                cdb.cr2 = 0;
+                cdb.cr4 = 1;
+                assert(cal_actual_size() == HIRQ_ESEL);
+                size_reply(bytes / 2);
+                assert(get_sector_data() == HIRQ_DRDY);
+                trans_handle();
+                assert(cdb.trans_finish && fifo_words == bytes / 2);
+                for (unsigned b = 0; b < bytes; b += 2)
+                    assert(fifo_output[b / 2] == (expected[offset + b] | ((u16)expected[offset + b + 1] << 8)));
+                assert(!memcmp(cdb.part[0].head->data, expected, sizeof expected));
+                assert(end_trans() == HIRQ_EHST);
+                check_owners();
+            }
+        }
+    }
+}
+
 static void check_file_words(unsigned first, const u8 expected[12])
 {
     for (unsigned k = 0; k < 6; ++k)
@@ -491,6 +544,7 @@ int main(int argc,char **argv)
     case 12:raw_mode1_descriptor();break;
     case 13:raw_image_fifo(0);raw_image_fifo(1);raw_image_fifo(2);break;
     case 14:cooked_image_tail();break;
+    case 15:mode2_header_fifo();break;
     default:abort();}
 #ifdef TEST_AXI_FILE_INFO
     if (cdb.fi == directory_memory.table)

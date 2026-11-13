@@ -174,7 +174,11 @@ static void mode2_layouts(int producer)
         if(form==2) {
             expected[18]=expected[22]=0x20;
             for(unsigned i=0;i<2324;i++)expected[24+i]=disc_bytes[i];
-        } else for(unsigned i=0;i<2336;i++)expected[16+i]=disc_bytes[i];
+        } else {
+            memset(expected + 1, 0xff, 10);
+            expected[13] = 2; /* FAD 150 is 00:02:00. */
+            memcpy(expected + 16, disc_bytes, 2336);
+        }
         assert(!memcmp(source->data,expected,sizeof expected));
         assert(source->size==(int)(form?2324:readsizes[r]) && source->fad==150);
         assert(source->fn==(int)fn && source->cn==(int)cn && source->sm==(int)sm && source->ci==(int)ci);

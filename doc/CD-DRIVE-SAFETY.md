@@ -432,3 +432,34 @@ all four read widths, including the ordinary 2,048-byte payload,
 the gap and the three wider replies. The GNU App uses 65,280 load
 bytes, with 256 bytes of ITCM free. Physical playback and MDK are
 unqualified.
+
+## Rebuild the Mode 2 header from a 2,336-byte image sector
+
+MCU-CDC-R16, adapted from paps-g `669d3301`. A `MODE2/2336`
+sector supplies everything from the XA subheader onward. Build
+the preceding 16 bytes from the CD sync pattern, the sector's
+absolute minute/second/frame address in BCD and Mode 2. All 2,336
+source bytes, including the trailer, survive the copy. The 2,340-
+and 2,352-byte reads now include the address, and the full-sector
+read includes sync.
+
+The public port keeps the previous zero-filled prefix and Mode 2
+byte for FAD 450,000 and higher, beyond the two-digit minute field.
+Those image positions still support their existing payload reads.
+The earlier [Mode 2 normalization](CUE-SECTOR-SAFETY.md#mcu-cdio-003-normalize-accepted-mode2-image-payloads)
+supplies the container and XA handling.
+
+[Sega ST-162 §5.4, figure 5.8, printed p. 48](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=36),
+[ECMA-130 §§14.1–14.2, printed p. 15](https://ecma-international.org/wp-content/uploads/ECMA-130_2nd_edition_june_1996.pdf#page=25)
+and [ECMA-168 Annex C §C.2.1, printed p. 113](https://ecma-international.org/wp-content/uploads/ECMA-168_2nd_edition_december_1994.pdf#page=125)
+specify the field layout.
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. To reproduce the missing header, point
+`SAROO_CDC_DIRECTORY_SOURCE` at the parent `saturn_cdc.c` and
+select `mode2_header` in `test_cdc_directory.py`. The test covers
+both XA forms at eight addresses across all four read widths.
+The routed-copy tests also check the complete 2,352-byte container.
+The GNU App uses 65,396 load bytes and leaves 140 bytes free.
+Physical reads, original MDK output and raw synthesis for other
+cooked formats remain unqualified.

@@ -12,6 +12,15 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def filter_source(raw):
+    code = b''
+    for signature in (b'static u8 sector_bcd(', b'static void mode2_header(', b'int filter_sector('):
+        if signature in raw:
+            start = raw.index(signature)
+            code += raw[start:raw.index(b'\n}', start) + 2] + b'\n'
+    return code
+
+
 class CDFilterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -24,7 +33,7 @@ class CDFilterTests(unittest.TestCase):
             return raw[start:raw.index(b'\n}',start)+2]+b'\n'
         code=function(b'BLOCK *alloc_block(void)')+function(b'void append_block(')
         if b'static int sector_destination(' in raw:code+=function(b'static int sector_destination(')
-        code+=function(b'int filter_sector(')
+        code+=filter_source(raw)
         (cls.target/'filter.inc').write_bytes(code)
         (cls.target/'types.h').write_bytes(header[header.index(b'#define REG8('):header.index(b'extern CDBLOCK cdb;')])
         inputs={'saturn_cdc.c':raw,'cdc.h':header,'cdc_filter.c':(ROOT/'tests/cdc_filter.c').read_bytes(),'test_cdc_filter.py':Path(__file__).read_bytes()}

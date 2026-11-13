@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 from cdc_reply_source import bswap_source
 import test_cdc_bounds as bounds
+from test_cdc_filter import filter_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -37,7 +38,7 @@ class CDDirectoryTests(unittest.TestCase):
             b'int finish_read(' if retired else b'int finish_directory(',
             b'static __attribute__((noinline)) void log_directory_record(',
             b'static int fill_fileinfo(',b'int handle_diread(',b'int get_file_scope(',
-            b'int get_file_info(',b'int abort_file(',b'int filter_sector('))
+            b'int get_file_info(',b'int abort_file(')) + filter_source(raw)
         if retired:
             code += function(main, b'static __attribute__((noinline)) void log_play_end(')
         else:
@@ -76,7 +77,7 @@ class CDDirectoryTests(unittest.TestCase):
                  b'#define acknowledge_disc_pause acknowledge_drive_request\n')
         (cls.target/'pause.inc').write_bytes(pause)
         inputs={'saturn_cdc.c':raw,'saturn_main.c':main}
-        for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py','cdc_reply_source.py'):
+        for name in ('cdc_directory.c','test_cdc_directory.py','cdc_bounds.c','test_cdc_bounds.py','cdc_copy.c','test_cdc_copy.py','cdc_reply_source.py','test_cdc_filter.py'):
             inputs[name]=(ROOT/'tests'/name).read_bytes()
         for name in ('types.h','copy.inc','bounds.inc','ff.h','ffconf.h'):
             inputs[name]=(bounds.CDBoundsTests.target/name).read_bytes()
@@ -109,6 +110,7 @@ class CDDirectoryTests(unittest.TestCase):
     def test_raw_mode1_descriptor_uses_its_original_payload(self):self.run_case(12)
     def test_image_fifo_lengths_and_audio_that_resembles_xa(self):self.run_case(13)
     def test_cooked_image_and_gap_wide_reads_clear_reused_buffer_tail(self):self.run_case(14)
+    def test_mode2_header_bcd_boundaries_and_fifo_widths(self):self.run_case(15)
     def test_malformed_missing_empty_and_straddled_records(self):self.run_case(2)
     def test_descriptor_scan_root_bounds_and_transitions(self):self.run_case(3)
     def test_full_ids_self_parent_busy_queries_and_actual_fifo(self):self.run_case(4)

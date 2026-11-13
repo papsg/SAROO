@@ -454,6 +454,27 @@ static int sector_destination(int fid, const BLOCK *block, int log_false_disconn
     return 0xff;
 }
 
+static u8 sector_bcd(unsigned value)
+{
+    return ((value / 10) << 4) | (value % 10);
+}
+
+static void mode2_header(u8 *data, u32 fad)
+{
+    /* An image may exceed the two-digit minute field. Keep its old prefix. */
+    if (fad >= 450000) {
+        memset(data, 0, 15);
+    } else {
+        unsigned seconds = fad / 75;
+        data[0] = data[11] = 0;
+        memset(data + 1, 0xff, 10);
+        data[12] = sector_bcd(seconds / 60);
+        data[13] = sector_bcd(seconds % 60);
+        data[14] = sector_bcd(fad % 75);
+    }
+    data[15] = 2;
+}
+
 int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 {
     PARTITION *pt;
@@ -485,8 +506,7 @@ int filter_sector(TRACK_INFO *track, BLOCK *wblk)
 		/* Wider reads may expose this tail. The cooked source supplies no bytes for it. */
 		memset(blk->data+2072, 0, 280);
 	}else if(wblk->size==2336){
-        memset(blk->data, 0, 16);
-        blk->data[15] = 2;
+        mode2_header(blk->data, wblk->fad);
         memcpy32(blk->data+16, wblk->data, 2336);
         if(wblk->sm & 0x20) blk->size = 2324;
 	}else if(wblk->size==2324){
