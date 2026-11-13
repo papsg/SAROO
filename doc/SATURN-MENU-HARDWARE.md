@@ -291,3 +291,34 @@ canaries and intentional cover clipping and blend controls. All 20 adjacent
 cover and peripheral methods and 48 linked ROM clock cases pass. The full
 menu has 85,076 code/data bytes, up 48. Host checks model register values and
 do not establish physical image quality.
+
+## Initialize the stereo CD audio mixer with word writes
+
+SATURN-SCSP-001 and SATURN-SCSP-002, adapted from paps-g `268ce1cc`
+and `eb4826d3`. Menu startup wrote byte values to the SCSP external CD
+audio inputs, which require aligned 16-bit writes from the main CPU.
+The two complete words use send level 6 (−6 dB) and pan the inputs
+fully left and right. The port uses the corrected left word `0x00df`
+and right word `0x00cf`.
+
+[Sega SCSP User's Manual ST-077-R2-052594, main CPU access, printed p. 19](https://antime.kapsi.fi/sega/files/ST-077-R2-052594.pdf#page=31)
+specifies 16-bit access. [Figure 4.2, printed p. 25](https://antime.kapsi.fi/sega/files/ST-077-R2-052594.pdf#page=37)
+and [Tables 4.29–4.31, printed pp. 87–88](https://antime.kapsi.fi/sega/files/ST-077-R2-052594.pdf#page=99)
+define the register fields, levels, pan and external-input locations.
+[Sega Technical Bulletin STN-29, CD-DA Playback Precautions](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/info/hon/stn29.htm)
+specifies the stereo routing. Its left hexadecimal example disagrees
+with the binary fields it describes. The port follows the manual
+and the bulletin's field descriptions.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_scsp.py -v
+SAROO_MENU_SAFETY_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_scsp.py -v
+```
+
+The parent fails width and field checks and passes the master volume and
+neighbor control. An aligned-write control using `0x00fd` fails only the
+stereo test. Both profiles pass all three methods on the port. Another
+55 audio and startup methods and 48 linked ROM clock checks pass. The
+linked menu stays at 85,076 code/data bytes and emits aligned word stores
+with the corrected values. Physical CD audio balance and level on the
+public build remain unqualified.

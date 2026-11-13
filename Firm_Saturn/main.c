@@ -1693,9 +1693,10 @@ static int start_menu_services(void)
 int _main(void)
 {
 	reset_timer();
-	// EFSDL/EFPAN for CDDA
-	*(u8* )(0x25b00217) =  0xc0;
-	*(u8* )(0x25b00237) =  0xc0;
+	/* SCSP requires word access. Set both CDDA inputs to -6 dB,
+	 * with EXTS0 fully left and EXTS1 fully right. */
+	REG16(0x25b00216) = (6u << 5) | 0x1f;
+	REG16(0x25b00236) = (6u << 5) | 0x0f;
 	// Master Volume
 	*(u16*)(0x25b00400) =  0x020f;
 
