@@ -1279,6 +1279,8 @@ int reset_filter(void)
 			free_partition(&cdb.part[fid]);
 		}
 	}else{
+        if ((mode & 0x08) && cdb.trans_part_index < MAX_SELECTORS)
+            disconnect_partition_output(&cdb.part[cdb.trans_part_index]);
         if (mode & 0x20) {
             int irqs = disable_irq();
             if (cdb.trans_type == TRANS_PUT)

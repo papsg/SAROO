@@ -65,6 +65,12 @@ class CDReadOwnershipTests(unittest.TestCase):
     def test_fixed_reply_production_and_fifo_counter_full_flags(self):self.run_case(12)
     def test_valid_zero_and_idle_error_with_retained_write_controls(self):self.run_case(13)
     def test_sector_read_completion_follows_data_end(self):self.run_case(14)
+    def test_selector_output_reset_stops_get_and_getdel(self):
+        for case in (15, 16):
+            with self.subTest(delete_after_read=case == 16):
+                self.run_case(case)
+
+    def test_other_selector_resets_and_put_preserve_unrelated_transfer(self):self.run_case(17)
 
 
 if __name__=='__main__':unittest.main()

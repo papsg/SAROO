@@ -463,3 +463,24 @@ The routed-copy tests also check the complete 2,352-byte container.
 The GNU App uses 65,396 load bytes and leaves 140 bytes free.
 Physical reads, original MDK output and raw synthesis for other
 cooked formats remain unqualified.
+
+## Reset the active CD partition output
+
+MCU-CDC-R17, adapted from paps-g `aade02ea`. Reset Selector
+flag `0x08` disconnects the partition serving an active GET or
+GETDEL, stops FIFO service and signals EHST. GETDEL retains its
+detached sectors until DataEnd. The output-only reset preserves
+the partition contents, filter configuration and CD input.
+
+[Sega ST-162 §8.2.5, CDC_ResetSelector data 5.9, printed p. 91](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=79)
+assigns bit 3 to the partition output connectors.
+
+Run `make -C tests check-cdc-command-buffer` and repeat with
+`SAROO_CDC_PROFILE=release`. Point `SAROO_CDC_READ_SOURCE` at
+the parent `saturn_cdc.c` and select `selector_output_reset`
+in `test_cdc_read_ownership.py` to reproduce the connected
+output. The corrected tests cover both read types in all 24
+partitions, the private ownership and completion paths, and
+the neighboring reset flags and PUT. The GNU App uses 65,500
+load bytes and leaves 36 bytes free. Physical HIRQ timing and
+original MDK output remain unqualified.

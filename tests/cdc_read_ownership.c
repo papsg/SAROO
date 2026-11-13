@@ -310,15 +310,69 @@ static void completion_events(void)
     }
 }
 
+static void reset_partition_outputs(int delete_after_read)
+{
+    unsigned type = delete_after_read ? TRANS_DATA_DEL : TRANS_DATA;
+    for (unsigned part = 0; part < MAX_SELECTORS; ++part) {
+        setup(4, MAX_BLOCKS - 4);
+        if (part) {
+            cdb.part[part] = cdb.part[0];
+            cdb.part[0] = (PARTITION){0};
+        }
+        start_read(type, part, 1, 2);
+        unsigned produced = fifo_words;
+        PARTITION before = cdb.part[part];
+        FILTER filters[MAX_SELECTORS];
+        memcpy(filters, cdb.filter, sizeof filters);
+        cdb.cddev_filter = 7;
+        cdb.cr1 = 0x08;
+        cdb.cr3 = 0xff00;
+        assert(reset_filter() == HIRQ_ESEL);
+        assert(cdb.trans_type == type && cdb.trans_part_index == 0xff && cdb.trans_finish);
+        assert(!(st_control & STIRQ_DAT) && st_status == STIRQ_DAT && (hirq & HIRQ_EHST));
+        assert(!memcmp(&cdb.part[part], &before, sizeof before));
+        assert(!memcmp(cdb.filter, filters, sizeof filters) && cdb.cddev_filter == 7);
+        read_owners(delete_after_read ? 2 : 0);
+        trans_handle();
+        assert(fifo_words == produced);
+        assert(end_trans() == HIRQ_EHST && result_words() == 0xffffff && !cdb.trans_type);
+        assert(cdb.block_free == MAX_BLOCKS - 4 + 2 * delete_after_read);
+        check_owners();
+    }
+}
+
+static void unrelated_output_reset(void)
+{
+    for (unsigned mode = 0x10; mode <= 0x20; mode += 0x10) {
+        setup(3, MAX_BLOCKS - 3);
+        start_read(TRANS_DATA, 0, 0, 2);
+        cdb.cr1 = mode;
+        cdb.cr3 = 0xff00;
+        assert(reset_filter() == HIRQ_ESEL);
+        assert(cdb.trans_part_index == 0 && !cdb.trans_finish);
+        finish_read(2, 2352);
+    }
+    setup(0, MAX_BLOCKS);
+    cdb.trans_type = TRANS_PUT;
+    cdb.trans_part_index = 7;
+    cdb.cr1 = 0x08;
+    cdb.cr3 = 0xff00;
+    assert(reset_filter() == HIRQ_ESEL);
+    assert(cdb.trans_type == TRANS_PUT && cdb.trans_part_index == 7 && !cdb.trans_finish);
+    assert(!(hirq & HIRQ_EHST));
+}
+
 int main(int argc,char **argv)
 {
-    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<15);
+    assert(argc==2);unsigned test=(unsigned)atoi(argv[1]);assert(test<18);
     if(test==0)detached_ranges();else if(test==1)cancellation();else if(test==2)preserved_connections();
     else if(test==3)incoming_append();else if(test==4)freeing_preemptions();else if(test==5)logging_boundary();
     else if(test==6)admission_ranges();else if(test==7)software_resets();else if(test==8)valid_log_controls();
     else if(test==9)incomplete_getdel();else if(test==10)first_window_counts();
     else if(test==11)serviced_and_mixed_windows();else if(test==12)fixed_replies_and_fifo_flags();
     else if(test==13)zero_idle_and_retained_put_controls();
-    else completion_events();
+    else if(test==14)completion_events();
+    else if(test==15 || test==16)reset_partition_outputs(test==16);
+    else unrelated_output_reset();
     puts("pass: actual read ownership, production counts, release and log boundaries");return 0;
 }
