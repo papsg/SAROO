@@ -358,3 +358,27 @@ during the copy.
 The GNU MCU App links 65,396 load bytes, leaving 140 bytes of ITCM
 space, with the same 50,768-byte DTCM data and BSS span and 166 vectors.
 Physical Saturn playback and original MDK firmware remain unqualified.
+
+## Report unavailable CD positions as invalid
+
+MCU-CDC-R06, adapted from paps-g `6f4f8b90` and its WAIT
+follow-up `0657ffd1`. OPEN, NODISC and ERROR now put `ff` in
+each of the seven report bytes, including the flag/repeat byte.
+This applies to Get CD Status, periodic reports and status-only
+WAIT replies. The drive-state byte and its qualifiers are kept.
+The retained pickup and repeat count can still be reported when
+the drive returns to PAUSE. Valid-position WAIT and REJECT keep
+their previous reply behavior.
+
+Sega defines these report values, the WAIT qualifier and retained
+position in [ST-162 §7.2.4, printed pp. 59–61](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=47).
+The unconditional formatter also appears in [the v0.8 baseline](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Saturn/saturn_cdc.c).
+
+Run `make -C tests check-cdc-command-buffer`. For the negative
+controls, set `SAROO_CDC_DRIVE_DIR` to the parent's Saturn source
+directory and select `reports_invalidate` in `test_cdc_drive.py`.
+Both tests fail on the parent. The corrected fixture checks every
+reply word, the retained state, tray-close refusals, and valid
+PAUSE, PLAY and REJECT controls. The GNU App uses 65,244 load bytes,
+with 292 bytes of ITCM free. Physical report timing and MDK are
+unqualified.

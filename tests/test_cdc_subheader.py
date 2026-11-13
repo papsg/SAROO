@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from cdc_reply_source import command_reply_source
+from cdc_reply_source import status_reply_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -21,13 +21,11 @@ class CDSubheaderTests(unittest.TestCase):
         raw=source.read_bytes();header=(ROOT/'Firm_MCU/Saturn/cdc.h').read_bytes()
         build=ROOT/'tests/build/cdc-subheader';build.mkdir(parents=True,exist_ok=True)
         cls.target=Path(tempfile.mkdtemp(prefix='case-',dir=build));cls.results=[]
-        start=raw.index(b'void set_status(')
-        functions=raw[start:raw.index(b'\n}',start)+2]+b'\n'
+        functions = status_reply_source(raw)
         helper = b'static __attribute__((noinline)) FILTER *command_filter('
         if helper in raw:
             start = raw.index(helper)
             functions += raw[start:raw.index(b'\n}', start) + 2] + b'\n'
-        functions += command_reply_source(raw)
         for name in ('set_filter_subheader','get_filter_subheader'):
             start=raw.index(('int '+name+'(void)\n{').encode())
             functions+=raw[start:raw.index(b'\n}',start)+2]+b'\n'

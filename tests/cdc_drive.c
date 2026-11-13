@@ -612,6 +612,12 @@ static void init_flags(void)
         check_owners();
     }
 }
+static void expect_invalid_report(unsigned status)
+{
+    assert(reply[0] == ((status << 8) | 0xff));
+    assert(reply[1] == 0xffff && reply[2] == 0xffff && reply[3] == 0xffff);
+}
+
 static void init_no_media(void)
 {
     const unsigned states[]={STAT_OPEN,STAT_NODISC};
@@ -623,8 +629,8 @@ static void init_no_media(void)
         if (settled == STAT_OPEN && !(flags & 1)) settled = STAT_NODISC;
 #endif
         assert(init_cdblock()==(reset?(HIRQ_EFLS|HIRQ_ECPY|HIRQ_ESEL|HIRQ_EHST):0));
-        assert(cdb.status==(int)settled && reply[0]==((settled<<8)|0x84));
-        assert(reply[1]==0x4101 && reply[2]==0x100 && reply[3]==180);
+        assert(cdb.status==(int)settled);
+        expect_invalid_report(settled);
         assert(!waits && !wakeups && !cdb.play_type && !cdb.pause_request);
         assert(cdb.iflag==(flags&0x80?0x14:reset?0:flags));
         assert(cdb.block_free==(reset?200:198));check_owners();
@@ -991,6 +997,26 @@ static void seed_abort(void)
     reply[3] = 0x9abc;
 }
 
+static void unavailable_wait(void)
+{
+    const unsigned states[] = {STAT_OPEN, STAT_NODISC, STAT_ERROR, STAT_PAUSE, STAT_PLAY,
+                               STAT_REJECT};
+    for (unsigned i = 0; i < sizeof states / sizeof *states; ++i) {
+        ready();
+        seed_abort();
+        unsigned status = states[i] | STAT_WAIT;
+        CDBLOCK before = cdb;
+        set_status(status);
+        if (i < 3) {
+            expect_invalid_report(status);
+        } else {
+            assert(reply[0] == ((status << 8) | 0x19));
+            assert(reply[1] == 0x1234 && reply[2] == 0x5678 && reply[3] == 0x9abc);
+        }
+        assert(!irq_depth && !memcmp(&before, &cdb, sizeof cdb));
+    }
+}
+
 static void abort_reply(void)
 {
     const unsigned states[] = {STAT_PAUSE, STAT_PLAY, STAT_STANDBY, STAT_SEEK,
@@ -1015,8 +1041,12 @@ static void abort_reply(void)
                     cdc_cmd_process();
                     int aborts_reader = kind == PLAYTYPE_FILE || kind == PLAYTYPE_DIR;
                     unsigned status = aborts_reader ? STAT_PAUSE : states[s];
-                    assert(reply[0] == ((status << 8) | 0x87));
-                    assert(reply[1] == 0x4102 && reply[2] == 0x0312 && reply[3] == 0x3456);
+                    if (status == STAT_ERROR || status == STAT_OPEN || status == STAT_NODISC) {
+                        expect_invalid_report(status);
+                    } else {
+                        assert(reply[0] == ((status << 8) | 0x87));
+                        assert(reply[1] == 0x4102 && reply[2] == 0x0312 && reply[3] == 0x3456);
+                    }
                     assert(hirq == (HIRQ_CMOK | HIRQ_EFLS | (buffered ? HIRQ_SCDQ : 0)));
                     assert(!hirq_clear && !cdb.pause_request && cdb.status == (int)status);
                     assert(waits == (aborts_reader ? (unsigned)acknowledge_after : 0));
@@ -1339,10 +1369,12 @@ static void tray_close(void)
         cdb.cr2 = command == 2 ? 0xffff : 0;
         if (command == 2) cdb.cr1 = 0xff;
         cdb.cr3 = cdb.cr4 = 0;
+        reply[0] = 0x87;
+        reply[1] = reply[2] = reply[3] = 0x1111;
         card_inserted = 0;
         int (*handler)(void) = command == 0 ? init_cdblock : command == 1 ? play_cd : seek_cd;
         assert(!handler() && cdb.status == STAT_OPEN && !cdb.play_type);
-        assert(reply[0] >> 8 == (STAT_WAIT | STAT_OPEN));
+        expect_invalid_report(STAT_WAIT | STAT_OPEN);
         card_inserted = disc_removed = 1;
         assert(!handler() && cdb.status == STAT_OPEN && !cdb.play_type);
         disc_removed = 0;
@@ -1407,6 +1439,7 @@ static void scan_admission(void)
     card_inserted = 0;
     cdc_cmd_process();
     assert(cdb.status == STAT_NODISC && reply[0] >> 8 == (STAT_WAIT | STAT_NODISC));
+    expect_invalid_report(STAT_WAIT | STAT_NODISC);
     card_inserted = 1;
     cdc_cmd_process();
     assert(cdb.status == STAT_OPEN && !cdb.play_type && (hirq & HIRQ_CMOK));
@@ -1435,6 +1468,38 @@ static void scan_refusal(void)
     assert(waits == 500 && cdb.pause_request);
 #endif
 }
+
+#ifndef CDC_WORKER_FIXTURE
+#include "periodic.inc"
+
+static void unavailable_report(void)
+{
+    const unsigned states[] = {STAT_OPEN, STAT_NODISC, STAT_ERROR};
+    for (unsigned i = 0; i < sizeof states / sizeof *states; ++i) {
+        ready();
+        cdb.status = states[i];
+        seed_abort();
+        cdb.cr1 = 0;
+        CDBLOCK before = cdb;
+        cdc_cmd_process();
+        expect_invalid_report(states[i]);
+        assert(!memcmp(&before, &cdb, sizeof cdb));
+        st_status = 0;
+        set_peri_report();
+        expect_invalid_report(STAT_PERI | states[i]);
+        assert(!irq_depth && !memcmp(&before, &cdb, sizeof cdb));
+
+        cdb.status = STAT_PAUSE;
+        set_peri_report();
+        assert(reply[0] == (((STAT_PERI | STAT_PAUSE) << 8) | 0x80));
+        assert(reply[1] == 0x4101 && reply[2] == 0x0100 && reply[3] == 180);
+        st_status = 0x1000;
+        cdb.status = states[i];
+        set_peri_report();
+        assert(reply[0] == (((STAT_PERI | STAT_PAUSE) << 8) | 0x80));
+    }
+}
+#endif
 
 int main(int argc,char **argv)
 {
@@ -1478,6 +1543,8 @@ int main(int argc,char **argv)
     case 49:tray_close();break;
     case 50:scan_admission();break;
     case 51:scan_refusal();break;
+    case 52:unavailable_report();break;
+    case 53:unavailable_wait();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from cdc_reply_source import bswap_source, command_reply_source
+from cdc_reply_source import bswap_source, status_reply_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,11 +28,11 @@ class CDReplyTests(unittest.TestCase):
             return data[start:data.index(b'\n}', start) + 2] + b'\n'
 
         code = b'static u8 copy_move_error;\nstatic int old_numblocks, old_block_free;\n'
-        code += command_reply_source(raw)
+        code += status_reply_source(raw)
         selector = b'static __attribute__((noinline)) FILTER *command_filter('
         if selector in raw:
             code += function(selector)
-        code += function(b'void set_status(') + function(b'BLOCK *find_block(')
+        code += function(b'BLOCK *find_block(')
         main = (ROOT / 'Firm_MCU/Saturn/saturn_main.c').read_bytes()
         code += function(b'TRACK_INFO *get_track_info(', main) + bswap_source(header, main)
         names = ('get_hw_info', 'get_toc_info', 'get_session_info', 'get_subcode',

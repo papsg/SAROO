@@ -2,6 +2,7 @@
  * with authored sector input and deterministic command-task preemption. */
 #include <pthread.h>
 #include <setjmp.h>
+#define CDC_WORKER_FIXTURE
 #include "drive-harness.inc"
 
 enum checkpoint { NO_COMMAND, STARTUP, FIRST_READ };

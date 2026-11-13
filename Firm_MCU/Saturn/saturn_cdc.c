@@ -401,17 +401,29 @@ static __attribute__((noinline,noclone)) void command_reply(u16 cr1, u16 cr2, u3
     SSCR4 = (u16)(cr34 >> 16);
 }
 
+/* ST-162 §7.2.4. Invalidate the wire report and retain the pickup position. */
+static __attribute__((noinline)) int publish_invalid_report(u8 status)
+{
+    unsigned state = status & 15;
+    if (state != STAT_OPEN && state != STAT_NODISC && state != STAT_ERROR)
+        return 0;
+    command_reply((status << 8) | 0xff, 0xffff, 0xffffffff);
+    return 1;
+}
+
 void set_report(u8 status)
 {
 	int irqs;
 
 	irqs = disable_irq();
 
-	SSCR1 = (status<<8) | ((cdb.options&0x0f)<<4) |
-             (cdb.options == 0xff ? 15 : cdb.repcnt&15);
-	SSCR2 = (cdb.ctrladdr<<8) | cdb.track;
-	SSCR3 = (cdb.index<<8) | ((cdb.fad>>16)&0xff);
-	SSCR4 = cdb.fad&0xffff;
+	if (!publish_invalid_report(status)) {
+		SSCR1 = (status<<8) | ((cdb.options&0x0f)<<4) |
+		         (cdb.options == 0xff ? 15 : cdb.repcnt&15);
+		SSCR2 = (cdb.ctrladdr<<8) | cdb.track;
+		SSCR3 = (cdb.index<<8) | ((cdb.fad>>16)&0xff);
+		SSCR4 = cdb.fad&0xffff;
+	}
 
 	restore_irq(irqs);
 }
@@ -420,7 +432,8 @@ void set_report(u8 status)
 void set_status(u8 status)
 {
 	int irqs = disable_irq();
-	SSCR1 = (status<<8) | (SSCR1&0x00ff);
+	if (!publish_invalid_report(status))
+		SSCR1 = (status<<8) | (SSCR1&0x00ff);
 	restore_irq(irqs);
 }
 

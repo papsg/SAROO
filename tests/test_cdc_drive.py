@@ -32,6 +32,7 @@ class CDDriveTests(unittest.TestCase):
         if b'int synchronize_drive(' in main:code+=function(main,b'int synchronize_drive(')
         if b'int pause_drive(' in main:code+=function(main,b'int pause_drive(')
         code+=function(main,b'int pause_disc(')+function(raw,b'void set_report(')
+        (cls.target/'periodic.inc').write_bytes(function(main,b'void set_peri_report('))
         for sig in (b'static __attribute__((noinline)) void clear_drive_position(',
                     b'void publish_open_tray(', b'int open_tray('):
             if sig in raw:
@@ -228,6 +229,8 @@ class CDDriveTests(unittest.TestCase):
     def test_open_commands_wait_for_media_and_close_on_same_card(self): self.run_case(49)
     def test_scan_command_moves_to_scan_and_preserves_range(self): self.run_case(50)
     def test_scan_rejection_and_timeout_preserve_current_reader(self): self.run_case(51)
+    def test_unavailable_status_and_periodic_reports_invalidate_every_field(self): self.run_case(52)
+    def test_wait_reports_invalidate_unavailable_fields_and_retain_valid_fields(self): self.run_case(53)
 
 
 if __name__=='__main__':unittest.main()

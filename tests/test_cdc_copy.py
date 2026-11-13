@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unittest
 
-from cdc_reply_source import command_reply_source
+from cdc_reply_source import status_reply_source
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -47,13 +47,12 @@ def copy_source(raw,required=()):
     for signature,call in ((b'static BLOCK *detach_sector_range(',b'detach_sector_range('),
                            (b'static void free_block_list(',b'free_block_list(')):
         if signature in raw and call in required:code+=function(signature)
-    code+=function(b'void remove_block(')+function(b'void set_status(')
+    code+=function(b'void remove_block(')+status_reply_source(raw)
     code+=re.search(rb'static (?:int|u8) copy_move_error;',raw).group()+b'\n'
     start=raw.index(b'// 0x65 [SR]')
     operations=raw[start:raw.index(b'/******************************************************************************/',start)]
     for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
         if signature in raw and (call in operations or call in required):code+=function(signature)
-    code += command_reply_source(raw)
     code+=operations
     if b'void invalidate_directory(' in raw:code+=function(b'void invalidate_directory(')
     if b'FILTER *command_filter(' in raw:

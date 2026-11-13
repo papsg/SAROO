@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from cdc_reply_source import status_reply_source
 from test_cdc_sector_input import reader_source
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -28,7 +29,7 @@ class CDMetadataTests(unittest.TestCase):
         if b'static void unlink_block(' in cdc:code+=function(cdc,b'static void unlink_block(')
         for signature in (b'static void disconnect_partition_output(',b'static void free_block_list('):
             if signature in cdc:code+=function(cdc,signature)
-        code+=function(cdc,b'void remove_block(')+function(cdc,b'void set_status(')
+        code+=function(cdc,b'void remove_block(')+status_reply_source(cdc)
         operations=b''.join(function(cdc,sig) for sig in (b'void trans_handle(void)',b'int put_sector_data(',b'int end_trans('))
         if b'static int sector_transfer_size(' in cdc:code+=function(cdc,b'static int sector_transfer_size(')
         for signature,call in ((b'static int sector_destination(',b'sector_destination('),(b'static void disconnect_filter_input(',b'disconnect_filter_input(')):
