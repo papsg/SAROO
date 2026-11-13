@@ -151,6 +151,16 @@ class SDSafetyTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.invoke('identify-ack', command)
 
+    def test_cmd8_legacy_fallback_requires_controller_no_response(self):
+        timeout = 1 << 2
+        for flags in (0, timeout | (1 << 21), 1 << 0, timeout | 1,
+                      1 << 1, 1 << 3, 1 << 4, 1 << 5, 1 << 27):
+            with self.subTest(flags=flags):
+                self.invoke('cmd8-failure', 0, flags)
+        for wait in (-2, -3):
+            with self.subTest(wait=wait):
+                self.invoke('cmd8-failure', 1, wait)
+
     def test_not_ready_retries_are_bounded_including_tick_wrap(self):
         for wrap in (0, 1):
             with self.subTest(wrap=wrap):

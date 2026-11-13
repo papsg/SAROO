@@ -49,6 +49,8 @@ static u8 sd_known;
 static struct {
     u32 tick, first_tick, last_tick, ready_after, prefix_ticks, command_ticks;
     u32 cmd8_echo;
+    u32 cmd8_flags;
+    osStatus_t cmd8_wait;
     unsigned prefixes, requests, retry_delays, post_ready;
     unsigned fail_prefix, fail_request;
     unsigned missing_app_ack;
@@ -94,7 +96,9 @@ static osStatus_t identify_completion(void)
         assert(!identify.prefixes && argument == (command ? 0x1aau : 0));
         if (command == 8) {
             SDIO->RESP1 = identify.cmd8_echo;
-            if (identify.legacy) SDIO->STA |= SDMMC_STA_CTIMEOUT;
+            if (identify.legacy)
+                SDIO->STA = identify.cmd8_flags ? identify.cmd8_flags : SDMMC_STA_CTIMEOUT;
+            return identify.cmd8_wait;
         }
         return osOK;
     }
@@ -379,6 +383,31 @@ static void check_identification_ack(unsigned command)
     assert(!(SDIO->CLKCR & 0xc000) && !SDIO->MASK && !SDIO->CMD && drains == 1);
 }
 
+static void check_cmd8_failure(unsigned kind, u32 error)
+{
+    const u32 initial_clock = SDCLK_LOW | (1u << 16);
+    identify.active = identify.legacy = 1;
+    identify.cmd8_echo = 0x1aa; /* A stale response must not override the status. */
+    SDIO->CLKCR = initial_clock;
+    if (kind == 0) {
+        identify.cmd8_flags = error;
+    } else {
+        assert(kind == 1);
+        identify.cmd8_wait = (osStatus_t)error;
+    }
+    int legacy_ok = kind == 0 && (!error || (error & (CMD_ERROR | DATA_ERROR)) == SDMMC_STA_CTIMEOUT);
+    int result = sdcard_identify();
+    assert(!SDIO->MASK && !SDIO->CMD && SDIO->ICR == 0x1fe00fff && drains == 1);
+    if (legacy_ok) {
+        assert(result == 0 && sd_rca == 0x1234 && !is_sdhc);
+        assert(identify.prefixes == 1 && identify.requests == 1 && identify.post_ready == 8);
+    } else {
+        assert((u32)result == (kind ? UINT32_MAX : error));
+        assert(!sd_rca && !is_sdhc && !identify.prefixes && !identify.requests && !identify.post_ready);
+        assert(SDIO->CLKCR == initial_clock);
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -393,6 +422,8 @@ int main(int argc, char **argv)
         check_interface_echo((u32)value, shape);
     else if (!strcmp(mode, "identify-ack"))
         check_identification_ack(shape);
+    else if (!strcmp(mode, "cmd8-failure"))
+        check_cmd8_failure(shape, (u32)value);
     else
         check_identification(mode, shape, value);
     return 0;

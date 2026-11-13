@@ -418,10 +418,14 @@ int sdcard_identify(void)
 	retv = sd_cmd(CMD_08, 0x000001aa);
 	/* R7 echoes the requested voltage and the eight-bit check pattern. */
 	if (!retv && (cmd_resp[0] & 0xfffu) != 0x1aau) return -1;
-	if(retv)
+	if (retv) {
+		/* Only a command response timeout permits the legacy negotiation. */
+		if ((retv & (CMD_ERROR | DATA_ERROR)) != SDMMC_STA_CTIMEOUT)
+			return retv;
 		hcs = 0;
-	else
+	} else {
 		hcs = 1<<30;
+	}
 
 	/* Measure the retry budget from the first ACMD41, after its CMD55 prefix. */
 	retv = sd_cmd(CMD_55, 0);

@@ -333,3 +333,20 @@ Both 52-method profiles pass, including the acknowledged controls
 and the ACMD41 R3 response. The GNU App uses 65,464 load bytes
 and leaves 72 bytes free. Physical card behavior and MDK remain
 unqualified.
+
+## Reserve legacy CMD8 fallback for a controller response timeout
+
+MCU-SD-012, adapted from paps-g `b25cbc7e`. The legacy ACMD41
+sequence is allowed when the only controller error is CMD8's
+response timeout. Ignore unrelated status bits. Propagate CRC,
+data and host semaphore errors before capacity negotiation.
+
+[SD Physical Layer Simplified Specification 3.01, §4.2.3 and figure 4.1, printed pp. 21–22](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=33)
+defines the no-response branch. [STM32 RM0433 Rev 8, §55.10.11, printed p. 2447][rm0433]
+defines separate timeout and CRC status flags.
+
+Run `make -C tests check-mcu-diskio`. The parent accepts nine
+injected command, data and host-wait failures as legacy startup.
+The two response-timeout controls remain valid. Both corrected
+53-method profiles pass. The GNU App uses 65,484 load bytes and
+leaves 52 bytes free. Physical card timing and MDK remain unqualified.
