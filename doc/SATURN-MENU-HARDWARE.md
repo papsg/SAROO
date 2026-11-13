@@ -344,3 +344,28 @@ The linked function retains writes of 0, 16 and 1 at CCR, while the parent
 contains only 1. All 48 linked ROM clock checks pass. The complete menu
 remains 488,770 bytes with 85,076 code/data bytes and 20,120 bytes of body
 margin. Physical cache and BIOS player behavior remain unqualified.
+
+## Stop SH-2 DMA before replacing the channel state
+
+SATURN-DMAC-001 and SATURN-DMAC-002, adapted from paps-g `33b51a8c`
+and `59239df4`. The CD-player handoff now reads DMAOR before clearing
+it, disabling both channels before reconfiguration. It reads both
+CHCR registers before clearing their latched transfer-end flags.
+Only then does it reset the request sources, addresses and counts.
+The request registers are byte accesses at `0xfffffe71` and
+`0xfffffe72`. The post-clock DMAOR clear also follows a read.
+
+[Hitachi SH7604 Hardware Manual, §9.2.4, printed pp. 237–241](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=253),
+[§§9.2.6–9.2.7, printed pp. 242–244](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=258)
+and [§9.5 items 1–2, printed p. 285](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=301)
+define the sticky flags, access widths and stop-before-rewrite rule.
+The public port retains the surrounding UBC and divider setup.
+
+The actual-source player fixture checks all 16 DMA accesses, including
+register widths and both sides of the BIOS clock call. The parent fails
+the order check. A control with the inherited DRCR definitions fails
+at the request addresses. Both nine-method profiles and 15 adjacent
+boot, launch and VDP1 controls pass. The SH-2 build grows by 16 code/data
+bytes to 85,092 and all 48 linked ROM clock checks pass. Private reset
+observations informed the address correction. The public build has
+host and link verification.

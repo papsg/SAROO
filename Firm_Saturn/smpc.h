@@ -210,13 +210,13 @@ typedef struct {
 #define TCR0        REG (0xffffff88)
 #define CHCR0       REG (0xffffff8c)
 #define VCRDMA0     REG (0xffffffa0)
-#define DRCR0       REG8(0xffffff71)
+#define DRCR0       REG8(0xfffffe71)
 #define SAR1        REG (0xffffff90)
 #define DAR1        REG (0xffffff94)
 #define TCR1        REG (0xffffff98)
 #define CHCR1       REG (0xffffff9c)
 #define VCRDMA1     REG (0xffffffa8)
-#define DRCR1       REG8(0xffffff72)
+#define DRCR1       REG8(0xfffffe72)
 #define DMAOR       REG (0xffffffb0)
 
 

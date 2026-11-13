@@ -38,10 +38,20 @@ class MenuClockResetTests(unittest.TestCase):
         player = player.replace(b'go = (void*)0x00280000;', b'go = player_clock;')
         player = player.replace(b'memcpy((u8*)0x00280000, _call_04c8, 64);',
                                 b'player_copy_clock();')
-        player = re.sub(rb'\*\((?:u8|u16|u32)\s*\*\)\((0x[\da-f]+)\)\s*=\s*([^;]+);',
-                        rb'player_write(\1, \2);', player)
-        player = re.sub(rb'REG8\((0x[\da-f]+)u?\)\s*=\s*([^;]+);',
-                        rb'player_write(\1, \2);', player)
+        for name in (b'DMAOR', b'CHCR0', b'CHCR1', b'DRCR0', b'DRCR1',
+                     b'SAR0', b'DAR0', b'TCR0', b'SAR1', b'DAR1', b'TCR1'):
+            width, address = re.search(
+                rb'^#define ' + name + rb'\s+REG(8|16|32)?\s*\((0x[\da-f]+)\)',
+                header, re.M).groups()
+            register = address + b', ' + (width or b'32')
+            player = re.sub(rb'\b' + name + rb'\s*=\s*([^;]+);',
+                            rb'player_write(' + register + rb', \1);', player)
+            player = player.replace(b'(void)' + name + b';',
+                                    b'player_read(' + register + b');')
+        for width in (b'8', b'16', b'32'):
+            for register in (rb'\*\(u' + width + rb'\s*\*\)', b'REG' + width):
+                player = re.sub(register + rb'\((0x[\da-f]+)u?\)\s*=\s*([^;]+);',
+                                rb'player_write(\1, ' + width + rb', \2);', player)
         code += player + b'player_replace_work_ram();\n}\n'
         for original, replacement in (
             (b'(void*)(0x04c8)', b'bios_clock'), (b'(void*)0x1800', b'bios_scu'),
@@ -80,6 +90,7 @@ class MenuClockResetTests(unittest.TestCase):
     def test_rom_clock_vector_publishes_after_both_copies(self): self.scenario('install')
     def test_player_waits_for_reset_disable_with_display_off(self): self.scenario('player')
     def test_player_disables_then_purges_then_enables_cache(self): self.scenario('cache')
+    def test_player_stops_dma_before_reconfiguring_channels(self): self.scenario('dma')
     def test_player_does_not_replace_work_ram_on_reset_failure(self): self.scenario('player-failure')
 
 

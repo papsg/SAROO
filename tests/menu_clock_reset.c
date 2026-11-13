@@ -15,7 +15,8 @@ static unsigned copies;
 static int rom_path, player_path;
 static unsigned suspended, clock_copied, work_ram_replaced, reject_reply;
 static unsigned cache_writes;
-static int check_cache;
+static int check_cache, check_dma;
+static unsigned dma_step;
 #define EXLTEN 0x0200
 static void jump_06b0(void);
 static void jump_copy_code(int type) { (void)type; assert(0); }
@@ -107,6 +108,7 @@ static void player_prepare(int type)
 {
     assert(suspended && !calls && type == 3);
     if (check_cache) assert(cache_writes == 3);
+    if (check_dma) assert(dma_step == 14);
     calls = 1;
 }
 
@@ -123,14 +125,48 @@ static void player_clock(int type)
     asr = 0x38803880u;
 }
 
-static void player_write(u32 address, u32 value)
+static void dma_access(u32 address, unsigned width, int write, u32 value)
+{
+    static const struct {
+        u32 address;
+        unsigned width;
+        int write;
+        u32 value;
+    } sequence[] = {
+        {0xffffffb0u, 32, 0, 0}, {0xffffffb0u, 32, 1, 0},
+        {0xffffff8cu, 32, 0, 0}, {0xffffff9cu, 32, 0, 0},
+        {0xffffff8cu, 32, 1, 0}, {0xffffff9cu, 32, 1, 0},
+        {0xfffffe71u, 8, 1, 0},  {0xfffffe72u, 8, 1, 0},
+        {0xffffff80u, 32, 1, 0}, {0xffffff84u, 32, 1, 0},
+        {0xffffff88u, 32, 1, 1}, {0xffffff90u, 32, 1, 0},
+        {0xffffff94u, 32, 1, 0}, {0xffffff98u, 32, 1, 1},
+        {0xffffffb0u, 32, 0, 0}, {0xffffffb0u, 32, 1, 0},
+    };
+    assert(dma_step < sizeof sequence / sizeof *sequence);
+    assert(calls == (dma_step < 14 ? 0u : 2u));
+    assert(address == sequence[dma_step].address && width == sequence[dma_step].width);
+    assert(write == sequence[dma_step].write && value == sequence[dma_step].value);
+    ++dma_step;
+}
+
+static void player_read(u32 address, unsigned width) __attribute__((unused));
+static void player_read(u32 address, unsigned width)
+{
+    if (check_dma) dma_access(address, width, 0, 0);
+}
+
+static void player_write(u32 address, unsigned width, u32 value)
 {
     assert(suspended && (address >= 0xffff0000u || address == 0x06000348u));
     if (check_cache && address == 0xfffffe92u) {
         static const u8 sequence[] = {0, 0x10, 1};
         assert(!calls && cache_writes < sizeof sequence);
-        assert(value == sequence[cache_writes++]);
+        assert(width == 8 && value == sequence[cache_writes++]);
     }
+    if (check_dma && (address == 0xfffffe71u || address == 0xfffffe72u ||
+                      (address >= 0xffffff80u && address <= 0xffffffb0u) ||
+                      address == 0xffffff71u || address == 0xffffff72u))
+        dma_access(address, width, 1, value);
 }
 
 static void player_replace_work_ram(void)
@@ -157,7 +193,7 @@ static void reset(int path)
     sf_reads = latch_reads = counter_reads = pre_busy = post_busy = unsafe = 0;
     calls = issued = completed = external = last_busy = last_line = 0;
     sf = command = reply = 0;
-    cache_writes = check_cache = 0;
+    cache_writes = check_cache = dma_step = check_dma = 0;
     asr = aref = 0;
     line = 32;
 }
@@ -204,6 +240,13 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *test = argv[1];
+    if (!strcmp(test, "dma")) {
+        reset(2);
+        check_dma = 1;
+        my_cdplayer();
+        assert(dma_step == 16 && work_ram_replaced == 1);
+        return 0;
+    }
     if (!strcmp(test, "cache")) {
         reset(2);
         check_cache = 1;

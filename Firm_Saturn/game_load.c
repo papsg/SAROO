@@ -269,20 +269,23 @@ void my_cdplayer(void)
 	*(u32*)(0xffffff74) = 0x00;
 	*(u16*)(0xffffff78) = 0x00;	
 
-	*(u8*)(0xfffffe71)  =  0x0;
-	*(u8*)(0xfffffe72)  =  0x0;
-
-	*(u32*)(0xffffff80) = 0x00;	
-	*(u32*)(0xffffff84) = 0x00;	
-	*(u32*)(0xffffff88) = 0x01;	
-	*(u32*)(0xffffff8c) = 0x00;	
-	*(u32*)(0xffffff90) = 0x00;	
-	*(u32*)(0xffffff94) = 0x00;	
-	*(u32*)(0xffffff98) = 0x01;	
-	*(u32*)(0xffffff9c) = 0x00;	
+	/* Stop both channels and read sticky flags before clearing them. */
+	(void)DMAOR;
+	DMAOR = 0;
+	(void)CHCR0;
+	(void)CHCR1;
+	CHCR0 = 0;
+	CHCR1 = 0;
+	DRCR0 = 0;
+	DRCR1 = 0;
+	SAR0 = 0;
+	DAR0 = 0;
+	TCR0 = 1;
+	SAR1 = 0;
+	DAR1 = 0;
+	TCR1 = 1;
 
 	*(u32*)(0xffffff08) = 0x00;
-	*(u32*)(0xffffffb0) = 0x00;
 
 	go = (void*)*(u32*)(0x060002dc);
 	go(3);
@@ -295,7 +298,8 @@ void my_cdplayer(void)
 	go(0);
 
 	if(debug_flag&1) sci_init();
-	*(u32*)(0xffffffb0) = 0;
+	(void)DMAOR;
+	DMAOR = 0;
 	/* Confirm reset-button NMI is disabled before replacing high work RAM. */
 	if (smpc_disable_reset()) {
 		printk("SMPC reset-disable failed\n");
