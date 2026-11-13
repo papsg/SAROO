@@ -70,7 +70,8 @@ static void audio_configure(void)
     DMA1_Stream1->PAR = (u32)&SPI2->TXDR;
     SPI2->I2SCFGR = 0x02040015;
     SPI2->CR2 = 0;
-    SPI2->CFG1 = 0x00008000;
+    /* I2S mode: enable transmit DMA and retain the other reset fields. */
+    SPI2->CFG1 = 0x00078007;
     SPI2->CFG2 = 0;
     SPI2->IER = 0;
     SPI2->IFCR = AUDIO_I2S_CLEAR;

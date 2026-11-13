@@ -13,6 +13,8 @@
 using u8=uint8_t; using u16=uint16_t; using u32=uint32_t;
 constexpr unsigned SPI_IFCR_SUSPC=0x800, SPI_IFCR_TIFREC=0x100, SPI_IFCR_OVRC=0x40, SPI_IFCR_UDRC=0x20;
 constexpr unsigned SPI_SR_TXP=2, SPI_SR_UDR=0x20, SPI_IER_UDRIE=0x20;
+// RM0433 rev. 8 §§50.9.3, 50.11.3: preserve CFG1 reset fields in I2S mode.
+constexpr unsigned spi_cfg1_reset=0x00070007u, spi_cfg1_tx_dma=1u<<15;
 constexpr unsigned RCC_APB1LENR_TIM7EN=0x20;
 constexpr int DMA1_Stream1_IRQn=12, SPI2_IRQn=36, TIM7_IRQn=55;
 struct Register { uintptr_t value=0; int id=0; operator uintptr_t() const; Register& operator=(uintptr_t); Register& operator&=(uintptr_t v){return *this=value&v;} Register& operator|=(uintptr_t v){return *this=value|v;} };
@@ -195,6 +197,7 @@ static void memcpy32(void *dst,void *src,int n){
 static void notify(){wakeups++;}
 static void reset_model(){
     spi={};stream={};dma={};timer={};mux={};rcc={};
+    spi.CFG1.value=spi_cfg1_reset;
     int id=1;for(auto *p:{&spi.CR1,&spi.CR2,&spi.CFG1,&spi.CFG2,&spi.IER,&spi.IFCR,&spi.SR,&spi.I2SCFGR,&spi.TXDR})p->id=id++;
     id=10;for(auto *p:{&stream.CR,&stream.NDTR,&stream.PAR,&stream.M0AR,&stream.M1AR,&stream.FCR})p->id=id++;
     dma.LISR.id=20;dma.LIFCR.id=21;mux.CCR.id=30;
@@ -326,6 +329,7 @@ static void init_case(){
     for(unsigned comb=0;comb<16;comb++){
         reset_model();for(unsigned b=0;b<4;b++)if(comb&(1u<<b))spi.SR.value|=1u<<bits[b];
         spi2_init();assert(!(spi.SR.value&0x960));
+        assert(spi.CFG1.value==(spi_cfg1_reset|spi_cfg1_tx_dma));
         assert(aplay == (TEST_LINK_CONTINUITY ? AUDIO_PLAYING : AUDIO_IDLE));
         assert(bool(spi.CR1.value & 1) == bool(TEST_LINK_CONTINUITY));
         assert(spi.I2SCFGR.value==0x02040015 && timer.PSC.value==1999 && timer.ARR.value==99);
@@ -825,7 +829,7 @@ static void pending_retirement(){
     assert(publish(1)==1 && publish(2)==2);
     spi2_cancel();assert(fill_audio_buffer(input)==-1);
     hold_disable=false;fire_timer();
-    assert(spi.CFG1.value==0x00008000 && spi.I2SCFGR.value==0x02040015);
+    assert(spi.CFG1.value==(spi_cfg1_reset|spi_cfg1_tx_dma) && spi.I2SCFGR.value==0x02040015);
     keep_staged_tail();bus_stalled=false;fire_timer();
     check_replacement(1);
 

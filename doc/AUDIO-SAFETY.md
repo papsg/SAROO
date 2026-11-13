@@ -337,3 +337,24 @@ in order without a second sector. All 44 audio methods pass in both
 profiles. The rebuilt GNU App load is byte-identical to its parent
 (64,912 bytes, 624 free). This checkpoint adds coverage and no runtime
 change. Mixed-mode playback on a physical console remains unqualified.
+
+## Preserve the I2S configuration reset fields
+
+Adapted from paps-g `bf703240`. Initialization used to enable transmit
+DMA by writing `0x00008000` to SPI2's CFG1. That also cleared DSIZE
+and CRCSIZE, which must retain their reset values in I2S mode. Use
+`0x00070007` with TXDMAEN set. The FIFO threshold, DMA setup and I2S
+format are unchanged.
+[ST RM0433 Rev. 8 §50.9.3, Table 417, printed p. 2194, and §50.11.3, p. 2219](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+specify the permitted fields, reset value and TXDMAEN bit.
+
+Run `make -C tests check-audio` in the default and
+`SAROO_AUDIO_PROFILE=release` profiles. To reproduce the bad register
+write, point `SAROO_AUDIO_SOURCE` at the parent's `cdda_i2s.c` and
+select `-k startup_flags_fifo` in `test_audio_dma.py`. It fails the
+configuration assertion before the PCM controls run. The corrected
+write passes cold and delayed initialization and all 45 audio
+checks in each profile. The GNU App adds four load bytes (65,440
+used, 96 free); static DTCM is unchanged. This establishes register
+conformance in the tested paths; there is no physical audio, timing,
+or MDK qualification for this port.
