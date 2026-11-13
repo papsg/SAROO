@@ -140,6 +140,17 @@ class SDSafetyTests(unittest.TestCase):
                 with self.subTest(legacy=legacy, ccs=ccs):
                     self.invoke('capacity', legacy, ccs)
 
+    def test_r1_application_commands_require_acknowledgment(self):
+        for shape in (11, 12, 15):
+            with self.subTest(shape=shape):
+                self.invoke('app-error', shape, 0x900)
+                self.invoke('card-ok', shape, 0x920)
+
+    def test_unacknowledged_prefix_or_bus_width_leaves_card_uninitialized(self):
+        for command in (55, 6):
+            with self.subTest(command=command):
+                self.invoke('identify-ack', command)
+
     def test_not_ready_retries_are_bounded_including_tick_wrap(self):
         for wrap in (0, 1):
             with self.subTest(wrap=wrap):

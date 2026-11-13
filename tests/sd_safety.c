@@ -51,6 +51,7 @@ static struct {
     u32 cmd8_echo;
     unsigned prefixes, requests, retry_delays, post_ready;
     unsigned fail_prefix, fail_request;
+    unsigned missing_app_ack;
     int active, legacy, ocr_ccs;
 } identify;
 
@@ -102,6 +103,7 @@ static osStatus_t identify_completion(void)
         identify.prefixes++;
         identify.tick += identify.prefixes == 1 ? identify.prefix_ticks : identify.command_ticks;
         SDIO->RESP1 = 0x120; /* READY_FOR_DATA on the prefix does not make OCR ready. */
+        if (identify.missing_app_ack == command) SDIO->RESP1 &= ~0x20u;
         return identify.prefixes == identify.fail_prefix ? osErrorResource : osOK;
     }
     if (command == 41) {
@@ -127,6 +129,8 @@ static osStatus_t identify_completion(void)
     assert(command == post_commands[identify.post_ready] && argument == post_arguments[identify.post_ready]);
     identify.post_ready++;
     if (command == 3) SDIO->RESP1 = 0x12340000;
+    if ((command == 55 || command == 6) && identify.missing_app_ack != command)
+        SDIO->RESP1 = 0x20;
     if (command == 9) {
         u8 csd[16] = {0};
         csd[10] = 9; /* Read block length is 512 bytes. */
@@ -197,6 +201,7 @@ static void check_command(const char *mode, unsigned shape, int64_t value)
     int failed_wait = !strcmp(mode, "wait") || !strcmp(mode, "null");
     int hardware_error = !strcmp(mode, "hardware");
     int card_error = !strcmp(mode, "card-error");
+    int app_error = !strcmp(mode, "app-error");
     wait_status = !strcmp(mode, "wait") ? (osStatus_t)value : osOK;
     if (!strcmp(mode, "null")) cmd_sem = NULL;
     if (hardware_error) completion_status |= (u32)value;
@@ -207,7 +212,7 @@ static void check_command(const char *mode, unsigned shape, int64_t value)
     memcpy(cmd_resp, unchanged, sizeof(cmd_resp));
     SDIO->DCTRL = 0x92;
     SDIO->IDMACTRL = 1;
-    SDIO->RESP1 = card_error || !strcmp(mode, "card-ok") ? (u32)value :
+    SDIO->RESP1 = card_error || app_error || !strcmp(mode, "card-ok") ? (u32)value :
                   data ? 0x900 : 0x11223344;
     SDIO->RESP2 = 0x55667788;
     SDIO->RESP3 = 0x99aabbcc;
@@ -222,8 +227,8 @@ static void check_command(const char *mode, unsigned shape, int64_t value)
     assert(waits == 1 && !SDIO->CMD && !SDIO->MASK && SDIO->ICR == 0x1fe00fff);
     int clear_data = data;
 #ifdef TEST_SD_RECOVERY
-    clear_data |= failed_wait || hardware_error || card_error;
-    assert(drains == (unsigned)(failed_wait || hardware_error || card_error));
+    clear_data |= failed_wait || hardware_error || card_error || app_error;
+    assert(drains == (unsigned)(failed_wait || hardware_error || card_error || app_error));
 #else
     assert(!drains);
 #endif
@@ -233,8 +238,9 @@ static void check_command(const char *mode, unsigned shape, int64_t value)
                 shape, cmd_sem ? (int)value : osErrorParameter, result);
         abort();
     }
-    if (failed_wait || hardware_error || card_error) {
-        assert(result == (failed_wait ? UINT32_MAX : hardware_error ? completion_status : (u32)value));
+    if (failed_wait || hardware_error || card_error || app_error) {
+        assert(result == (failed_wait || app_error ? UINT32_MAX :
+                          hardware_error ? completion_status : (u32)value));
         assert(!memcmp(cmd_resp, unchanged, sizeof(cmd_resp)));
     } else {
         assert(!result);
@@ -356,6 +362,23 @@ static void check_interface_echo(u32 echo, int valid)
     }
 }
 
+static void check_identification_ack(unsigned command)
+{
+    identify.active = 1;
+    identify.cmd8_echo = 0x1aa;
+    identify.ocr_ccs = 1;
+    identify.missing_app_ack = command;
+    SDIO->CLKCR = SDCLK_LOW | (1u << 16);
+    assert(sdcard_identify() != 0);
+    assert(!sd_rca && !is_sdhc && identify.prefixes == 1);
+    if (command == 55) {
+        assert(!identify.requests && !identify.post_ready);
+    } else {
+        assert(command == 6 && identify.requests == 1 && identify.post_ready == 7);
+    }
+    assert(!(SDIO->CLKCR & 0xc000) && !SDIO->MASK && !SDIO->CMD && drains == 1);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -364,10 +387,12 @@ int main(int argc, char **argv)
     int64_t value = strtoll(argv[3], NULL, 10);
     if (!strcmp(mode, "wait") || !strcmp(mode, "null") || !strcmp(mode, "success") ||
         !strcmp(mode, "hardware") || !strcmp(mode, "no-crc") ||
-        !strcmp(mode, "card-error") || !strcmp(mode, "card-ok"))
+        !strcmp(mode, "card-error") || !strcmp(mode, "app-error") || !strcmp(mode, "card-ok"))
         check_command(mode, shape, value);
     else if (!strcmp(mode, "interface-echo"))
         check_interface_echo((u32)value, shape);
+    else if (!strcmp(mode, "identify-ack"))
+        check_identification_ack(shape);
     else
         check_identification(mode, shape, value);
     return 0;

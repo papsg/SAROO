@@ -121,6 +121,9 @@ class SDTransferTests(unittest.TestCase):
     def test_sd_io_stops_on_sampled_removal(self):
         self.invoke(33)
 
+    def test_multiblock_write_requires_application_acknowledgments(self):
+        self.invoke(34)
+
 
 if __name__ == '__main__':
     unittest.main()

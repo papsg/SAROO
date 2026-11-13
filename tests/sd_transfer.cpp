@@ -56,6 +56,7 @@ static std::vector<u32> arguments;
 static std::vector<u32> card_status;
 static unsigned status_reads;
 static unsigned remove_after_command;
+static unsigned missing_app_ack;
 struct DataCommand { u32 index, address, bytes, dma; };
 static std::vector<DataCommand> data_commands;
 static unsigned fail_data_chunk;
@@ -169,6 +170,7 @@ static void advance(void)
                 SDIO->RESP1 = card_status[position < card_status.size() ? position : card_status.size()-1];
             } else {
                 SDIO->RESP1 = current == 8 || current == 41 ? 0x11223344 + current : 0x920;
+                if (current == missing_app_ack) SDIO->RESP1 &= ~0x20u;
             }
             SDIO->RESP2 = 0x55667788; SDIO->RESP3 = 0x99aabbcc; SDIO->RESP4 = 0xddeeff00;
             awaiting = false;
@@ -277,7 +279,7 @@ static void setup(void)
     permanent_cpsm = healthy_busy = pending_start = fail_semaphore_creation = false;
     reset_hold = identified = irq_enables = 0; identify_result = 0; gpio.IDR = 0;
     commands.clear(); arguments.clear();
-    card_status.clear(); status_reads = remove_after_command = 0;
+    card_status.clear(); status_reads = remove_after_command = missing_app_ack = 0;
     data_commands.clear(); fail_data_chunk = 0;
     SDIO->CLKCR.value = selected_clock; SDIO->POWER.value = 3; RCC->AHB3RSTR.value = RCC_AHB3RSTR_MDMARST;
     for (unsigned i = 0; i < 4; i++) cmd_resp[i] = 0xa0b0c000 + i;
@@ -654,6 +656,20 @@ int main(int argc, char **argv)
         clean();
         assert(!sd_pending_write && commands == (std::vector<unsigned>{55,23}));
         assert(sdio_reset() == -1 && !resets && !identified);
+    } else if (which == 34) {
+        for (unsigned command : {55u, 23u}) {
+            setup();
+            missing_app_ack = command;
+            assert(sd_write_sector(42, 2, buffer) != 0);
+            clean();
+            assert(commands == (command == 55 ? std::vector<unsigned>{55} :
+                                std::vector<unsigned>{55, 23}));
+            assert(data_commands.empty() && !sd_pending_write && !resets);
+        }
+        setup();
+        assert(sd_write_sector(42, 2, buffer) == 0);
+        clean();
+        assert(commands == (std::vector<unsigned>{55, 23, 25, 12}) && sd_pending_write);
 #endif
     } else assert(!"unknown case");
     std::printf("SD abort case %d passes; ticks=%u resets=%u delays=%u\n", which,tick,resets,delays);

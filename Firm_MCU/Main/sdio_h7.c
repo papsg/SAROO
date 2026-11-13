@@ -238,6 +238,10 @@ static int sd_cmd(u32 cmd, u32 arg)
 		 * The other short responses used here are R1 or R1b. */
 		if (cmd == CMD_03) stat = response & SD_R6_ERRORS;
 		else if (cmd != CMD_08 && !RESP_NOCRC(cmd)) stat = response & SD_R1_ERRORS;
+		/* CMD55 and the R1 application commands must acknowledge APP_CMD. */
+		if (!stat && !(response & 0x20u) &&
+		    (cmd == CMD_55 || cmd == CMD_06 || cmd == CMD_23))
+			stat = -1;
 		if (!stat) cmd_resp[0] = response;
 	}else if(RESP_LONG(cmd)){
 		cmd_resp[0] = SDIO->RESP4;

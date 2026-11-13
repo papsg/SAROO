@@ -314,3 +314,22 @@ the capacity bit set incorrectly selects block addressing. Both
 corrected 49-method disk profiles pass, including standard- and
 high-capacity controls. The GNU App uses 65,436 load bytes, with
 100 bytes free. Physical addressing and MDK remain unqualified.
+
+## Require acknowledgment of SD application commands
+
+MCU-SD-011, adapted from paps-g `56e9f763`. Check the APP_CMD
+status bit in the R1 replies to CMD55, ACMD6 and ACMD23.
+A missing acknowledgment uses the existing command cleanup.
+Initialization then stops before issuing the unaccepted application
+command or changing to four-bit mode. Multi-block write setup stops
+before DMA starts. ACMD41 carries R3 and has no APP_CMD bit.
+
+[SD Physical Layer Simplified Specification 3.01, §4.3.9.1, printed p. 40](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/kinetis/28816/1/Simplified_Physical_Layer_Spec_3.01.pdf#page=52)
+defines the acknowledgment in the prefix and application response.
+
+Run `make -C tests check-mcu-diskio`. The parent accepts replies
+without the bit at the command, initialization and write boundaries.
+Both 52-method profiles pass, including the acknowledged controls
+and the ACMD41 R3 response. The GNU App uses 65,464 load bytes
+and leaves 72 bytes free. Physical card behavior and MDK remain
+unqualified.
