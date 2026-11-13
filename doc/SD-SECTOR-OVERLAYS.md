@@ -224,3 +224,31 @@ All eight recipes match the retained callback's complete memory operations
 and cartridge setting in the host fixture. Physical cartridge timing remains
 unqualified.
 [Original SAROO callbacks and cartridge setup](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+
+## Waku Waku 7
+
+The Waku Waku 7 source adapts paps-g `4d1a613b` with the `e2029f04` review.
+Its three records preserve the full 40-byte routine, one byte and two NOPs,
+with the inherited 1 MB cartridge selection. The original track SHA-256,
+complete sector CRCs and every source preimage are retained in compilation.
+The contiguous record support was carried forward with Pocket Fighter.
+
+The routine calls the existing SAROO sector reader through `02000f04h`.
+The normal menu and successful BIOS boot setup publish `cdc_read_sector`
+there. Its existing arguments are FAD, sector count and destination buffer.
+The boot-handoff and CD-transfer regressions exercise that publication and
+the reader's ordinary success and failure behavior.
+[Original routine and reader contract](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+
+The retained private `waku-service-v6-oct2` comparison used the linked SAROO
+reader on both paths. It reached Arcade Mode selection through 7,200 emulator
+frames, matching 121 sampled video/audio checkpoints, 21,229,428 PCM bytes
+and 27 reader call/return pairs. Call two returned `-6` on both paths.
+Expansion RAM was preselected and the fixture supplied the old callback's
+postimage at the verified first-program entry. Earlier incomplete comparisons
+remain excluded from that result.
+
+Public verification compares the current recipe's complete raw postimages,
+all callback memory writes and the 1 MB action, and links the existing reader
+into the menu. Natural paired boot, concurrent MCU/FPGA service, physical
+cartridge timing and long play remain unqualified.

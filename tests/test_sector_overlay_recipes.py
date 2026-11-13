@@ -49,6 +49,7 @@ CASES = {
     'real-bout-special-jp-v1002': (29701, 0x06033800, 589824, 'REAL_BOUT_SP_v2_patch'),
     'samurai-spirits-3-jp': (33, 0x0600A000, 559004, 'smrsp3_patch'),
     'samurai-spirits-4-jp': (36, 0x06016000, 519696, 'smrsp4_patch'),
+    'waku-waku-7-jp': (37, 0x06010000, 885332, 'WAKU7_patch'),
 }
 
 

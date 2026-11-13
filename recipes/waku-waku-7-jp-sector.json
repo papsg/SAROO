@@ -1,0 +1,51 @@
+{
+  "abi": 2,
+  "product_id": "T-1515G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Waku Waku 7 (Japan): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and move the original routine and three edits into guarded disc reads.",
+  "rationale": "All 45 written bytes map to the exact first-read program. The 40-byte replacement is one bounded contiguous edit authenticated by the complete original sector CRC; the three other writes are in two other sectors. The source image stays unchanged. Inactive replacement-policy candidate. The 2 October comparison runs the exact linked SAROO sector reader on both paths: all 121 checkpoints, full PCM and 27 call/return pairs match. Console timing and complete paired boot remain unqualified.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "4c2b8d2e211e85e460a791d5eb117ad7372982bbbcd819a4101875f34c8b9b9a"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 190,
+      "offset": 1652,
+      "before": "2fe64f224f127ff0d3231f63430b000920088f026e03a019e0ff67f3d31f66f3770865f37504430b",
+      "after": "d207d1086043632244087370400840004408523c340c6312324c5521432b64220603439c02000f04",
+      "effect": "Install the original 40-byte Waku Waku 7 routine.",
+      "reason": "Preserve the original menu callback only for the matching first-read disc bytes."
+    },
+    {
+      "fad": 191,
+      "offset": 1117,
+      "before": "07",
+      "after": "0a",
+      "effect": "Carry the original byte edit.",
+      "reason": "Preserve the original menu callback only for the matching first-read disc bytes."
+    },
+    {
+      "fad": 211,
+      "offset": 372,
+      "before": "2322",
+      "after": "0009",
+      "effect": "Carry the first original instruction NOP.",
+      "reason": "Preserve the original menu callback only for the matching first-read disc bytes."
+    },
+    {
+      "fad": 211,
+      "offset": 380,
+      "before": "420b",
+      "after": "0009",
+      "effect": "Carry the second original instruction NOP.",
+      "reason": "Preserve the original menu callback only for the matching first-read disc bytes."
+    }
+  ],
+  "disc_id": "T-1515G   V1.000",
+  "replaces_callback": true
+}

@@ -56,3 +56,9 @@ user cartridge configuration takes precedence.
 | Real Bout Special JP [v1.001](real-bout-special-jp-v1001-sector.json) and [v1.002](real-bout-special-jp-v1002-sector.json) | 1 MB and one NOP per revision. Bundle the two one-sector alternatives under their shared product key. |
 | [Samurai Spirits 3 JP](samurai-spirits-3-jp-sector.json) | 1 MB and two NOPs. |
 | [Samurai Spirits 4 JP](samurai-spirits-4-jp-sector.json) | 1 MB and one NOP. |
+
+[Waku Waku 7 JP](waku-waku-7-jp-sector.json) adapts paps-g `4d1a613b` and
+the later `e2029f04` linked-reader review. It includes the full 40-byte
+routine, the other three writes and 1 MB setup. The routine depends on the
+existing SAROO sector-reader pointer. Physical qualification remains open.
+[Reader dependency and historical comparison](../doc/SD-SECTOR-OVERLAYS.md#waku-waku-7).
