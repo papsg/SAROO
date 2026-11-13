@@ -2522,3 +2522,13 @@ Six ordered checkpoints after [`9b7bfb1`](https://github.com/papsg/SAROO/commit/
 - `232758b3` (SATURN-CD-003 continuation) — excluded. This change would improve the existing disc-authentication bypass. The previously published outer-wait handling remains as recorded in the preceding series.
 
 - [x] `268ce1cc` + `eb4826d3` (SATURN-SCSP-001/002) — [`5b5409b`](https://github.com/papsg/SAROO/commit/5b5409bb58814ac59e223c03b934994a4b85aa10), [initialize the stereo CD audio mixer with word writes](https://github.com/papsg/SAROO/blob/5b5409bb58814ac59e223c03b934994a4b85aa10/doc/SATURN-MENU-HARDWARE.md#initialize-the-stereo-cd-audio-mixer-with-word-writes). Both three-method profiles pass. The parent fails width and stereo fields, and the old aligned left constant fails only stereo. All 55 adjacent and 48 linked clock checks pass. The linked menu stays at 85,076 code/data bytes. Physical stereo output remains unqualified.
+
+### Final verification for the Saturn menu handoff and rendering series
+
+Five firmware checkpoints landed in order through [`5b5409b`](https://github.com/papsg/SAROO/commit/5b5409bb58814ac59e223c03b934994a4b85aa10). The raw disc-authentication disposition is recorded above. Each port passed focused checks in both sanitizer and optimized profiles and a full SH-2 build before publication.
+
+The archived public tip matches all 682 tracked files. The full `make -j6 -C tests check` passed 924 of 925 Python methods with the Windows replacement fixture skipped. The RTX pool fixture passed with the unchanged MCU source and archived GNU RTX objects. All 18 Rust tests passed. The independent atlas check used the cached Pillow 13.0.0.
+
+A fresh SH-2 link reproduces the 488,770-byte menu image and its ELF byte for byte. The final image uses 85,076 code/data bytes, 9,488 static BSS bytes, a 16,384-byte reserved stack and 20,120 bytes of body margin. All 48 linked ROM clock cases pass. The private Astal result is historical evidence for the reset admission approach. Public-build hardware qualification remains open.
+
+The published delta and ledger passed the secret scan and public identity review. The private checkout's HEAD, branch, refs and stash, status and tracked diff match the starting fingerprints. The Saturn was untouched.
