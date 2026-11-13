@@ -420,7 +420,7 @@ fn run() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
-        println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2\nOffline GNU compile/link accounting for the original MDK App; never installs firmware.");
+        println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         return Ok(());
     }
@@ -439,7 +439,7 @@ fn run() -> Result<()> {
         #[cfg(not(unix))]
         return fail("The FPGA build check requires a Unix host");
     }
-    if args.len() == 13
+    if (args.len() == 13 || (args.len() == 14 && args[13] == "--no-lto"))
         && args[0] == "mcu"
         && args[1] == "--repo"
         && args[3] == "--out"
@@ -456,6 +456,7 @@ fn run() -> Result<()> {
             Path::new(&args[8]),
             Path::new(&args[10]),
             Path::new(&args[12]),
+            args.len() == 13,
         );
         #[cfg(not(unix))]
         return fail("The MCU compile/link check requires a Unix host");

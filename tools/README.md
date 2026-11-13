@@ -51,6 +51,22 @@ tools/target/debug/firmware-build mcu --repo "$PWD" \
   --rtx /path/to/CMSIS/RTOS2
 ```
 
+The GNU App build uses link-time optimization with one partition
+(`-flto=4 -flto-partition=one`), keeping `-Os` and the same source units.
+For a comparison, run the same command with a fresh output directory and
+append `--no-lto` after the RTX argument. The receipt records the selected
+partition policy and collects the linked partition's stack report. The
+original MDK project does not use these GNU flags.
+
+Adapted from paps-g `2aaf465c` (AUD-RES-028); see the [GCC 14.3
+optimization options](https://gcc.gnu.org/onlinedocs/gcc-14.3.0/gcc/Optimize-Options.html#index-flto-partition)
+for `-flto` and `-flto-partition=one`. With the same FAT32-only inputs and
+Arm GNU 14.3.Rel1, the App's load image goes from 60,512 to 56,412 bytes,
+leaving 9,124 bytes free in ITCM. The RTX common pool remains 29,184 bytes.
+Inlining increases some direct frames: `load_cover` goes from 336 to
+568 bytes while its caller `disk_task` stays at 88. These are compiler
+reports for those functions, not measurements of full call chains.
+
 Use a complete Arm GNU bare-metal toolchain including newlib (the compiler-only
 Homebrew package is insufficient). New output paths are required inside this
 checkout's `tests/build`; prior outputs and failures are preserved. Staging
@@ -81,6 +97,12 @@ Rust code is MIT; the embedded ST startup adaptation also retains its BSD
 This is GNU target compile/link accounting. It does not qualify the MDK image,
 cache/bus/clock behavior, physical endian transfers, concurrent access, SD
 durability, games or installed firmware.
+
+To check RTX common pool admission in QEMU with either profile, set
+`SAROO_ARM_CC` to that toolchain's `arm-none-eabi-gcc` and set
+`SAROO_RTX_BUILD` to the corresponding output directory, then run
+`python3 -B -m unittest discover -s tests -p test_rtx_pool.py`. This runs
+the compiled RTX allocation provider in a Cortex-M7 model.
 
 ### Original FPGA project comparison
 

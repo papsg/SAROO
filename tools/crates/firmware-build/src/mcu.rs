@@ -22,6 +22,9 @@ unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
 }
 
+// Keep the complete application together for cross-file size decisions.
+const LTO_FLAGS: [&str; 2] = ["-flto=4", "-flto-partition=one"];
+
 fn copy_file(from: &Path, to: &Path, key: String, hashes: &mut Inputs) -> Result<()> {
     if !from.symlink_metadata()?.is_file()
         || from.metadata()?.len() > 8 * 1024 * 1024
@@ -248,6 +251,7 @@ pub fn build(
     cmsis: &Path,
     stm32: &Path,
     rtx: &Path,
+    lto: bool,
 ) -> Result<()> {
     let repo = repo.canonicalize()?;
     let out = new_build_output(&repo, output)?;
@@ -392,6 +396,9 @@ pub fn build(
                 .arg(format!("-ffile-prefix-map={}=.", out.display()))
                 .arg(format!("-fdebug-prefix-map={}=.", out.display()));
             if source.extension().is_some_and(|s| s == "c") {
+                if lto {
+                    command.args(LTO_FLAGS);
+                }
                 command
                     .args(["-std=gnu11", "-include"])
                     .arg(out.join("mdk-irq.h"));
@@ -405,6 +412,9 @@ pub fn build(
         }
         let elf = out.join("qualification.elf");
         let mut command = Command::new(&cc);
+        if lto {
+            command.args(LTO_FLAGS);
+        }
         command
             .args(flags)
             .args([
@@ -482,6 +492,15 @@ pub fn build(
                 );
             }
         }
+        if lto
+            && frames
+                .iter()
+                .filter(|(name, rows)| name.contains(".ltrans") && !rows.is_empty())
+                .count()
+                != 1
+        {
+            return fail("Expected one nonempty MCU LTO partition stack report");
+        }
         let saves: BTreeMap<_, _> = symbols
             .iter()
             .filter(|(n, _)| {
@@ -511,6 +530,7 @@ pub fn build(
     )?;
     let builder_sha = sha(&fs::read(std::env::current_exe()?)?);
     let mut receipt = json!({"qualification":"GNU App compile/link accounting; not installed or MDK/hardware qualification","head":head.trim(),"success":false,"builder_sha256":builder_sha,"compiler_version":version,"compiler_sha256":compiler_sha,"verification_glue_sha256":glue,"source_sha256":hashes.hashes,"source_total_bytes":hashes.bytes,"commands":rows,"c_units_from_original_project":app_sources(&project)?.len(),"configured_rte_units":1});
+    receipt["lto_partition"] = json!(lto.then_some("one"));
     match result {
         Ok(value) => {
             receipt["success"] = json!(true);
