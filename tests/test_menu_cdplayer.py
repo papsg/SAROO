@@ -32,6 +32,7 @@ class MenuCDPlayerTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_MENU_CD_SOURCE', ROOT / 'Firm_Saturn'))
         block = (source / 'cdblock.c').read_bytes()
         load = (source / 'game_load.c').read_bytes()
+        menu = (source / 'main.c').read_bytes()
         code = command_functions(block).replace(b'int cdc_cmd(', b'int actual_cdc_cmd(')
         code += function(block, 'cdc_end_trans').replace(b'int cdc_end_trans(', b'int actual_end_trans(')
         code += function(block, 'cdc_get_toc').replace(b'int cdc_get_toc(', b'int actual_get_toc(')
@@ -48,7 +49,11 @@ class MenuCDPlayerTests(unittest.TestCase):
         launch = function(load, 'bios_cd_cmd')
         launch = launch.replace(b'(const char *)0x06002020', b'(const char *)(ip_buffer+0x20)')
         code += launch[:launch.index(b'\t\t// emulate bios_loadcd_boot')] + b'\t}\n\treturn 0;\n}\n'
-        inputs = {'cdblock.c': block, 'game_load.c': load, 'actual.inc': code,
+        code += function(menu, 'pad_interrupt_enable').replace(b'#ifdef __sh__', b'#if 1')
+        code += function(load, 'my_0344')
+        code += function(load, 'cdp_boot').replace(b'(void*)(0x02000f00)', b'menu_entry').replace(
+            b'(u32)orig_0344', b'(uintptr_t)orig_0344')
+        inputs = {'cdblock.c': block, 'game_load.c': load, 'main.c': menu, 'actual.inc': code,
                   'menu_cdplayer.c': (ROOT / 'tests/menu_cdplayer.c').read_bytes(),
                   'test_menu_cdplayer.py': Path(__file__).read_bytes()}
         for name, content in inputs.items():
@@ -104,6 +109,12 @@ class MenuCDPlayerTests(unittest.TestCase):
 
     def test_failed_data_end_preserves_readiness_and_output(self):
         self.cases(30, 31, 32)
+
+    def test_start_retires_the_bios_player_before_menu_initialization(self):
+        self.cases(48)
+
+    def test_idle_and_game_launch_keep_the_bios_player_callback(self):
+        self.cases(49)
 
 
 if __name__ == '__main__':

@@ -467,3 +467,31 @@ The linked stock menu passes the ordinary clock tail and 48 relocated ROM
 clock cases. The menu remains 488,770 bytes, with 85,212 code/data bytes
 (48 more), 19,988 bytes of body margin, and unchanged BSS and stack.
 Physical display behavior remains unqualified.
+
+## Release the BIOS player callback before restarting the menu
+
+SATURN-MENU-013, adapted from paps-g `7f626020`. The BIOS CD player
+installs a wrapper in the BIOS interrupt-mask slot. Pressing Start used
+to enter the SAROO menu with that wrapper still installed. Startup clears
+BSS, including the saved target, before controller initialization uses
+the slot. The player now masks its SCU interrupts through the saved BIOS
+function and restores that function before entering the menu.
+
+[Sega System Program User's Manual ST-162-R1-092994, printed p. 2](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=7)
+describes the BIOS-owned mask copy.
+[Function 2.2, printed p. 10](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=15)
+defines `SYS_CHGSCUIM` and the two mask arguments.
+
+Run `make -C tests check-menu-safety check-peripherals`. To reproduce,
+set `SAROO_MENU_CD_SOURCE` to the parent's `Firm_Saturn` directory and
+select `-k start_retires` in `test_menu_cdplayer.py`. The parent fails
+after modeled BSS clearing. Restoring the slot without masking the old
+sources fails a separate assertion. The port passes Start from either
+pad and keeps the A, C and idle paths working. All 143 focused methods
+and all 10 optimized player methods pass. The stock menu adds 32
+code/data bytes (85,244 total, 19,956 bytes of body margin) and passes
+the linked clock tail and 48 ROM clock cases.
+
+A historical private RAM trial reached SAROO after the Astal reset
+sequence and BIOS player return. This public menu build has host and
+link verification.

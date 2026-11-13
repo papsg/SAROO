@@ -9,6 +9,7 @@ static int (*cdp_boot_game)(void);
 static int sk0, sk1;
 static int bios_ver;
 static int disc_type;
+static void (*orig_0344)(u32, u32);
 
 
 void (*sys_bup_init)(u8*, u8*, void*);
@@ -161,6 +162,10 @@ static int cdp_boot(void)
 	hook_getkey();
 
 	if(pad & PAD_START){
+		/* Mask the player's interrupts and restore the BIOS entry before
+		 * menu startup clears the saved callback in BSS. */
+		orig_0344(0, ~0u);
+		REG32(0x06000344) = (u32)orig_0344;
 		void (*go)(void) = (void*)(0x02000f00);
 		go();
 	}
@@ -227,9 +232,7 @@ static int cdp_init(void)
 /**********************************************************/
 
 
-static void (*orig_0344)(int, int);
-
-static void my_0344(int and, int or)
+static void my_0344(u32 and, u32 or)
 {
 	hook_getkey();
 	orig_0344(and, or);

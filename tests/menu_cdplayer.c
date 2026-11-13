@@ -1,5 +1,6 @@
 /* Adapted from paps-g 0b9dc270. Actual menu functions with modeled CD registers. */
 #include <assert.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 
 typedef uint8_t u8;
 typedef uint16_t u16;
+typedef uint32_t u32;
 typedef struct { u16 cr1, cr2, cr3, cr4; } CDCMD;
 enum { HIRQ_CMOK=1, HIRQ_DRDY=2, HIRQ_PEND=16, BIOS_100V=1 };
 static volatile u16 HIRQ, CR1, CR2, CR3, CR4;
@@ -74,7 +76,87 @@ static __attribute__((unused)) int prepare_game_rom(const char *id)
     rom_checks++;
     return rom_result;
 }
+
+/* The player-return controls model the BIOS slots and crt0's BSS clear.
+ * Adapted from paps-g 7f626020. Only host pointer storage is widened. */
+enum { PAD_START=1<<11, PAD_A=1<<10, PAD_C=1<<9 };
+static int sk0, sk1;
+static void (*orig_0344)(u32, u32);
+static volatile uintptr_t mask_slot, handler_slot;
+static u32 scu_mask, cpu_sr;
+static unsigned mask_calls, key_calls, handler_calls;
+static jmp_buf restarted;
+static void menu_entry(void);
+static void hook_getkey(void) { key_calls++; }
+static void pad_interrupt(void) {}
+static u32 pad_interrupt_lock(void)
+{ u32 old=cpu_sr; cpu_sr|=0xf0u; return old; }
+static void pad_interrupt_unlock(u32 sr) { cpu_sr=sr; }
+static void set_handler(u32 vector, void (*handler)(void))
+{
+    assert(vector==0x47 && handler==pad_interrupt && (cpu_sr&0xf0u)==0xf0u);
+    handler_calls++;
+}
+static void set_mask(u32 and_mask, u32 or_mask)
+{
+    if (!mask_calls) assert(and_mask==0 && or_mask==UINT32_MAX);
+    scu_mask=(scu_mask&and_mask)|or_mask;
+    mask_calls++;
+}
+static volatile uintptr_t *bios_slot(u32 address)
+{
+    if (address==0x06000344u) return &mask_slot;
+    assert(address==0x06000300u);
+    return &handler_slot;
+}
+#define REG32(address) (*bios_slot(address))
 #include "actual.inc"
+
+static void menu_entry(void)
+{
+    cpu_sr=0xf0;
+    orig_0344=NULL;
+    sk0=sk1=disc_type=0;
+    assert(mask_slot==(uintptr_t)set_mask);
+    assert(mask_calls==1 && scu_mask==UINT32_MAX);
+    pad_interrupt_enable(1);
+    assert(handler_calls==1 && mask_calls==2);
+    assert(scu_mask==(UINT32_MAX&~0x80u) && cpu_sr==0x70);
+    longjmp(restarted,1);
+}
+
+static void player_return(int start)
+{
+    const u32 masks[]={0,0x80,0xbfff,0xffffff7e};
+    const int controls[]={0,PAD_A,PAD_C,PAD_A|PAD_C};
+    for (unsigned port=0;port<2;port++)
+        for (unsigned i=0;i<sizeof masks/sizeof *masks;i++) {
+            orig_0344=set_mask;
+            mask_slot=(uintptr_t)my_0344;
+            handler_slot=(uintptr_t)set_handler;
+            scu_mask=masks[i];
+            cpu_sr=mask_calls=key_calls=handler_calls=0;
+            disc_type=0;
+            int key=start ? PAD_START|controls[i] : controls[i];
+            sk0=port ? 0 : key;
+            sk1=port ? key : 0;
+            if (start) {
+                if (!setjmp(restarted)) {
+                    cdp_boot();
+                    assert(0 && "the menu entry does not return");
+                }
+                assert(key_calls==1);
+            } else {
+                toc[0]=1; /* Route A and C back to the existing BIOS player. */
+                int old_players=players;
+                assert(!cdp_boot() && key_calls==1);
+                assert(mask_slot==(uintptr_t)my_0344 && orig_0344==set_mask);
+                assert(!mask_calls && !handler_calls && scu_mask==masks[i]);
+                assert(players==old_players+!!key);
+                if (key) assert(use_sys_bup==!!(key&PAD_C));
+            }
+        }
+}
 
 int main(int argc, char **argv) {
     assert(argc==2);
@@ -147,6 +229,8 @@ int main(int argc, char **argv) {
         result=my_bios_loadcd_read();
         assert(result == (n==27 ? -2 : n==28 ? 0 : -1));
         assert(transfers == (n==28));
+    } else if (n == 48 || n == 49) {
+        player_return(n == 48);
     } else if (n >= 33) {
         static const int types[] = {0, 2, 4, 0x80, 0x84};
         static const int results[] = {0, -1, -4};
