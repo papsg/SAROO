@@ -72,3 +72,9 @@ its inherited NOP outside the complete IP range.
 | [Astra Superstars JP](astra-superstars-jp-sector.json) | `2032` at `06028974`. |
 | [Fighters Megamix USA](fighters-megamix-us-sector.json) | `400b` at `06020408`. |
 | [Fighting Vipers USA](fighting-vipers-us-sector.json) | `400b` at `060229ac`. |
+
+[KOF '97 Japan 1 MB](kof97-jp-sector.json) adapts paps-g `2f5def88` and
+`2b956fbd`. The exact `T-3121G   V1.001` source retains both branch guards,
+the inherited NOP and 1 MB setup. The other `T-4401G` route uses its
+retained callback.
+[Branch checks, fallback and limits](../doc/SD-SECTOR-OVERLAYS.md#kof-97-japan-1-mb-branch).

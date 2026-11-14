@@ -1,0 +1,27 @@
+{
+  "abi": 2,
+  "product_id": "T-3121G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "The King of Fighters '97 (Japan): expansion-RAM compatibility",
+  "summary": "Supply 1 MB expansion RAM and NOP the guarded instruction loaded from this exact image.",
+  "rationale": "The old callback takes its 1 MB branch only when 06066F80=2122D110 and 06066FC0=23301FF0. Both words load from FAD 359 in the verified T-3121G V1.001 image; the full-sector CRC preserves that branch guard. An explicit-1-MiB comparison observed the edit load at frame 564. A later 12,000-frame interpreter control executes the exact compiled callback and helper at the original menu addresses and matches all 201 sampled video/audio checkpoints. That control uses a synthetic pre-program caller and preselected expansion RAM; full paired-menu integration and physical cartridge behavior remain unqualified. The separate 4 MB branch and T-4401G route remain in the menu.",
+  "cart_mode": 1,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "4d562ec55f518e221d9c57cc1d58b72478d964b4558e3680671515656c404ef5"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 359,
+      "offset": 1936,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Carry the original 1 MB KOF 97 branch instruction NOP.",
+      "reason": "Preserve the guarded original callback behavior for the exact first-read source."
+    }
+  ],
+  "disc_id": "T-3121G   V1.001",
+  "replaces_callback": true
+}

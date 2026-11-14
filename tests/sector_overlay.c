@@ -29,11 +29,11 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(!valid);
-    assert(argc == 5 || argc == 6);
+    assert(argc >= 5 && argc <= 7);
     uint8_t original[RAW_BYTES], expected[RAW_BYTES], sector[RAW_BYTES];
     assert(load(argv[3], original, sizeof(original)) == sizeof(original));
     assert(load(argv[4], expected, sizeof(expected)) == sizeof(expected));
-    unsigned index = argc == 6 ? (unsigned)atoi(argv[5]) : sector_overlay_count() - 1;
+    unsigned index = argc >= 6 ? (unsigned)atoi(argv[5]) : sector_overlay_count() - 1;
     assert(index < sector_overlay_count());
     uint32_t fad = sector_overlay_fad(index);
     assert(sector_overlay_check(index, original) == 0);
@@ -50,13 +50,15 @@ int main(int argc, char **argv)
     assert(sector_overlay_select(index) < 0);
     assert(sector_overlay_apply(149, sector) == 0);
     assert(!memcmp(sector, original, sizeof(sector)));
-    sector[2063] ^= 1;
+    unsigned damaged = argc == 7 ? (unsigned)atoi(argv[6]) : 2063;
+    assert(damaged < sizeof(sector));
+    sector[damaged] ^= 1;
     for (unsigned i = 0; i < 2; ++i) {
         assert(sector_overlay_apply(fad, sector) < 0);
-        assert(sector[2063] == (original[2063] ^ 1));
-        sector[2063] ^= 1;
+        assert(sector[damaged] == (original[damaged] ^ 1));
+        sector[damaged] ^= 1;
         assert(!memcmp(sector, original, sizeof(sector)));
-        sector[2063] ^= 1;
+        sector[damaged] ^= 1;
     }
     for (unsigned i = 0; i < 2; ++i) {
         memcpy(sector, original, sizeof(sector));

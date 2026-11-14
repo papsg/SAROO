@@ -49,7 +49,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         table = patch[first:patch.index(b'void patch_game(', first)]
         names = set(re.findall(rb'"[^"\n]+",\s*([A-Za-z_0-9]+)\}', table))
         actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch',
-                  b'DND2_patch', b'FRIENDS_patch'}
+                  b'DND2_patch', b'FRIENDS_patch', b'kof97_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -154,6 +154,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_recipe_cartridge_actions_precede_user_overrides_and_require_exact_tags(self):
         self.scenario('cart-action')
+
+    def test_kof97_keeps_its_guarded_fallback_and_separate_four_mb_route(self):
+        self.scenario('kof97')
 
 
 if __name__ == '__main__':

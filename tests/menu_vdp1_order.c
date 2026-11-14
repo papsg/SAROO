@@ -298,6 +298,59 @@ static void cartridge_actions(void)
     assert(!cart_count && !others);
 }
 
+static void kof97_launches(void)
+{
+    for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
+        for(unsigned state = 0; state < (four_mb ? 2u : 3u); ++state) {
+            for(unsigned override = 0; override < 3; ++override) {
+                reset(four_mb ? "T-4401G" : "T-3121G", 29);
+                if(four_mb) {
+                    REG32(0x06002f40) = 0x480b4601;
+                    REG32(0x06002f44) = 0x930b0303;
+                } else {
+                    REG32(0x06066f80) = 0x2122d110;
+                    REG32(0x06066fc0) = 0x23301ff0;
+                }
+                if(state == 1)
+                    overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT | 2);
+                if(state == 2) {
+                    REG16(0x06066f80) = 9; /* Delivered replacement sector. */
+                    overlay_handoff = __builtin_bswap32(SD_OVERLAY_REPLACEMENT | 1);
+                }
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                assert(!others && cart_count == 1u + (override != 0));
+                assert(cart_writes[0] == (four_mb ? CS0_RAM4M : CS0_RAM1M));
+                if(override)
+                    assert(cart_writes[1] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+                if(four_mb) {
+                    assert(REG16(0x06002f5e) == 0x4106);
+                    const u32 words[] = {0xd302d201, 0x4b2b2322, 0xa718e209,
+                                         0x0600622c, 0xd301410b};
+                    for(unsigned i = 0; i < sizeof(words) / sizeof(words[0]); ++i)
+                        assert(REG32(0x06007050 + 4*i) == words[i]);
+                    assert(REG16(0x06007064) == 0x2321);
+                    assert(REG32(0x06007068) == 0x06066f80);
+                } else {
+                    assert(REG16(0x06066f80) == 9);
+                    assert(REG32(0x06066fc0) == 0x23301ff0);
+                }
+            }
+        }
+    }
+    for(unsigned first = 0; first < 2; ++first) {
+        for(unsigned second = 0; second < 2; ++second) {
+            if(first && second) continue;
+            reset("T-3121G", 29);
+            u32 word = first ? 0x2122d110 : 0x2122d112;
+            REG32(0x06066f80) = word;
+            REG32(0x06066fc0) = second ? 0x23301ff0 : 0;
+            read_1st(); finished();
+            assert(!cart_count && REG32(0x06066f80) == word);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -362,6 +415,8 @@ int main(int argc, char **argv)
             }
         }
 #endif
+    }else if(!strcmp(mode, "kof97")){
+        kof97_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -373,7 +428,7 @@ int main(int argc, char **argv)
         for(GAME_DB *g=game_dbs;g->id;++g){
             if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch ||
                g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
-               g->patch_func == FRIENDS_patch) continue;
+               g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

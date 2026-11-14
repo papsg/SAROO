@@ -53,6 +53,7 @@ CASES = {
     'astra-superstars-jp': (42, 0x06003000, 476996, 'ASTRA_SUPERSTARS_patch'),
     'fighters-megamix-us': (21, 0x06004000, 571480, 'FIGHTERS_MEGAMIX_USA_patch'),
     'fighting-vipers-us': (28, 0x06004000, 575324, 'Fighting_Vipers_USA_patch'),
+    'kof97-jp': (38, 0x06011000, 490192, 'kof97_patch'),
 }
 
 
@@ -119,6 +120,9 @@ class RecipeEffectsTests(unittest.TestCase):
                 before[0x1cfd4:0x1cfd7] = bytes.fromhex('600c88')
             if name == 'pocket-fighter-jp':
                 before[0x14074:0x14078] = bytes.fromhex('060383c0')
+            if name == 'kof97-jp':
+                before[0x66f82:0x66f84] = bytes.fromhex('d110')
+                before[0x66fc0:0x66fc4] = bytes.fromhex('23301ff0')
             if name in ('dungeons-dragons-disc2-jp', 'friends-game-disc-jp'):
                 crc = 0x15e2d749 if name.startswith('dungeons') else 0xf4bfcb42
                 image = before[0x10000:0x10000 + length]
@@ -174,8 +178,15 @@ class RecipeEffectsTests(unittest.TestCase):
                 (path / 'raw').write_bytes(originals[fad])
                 (path / 'post').write_bytes(canonical(raw))
                 edited = any(write['fad'] == fad for write in source['writes'])
-                subprocess.run([self.decoder, 'apply' if edited else 'guard', pack,
-                                path / 'raw', path / 'post', str(index)],
+                command = [self.decoder, 'apply' if edited else 'guard', pack,
+                           path / 'raw', path / 'post', str(index)]
+                if name == 'kof97-jp':
+                    # The unedited secondary branch guard must still be bound
+                    # by this complete-sector CRC, including retry behavior.
+                    guard = 0x06066fc0 - load
+                    self.assertEqual(lba + 150 + guard // 2048, fad)
+                    command.append(str(16 + guard % 2048))
+                subprocess.run(command,
                                check=True, capture_output=True, timeout=15)
 
     def test_each_recipe_has_all_retained_callback_memory_effects(self):

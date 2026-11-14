@@ -284,3 +284,26 @@ operations for the identified sources.
 [Sega Disc Format Standards](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf),
 [SCU User's Manual](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf),
 [Original callbacks](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+
+## KOF '97 Japan 1 MB branch
+
+The `T-3121G   V1.001` recipe adapts paps-g `2f5def88` and the later
+`2b956fbd` source review. It retains the original 1 MB cartridge choice and
+changes `2122` to `0009` at `06066f80`. The original callback takes this
+branch only with `2122d110` at `06066f80` and `23301ff0` at `06066fc0`.
+Both guard words reside in FAD 359 at raw offsets 1936 and 2000, so the
+complete sector CRC authenticates both before the NOP is delivered.
+
+The preserved 490,192-byte first file at LBA 38 loads at `06011000`.
+Its independently rechecked SHA-256 is
+`42641272796cbe9090ed79c7955e5b21cd16ece647a1d66cbfeb72d891ff5511`.
+The reconstructed raw-sector CRC agrees with the archived source pack.
+The public decoder test changes the secondary guard, observes repeated
+refusal without a partial edit, then retries with the correct source.
+
+The menu retains its separate `T-4401G` entry and the original 4 MB branch.
+Normal launch tests cover absent and rejected handoffs for both routes,
+the admitted 1 MB recipe and explicit user cartridge overrides. They check
+the original 4 MB branch's complete fixed writes as well as its mode
+selection. The recipe is opt-in pending physical game qualification.
+[Original callback and branch guards](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
