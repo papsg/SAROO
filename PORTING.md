@@ -2752,3 +2752,25 @@ Final combined verification passes:
 - Ten complete logical-source manifests are replayed against a newly built sanitizer-enabled production-C decoder, checking 4,535 sectors and exact archived record/postimage correspondence. The US Marvel first-file guard also passes current C corruption/retry checks; its missing later source remains a historical-source disposition. X-Men's 1,520 supplied zero-padding bytes remain explicit. Full-track/raw-padding limits are not erased by logical-file checks. All eleven scoped pack filenames are distinct and documentation anchors validate.
 - Both standard GNU App links match all current runtime and SDK input hashes: 58,628 load bytes with LTO / 62,820 without, leaving 6,908 / 2,716 free; static DTCM remains 50,896. The sole firmware-runtime delta from the series baseline is the bounded split-record engine, adding 164 load bytes. Menu inputs/resources remain exact: 85,864 body, 19,336 margin, 9,488 BSS and 16 KiB reserved stack. FPGA source is unchanged. These are host/link resource checks, not installed-image or hardware qualification.
 - All six contributions have citations, original attribution, source/check records and explicit remaining limits. Public deltas and commit identities pass leak/PII review. No PR, issue closure, USB integration, runtime diagnostic, binary artifact or device operation is introduced. Private HEAD, branch, complete refs, stashes and worktree match the initial fingerprint. Existing evidence and research branches remain preserved.
+
+## October 2 compatibility-profile revisions
+
+Starting from `806bbfe`, port six checkpoints in chronological order. Source
+reviews are leads; each optional profile is revalidated against current public
+main. Original callbacks stay available. No private source/worktree, Saturn,
+USB integration or runtime diagnostic is changed. Original contribution and
+manual citations are maintained in `doc/OCTOBER-REVISION-PROFILES.md` on main.
+
+- [ ] `362e6508`: Die Hard Trilogy USA V1.000, all eighteen waits in six executables.
+- [ ] `5fcb1555`: Croc USA V1.000 native polygon-mode repair.
+- [ ] `af511e24`: five Japanese revisions: Megamix, Vipers Rev C, Metal Slug, Manx and Whizz.
+- [ ] `a9c15a7e`: six direct revisions: two European UMK3 releases, Popoitto, P7 Special, Hissatsu and Heart prototype.
+- [ ] `d113a93c`: Manx Europe V1.000; already-public USA is a control.
+- [ ] `f8786c36`: Die Hard Trilogy Japan V1.000; reuse public twelve-record support.
+
+The already-public Metal Slug Rev A, Hissatsu Rev A replacement policies and
+Manx USA are duplicates. Vandal's declaration fix is already public; unfinished
+native/lifetime work and unavailable Chinese Bio Hazard research are excluded.
+Historical audio/timing/output differences remain explicit; no game or physical
+qualification is inferred from host checks. The public runtime remains the
+previously verified implementation unless a narrow prerequisite is demonstrated.
