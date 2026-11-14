@@ -1,0 +1,41 @@
+{
+  "abi": 2,
+  "product_id": "6106664",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L470",
+  "title": "Marvel Super Heroes (Japan) demo V1.000: late-code candidate",
+  "summary": "Deliver the demo branch's two guarded NOPs and select 1 MiB expansion RAM.",
+  "rationale": "The exact Redump demo carries product 6106664. MSH.BIN begins at FAD 253 and loads at 06002000; its demo-specific target instructions and 23301FF0 guards occupy FAD 260. The retail source locations do not match this image. A fixed-clock emulator control redirects only the inherited first-program pointer and executes the exact compiled menu handler/helper at their original addresses with 1 MiB RAM preselected. The candidate matches all 121 sampled video, audio CRC, sample-count and visible-pixel checkpoints through frame 7201. Physical cartridge timing and other paths remain open; keep inactive.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "862b347821653bf18e8d9edc4241a3bddf098873b0e7f392127ea07007c8462a"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 260,
+      "offset": 1356,
+      "before": "2212",
+      "after": "0009",
+      "effect": "NOP the demo instruction at 06005D3C.",
+      "reason": "The demo callback branch requires matching 23301FF0 guards in the same source sector."
+    },
+    {
+      "fad": 260,
+      "offset": 1658,
+      "before": "2212",
+      "after": "0009",
+      "effect": "NOP the demo instruction at 06005E6A.",
+      "reason": "The demo callback branch requires matching 23301FF0 guards in the same source sector."
+    }
+  ],
+  "cart_mode": 1,
+  "replaces_callback": true,
+  "guards": [
+    {
+      "fad": 191,
+      "reason": "Check the demo's original 060D0FF4 handoff at raw offset 1076 (RAM 060D1424) before skipping the menu handler."
+    }
+  ],
+  "disc_id": "6106664   V1.000"
+}

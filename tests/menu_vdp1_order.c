@@ -497,6 +497,40 @@ static void batman_launches(void)
                 }
 }
 
+static void msh_launches(void)
+{
+    const char *ids[] = {"T-1214H   V1.001", "T-1215G   V1.003", "6106664   V1.000", "T-7032H-50V1.000"};
+    const u32 pointers[] = {0x060d13f8, 0x060d1424, 0x060d15ac};
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT | 1, SD_OVERLAY_REPLACEMENT | 2};
+    for(unsigned id = 0; id < 4; ++id)
+        for(unsigned tag = 0; tag < 3; ++tag)
+            for(unsigned physical = 0; physical < 2; ++physical)
+                for(unsigned guards = 0; guards < 8; ++guards)
+                    for(unsigned override = 0; override < 3; ++override) {
+                        reset(ids[id], 61);
+                        disc_type = physical;
+                        overlay_handoff = __builtin_bswap32(tags[tag]);
+                        unsigned replaced = tag == 1 && !physical;
+                        int chosen = -1;
+                        for(unsigned i = 0; i < 3; ++i) {
+                            REG32(pointers[i]) = guards & (1u << i) ? 0x060d0ff4 : 0x55550000+i;
+                            if(chosen < 0 && (guards & (1u << i))) chosen = (int)i;
+                        }
+                        REG32(0x060d0e1c) = 0x060d0ff4;
+                        if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                        read_1st(); finished();
+                        for(unsigned i = 0; i < 3; ++i) {
+                            u32 original = guards & (1u << i) ? 0x060d0ff4 : 0x55550000+i;
+                            assert(REG32(pointers[i]) == (!replaced && (int)i == chosen
+                                ? (u32)(uintptr_t)MARVEL_SUPER_handle : original));
+                        }
+                        assert(REG32(0x060d0e1c) == 0x060d0ff4 && !others);
+                        assert(cart_count == replaced + (override != 0));
+                        if(replaced) assert(cart_writes[0] == CS0_RAM1M);
+                        if(override) assert(cart_writes[cart_count-1] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+                    }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -630,6 +664,8 @@ int main(int argc, char **argv)
         vampire_launches();
     }else if(!strcmp(mode, "batman")){
         batman_launches();
+    }else if(!strcmp(mode, "msh")){
+        msh_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -646,7 +682,8 @@ int main(int argc, char **argv)
                g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch ||
                g->patch_func == Phantasy_Star_Collection_patch ||
                g->patch_func == VAMPIRE_SAVIOR_patch ||
-               g->patch_func == Batman_Forever_The_Arcade_Game_patch) continue;
+               g->patch_func == Batman_Forever_The_Arcade_Game_patch ||
+               g->patch_func == MARVEL_SUPER_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

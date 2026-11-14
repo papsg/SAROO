@@ -1,0 +1,41 @@
+{
+  "abi": 2,
+  "product_id": "T-7032H-50",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L470",
+  "title": "Marvel Super Heroes (Europe -50) V1.000: late-code candidate",
+  "summary": "Deliver this European disc's two guarded NOPs and select 1 MiB expansion RAM.",
+  "rationale": "The exact Redump disc identifies itself as T-7032H-50, a narrower identity than the legacy T-7032H table prefix. MSH.BIN begins at FAD 3451 and loads at 06002000; both target instructions and 23301FF0 guards occupy FAD 3469. A fixed-clock emulator control redirects only the inherited first-program pointer and executes the exact compiled menu handler/helper at their original addresses with 1 MiB RAM preselected. Video matches at all 121 checkpoints through frame 7201; EU audio CRC 34/121 and sample counts 34/121 match. The normal menu-address control retains complete PCM differences. A diagnostic changing only its handler/helper cartridge-space reads to emulator Work RAM timing matches every candidate PCM byte and all 121 sampled outputs in the three retail releases. This isolates the emulator discrepancy to modeled read timing; no audible defect or need for production delay is established. Physical cartridge timing and other paths remain open; keep inactive.",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "855984595c1399919941feef2bb67f36c350d326ca8d41022d1c326934c6e605"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 3469,
+      "offset": 188,
+      "before": "2212",
+      "after": "0009",
+      "effect": "NOP the later instruction at 0600B0AC.",
+      "reason": "The original callback's retail branch has both 23301FF0 guards in this sector."
+    },
+    {
+      "fad": 3469,
+      "offset": 484,
+      "before": "2212",
+      "after": "0009",
+      "effect": "NOP the later instruction at 0600B1D4.",
+      "reason": "The original callback's retail branch has both 23301FF0 guards in this sector."
+    }
+  ],
+  "cart_mode": 1,
+  "replaces_callback": true,
+  "guards": [
+    {
+      "fad": 202,
+      "reason": "Check the European original 060D0FF4 handoff at raw offset 1468 (RAM 060D15AC) before skipping the menu handler."
+    }
+  ],
+  "disc_id": "T-7032H-50V1.000"
+}

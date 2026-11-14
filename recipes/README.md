@@ -116,3 +116,12 @@ Batman Forever Arcade V1.000 [USA](batman-forever-arcade-us-v1000-sector.json),
 ordering and the inherited direct entry. No copied helper or new cartridge
 action is supplied. **USA/Europe modeled audio differences remain open.**
 [Exact sources, attribution, reproduction and limits](../doc/REMAINING-GAME-PROFILES.md).
+
+Marvel Super Heroes [USA V1.001](marvel-super-heroes-us-v1001-sector.json),
+[Japan V1.003](marvel-super-heroes-jp-v1003-sector.json),
+[Europe -50 V1.000](marvel-super-heroes-eu-50-v1000-sector.json) and
+[Japanese demo V1.000](marvel-super-heroes-jp-demo-v1000-sector.json) deliver
+both original instruction edits and 1 MB setup while retaining native calls.
+**Full US source is unavailable for fresh verification; physical RAM switching
+and timing remain unqualified.**
+[Attribution, complete callback checks, source and modeled audio limits](../doc/REMAINING-GAME-PROFILES.md#marvel-super-heroes-three-retail-discs-and-japanese-demo).

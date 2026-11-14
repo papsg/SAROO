@@ -7,7 +7,8 @@ import unittest
 import test_sector_overlay as overlay
 import test_sector_overlay_later as later
 from check_later_callbacks_sh2 import execute, region
-from check_remaining_callbacks_sh2 import BATMAN_HANDLER, verify_batman_handler
+from check_remaining_callbacks_sh2 import (BATMAN_HANDLER, MSH_HANDLER, SSCTRL_HELPER,
+                                            verify_batman_handler, verify_msh_handler)
 
 
 class RemainingRecipeTests(unittest.TestCase):
@@ -62,6 +63,31 @@ class RemainingRecipeTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(pack.exists())
 
+    def test_msh_all_four_exact_sources_keep_native_handoffs_and_select_one_mb(self):
+        rows = [('us-v1001', 'T-1214H   V1.001', 1250, 202, 1032, 188, 484, 268, 744, 1082),
+                ('jp-v1003', 'T-1215G   V1.003', 1250, 202, 1032, 188, 484, 268, 744, 1082),
+                ('eu-50-v1000', 'T-7032H-50V1.000', 3469, 202, 1468, 188, 484, 268, 744, 3301),
+                ('jp-demo-v1000', '6106664   V1.000', 260, 191, 1076, 1356, 1658, 1900, 1436, 103)]
+        for name, identity, fad, guard, pointer, first, second, ga, gb, lba in rows:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.fixture.output) as folder:
+                self.path = Path(folder)
+                source = json.loads((overlay.ROOT / 'recipes' /
+                                     f'marvel-super-heroes-{name}-sector.json').read_text())
+                self.assertEqual(source['disc_id'], identity)
+                self.assertEqual(source['cart_mode'], 1)
+                self.assertTrue(source['replaces_callback'])
+                self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                                  for w in source['writes']],
+                                 [(fad, first, '2212', '0009'), (fad, second, '2212', '0009')])
+                self.assertEqual([g['fad'] for g in source['guards']], [guard])
+                addresses = [0x06002000 + (fad-150-lba)*2048 + off-16 for off in [first, second]]
+                self.assertEqual(addresses, [0x06005d3c, 0x06005e6a] if name.startswith('jp-demo')
+                                 else [0x0600b0ac, 0x0600b1d4])
+                recipe, raws = self.source_fixture(source, identity[10:].encode(),
+                                                    {guard: [(pointer, '060d0ff4')],
+                                                     fad: [(ga, '23301ff0'), (gb, '23301ff0')]})
+                self.check_delivery(recipe, raws)
+
 
 class BatmanInstructionTests(unittest.TestCase):
     def test_complete_original_conditional_handler_effects(self):
@@ -84,7 +110,7 @@ class BatmanInstructionTests(unittest.TestCase):
             events = []
             _, regs, _, _, writes, calls = execute(
                 code, 0x06023e44, 0x06023e54, region(0x260d2810, 4),
-                cart=0x13570900, trace=events, read_values={0x260d2810: [1, 1, 0]})
+                external=0x13570900, trace=events, read_values={0x260d2810: [1, 1, 0]})
             polls = [i for i, e in enumerate(events) if e[:2] == ('read', 0x260d2810)]
             call = next(i for i, e in enumerate(events) if e[0] == 'call')
             self.assertEqual([events[i][3] for i in polls], [1, 1, 0])
@@ -110,6 +136,20 @@ class BatmanInstructionTests(unittest.TestCase):
                     code, pc, 0x0600d000, ram, registers={8: target})
                 self.assertEqual(result_pr, pr)
                 self.assertEqual(writes, [(0x13570a00, 4, 1)] if pc == 0x0600439e else [])
+
+
+class MarvelSuperInstructionTests(unittest.TestCase):
+    def test_original_loader_rmw_guard_priority_and_complete_return_effects(self):
+        verify_msh_handler(0x02008b94, MSH_HANDLER, 0x02008990, SSCTRL_HELPER)
+
+    def test_wrong_guard_call_stack_restore_or_rmw_is_rejected(self):
+        for which, at, value in [('handler', 4, '0009'), ('handler', 24, '0009'),
+                                  ('handler', 46, '0009'), ('handler', 44, '0009'),
+                                  ('helper', 10, '2459'), ('helper', 4, '6122')]:
+            handler, helper = bytearray(MSH_HANDLER), bytearray(SSCTRL_HELPER)
+            (handler if which == 'handler' else helper)[at:at+2] = bytes.fromhex(value)
+            with self.subTest(which=which, at=at), self.assertRaises((ValueError, AssertionError)):
+                verify_msh_handler(0x02008b94, handler, 0x02008990, helper)
 
 
 if __name__ == '__main__':

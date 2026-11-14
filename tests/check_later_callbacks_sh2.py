@@ -1,6 +1,6 @@
 """Check linked later-load callbacks with bounded SH-2 instruction semantics.
 
-Only the selected callbacks and the ssctrl_set call boundary are modeled.
+Only selected callbacks and explicit external-call boundaries are modeled.
 This is neither a game emulator nor a hardware timing qualification.
 """
 import argparse
@@ -9,7 +9,7 @@ from pathlib import Path
 from check_menu_clock_sh2 import linked_symbol_records, signed
 
 
-def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, flags=None,
+def execute(code, start, stop, ram, *, external=None, seed=0, return_address=None, flags=None,
             read_values=None, trace=None, registers=None):
     program = dict(enumerate(code, start))
     memory = dict(ram)
@@ -50,13 +50,13 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             if flags is not None:
                 flags[0] = t
             return initial, regs, pr, memory, writes, calls
-        if pc == cart:
+        if pc == external:
             assert delayed is None
             calls.append((regs[4], regs[5]))
             if trace is not None:
                 trace.append(('call', pc, regs[4], regs[5]))
-            # A caller must tolerate volatile-register changes across the
-            # existing MMIO accessor. The accessor's hardware is not modeled.
+            # The declared external callee preserves the ABI's saved state
+            # and returns with arbitrary volatile-register values.
             for i in range(8):
                 regs[i] = 0xdead0000 + i
             pc = pr
@@ -79,6 +79,12 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             t = int(regs[n] == regs[m])
         elif op & 0xf00f == 0x2008:
             t = int((regs[n] & regs[m]) == 0)
+        elif op & 0xf00f == 0x2009:
+            regs[n] &= regs[m]
+        elif op & 0xf00f == 0x200b:
+            regs[n] |= regs[m]
+        elif op & 0xf00f == 0x6007:
+            regs[n] = regs[m] ^ 0xffffffff
         elif op & 0xf00f == 0x6000:
             regs[n] = signed(read(regs[m], 1), 8) & 0xffffffff
         elif op & 0xf00f == 0x6001:
@@ -255,7 +261,7 @@ def check(elf):
     for seed in (0, 1, 127, 255):
         ram = region(0x060dd040, 64) | region(0x060feff0, 32)
         before, regs, pr, after, writes, calls = execute(
-            patch, patch_at, 0x06012340, ram, cart=cart_at, seed=seed)
+            patch, patch_at, 0x06012340, ram, external=cart_at, seed=seed)
         assert calls == [(0x3000, 0x2000)], 'Missing 1 MB cartridge selection'
         assert writes == [(0x060feffc, 4, 0x06012340),
                           (0x060dd058, 4, handler_at)]
