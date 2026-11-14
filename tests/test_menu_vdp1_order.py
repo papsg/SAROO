@@ -209,6 +209,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
     def test_xmen_preserves_original_startup_or_both_fallback_handlers_and_user_ram_priority(self):
         self.scenario('xmen')
 
+    def test_pad_nifty_preserves_native_entry_or_the_existing_shared_modem_handler(self):
+        self.scenario('pad-nifty')
+
 
 if __name__ == '__main__':
     unittest.main()

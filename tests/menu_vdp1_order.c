@@ -583,6 +583,30 @@ static void xmen_launches(void)
             }
 }
 
+static void pad_nifty_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    const u32 pointers[] = {0x06020000, 0x11112222, 0xffffffff};
+    for(unsigned tag = 0; tag < 3; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned pointer = 0; pointer < 3; ++pointer)
+                for(unsigned override = 0; override < 3; ++override) {
+                    reset("GS-7101   V1.007", 61);
+                    disc_type = physical;
+                    overlay_handoff = __builtin_bswap32(tags[tag]);
+                    REG32(0x060105b4) = pointers[pointer];
+                    REG16(0x0602a15e) = 0x8b02;
+                    if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                    read_1st(); finished();
+                    unsigned replaced = tag == 1 && !physical;
+                    assert(REG32(0x060105b4) == (replaced ? pointers[pointer] :
+                           (u32)(uintptr_t)HABITAT2_handle));
+                    assert(REG16(0x0602a15e) == 0x8b02 && !others);
+                    assert(cart_count == (override != 0));
+                    if(override) assert(cart_writes[0] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+                }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -722,6 +746,8 @@ int main(int argc, char **argv)
         pia_launches();
     }else if(!strcmp(mode, "xmen")){
         xmen_launches();
+    }else if(!strcmp(mode, "pad-nifty")){
+        pad_nifty_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){

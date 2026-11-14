@@ -426,3 +426,81 @@ entry/return observations do not qualify this public MCU/recipe pair, smooth
 gameplay, audio or other routes. Keep this profile opt-in with the timing/audio,
 bank/reset, other-path and physical-acceptance limits open. No delay is added
 to imitate the callback's overhead.
+
+## Pad Nifty: Japan V1.007
+
+The [exact-revision recipe](../recipes/pad-nifty-jp-v1007-sector.json)
+selects paps-g's `6dc60921` correction to the original September 30 candidate.
+It adapts [tpunix's shared modem-check callback](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L717),
+retaining that callback when no valid replacement pack is admitted. No RAM-mode
+action is supplied; explicit user configuration keeps its existing behavior.
+
+The original first program calls its own decoder at `060109d4`, supplies a
+917,504-byte capacity and then enters `06020000`. Program `1;1` contains the
+native modem routine: read `25885029`, compare with 17, then BF at `0602a15e`
+to the false return. The inherited handler NOPs that branch. The source recipe
+instead changes only the packed high byte at offset 24,690, FAD 206/raw 130:
+`8b → 70`. It decodes `8b02 → 7002`, ADD #2,R0. The following MOV #1,R0
+discards the sum, retaining all returned registers and flags from the callback's
+NOP path. ADD performs no memory operation or control-register access.
+
+This one-byte choice matters. The rejected packed `8b02 → 0009` attempt also
+changes the byte at decoded `0602a18f`, through a back-reference to the shared
+low byte at `0602a15f`. A fresh native decode reproduces all three differences;
+the selected `8b → 70` changes only `0602a15e` throughout the full 917,504-byte
+allocation. The earlier STC candidate also remains unselected. The
+[SH7604 manual](https://antime.kapsi.fi/sega/files/sh7604.pdf), §2.4 Table 2.13,
+printed p. 35, defines ADD without a T change; Table 2.16, printed p. 39,
+defines BF without a delay slot. §4.6 Table 4.10, printed p. 75, explicitly
+lists STC among instructions after which an interrupt is not immediately
+accepted. ADD avoids that additional inhibition. Those rules establish the
+instruction choice, not the intended behavior of the game's modem service.
+
+| Source | LBA / bytes | Complete original SHA-256 |
+| --- | --- | --- |
+| `0;1` | 24 / 39,470 | `38a0060bccab76442a25a9d9114ca99ce162a624130c5aca32ab8b0a65ed2ddf` |
+| `1;1` | 44 / 100,483 | `c37afcfd2e288124a044bdc4fd72b18fe685a5f1359c107bf662600fdb377cf5` |
+
+Fresh current-C/source checks cover all 70 sectors / 139,953 logical bytes
+and both original guards. The first program, decoder, original JSR and
+`060105b4=06020000` literal stay unchanged. The only changed packed byte yields
+complete postimage
+`ea667402040b6ae61e044961217f4fd7cb40fd0296e73c590f36e6c800affff7`.
+The three-record, 1,068-byte pack reproduces archived SHA-256
+`474d3dc9dfbc346fd34c5cdf61a1f9163d00410e8da2842849b9c7b564e5b7ee`.
+The unavailable full track remains historically pinned as
+`30453920c2e03c9d05ca2a9e29f38ac347936d8aea0b1eb60bc299c9b8f15fe7`;
+logical-file proof does not newly authenticate that track or original final
+padding. The normal owner-side compiler still requires its whole-file hash.
+
+Fresh host execution of the retained original game-decoder fixture reproduces
+all 231,164 decoded bytes and the complete 917,504-byte allocation with both
+cache modes. Original/candidate capacity hashes are
+`2b5814fcda04983c3e34f422884c60a8628816cdba9de658b01b99b4302889a2`
+and `83b503a79dc3e91cf8adf4f9d4ada64571b2f6d5dbfef710036ab3b9b9a55eea`.
+Only one byte differs; source and other Work RAM remain unchanged. The native
+return fixture runs 262,144 paired cases across both images: all 256 I/O bytes,
+all 256 defined SR states and both cache modes. Its 524,288 NOP/ADD calls
+retain complete CPU return state, one I/O read and no CPU memory writes.
+These are host-interpreter checks, without physical interrupt/timing acceptance.
+
+All ten original numeric streams `1..9/90` are also rerun freshly in both
+cache modes and reproduce their complete preserved outputs. Only `1;1` matches
+either inherited guard. This preserves other-stream controls without claiming
+every real load route executes. Public synthetic tests independently execute
+the original BF, callback NOP and selected ADD for all 256 I/O bytes and both
+incoming T values, retaining complete GPR/T/PR, exactly one I/O read and zero
+writes. Actual launch tests cover the shared fallback, malformed/absent
+handoffs, physical bypass and user RAM priority. Both 74-method overlay and
+23-method launch profiles pass. Firmware source hashes and build resources
+remain identical to the preceding verified checkpoint.
+
+The rehashed 18,000-frame historical pair matches all 301 video/nonblack
+checkpoints, 157 audio CRCs and 295 sample counts. Audio first differs at
+9421/9601, after a later program replaces the region at 9232. Both complete
+PCM streams contain 53,073,632 bytes and differ. The 15,000-frame same-ROM-map
+control still differs at those frames: mapping the old handler on both sides
+does not explain the mismatch. Both pairs' logs, PCM and all 32 complete
+Work-RAM captures rehash. Keep the profile opt-in pending audio/timing,
+other-load-route, physical startup and return checks. No compensating delay
+or later RAM writer is introduced.

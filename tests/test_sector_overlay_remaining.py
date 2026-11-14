@@ -131,6 +131,23 @@ class RemainingRecipeTests(unittest.TestCase):
         self.check_delivery(recipe, raws)
 
 
+    def test_pad_nifty_keeps_native_decoder_and_shared_low_byte_and_selects_no_ram_action(self):
+        source = json.loads((overlay.ROOT / 'recipes/pad-nifty-jp-v1007-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'GS-7101   V1.007')
+        self.assertTrue(source['replaces_callback'])
+        self.assertNotIn('cart_mode', source)
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after']) for w in source['writes']],
+                         [(206, 130, '8b', '70')])
+        self.assertEqual([g['fad'] for g in source['guards']], [174, 175])
+        self.assertEqual((206-150-44)*2048+130-16, 24690)
+        recipe, raws = self.source_fixture(source, b'V1.007', {
+            174: [(1446, '430b0009'), (1476, '06020000')],
+            175: [(484, '2fe66e432fc66c63')],
+            206: [(131, '02')],
+        })
+        self.check_delivery(recipe, raws)
+
+
 class BatmanInstructionTests(unittest.TestCase):
     def test_complete_original_conditional_handler_effects(self):
         verify_batman_handler(0x02008508, BATMAN_HANDLER)
@@ -270,6 +287,27 @@ class XMenInstructionTests(unittest.TestCase):
                 self.assertIn(('read', literal, 4, 0x25fe00b8 if mode == 'source' else 0x23301ff0), trace)
                 if mode != 'raw':
                     self.assertEqual(after, ram)
+
+
+class PadNiftyInstructionTests(unittest.TestCase):
+    def test_add_and_callback_nop_keep_complete_return_state_for_every_io_byte(self):
+        for value in range(256):
+            for initial_t in (0, 1):
+                for instruction in ('8b02', '0009', '7002'):
+                    code = bytes.fromhex('d00a6000600c8811' + instruction +
+                                         'e001000b0009e000000b0009')
+                    ram = {0x25885029: value}
+                    ram.update(enumerate((0x25885029).to_bytes(4, 'big'), 0x0602a180))
+                    flags, trace = [initial_t], []
+                    before, regs, pr, after, writes, calls = execute(
+                        code, 0x0602a156, 0x06054320, ram, flags=flags, trace=trace)
+                    before[0] = int(value == 17) if instruction == '8b02' else 1
+                    self.assertEqual(regs, before)
+                    self.assertEqual(after, ram)
+                    self.assertEqual((writes, calls, pr), ([], [], 0x06054320))
+                    self.assertEqual(flags, [int(value == 17)])
+                    self.assertEqual([event for event in trace if event[:2] == ('read', 0x25885029)],
+                                     [('read', 0x25885029, 1, value)])
 
 
 if __name__ == '__main__':

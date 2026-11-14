@@ -1,0 +1,36 @@
+{
+  "abi": 2,
+  "product_id": "GS-7101",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L717",
+  "title": "Pad Nifty (Japan) V1.007: native compressed-code modem-check bypass",
+  "summary": "Edit the original modem-check branch in compressed program 1; remove the inserted handler and entry redirection.",
+  "rationale": "The original loader decodes 1;1 with its own function at 0x060109D4, then enters 0x06020000. Replace BF at 0x0602A15E with ADD #2,R0; the following MOV #1,R0 discards the result. This preserves the inherited NOP workaround's returned registers and flags without STC interrupt inhibition. Changing only the packed high byte keeps a shared low-byte back-reference intact. Full native decoding verifies one changed byte across the entire 917,504-byte output allocation, and the interpreter checks all 256 input bytes and 256 defined SR states in both cache modes. All ten numeric streams were decoded; only 1;1 matches either inherited guard. No IP helper, redirected call or later RAM writer is delivered. Source and return checks pass; game, audio, other load routes and physical acceptance remain open. Keep this exact-revision candidate inactive.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "30453920c2e03c9d05ca2a9e29f38ac347936d8aea0b1eb60bc299c9b8f15fe7"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 206,
+      "offset": 130,
+      "before": "8b",
+      "after": "70",
+      "effect": "Decode ADD #2,R0 at 0x0602A15E; the next instruction overwrites R0 with 1.",
+      "reason": "Bypass the inherited modem check with matching returned registers and flags while preserving the compressed back-reference shared by a nearby branch."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 174,
+      "reason": "Bind the unchanged first-program call pointer at 0x060105B4."
+    },
+    {
+      "fad": 175,
+      "reason": "Bind the original native decoder entry and token routines before replacing the inherited callback."
+    }
+  ],
+  "disc_id": "GS-7101   V1.007"
+}

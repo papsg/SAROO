@@ -136,3 +136,9 @@ uses the native EMM success path, a complete-output-checked compressed rewrite
 and a 4 MiB action. It requires the split-record MCU; see
 [source, build and timing/audio limits](../doc/REMAINING-GAME-PROFILES.md#x-men-vs-street-fighter-japan-v1002).
 It remains opt-in.
+
+[`pad-nifty-jp-v1007-sector.json`](pad-nifty-jp-v1007-sector.json) changes
+one compressed byte to preserve a shared back-reference while bypassing the
+native modem branch. No RAM-mode action is supplied. See
+[complete decode/return checks and remaining limits](../doc/REMAINING-GAME-PROFILES.md#pad-nifty-japan-v1007);
+the profile remains opt-in.
