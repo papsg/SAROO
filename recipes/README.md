@@ -142,3 +142,9 @@ one compressed byte to preserve a shared back-reference while bypassing the
 native modem branch. No RAM-mode action is supplied. See
 [complete decode/return checks and remaining limits](../doc/REMAINING-GAME-PROFILES.md#pad-nifty-japan-v1007);
 the profile remains opt-in.
+
+[`kof97-yzb-4mb-v1000-sector.json`](kof97-yzb-4mb-v1000-sector.json) applies
+only to the pinned YZB 4 MiB image. Its two packed bytes reproduce the inherited
+ASR0 workaround without inserting a writer or redirecting startup. See
+[complete source/BIOS-output proof and remaining limits](../doc/REMAINING-GAME-PROFILES.md#the-king-of-fighters-97-exact-yzb-4-mib-v1000-source).
+It remains opt-in, with explicit user RAM settings taking priority.

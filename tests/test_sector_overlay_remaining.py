@@ -148,6 +148,21 @@ class RemainingRecipeTests(unittest.TestCase):
         self.check_delivery(recipe, raws)
 
 
+    def test_kof97_yzb_keeps_native_ip_and_chunk_table_and_delivers_only_two_packed_bytes(self):
+        source = json.loads((overlay.ROOT / 'recipes/kof97-yzb-4mb-v1000-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-4401G   V1.000')
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual(source['cart_mode'], 4)
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after']) for w in source['writes']],
+                         [(633, 1853, '2122', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [151])
+        self.assertEqual((633-150-30)*2048+1853-16, 929581)
+        recipe, raws = self.source_fixture(source, b'V1.000', {
+            151: [(1872, '480b4601930b0303'), (1902, '30b6')],
+        })
+        self.check_delivery(recipe, raws)
+
+
 class BatmanInstructionTests(unittest.TestCase):
     def test_complete_original_conditional_handler_effects(self):
         verify_batman_handler(0x02008508, BATMAN_HANDLER)
@@ -308,6 +323,63 @@ class PadNiftyInstructionTests(unittest.TestCase):
                     self.assertEqual(flags, [int(value == 17)])
                     self.assertEqual([event for event in trace if event[:2] == ('read', 0x25885029)],
                                      [('read', 0x25885029, 1, value)])
+
+
+class Kof97YZBInstructionTests(unittest.TestCase):
+    def test_native_nop_omits_only_asr0_store_and_keeps_refresh_and_complete_cpu_state(self):
+        for patched in (False, True):
+            code = bytes.fromhex('d10fd210' + ('0009' if patched else '2122') + 'd110e2132122')
+            ram = region(0x25fe00b0, 12)
+            for address, value in ((0x06066fbc, 0x25fe00b0), (0x06066fc0, 0x23301ff0),
+                                   (0x06066fc4, 0x25fe00b8)):
+                ram.update(enumerate(value.to_bytes(4, 'big'), address))
+            for initial_t in (0, 1):
+                flags = [initial_t]
+                before, regs, pr, after, writes, calls = execute(
+                    code, 0x06066f7c, 0x06066f88, ram, flags=flags,
+                    return_address=0x06054320)
+                before[1:3] = [0x25fe00b8, 19]
+                expected_writes = ([] if patched else [(0x25fe00b0, 4, 0x23301ff0)]) + [
+                    (0x25fe00b8, 4, 19)]
+                expected = dict(ram)
+                for address, width, value in expected_writes:
+                    expected.update(enumerate(value.to_bytes(width, 'big'), address))
+                self.assertEqual((regs, after, writes), (before, expected, expected_writes))
+                self.assertEqual((flags, pr, calls), ([initial_t], 0x06054320, []))
+
+    def test_old_writer_jsr_delay_slot_and_native_entry_keep_their_distinct_pr_states(self):
+        # The inherited second stage calls the original entry and writes the
+        # NOP in the JSR slot. It gives the entry PR=7066. The source recipe
+        # retains the caller's original PR; universal entry equality is not
+        # inferred from the native startup's initial SP reset.
+        writer = bytes.fromhex('d301410b2321345006066f80')
+        for initial_t in (0, 1):
+            first_stage = bytes.fromhex('d302d2014b2b2322a718e2090600622c')
+            flags = [initial_t]
+            before, regs, pr, after, writes, calls = execute(
+                first_stage, 0x06007050, 0x06033330, region(0x06006228, 12),
+                registers={11: 0x06033330}, return_address=0x06054320, flags=flags)
+            before[2:4] = [0xa718e209, 0x0600622c]
+            self.assertEqual(regs, before)
+            self.assertEqual((pr, writes, calls, flags),
+                             (0x06054320, [(0x0600622c, 4, 0xa718e209)], [], [initial_t]))
+            flags = [initial_t]
+            ram = region(0x06066f7c, 8) | dict(enumerate(writer, 0x06007060))
+            before, regs, pr, _, writes, calls = execute(
+                bytes.fromhex('a718e209'), 0x0600622c, 0x06011000, ram,
+                registers={1: 0x06011000}, flags=flags)
+            before[2] = 9
+            before[3] = 0x06066f80
+            self.assertEqual(regs, before)
+            self.assertEqual((pr, writes, calls, flags),
+                             (0x06007066, [(0x06066f80, 2, 9)], [], [initial_t]))
+        entry = bytes.fromhex('d0046f03d002402b00090009000900090601103406100000')
+        for incoming_pr in (0x06007066, 0x06006230):
+            before, regs, pr, after, writes, calls = execute(
+                entry, 0x06011000, 0x06011034, {}, return_address=incoming_pr)
+            before[0], before[15] = 0x06011034, 0x06100000
+            self.assertEqual(regs, before)
+            self.assertEqual((pr, after, writes, calls), (incoming_pr, {}, [], []))
 
 
 if __name__ == '__main__':

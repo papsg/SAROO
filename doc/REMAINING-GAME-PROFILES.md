@@ -504,3 +504,84 @@ does not explain the mismatch. Both pairs' logs, PCM and all 32 complete
 Work-RAM captures rehash. Keep the profile opt-in pending audio/timing,
 other-load-route, physical startup and return checks. No compensating delay
 or later RAM writer is introduced.
+
+## The King of Fighters '97: exact YZB 4 MiB V1.000 source
+
+The [exact modified-image recipe](../recipes/kof97-yzb-4mb-v1000-sector.json)
+selects paps-g's `e2d4dfa0` through `9f558ea4` native-source correction.
+YZB's 4 MiB game modification and
+[tpunix's original SAROO compatibility callback](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L322)
+remain distinct from this adaptation. This profile is for `T-4401G   V1.000`
+with the recorded complete source hash; it is not the separate stock 1 MiB
+`T-3121G` profile. Recipe RAM setup precedes explicit user configuration.
+
+Original `0.BIN;1` loads at `00200000`. Its loader selects chunk 12 at file
+offset `0af988`, whose original `000ef5a1` header declares 490,192 decoded bytes.
+The native call goes through BIOS pointer `000005f8` to the checked stock
+decoder entry `00001f04`, with output at `06011000`. Those addresses and source
+relationships come from the original loader/BIOS evidence, not a guessed
+match for an encoded instruction. The selected edit changes only packed
+`2122 → 0009` at file offset 929,581, FAD 633/raw 1853. All chunk offsets,
+headers, bootstrap, other source bytes and native startup remain unchanged.
+
+Fresh host execution of the retained stock-BIOS fixture in both cache modes
+reproduces both complete 490,192-byte outputs:
+
+- Original: `f1ea01e80e7b404bed283b86903718078d394eae1db1aad3a33740fd764f33a0`.
+- Selected: `7fdab7b90090946ae20cd776329ebebaa411ffb06f60f944bc2eddd4ef6319ec`.
+
+Only offsets `55f80/81` change, giving the native NOP at `06066f80` in place
+of MOV.L R2,@R1. Every other decoded byte matches, without back-reference
+collateral. The original writes `23301ff0` to ASR0 at `25fe00b0`; the adjacent
+AREF=19 write stays intact. Separate bounded instruction checks retain complete
+GPR/T/PR state and that refresh write while omitting only the ASR0 write.
+The [SCU user's manual](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf),
+§3.6, printed pp. 62–67, documents those bus registers. The
+[SH7604 manual](https://antime.kapsi.fi/sega/files/sh7604.pdf), §2.4 Tables
+2.12/2.16/2.17, printed pp. 33–34 and 39–40, defines MOV.L, JMP/JSR/PR,
+delay slots and NOP. The inherited bus workaround is not proof that the game's
+original ASR0 setting violates a Sega requirement.
+
+The full 1,048,576-byte `0.BIN;1` at LBA30 hashes to
+`6d7a367567dd9859d22af4027b2085d3dfcf4ce8da5a3b74e5b0d147bcf79baf`;
+the complete postimage is
+`9a078d7b4513c928fccf15e3615dfdbf75abe550294df5013d787fe54365b382`.
+The preserved initial transfer is 32,768 bytes, SHA-256
+`e54cd524908bcf049a1045c459bac4fd83810ace08036e99385971cae12a74fb`,
+including the declared 6,144-byte IP and unchanged AIP guard at FAD151.
+Current production-C/source checks cover all 528 sectors / 1,081,344 supplied
+logical bytes, with exactly two changed source bytes and every other byte
+unchanged. All target payloads are complete; no target padding is generated.
+The two-record, 720-byte pack reproduces archived SHA-256
+`a2b2cf97c189bbf7c79f0d64c855334e180741401aeec75925fcfe1aff4f67f5`.
+The normal compiler still checks the whole source FILE hash
+`3b98e195eeb720d82cfb6995d7ff8df65367b18981d9d0bbad355f5670f6ab56`.
+That complete image is unavailable locally now; logical-file evidence does not
+freshly qualify its track/CUE geometry or real console behavior.
+
+The source recipe removes the inherited 28-byte writer and startup redirect.
+Public checks execute both old writer stages, their JMP/BRA/JSR delay slots,
+exact stores and complete register/flag effects. The old writer gives the
+native entry PR=`06007066`; the source route retains the original caller's
+PR. The native prefix resets SP and jumps to `06011034` while preserving that
+incoming PR. This is deliberately not claimed as universal entry equality or
+an explanation of audio timing. Actual launch checks preserve both IP guards,
+the untouched writer-gap word, the stock-profile path, rejected/absent-pack
+fallback, physical-disc callback behavior and explicit user RAM priority.
+Both 77-method overlay and 24-method launch profiles pass. Runtime source
+hashes and target-build resources stay identical to the preceding checkpoint.
+
+Architectural source/output bounds and unchanged unrelated Work RAM pass in
+the fresh host decoder; speculative cache-line refill and physical bus timing
+remain separate limits. A shortened chunk refuses without creating output.
+The rehashed 1,200-frame unmodified-image control matches all 21 sampled
+checkpoints and complete PCM; ten complete RAM captures retain only four differing
+raw bytes at frame900, corresponding to the packed/decoded edit investigation.
+This is a bounded boot control, not gameplay qualification.
+
+The rehashed 12,000-frame inherited-callback comparison matches all 201 video/
+nonblack checkpoints, 17 audio CRCs and 198 sample counts. Complete PCM streams
+each contain 35,382,448 bytes and differ, first at frames1021/1681 for sampled
+audio/counts. All sixteen complete RAM captures remain pinned. The audio cause,
+sound/caller-state analysis, real bus behavior, gameplay, reload and return
+remain open. Keep the profile opt-in; no synthetic delay is added.

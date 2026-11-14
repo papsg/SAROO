@@ -212,6 +212,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
     def test_pad_nifty_preserves_native_entry_or_the_existing_shared_modem_handler(self):
         self.scenario('pad-nifty')
 
+    def test_native_kof97_yzb_preserves_original_ip_or_guarded_fallback_and_ram_priority(self):
+        self.scenario('kof97-native')
+
 
 if __name__ == '__main__':
     unittest.main()

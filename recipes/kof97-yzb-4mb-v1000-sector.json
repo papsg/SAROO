@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-4401G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L322",
+  "title": "The King of Fighters '97 YZB 4 MiB: native compressed-code overlay",
+  "summary": "Replace the original ASR0 store inside the compressed executable; retain the 4 MiB cartridge personality.",
+  "rationale": "The exact YZB 0.BIN;1 loads at 0x00200000. Its native loader selects chunk 12 at offset 0xAF988, and the stock BIOS API decodes 490,192 bytes to 0x06011000. Production sector delivery changes only packed bytes 2122 to 0009 at offset 929581. Complete BIOS decoding with cache disabled and enabled changes only the ASR0 store at 0x06066F80, with no collateral bytes or changed extent. The original store writes 0x23301FF0 to SCU ASR0; the adjacent AREF=19 write, registers, condition flag and native startup remain intact. No IP helper, redirected call or later RAM writer is delivered. Complete source and decoder checks pass. A 12,000-frame comparison with the actual inherited callback matches all 201 sampled video checkpoints; audio differs from frame 1021. The audio cause, physical bus behavior, gameplay and console return remain open. Keep this exact-revision candidate inactive.",
+  "replaces_callback": true,
+  "cart_mode": 4,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "3b98e195eeb720d82cfb6995d7ff8df65367b18981d9d0bbad355f5670f6ab56"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 633,
+      "offset": 1853,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Decode a native NOP at 0x06066F80 in place of the original ASR0 longword store.",
+      "reason": "Apply the inherited bus workaround directly to the original compressed executable, without inserting a RAM patch writer."
+    }
+  ],
+  "disc_id": "T-4401G   V1.000",
+  "guards": [
+    {
+      "fad": 151,
+      "reason": "Bind the unchanged native AIP displacement and YZB version guard before replacing the inherited callback."
+    }
+  ]
+}

@@ -607,6 +607,42 @@ static void pad_nifty_launches(void)
                 }
 }
 
+static void kof97_native_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT | 4, SD_OVERLAY_REPLACEMENT | 2};
+    const u32 words[] = {0xd302d201, 0x4b2b2322, 0xa718e209, 0x0600622c, 0xd301410b};
+    for(unsigned tag = 0; tag < 3; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned guards = 0; guards < 4; ++guards)
+                for(unsigned override = 0; override < 3; ++override) {
+                    reset("T-4401G   V1.000", 61);
+                    disc_type = physical;
+                    overlay_handoff = __builtin_bswap32(tags[tag]);
+                    REG32(0x06002f40) = guards & 1 ? 0x480b4601 : 0x12345678;
+                    REG32(0x06002f44) = guards & 2 ? 0x930b0303 : 0x87654321;
+                    REG16(0x06002f5e) = 0x30b6;
+                    REG16(0x06007066) = 0x3450;
+                    for(unsigned i = 0; i < 5; ++i) REG32(0x06007050+4*i) = 0x11223344;
+                    REG16(0x06007064) = 0x5566;
+                    REG32(0x06007068) = 0x778899aa;
+                    REG32(0x06066f80) = 0x11112222; /* Stock branch does not match. */
+                    if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                    read_1st(); finished();
+                    unsigned replaced = tag == 1 && !physical;
+                    unsigned fallback = !replaced && guards == 3;
+                    assert(REG16(0x06002f5e) == (fallback ? 0x4106 : 0x30b6));
+                    for(unsigned i = 0; i < 5; ++i)
+                        assert(REG32(0x06007050+4*i) == (fallback ? words[i] : 0x11223344));
+                    assert(REG16(0x06007064) == (fallback ? 0x2321 : 0x5566));
+                    assert(REG16(0x06007066) == 0x3450);
+                    assert(REG32(0x06007068) == (fallback ? 0x06066f80 : 0x778899aa));
+                    assert(REG32(0x06066f80) == 0x11112222 && !others);
+                    assert(cart_count == replaced + fallback + (override != 0));
+                    if(replaced || fallback) assert(cart_writes[0] == CS0_RAM4M);
+                    if(override) assert(cart_writes[cart_count-1] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+                }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -748,6 +784,8 @@ int main(int argc, char **argv)
         xmen_launches();
     }else if(!strcmp(mode, "pad-nifty")){
         pad_nifty_launches();
+    }else if(!strcmp(mode, "kof97-native")){
+        kof97_native_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
