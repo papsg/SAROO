@@ -380,6 +380,7 @@ fn bundle(args: &[OsString]) -> Result<()> {
     let mut policy = None;
     let mut header = Vec::new();
     let mut records = Vec::new();
+    let mut abi = 1;
     for pair in args[1..].chunks_exact(2) {
         let recipe = read_recipe(Path::new(&pair[0]))?;
         let product = product_bytes(&recipe.product_id)?;
@@ -392,11 +393,12 @@ fn bundle(args: &[OsString]) -> Result<()> {
         if single[5] != 1 {
             return fail("Each alternative must touch exactly one sector");
         }
-        let identity = (recipe.product_id, recipe.disc_id, single[4], single[7]);
+        let identity = (recipe.product_id, recipe.disc_id, single[7]);
         if policy.as_ref().is_some_and(|prior| *prior != identity) {
             return fail("Alternatives must share the product, revision and launch actions");
         }
         policy = Some(identity);
+        abi = abi.max(single[4]);
         header = single[..HEADER_BYTES].to_vec();
         records.push(single[HEADER_BYTES..].to_vec());
     }
@@ -404,6 +406,7 @@ fn bundle(args: &[OsString]) -> Result<()> {
     if records.windows(2).any(|pair| pair[0][..8] == pair[1][..8]) {
         return fail("Duplicate alternative source sector");
     }
+    header[4] = abi;
     header[5] = records.len() as u8;
     header[6] = 1;
     let mut pack = header;

@@ -158,7 +158,9 @@ to the original SAROO source in their `origin` field.
 For one-sector alternatives such as Noel 3, the compiler's `bundle` command
 checks each complete source and creates one pack under the shared lookup key.
 Header byte 6 is one for this form. Records are ordered by FAD and original
-CRC. At mount, exactly one complete original sector must match. Zero matches,
+CRC. A bundle may mix short and contiguous edits. Its header selects the
+newest ABI required by any record, independent of input order.
+At mount, exactly one complete original sector must match. Zero matches,
 multiple matches and duplicate source records cannot arm the pack. A transport
 error fails launch even if an earlier record matched. Runtime checks retain
 the chosen record across bad reads and retries, and unload clears it.

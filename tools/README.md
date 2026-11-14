@@ -20,6 +20,8 @@ bytes, including spaces. Omit it to retain the older product-only filename.
 The `bundle` command accepts two to twelve reviewed recipe/CUE pairs. Each
 must edit one sector and share the same product, optional revision and launch
 actions. Mount selects exactly one matching alternative.
+Short and contiguous edits can share a bundle, which uses the newest
+record ABI required by its inputs.
 See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
 
 ## Isolated firmware qualification

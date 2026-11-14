@@ -417,6 +417,48 @@ class SectorOverlayTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.output_pack.exists())
 
+    def test_bundle_mixes_short_and_contiguous_records_in_either_input_order(self):
+        path = self.path / 'long'
+        path.mkdir()
+        raw = sector(156, 0x73)
+        (path / 'raw.bin').write_bytes(raw)
+        (path / 'ip.bin').write_bytes(self.first)
+        cue = path / 'source.cue'
+        cue.write_text('FILE "ip.bin" BINARY\n  TRACK 01 MODE1/2352\n'
+                       '    INDEX 01 00:00:00\n    POSTGAP 00:00:05\n'
+                       'FILE "raw.bin" BINARY\n  TRACK 02 MODE1/2352\n'
+                       '    INDEX 01 00:00:00\n')
+        other = copy.deepcopy(self.recipe)
+        other['writes'][0].update(before='73' * 12, after='ab' * 12)
+        other['tracks'] = [{'number': 2, 'sha256': hashlib.sha256(raw).hexdigest()}]
+        other_path = path / 'recipe.json'
+        other_path.write_text(json.dumps(other))
+        self.recipe_path.write_text(json.dumps(self.recipe))
+        short_pair, long_pair = [self.recipe_path, self.cue], [other_path, cue]
+        expected_pack = None
+        for first, second in ((short_pair, long_pair), (long_pair, short_pair)):
+            result = subprocess.run([self.tool, 'bundle', self.output_pack, *first, *second],
+                                    text=True, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            pack = self.output_pack.read_bytes()
+            self.assertEqual(pack[4:8], bytes([3, 2, 1, 0]))
+            if expected_pack is not None:
+                self.assertEqual(pack, expected_pack)
+            expected_pack = pack
+            for source, width, after in ((self.last, 2, b'\xab\x10'),
+                                         (raw, 12, b'\xab' * 12)):
+                index = next(i for i in range(2) if
+                             int.from_bytes(pack[HEADER_BYTES + i * RECORD_BYTES + 4:
+                                                 HEADER_BYTES + i * RECORD_BYTES + 8], 'big')
+                             == zlib.crc32(source))
+                original, edited = self.path / 'original', self.path / 'expected'
+                original.write_bytes(source)
+                data = bytearray(source)
+                data[1057:1057 + width] = after
+                edited.write_bytes(canonical(data))
+                self.run_decoder('apply', self.output_pack, original, edited, str(index))
+            self.output_pack.unlink()
+
     def test_real_bout_special_bundle_preserves_the_common_cartridge_action(self):
         command = [self.tool, 'bundle', self.output_pack]
         originals, postimages = {}, {}
