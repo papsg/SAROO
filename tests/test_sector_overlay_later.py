@@ -16,7 +16,7 @@ import zlib
 
 from check_later_callbacks_sh2 import (execute, region, verify_cyber_handler,
                                        verify_groove_handler, verify_habitat_handler,
-                                       verify_marvel_handler)
+                                       verify_marvel_handler, verify_phantasy_handler)
 from test_sector_overlay import ROOT, PRODUCT, canonical, sector, seal
 import test_sector_overlay as overlay_fixture
 
@@ -32,6 +32,8 @@ HABITAT_HANDLER = bytes.fromhex(
 MARVEL_HANDLER = bytes.fromhex(
     'd20b93126121611d31308f01e1092211d208930b6121611d31308f01e1092211'
     'd105412b0009000b00092012210200090600286e0600205a06002000')
+PHANTASY_HANDLER = bytes.fromhex(
+    'd104d205631233208b01d2042122d104412b00090602345c06021b580600083c06020000')
 
 
 class LaterRecipeTests(unittest.TestCase):
@@ -144,6 +146,20 @@ class LaterRecipeTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=30)
         return result, output
 
+    def phantasy_fixture(self):
+        source = json.loads((ROOT / 'recipes/phantasy-star-collection-jp-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'GS-9186   V1.003')
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']], [(501, 1076, '410b', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [177])
+        self.assertEqual(0x06020000 + (501-150-345)*2048 + 1076-16, 0x06023424)
+        return self.source_fixture(source, b'V1.003',
+                                   {177: [(904, 'd118410b0009'), (1004, '06020000')],
+                                    501: [(1074, 'd10e410b00094f266af669f6000b68f60009'),
+                                          (1132, '06021b58')]})
+
     def test_cyber_delivers_only_the_later_nop_and_keeps_original_dispatch(self):
         recipe, raws = self.cyber_fixture()
         self.check_delivery(recipe, raws)
@@ -158,6 +174,10 @@ class LaterRecipeTests(unittest.TestCase):
 
     def test_marvel_covers_both_loaded_programs_and_preserves_both_handoffs(self):
         recipe, raws = self.marvel_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_phantasy_changes_only_the_call_and_keeps_native_pointer_and_epilogue(self):
+        recipe, raws = self.phantasy_fixture()
         self.check_delivery(recipe, raws)
 
     def test_streamed_program_keeps_guard_and_unrelated_sectors_unchanged(self):
@@ -424,6 +444,7 @@ class MarvelCallbackModelTests(unittest.TestCase):
             with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
                 verify_marvel_handler(0x020081e4, code)
 
+
     def test_original_loader_retains_call_and_jump_delay_slots(self):
         for start, instructions, literal, expected_pr in (
                 (0x060f000a, 'd120410b0009', 0x82, 0x060f0010),
@@ -436,6 +457,18 @@ class MarvelCallbackModelTests(unittest.TestCase):
             self.assertEqual(regs[1], 0x06002000)
             self.assertEqual(pr, expected_pr)
             self.assertFalse(writes or calls)
+
+
+class PhantasyCallbackModelTests(unittest.TestCase):
+    def test_original_pointer_write_is_conditional_and_not_a_resident_stub_call(self):
+        verify_phantasy_handler(0x02008588, PHANTASY_HANDLER)
+
+    def test_wrong_guard_write_or_continuation_fails(self):
+        for offset, value in ((6, '0009'), (12, '0009'), (26, '1b5c'), (34, '0004')):
+            code = bytearray(PHANTASY_HANDLER)
+            code[offset:offset+2] = bytes.fromhex(value)
+            with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
+                verify_phantasy_handler(0x02008588, code)
 
 
 if __name__ == '__main__':

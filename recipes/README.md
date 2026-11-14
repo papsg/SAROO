@@ -97,3 +97,9 @@ candidate. [Guarded behavior, attribution and limits](../doc/LATER-LOAD-PROFILES
 carries both native startup-program edits while preserving the two original
 handoffs. It adds no copied handler or cartridge action.
 [Source checks, attribution and modeled comparison](../doc/LATER-LOAD-PROFILES.md#marvel-vs-street-fighter-japan-v1000).
+
+[Phantasy Star Collection JP V1.003](phantasy-star-collection-jp-sector.json)
+skips the original PS2 callback call and preserves its native pointers and
+epilogue. No copied helper or resident stub is required. **Modeled audio
+remains unresolved**; this is an opt-in source candidate.
+[Attribution, conditional fallback, verification and limits](../doc/LATER-LOAD-PROFILES.md#phantasy-star-collection-japan-v1003).

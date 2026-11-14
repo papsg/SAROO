@@ -67,6 +67,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             regs[n] = signed(read(regs[m], 1), 8) & 0xffffffff
         elif op & 0xf00f == 0x6001:
             regs[n] = signed(read(regs[m], 2), 16) & 0xffffffff
+        elif op & 0xf00f == 0x6002:
+            regs[n] = read(regs[m], 4)
         elif op & 0xf00f == 0x600c:
             regs[n] = regs[m] & 255
         elif op & 0xf00f == 0x600d:
@@ -187,6 +189,25 @@ def verify_marvel_handler(address, code):
                 assert flags == [int(system == 0x2102)], 'Independent guards became mutually exclusive'
 
 
+def verify_phantasy_handler(address, code):
+    assert len(code) == 36
+    for pointer in (0, 0x08000009, 0x06021b58, 0x0600083c, 0xffffffff):
+        for initial_t in (0, 1):
+            ram = region(0x06023450, 32)
+            ram.update(enumerate(pointer.to_bytes(4, 'big'), 0x0602345c))
+            flags = [initial_t]
+            before, regs, pr, after, writes, calls = execute(
+                code, address, 0x06020000, ram, flags=flags, return_address=0x06054320)
+            match = pointer == 0x06021b58
+            expected = dict(ram)
+            if match:
+                expected.update(enumerate(bytes.fromhex('0600083c'), 0x0602345c))
+            assert writes == ([(0x0602345c, 4, 0x0600083c)] if match else [])
+            assert after == expected and not calls and pr == 0x06054320
+            before[1:4] = [0x06020000, 0x0600083c if match else 0x06021b58, pointer]
+            assert regs == before and flags == [int(match)]
+
+
 def check(elf):
     (patch_at, patch), (handler_at, handler), (cart_at, _) = linked_symbol_records(
         elf, ('_CYBER_BOTS_patch', '_CYBER_BOTS_handle1', '_ssctrl_set'))
@@ -250,6 +271,26 @@ def check(elf):
         assert after == expected and regs == before and pr == 0x06012340 and flags == [initial_t]
     print('Linked Marvel two-handoff redirection, both independent late guards '
           'and original continuation pass')
+    (patch_at, patch), (handler_at, handler) = linked_symbol_records(
+        elf, ('_Phantasy_Star_Collection_patch', '_Phantasy_Star_Collection_handle'))
+    verify_phantasy_handler(handler_at, handler)
+    for pointer in (0, 0x06020000, 0x06020004, 0xffffffff):
+        for initial_t in (0, 1):
+            ram = region(0x060053d0, 32)
+            ram.update(enumerate(pointer.to_bytes(4, 'big'), 0x060053dc))
+            flags = [initial_t]
+            before, regs, pr, after, writes, calls = execute(
+                patch, patch_at, 0x06012340, ram, flags=flags)
+            match = pointer == 0x06020000
+            expected = dict(ram)
+            if match:
+                expected.update(enumerate(handler_at.to_bytes(4, 'big'), 0x060053dc))
+            assert writes == ([(0x060053dc, 4, handler_at)] if match else [])
+            before[1:4] = [0x060053dc, handler_at if match else 0x06020000, pointer]
+            assert after == expected and regs == before and flags == [int(match)]
+            assert not calls and pr == 0x06012340
+    print('Linked Phantasy launch and late pointer predicates, all writes, '
+          'register/T effects and native continuation pass')
 
 
 if __name__ == '__main__':

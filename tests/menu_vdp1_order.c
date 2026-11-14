@@ -417,6 +417,31 @@ static void marvel_launches(void)
             }
 }
 
+static void phantasy_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    const u32 targets[] = {0x06020000, 0x06020004, 0x0600083c, 0xffffffff};
+    for(unsigned tag = 0; tag < sizeof tags / sizeof tags[0]; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned which = 0; which < sizeof targets / sizeof targets[0]; ++which) {
+                reset("GS-9186   V1.003", 61);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                REG32(0x060053dc) = targets[which];
+                REG32(0x0602345c) = 0x06021b58;
+                REG16(0x06023424) = 0x410b;
+                REG32(0x0600083c) = 0x55aa1234; /* No stub is needed by this launch. */
+                read_1st(); finished();
+                int replaced = tag == 1 && !physical;
+                u32 expected = !replaced && which == 0
+                    ? (u32)(uintptr_t)Phantasy_Star_Collection_handle : targets[which];
+                assert(REG32(0x060053dc) == expected);
+                assert(REG32(0x0602345c) == 0x06021b58);
+                assert(REG16(0x06023424) == 0x410b && REG32(0x0600083c) == 0x55aa1234);
+                assert(!others && !cart_count);
+            }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -544,6 +569,8 @@ int main(int argc, char **argv)
         habitat_launches();
     }else if(!strcmp(mode, "marvelvs")){
         marvel_launches();
+    }else if(!strcmp(mode, "phantasy")){
+        phantasy_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -557,7 +584,8 @@ int main(int argc, char **argv)
                g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
                g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch ||
                g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch ||
-               g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch) continue;
+               g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch ||
+               g->patch_func == Phantasy_Star_Collection_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

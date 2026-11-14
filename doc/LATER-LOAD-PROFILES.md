@@ -307,3 +307,73 @@ and [Table 2.17, printed p. 40](https://antime.kapsi.fi/sega/files/sh7604.pdf#pa
 describe the MOV.L and NOP encodings and T behavior. These references support
 the instruction interpretation; the game-specific workaround comes from
 the original SAROO contribution.
+
+## Phantasy Star Collection Japan V1.003
+
+[Recipe](../recipes/phantasy-star-collection-jp-sector.json). Adapted from
+paps-g `b86f9f7c` / `957017d7`, selecting `ad0fd125`'s later native call-site
+design. The conditional pointer workaround and first-program callback come
+from [tpunix's original code](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L1024).
+Exact identity: `GS-9186   V1.003`. The recorded 439,522,944-byte data track
+has SHA-256 `346e344ec0255a35b612bd5b1cb75417e64310ae78a742b9ce9a4cec6c71b39e`;
+it was unavailable for a fresh whole-track rehash.
+
+The retained launch callback redirects `060053dc` only when it contains
+`06020000`. The 36-byte late handler tests `0602345c` for `06021b58`, changes
+only a matching pointer to `0600083c`, then jumps to `06020000`. Historical
+execution observes a false first predicate (`08000009`) and a true predicate
+after the PS2 program loads. Other values must remain unchanged. Linked
+checks cover both predicates, complete memory writes, scratch registers,
+T and continuation. The handler bytes match the historical comparison ELF.
+
+The final recipe changes only the original `JSR @R1` (`410b`) at `06023424`
+to `NOP` (`0009`), FAD 501 / raw offset 1076. `PS2.EXE;1` begins at LBA 345,
+loads at `06020000` and is 422,832 bytes. Its complete original SHA-256 is
+`9c8b7ee791dbf0892360a18bda9dcf8fc2ba198216fbf32a073c8b88490a8e69`;
+the complete postimage is
+`6bf00388967e5954c4658a72d101406e0ca6ed1e7482078fcc64d0860cbd963d`.
+All 207 sectors pass the current production decoder; exactly two logical
+bytes change. Generated padding after the unedited final sector is explicit.
+The original pointer, following NOP and PR/R10/R9/R8 epilogue stay intact.
+
+The native first-program handoff remains `060053dc=06020000`. FAD 177 guards
+that original dispatch; its complete raw sector is unavailable now and is
+explicitly unverified by the source receipt. The current 720-byte pack
+matches archived SHA-256
+`82fef637524c37c030080c5407acc5792fb16a3e122ecef76fdc2c7b7eb3dee5`,
+including FAD 501's fresh source record. It saves one 348-byte record against
+the older 1,068-byte IP-helper pack. That superseded recipe and evidence stay
+preserved; the public recipe supplies no helper, entry redirection or runtime
+pointer writer and adds no cartridge action.
+
+The old pointer route requires `0600083c` to remain a resident RTS/NOP.
+The native omission has no such service or residence dependency. It does
+not reproduce every scratch-register, PR or timing effect of calling that
+stub. Source startup views show R0/R1/R2/R3/T/SP overwritten before the first
+main call on the reviewed path; this is a bounded path observation, not
+universal CPU-state equivalence. This inherited callback omission is not
+an established CDON edit.
+
+**Modeled audio hold:** the rehashed 52,000-frame comparison uses the same
+BIOS/RTC, no expansion RAM and a retained PS2 selection sequence. The control
+executes the original handler from the earlier IP-delivered pack; the
+candidate supplies only the native instruction edit. All 868 video,
+visible-pixel and sample-count checkpoints match; audio CRCs match 772/868,
+first differing at frame 46,321. Complete 153,324,272-byte PCM streams differ.
+A fresh unshifted comparison checks every byte: exactly 14 stereo frames
+(34,111,791 through 34,111,804) differ, with maximum signed-channel error 13.
+There are 34,111,791 equal leading and 4,219,263 equal trailing stereo frames.
+This is not audio parity, a physical sound diagnosis or grounds for a delay.
+Keep the recipe opt-in; other collection paths and physical acceptance remain
+unqualified. The built-in callback remains the fallback.
+
+The verification commands above include the synthetic source/compiler/C
+postimage checks, corrupted guard/retry controls, actual launch callback and
+linked SH-2 checks. Firmware runtime sources and image sizes are unchanged.
+All 45 overlay methods and 17 launch methods pass in sanitizer and optimized
+profiles. The host function extractor now accepts the original callback's
+two-space declaration; its ten existing CD-player controls also pass.
+[Hitachi SH7604 §2.4.1, Table 2.16, printed p.39](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=55)
+specifies JSR and its delay slot; [Table 2.17, p.40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=56)
+specifies NOP. These instruction references do not prescribe this game
+workaround. The original contribution supplies that policy.

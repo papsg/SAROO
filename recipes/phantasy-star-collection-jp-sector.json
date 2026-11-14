@@ -1,0 +1,32 @@
+{
+  "abi": 2,
+  "product_id": "GS-9186",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L1024",
+  "title": "Phantasy Star Collection (Japan) V1.003: native PS2 callback edit",
+  "summary": "Skip one original PS2 callback call without an IP helper or later RAM write.",
+  "rationale": "The inherited handler conditionally redirects PS2.EXE's 0602345C pointer from 06021B58 to the resident RTS/NOP at 0600083C after loading. Replace only the corresponding original JSR at 06023424 with NOP. Keep the native target literal, following NOP, caller epilogue, first-program handoff and IP unchanged. Complete source and production-decoder checks change exactly two of 422832 PS2 bytes. A 52000-frame paired interpreter run against the retained inherited IP handler reaches the actual PS2 load; all 868 video, nonblack and audio sample-count checkpoints match. Cumulative audio CRCs match 772/868, first difference at 46321, and complete PCM differs. This audio uncertainty, other paths and physical compatibility remain open. No copied handler, new routine or RAM patch writer is supplied; this is the inherited PS2 callback workaround, not an established CDON edit. Keep inactive and uninstalled.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "346e344ec0255a35b612bd5b1cb75417e64310ae78a742b9ce9a4cec6c71b39e"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 501,
+      "offset": 1076,
+      "before": "410b",
+      "after": "0009",
+      "effect": "Skip the native 06023424 JSR while preserving the following NOP and caller epilogue.",
+      "reason": "Remove that specific callback execution in PS2.EXE itself, without installing the inherited pointer writer."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 177,
+      "reason": "Bind the unchanged native first-program call and 06020000 handoff literal."
+    }
+  ],
+  "disc_id": "GS-9186   V1.003"
+}
