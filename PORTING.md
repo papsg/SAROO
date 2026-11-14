@@ -2707,3 +2707,16 @@ Final combined verification on [`c9bd7b0`](https://github.com/papsg/SAROO/commit
 All 756 tracked files match the final source archive. All 35 new recipes match their selected source effects, identities and attribution; both earlier pilot recipes remain byte-identical. Fresh GNU App builds match all 59 committed MCU inputs each. The default LTO image uses 58,464 bytes with 7,072 free; the comparison without LTO uses 62,656 bytes with 2,880 free. Both retain 50,896 static DTCM bytes, 166 vectors and passing compiled RTX pool checks. The SH-2 menu matches all 37 committed inputs, uses 85,864 body bytes and leaves 19,336 bytes of margin. Its ordinary WRAM clock tail and all 48 linked ROM clock cases pass.
 
 All six public commits passed secret scanning and public identity review. The source and ledger are published with clean worktrees and matching remote refs. The private checkout and Saturn were left untouched. Recipes remain opt-in pending physical qualification; these host, simulator and compile/link checks do not establish public-build game or hardware qualification.
+
+## September 30 later-load profile migration
+
+Six ordered profiles after [`c9bd7b0`](https://github.com/papsg/SAROO/commit/c9bd7b0d3ad6e2185ab63db6bae489127536c7f8). Private source IDs record attribution; candidates are revalidated before porting. Recipes stay opt-in, with retained callbacks for absent or rejected packs. No device operations are part of this series.
+
+- [x] **Cyber Bots Japan V1.002** — paps-g `e342a022` / `b86f9f7c`, guarded source `21ca2e9b` and later startup proof `b1420c3f`; original tpunix callback and issue #50 are cited in the [public notes](https://github.com/papsg/SAROO/blob/9536605fdcd757f806a2725ce9bd91675f1c1a21/doc/LATER-LOAD-PROFILES.md#cyber-bots-japan-v1002). [`9536605`](https://github.com/papsg/SAROO/commit/9536605fdcd757f806a2725ce9bd91675f1c1a21) ports the exact revision's later NOP, original-dispatch guard and 1 MB action. Both 28-method overlay profiles and both 13-method actual launch profiles pass. The fresh linked SH-2 callback check covers its cartridge call, complete writes, continuation, register effects and stack, with four wrong-instruction controls. Its 24 handler bytes match the historical comparison ELF. All 63 frozen evidence inputs rehash; the historical 201-checkpoint/full-PCM natural startup comparison and two complete RAM witnesses retain their explicit emulator limits. The full source track is unavailable now, so no fresh whole-track rehash or physical game qualification is claimed. All 37 firmware inputs match the fresh 85,864-byte menu link (19,336 bytes of body margin); MCU/menu runtime sources and FPGA are unchanged. New source and commit identities pass secret/PII checks.
+- [ ] **Groove on Fight Japan** — next; review the later `9eb2cb2b` native-edit evidence as well as the earlier helper and mismatching controls.
+- [ ] **Habitat II Japan V1.004** — pending.
+- [ ] **Marvel vs. Street Fighter Japan V1.000** — pending.
+- [ ] **Phantasy Star Collection Japan** — pending.
+- [ ] **Vampire Savior Japan** — pending.
+
+Series progress: one of six profiles published. Combined final verification remains pending. The private checkout and Saturn remain untouched.
