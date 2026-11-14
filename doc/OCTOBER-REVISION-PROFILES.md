@@ -360,6 +360,63 @@ qualify physical bus/cache/concurrent service or all game paths. Keep both
 profiles opt-in and the original callback available; no issue closure or
 firmware runtime/resource change.
 
+## Die Hard Trilogy Japan V1.000
+
+[Japanese recipe](../recipes/die-hard-trilogy-jp-v1000-sector.json), adapted
+from paps-g `f8786c36`. The original workaround is attributed to
+[issue #139](https://github.com/tpunix/SAROO/issues/139) and tpunix's retained
+`Die_Hard_Trilogy_patch`; the instruction interpretation and compatibility
+limits are the same as the [USA review](#die-hard-trilogy-usa-v1000).
+[Hitachi Tables 2.12–2.14 and 2.16, pp.33–39](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+and [SCU §1.2, Figures1.3/1.5, pp.4/6](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf)
+support the MOV/AND/TST/BT effects and cartridge-address interpretation.
+
+Exact identity `GS-9123   V1.000`; complete original track SHA-256
+`5460e8d4fbdefdebec81679f5229aa7a4eb582dba3d7de4329599b2c6f074fdb`.
+Original `0.BIN;1` is 458,752 bytes at LBA25/load `06004000`, SHA-256
+`231af941ca44b9842728301409d3db14547bde52fd05147a055d00170f453b30`.
+All six complete executables are independently extracted from the exact track.
+Every reviewed PC-relative reader, `025e7ffe` literal and eight-byte wait loop
+is freshly rechecked. The recipe replaces only `6011→e004`, preserving the
+successful R0=4/T=0 result while intentionally eliminating the reads.
+
+| Original file | Three edited file offsets (hex) | Raw FADs |
+| --- | --- | --- |
+| 0.BIN | 4deea, 4e27e, 4e3b4 | 330,331 |
+| SLIDE.EXE | c436, c7ca, c900 | 423,424 |
+| LOADER.EXE | c436, c7ca, c900 | 12907,12908 |
+| DH1.EXE | ae7a, b20e, b344 | 13704,13705 |
+| DH2.EXE | c43a, c7ce, c904 | 29881,29882 |
+| DH3.EXE | 503ae, 5072a, 5085c | 34220,34221 |
+
+The eighteen edits span twelve sectors and change36 payload bytes. Fresh full
+CUE compilation and production-C complete-source streaming reproduce all
+records and the entire archived4,200-byte pack, SHA-256
+`96e73b840417a8c263a3bfce8d6c37dda2bd73547648a005aa109a7845f1951a`.
+Unedited final-sector padding is explicitly generated in logical-file checks;
+full raw-track compilation is separately verified. Public synthetic checks
+exercise all eighteen sites, the twelfth sector, complete raw postimages and
+corrupt/read-retry retention. Actual C launch checks cover Japan and USA,
+including retained physical/missing/malformed callbacks.
+
+Twelve-record capacity, full-version lookup and independent release CRC are
+already public. The private capacity checkpoint's shared USB CRC provider is
+excluded. No firmware runtime, resident storage, menu or FPGA change is needed;
+no later executable is dropped to fit an obsolete eight-record limit. An old
+engine's refusal remains an earlier supported-capacity control.
+
+Historical four-run native-emulator evidence uses9,601 frames/161 checkpoints
+per route. Edited normal and injected-read runs match all checkpoint fields
+and complete28,308,884-byte PCM, with zero observed bad-address reads, reaching
+the on-foot attract demonstration. The unpatched injected-read control remains
+black. The inherited workaround comparison matches only77/161 video and
+36/161 audio checkpoints; full PCM differs. It is not timing/output equivalent.
+Observers are bounded, so positive read counts are not totals, and absolute
+frame input can change progression. No compensating delay or original intended
+synchronization is inferred. Keep opt-in with audio/timing, other modes,
+computed/generated paths, cache/concurrency, reset/return and physical
+qualification open. No callback retirement or original issue closure.
+
 ## Reproducible checks
 
 ```sh

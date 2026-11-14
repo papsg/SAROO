@@ -285,6 +285,19 @@ class RevisionRecipeTests(unittest.TestCase):
                 recipe, raws = self.source_fixture(source, source['disc_id'][10:].encode(), {})
                 self.check_delivery(recipe, raws)
 
+    def test_diehard_japan_covers_all_eighteen_waits_and_twelfth_sector(self):
+        source = json.loads((overlay.ROOT / 'recipes/die-hard-trilogy-jp-v1000-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'GS-9123   V1.000')
+        self.assertEqual([(w['fad'], w['offset']) for w in source['writes']], [
+            (330, 1786), (331, 654), (331, 964),
+            (423, 1094), (423, 2010), (424, 272),
+            (12907, 1094), (12907, 2010), (12908, 272),
+            (13704, 1674), (13705, 542), (13705, 852),
+            (29881, 1098), (29881, 2014), (29882, 276),
+            (34220, 958), (34220, 1850), (34221, 108)])
+        recipe, raws = self.diehard_fixture('jp')
+        self.check_delivery(recipe, raws)
+
 
 if __name__ == '__main__':
     unittest.main()

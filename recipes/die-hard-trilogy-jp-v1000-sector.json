@@ -1,0 +1,162 @@
+{
+  "abi": 2,
+  "product_id": "GS-9123",
+  "origin": "https://github.com/tpunix/SAROO/issues/139",
+  "title": "Die Hard Trilogy (Japan v1.000): cartridge-address waits",
+  "summary": "Preserve the inherited forced-ready workaround in all six disc executables.",
+  "rationale": "Preserve all eighteen literal-backed waits across six exact-source executables, retaining AND/TST/BT CPU outcomes while removing cartridge reads. Reuse the public twelve-record engine and standalone CRC. See doc/OCTOBER-REVISION-PROFILES.md for source/caller/timing/audio limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "5460e8d4fbdefdebec81679f5229aa7a4eb582dba3d7de4329599b2c6f074fdb"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 330,
+      "offset": 1786,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in 0.BIN;1 at file offset0x4DEEA.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 331,
+      "offset": 654,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in 0.BIN;1 at file offset0x4E27E.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 331,
+      "offset": 964,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in 0.BIN;1 at file offset0x4E3B4.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 423,
+      "offset": 1094,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in SLIDE.EXE;1 at file offset0xC436.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 423,
+      "offset": 2010,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in SLIDE.EXE;1 at file offset0xC7CA.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 424,
+      "offset": 272,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in SLIDE.EXE;1 at file offset0xC900.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 12907,
+      "offset": 1094,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in LOADER.EXE;1 at file offset0xC436.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 12907,
+      "offset": 2010,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in LOADER.EXE;1 at file offset0xC7CA.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 12908,
+      "offset": 272,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in LOADER.EXE;1 at file offset0xC900.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 13704,
+      "offset": 1674,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH1.EXE;1 at file offset0xAE7A.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 13705,
+      "offset": 542,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH1.EXE;1 at file offset0xB20E.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 13705,
+      "offset": 852,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH1.EXE;1 at file offset0xB344.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 29881,
+      "offset": 1098,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH2.EXE;1 at file offset0xC43A.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 29881,
+      "offset": 2014,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH2.EXE;1 at file offset0xC7CE.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 29882,
+      "offset": 276,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH2.EXE;1 at file offset0xC904.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 34220,
+      "offset": 958,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH3.EXE;1 at file offset0x503AE.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 34220,
+      "offset": 1850,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH3.EXE;1 at file offset0x5072A.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    },
+    {
+      "fad": 34221,
+      "offset": 108,
+      "before": "6011",
+      "after": "e004",
+      "effect": "Supply bit2 ready in DH3.EXE;1 at file offset0x5085C.",
+      "reason": "Replace the erroneous MOV.W @R1,R0; retain the following AND #4,R0, TST R0,R0 and BT. The inherited FF byte forces the same successful condition."
+    }
+  ],
+  "disc_id": "GS-9123   V1.000"
+}
