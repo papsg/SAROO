@@ -21,6 +21,7 @@ static int clears;
 static int jump_returns;
 static u32 mailbox;
 static u32 overlay_handoff;
+static u8 cs0_ready;
 static unsigned cart_writes[8], cart_count;
 static jmp_buf takeover;
 
@@ -35,6 +36,7 @@ static void *memory_at(uintptr_t address)
 {
     if (address == SYSINFO_ADDR + 0x38) return &overlay_handoff;
     address &= 0x1fffffff; /* Cached and uncached hardware aliases. */
+    if(address == 0x025e7fff) return &cs0_ready;
     if(address >= 0x05c00000 && address < 0x05c80000) return vram + (address - 0x05c00000);
     if(address >= 0x06000000 && address < 0x06100000) return high + (address - 0x06000000);
     if(address >= 0x00200000 && address < 0x00300000) return low + (address - 0x00200000);
@@ -706,6 +708,20 @@ int main(int argc, char **argv)
             *(u16*)(expected+0x7fffe) = 0xffff;
             read_1st(); finished(); assert(cfg_reads == 1);
         }
+    }else if(!strcmp(mode, "diehard")){
+        static const char *ids[] = {"T-16103H  V1.000", "GS-9123   V1.000"};
+        static const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT,
+                                  SD_OVERLAY_REPLACEMENT | 2, SD_OVERLAY_TAG};
+        for(unsigned game=0;game<2;++game) for(unsigned physical=0;physical<2;++physical)
+            for(unsigned tag=0;tag<4;++tag) {
+                reset(ids[game], 53);
+                cs0_ready = 0x32;
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                read_1st(); finished();
+                assert(cs0_ready == ((!physical && tag == 1) ? 0x32 : 0xff));
+                assert(!others && !cart_count);
+            }
     }else if(!strcmp(mode, "config")){
         for(int croc=0;croc<2;++croc){
             reset(croc ? "T-5029H-50V1.000" : "UNKNOWN", 97);
@@ -805,7 +821,8 @@ int main(int argc, char **argv)
                g->patch_func == Batman_Forever_The_Arcade_Game_patch ||
                g->patch_func == MARVEL_SUPER_patch ||
                g->patch_func == Pia_Carrot_e_Youkoso_2_patch ||
-               g->patch_func == xmvsf_patch) continue;
+               g->patch_func == xmvsf_patch ||
+               g->patch_func == Die_Hard_Trilogy_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

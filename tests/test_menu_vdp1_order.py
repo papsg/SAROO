@@ -53,7 +53,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch', b'mshvssf_patch',
                   b'Phantasy_Star_Collection_patch', b'VAMPIRE_SAVIOR_patch',
                   b'Batman_Forever_The_Arcade_Game_patch', b'MARVEL_SUPER_patch',
-                  b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch'}
+                  b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch', b'Die_Hard_Trilogy_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -145,6 +145,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_builtin_croc_workaround_survives_launch(self):
         self.scenario('croc')
+
+    def test_diehard_replacement_and_retained_physical_and_rejected_callbacks(self):
+        self.scenario('diehard')
 
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')

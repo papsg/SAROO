@@ -85,6 +85,8 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             t = int((regs[n] & regs[m]) == 0)
         elif op & 0xf00f == 0x2009:
             regs[n] &= regs[m]
+        elif op & 0xff00 == 0xc900:
+            regs[0] &= op & 255
         elif op & 0xf00f == 0x200b:
             regs[n] |= regs[m]
         elif op & 0xf00f == 0x6007:
