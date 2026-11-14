@@ -557,6 +557,32 @@ static void pia_launches(void)
                 }
 }
 
+static void xmen_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT | 4, SD_OVERLAY_REPLACEMENT | 2};
+    for(unsigned tag = 0; tag < 3; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned override = 0; override < 3; ++override) {
+                reset("T-1226G   V1.002", 61);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                REG8(0x060084dd) = 0x0f;
+                REG16(0x060084ec) = 0x400b;
+                REG32(0x06008520) = 0x55556666;
+                REG32(0x06008530) = 0x77778888;
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                unsigned replaced = tag == 1 && !physical;
+                assert(REG8(0x060084dd) == (replaced ? 0x0f : 0x10));
+                assert(REG16(0x060084ec) == (replaced ? 0x400b : 0xb11c));
+                assert(REG32(0x06008520) == (replaced ? 0x55556666 : (u32)(uintptr_t)xmvsf_handle1));
+                assert(REG32(0x06008530) == (replaced ? 0x77778888 : (u32)(uintptr_t)xmvsf_handle2));
+                assert(!others && cart_count == replaced + (override != 0));
+                if(replaced) assert(cart_writes[0] == CS0_RAM4M);
+                if(override) assert(cart_writes[cart_count-1] == (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+            }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -694,6 +720,8 @@ int main(int argc, char **argv)
         msh_launches();
     }else if(!strcmp(mode, "pia")){
         pia_launches();
+    }else if(!strcmp(mode, "xmen")){
+        xmen_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -712,7 +740,8 @@ int main(int argc, char **argv)
                g->patch_func == VAMPIRE_SAVIOR_patch ||
                g->patch_func == Batman_Forever_The_Arcade_Game_patch ||
                g->patch_func == MARVEL_SUPER_patch ||
-               g->patch_func == Pia_Carrot_e_Youkoso_2_patch) continue;
+               g->patch_func == Pia_Carrot_e_Youkoso_2_patch ||
+               g->patch_func == xmvsf_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

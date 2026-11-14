@@ -65,10 +65,12 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
         n, m = (op >> 8) & 15, (op >> 4) & 15
         target, delayed = delayed, None
         following = pc + 2
+        # SH-2 PC-relative delay-slot loads use branch destination + 2.
+        relative_pc = pc + 4 if target is None else target + 2
         if op >> 12 == 0xd:
-            regs[n] = read(((pc + 4) & ~3) + (op & 255) * 4, 4)
+            regs[n] = read((relative_pc & ~3) + (op & 255) * 4, 4)
         elif op >> 12 == 9:
-            regs[n] = signed(read(pc + 4 + (op & 255) * 2, 2), 16) & 0xffffffff
+            regs[n] = signed(read(relative_pc + (op & 255) * 2, 2), 16) & 0xffffffff
         elif op >> 12 == 0xe:
             regs[n] = signed(op & 255, 8) & 0xffffffff
         elif op >> 12 == 7:

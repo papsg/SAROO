@@ -97,6 +97,39 @@ int main(int argc, char **argv)
     create("/D/a.bin", original, original_bytes);
     create(cue_name, single, strlen(single));
     int which = atoi(argv[2]);
+    if (which >= 49) {
+        assert(which <= 53);
+        create(pack_name, pack, pack_bytes);
+        unsigned writes = disk_writes;
+        media_case = 1;
+        if (which == 52) inject_read = 5; /* Second original-sector preflight. */
+        if (which == 53) fail_overlay_save = 1;
+        int result = load_disc(SD_OVERLAY_REQUEST, 1);
+        int admitted = which == 49;
+        assert((result != 0) == (which >= 52));
+        assert(overlay_sysinfo[0x38 / 4] == (admitted ? SD_OVERLAY_TAG | 0x84 : 0));
+        assert(sector_overlay_action() == (admitted ? 0x84 : 0));
+        assert(pack_opens == 2 && !lock_depth);
+        assert(preflight_reads == (which == 50 ? 0 : which == 51 ? 1 : which == 52 ? 2 : 3));
+        verify_overlay(1, admitted);
+        if (admitted) {
+            uint8_t buffer[2352];
+            for (unsigned at = 32; at < 147; at += 44) {
+                memcpy(buffer, original[1], sizeof(buffer));
+                buffer[at] ^= 1;
+                assert(sector_overlay_apply(151, buffer) < 0);
+                buffer[at] ^= 1;
+                assert(!memcmp(buffer, original[1], sizeof(buffer)));
+                verify_overlay(1, 1);
+            }
+        }
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth);
+        assert(!sector_overlay_action() && !overlay_sysinfo[0x38 / 4] && disk_writes == writes);
+        verify_overlay(1, 0);
+        assert(!fclose(disk));
+        return 0;
+    }
     if (which >= 24 && which <= 31) {
         create(pack_name, pack, pack_bytes);
         unsigned writes = disk_writes;

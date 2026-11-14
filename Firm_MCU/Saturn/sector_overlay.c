@@ -116,10 +116,24 @@ int sector_overlay_validate(size_t size, const char product[10])
         const uint8_t *record = record_at(i);
         uint32_t fad = be32(record);
         unsigned edits = record[8];
-        if (fad < 150 || fad < previous || (fad == previous && !pack[6]) ||
+        if (fad < 150 || fad < previous ||
             fad >= 450000 || nonzero(record + 9, 3)) return -1;
-        if (i && fad == previous && be32(record + 4) <= be32(record_at(i - 1) + 4))
-            return -1;
+        if (fad == previous) {
+            const uint8_t *prior = record_at(i - 1);
+            if (pack[6]) {
+                if (be32(record + 4) <= be32(prior + 4)) return -1;
+            } else {
+                /* One callback-replacing source span may use adjacent ABI 3
+                 * records. All fragments bind the same original and final
+                 * EDC/ECC; refuse overlap, gaps and mixed record kinds. */
+                if (pack[4] != 3 || !(pack[7] & 0x80) ||
+                    !(edits & 0x80) || !(prior[8] & 0x80) ||
+                    be32(record + 4) != be32(prior + 4) ||
+                    be16(record + 12) != be16(prior + 12) + (prior[8] & 0x7f) ||
+                    memcmp(record + RECORD_TAIL, prior + RECORD_TAIL, RAW_BYTES - TAIL_START))
+                    return -1;
+            }
+        }
         previous = fad;
         if (!edits) {
             if (pack[4] == 1 || pack[6] || nonzero(record + 12, 336)) return -1;
@@ -186,13 +200,15 @@ void sector_overlay_arm(void)
 int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
 {
     if (!armed) return 0;
+    unsigned applied = 0;
     for (unsigned i = 0; i < record_count; ++i) {
         if (!(selected & (1u << i))) continue;
         const uint8_t *record = record_at(i);
         uint32_t target = be32(record);
         if (target > fad) break;
         if (target != fad) continue;
-        if (sector_overlay_check(i, sector)) return -1;
+        /* Authenticate the untouched sector before any same-FAD write. */
+        if (!applied && sector_overlay_check(i, sector)) return -1;
         if (!record[8]) return 0;
         if (record[8] & 0x80) {
             memcpy(sector + be16(record + 12), record + 16, record[8] & 0x7f);
@@ -202,6 +218,10 @@ int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
                 memcpy(sector + be16(edit), edit + 8, edit[2]);
             }
         }
+        applied = 1;
+        if (i + 1 < record_count && (selected & (1u << (i + 1))) &&
+            sector_overlay_fad(i + 1) == fad) continue;
+        /* Every fragment has the complete final tail; publish it once. */
         memcpy(sector + TAIL_START, record + RECORD_TAIL, RAW_BYTES - TAIL_START);
         return 1;
     }

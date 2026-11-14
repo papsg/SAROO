@@ -300,6 +300,135 @@ class SectorOverlayTests(unittest.TestCase):
                 self.compile(False)
                 self.assertFalse(self.output_pack.exists())
 
+    def test_callback_spans_split_into_bounded_contiguous_records(self):
+        for width in (45, 46, 47, 48, 49, 88, 89, 113, 132, 133, 176):
+            with self.subTest(width=width):
+                self.recipe['replaces_callback'] = True
+                self.recipe['writes'][0].update(before='71' * width, after='aa' * width)
+                self.compile()
+                pack = self.output_pack.read_bytes()
+                count = (width + 43) // 44
+                self.assertEqual(pack[4:8], bytes([3, count, 0, 0x80]))
+                offset = 1057
+                for at in range(24, len(pack), 348):
+                    record = pack[at:at+348]
+                    n = record[8] & 0x7f
+                    self.assertTrue(5 <= n <= 44)
+                    self.assertEqual(int.from_bytes(record[:4], 'big'), 156)
+                    self.assertEqual(int.from_bytes(record[12:14], 'big'), offset)
+                    self.assertEqual(record[4:8], zlib.crc32(self.last).to_bytes(4, 'big'))
+                    offset += n
+                self.assertEqual(offset, 1057 + width)
+                original, expected = self.path / 'original', self.path / 'expected'
+                original.write_bytes(self.last)
+                post = bytearray(self.last)
+                post[1057:1057+width] = b'\xaa' * width
+                expected.write_bytes(canonical(post))
+                self.run_decoder('apply', self.output_pack, original, expected)
+                self.output_pack.unlink()
+
+    def test_fragment_validation_refuses_conflicting_crc_tail_layout_and_policy(self):
+        self.recipe['replaces_callback'] = True
+        self.recipe['writes'][0].update(before='71' * 113, after='aa' * 113)
+        self.compile()
+        original = bytearray(self.output_pack.read_bytes())
+        for change in ('abi', 'policy', 'crc', 'tail', 'gap', 'overlap', 'guard',
+                       'short', 'order', 'reserved'):
+            bad = bytearray(original)
+            second = 24 + 348
+            if change == 'abi':
+                bad[4] = 2
+            elif change == 'policy':
+                bad[7] = 0
+            elif change == 'crc':
+                bad[second+4] ^= 1
+            elif change == 'tail':
+                bad[second+60] ^= 1
+            elif change in ('gap', 'overlap'):
+                at = int.from_bytes(bad[second+12:second+14], 'big') + (1 if change == 'gap' else -1)
+                bad[second+12:second+14] = at.to_bytes(2, 'big')
+            elif change == 'guard':
+                bad[second+8] = 0
+            elif change == 'short':
+                bad[second+8] = 1
+            elif change == 'order':
+                bad[second:second+4] = (155).to_bytes(4, 'big')
+            else:
+                bad[second+14] = 1
+            seal(bad)
+            self.output_pack.write_bytes(bad)
+            with self.subTest(change=change):
+                self.run_decoder('reject', self.output_pack)
+
+    def test_split_record_capacity_counts_fragments_and_keeps_exact_twelve_control(self):
+        self.recipe['replaces_callback'] = True
+        template = self.recipe['writes'][0]
+        self.recipe['writes'] = [dict(template, fad=fad, offset=100,
+                                      before=byte * 176, after='aa' * 176)
+                                 for fad, byte in ((151, '71'), (156, '71'), (157, '72'))]
+        self.recipe['tracks'].append({'number': 1, 'sha256': hashlib.sha256(
+            (self.path / 'first.bin').read_bytes()).hexdigest()})
+        self.compile()
+        self.assertEqual(self.output_pack.read_bytes()[5], 12)
+        self.output_pack.unlink()
+        self.recipe['guards'] = [{'fad': 150, 'reason': 'Thirteenth record must refuse'}]
+        self.compile(False)
+        self.assertFalse(self.output_pack.exists())
+        self.recipe['guards'] = []
+        self.recipe['writes'][0].update(before='71' * 177, after='aa' * 177)
+        self.compile(False)
+        self.assertFalse(self.output_pack.exists())
+
+    def test_pca_reader_requires_complete_input_and_never_overwrites_output(self):
+        source, target = self.path / 'fixture.pca', self.path / 'decoded.bin'
+        source.write_bytes(bytes([0, 0, 0, 0, 0x41, ord('A'), 0xff, 0, 0, 0]))
+        command = [self.tool, 'decode-pca', source, target]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.read_bytes(), b'AAA')
+        report = json.loads(result.stdout)
+        self.assertTrue(report['complete'])
+        self.assertEqual(report['decoded_sha256'], hashlib.sha256(b'AAA').hexdigest())
+        self.assertNotEqual(subprocess.run(command, capture_output=True, timeout=15).returncode, 0)
+        self.assertEqual(target.read_bytes(), b'AAA')
+        source.write_bytes(source.read_bytes()[:-1])
+        target.unlink()
+        self.assertNotEqual(subprocess.run(command, capture_output=True, timeout=15).returncode, 0)
+        self.assertFalse(target.exists())
+
+    def test_source_verifier_tracks_guard_records_after_a_split_group(self):
+        self.recipe['replaces_callback'] = True
+        self.recipe['writes'][0].update(before='71' * 113, after='aa' * 113)
+        self.recipe['guards'] = [{'fad': 157, 'reason': 'Guard follows three fragments'}]
+        self.compile()
+
+        def pin(path):
+            return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+        source = self.path / 'source.bin'
+        source.write_bytes(self.last[16:2064])
+        post = bytearray(source.read_bytes())
+        post[1057-16:1057-16+113] = b'\xaa' * 113
+        manifest = {'recipe': pin(self.recipe_path), 'pack': pin(self.output_pack),
+                    'decoder': pin(self.decoder), 'programs': [
+                        {'source': pin(source), 'lba': 6,
+                         'postimage_sha256': hashlib.sha256(post).hexdigest()}]}
+        for complete in (False, True):
+            if complete:
+                guard = self.path / 'guard.bin'
+                guard.write_bytes(sector(157, 0x72)[16:2064])
+                manifest['programs'].append({'source': pin(guard), 'lba': 7,
+                                             'postimage_sha256': pin(guard)['sha256']})
+            path = self.path / 'manifest.json'
+            path.write_text(json.dumps(manifest))
+            output = self.path / ('all-sources' if complete else 'missing-guard')
+            result = subprocess.run([self.tool, 'verify-source', path, output],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            receipt = json.loads((output / 'receipt.json').read_text())
+            self.assertEqual(receipt['all_target_sources_verified'], complete)
+            self.assertEqual(receipt['unverified_guard_fads'], [] if complete else [157])
+
     def test_guard_only_abi_two_keeps_short_edits_and_original_guard_sectors(self):
         self.recipe['guards'] = [{'fad': 157, 'reason': 'Bind another original sector'}]
         self.compile()

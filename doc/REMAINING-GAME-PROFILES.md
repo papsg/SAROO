@@ -333,3 +333,96 @@ open. These are historical model results, not a new console run or full-game
 qualification. Keep the profile opt-in pending physical bus/audio, bank/reset,
 other-program and full-game checks. No delay is added to imitate old helper
 overhead.
+
+## X-Men vs Street Fighter: Japan V1.002
+
+The [exact-source recipe](../recipes/xmen-vs-street-fighter-jp-v1002-sector.json)
+selects paps-g's `01cc13f5` native design, adapting
+[tpunix's original workaround](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L640).
+The original handlers skip two CPK calls, write cartridge status `5c/ff`,
+NOP a later ASR0 store and redirect two startup calls. The selected recipe
+retains the original loaders and calls, using the loaded module's own success
+tail and a collateral-free compressed rewrite. It requests 4 MiB RAM before
+explicit user configuration, which remains authoritative.
+
+`CPK.EMM;1` changes only its entry pointer `06080008 → 060800e2` and the
+existing success immediate `1 → 5c`. Its native tail writes FF at `06080200`,
+then 5C at `060801fe`, consumes the return word saved by the wrapper's JSR
+delay slot, and returns zero. The wrapper preserves its original context-save/
+restore sequence. This bypasses the original cartridge probe, bank test and
+ASR0/AREF reconfiguration. It does not replace the shared file loader with a
+fabricated success return. The original first file, CPK calls, `CPK.PCA` and
+later MMPACK handoff remain unchanged.
+
+The 113-byte rewrite at MMPACK file offset 154 changes 45 stored bytes without
+changing its length, destination table, stream termination or later packed
+bytes. All 630,460 decoded bytes remain identical except `d82e → a001` at
+`06014098`. The native BRA skips the ASR0 store at `0601409c`, retaining both
+stack pops and the following AREF=19 write. The original MOV.L remains in
+the branch delay slot; its changed PC-relative read is discarded by the
+following R0 restoration. T and PR stay unchanged. The
+[SH7604 manual](https://antime.kapsi.fi/sega/files/sh7604.pdf), §2.4 Tables
+2.12/2.16/2.17, printed pp. 33–34 and 39–40, defines those MOV, delayed-branch,
+JSR/PR and system-instruction effects. See also
+[SH software manual §§6.1.8/6.1.34](https://www.renesas.com/en/document/mas/sh-1sh-2sh-dsp-software-manual)
+for BRA and PC-relative MOV.L. The
+[SCU manual §3.6, printed pp. 62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf)
+documents ASR0/AREF. These citations describe the hardware; the workaround
+and personality choice come from the original SAROO contribution and source
+investigation, rather than a Sega mandate to skip the game's tests.
+
+| Source | LBA / bytes | Complete original SHA-256 |
+| --- | --- | --- |
+| `0;1` | 26 / 48,032 | `85c73748cd5dbedb269c638811ac863c0a693f8dd8a37b79ce780b1c6e517afa` |
+| `CPK.PCA;1` | 53 / 74,233 | `8d24cb9515b4de917ad9453635b1e382edc5461268bb0eaa1a794e5987179f20` |
+| `CPK.EMM;1` | 1057 / 528 | `f534297e5de222b7c98f89ea5654b0c8af1b6a21148672c58ecc0ab799e6cbb7` |
+| `MMPACK.PCA;1` | 45462 / 258,319 | `60dddde37c9f600f2adc1012bf323096faff63659e8b3bda8234e1ae8beab79a` |
+
+Current production-C streams cover 189 sectors containing these 381,112
+logical bytes and all guards. EMM is explicitly extended with 1,520 generated
+zero bytes to supply its target sector; that canonical sector reproduces the
+archived original record CRC. This is not fresh verification of original raw
+padding or the unavailable complete track, whose recorded SHA-256 is
+`c904a38644964e91e6dc0ee93ea41e921ca673efe708a8e2658207c736bfda70`.
+Other unedited partial final sectors also retain their generated-padding limit.
+Exactly 47 logical source bytes change. Complete EMM and MMPACK postimages are
+`b5b81ba31bd07a8f63a1fabb92605bf380be4a84224f4cad1eb1f508bb7efd57`
+and `22154f524c2d50b5404fd2ccaf3f0563593d35e67655b67830f0bfc3e54a3da3`.
+
+The maintained [offline PCA reader](../tools/README.md#offline-pcaprs-check)
+is a necessary verification tool, with synthetic packet, overlap, header,
+destination, truncation and resource-bound controls. Its full outputs match
+the preserved original SH-2 decoder's outputs byte for byte. That retained
+native fixture is also rerun freshly on the host with original decoder code:
+both cache modes, complete caller context and unrelated 2 MiB Work RAM checks
+pass for original MMPACK, edited MMPACK and unchanged CPK. The truncated native
+end-marker control refuses. This is host execution, without real IRQ, bus,
+loader or game qualification. Complete decoded hashes are:
+
+- Original MMPACK: `1b5b2fd6dc431e0cad2b34c241eb0d5ddea339cddc71374181aadcc7b97883c1`.
+- Edited MMPACK: `35e38fa316e0191c46d1879732f8701c97f9e20dd62c2235fcdc397e57573a96`.
+- Unchanged CPK: `6eed855a63c8183a29173cbf0cfdf53b54754c76be7085a3f6e73c7cb2dffdad`.
+
+The six-record, 2,112-byte pack reproduces archived SHA-256
+`19e15a1627a6274a65e2fc26f2f17e63a7d78623d73e617853b87c51bcfbd58b`.
+The [bounded split-record prerequisite](SD-SECTOR-OVERLAYS.md) adds 164 MCU
+load bytes, with unchanged static allocation. Older firmware rejects this
+pack. Existing packs retain their bytes; no additional per-read SD access is
+introduced. Linked checks execute the actual 40/48/24-byte launch/late functions,
+including the launch RTS delay-slot store and complete GPR/T/PR effects.
+Separate bounded native-tail and branch checks preserve status-write order,
+the saved return word, zero result, changed delay-slot read and restored
+registers. Actual launch tests cover both original fallback handlers,
+accepted/rejected/physical bypass and recipe/user 4 MiB priority. Both
+72-method overlay and 22-method launch profiles pass; all 23 Rust tests pass.
+
+The rehashed 18,000-frame historical pair retains 301 checkpoints: 242 video,
+291 nonblack, 294 cumulative sample counts and 15 audio CRCs match. Video/audio
+first differ at 901, sample counts at 1261. Complete PCM streams each contain
+53,069,472 bytes and differ. Native EMM status arrives at frames 799/800 and
+the MMPACK branch at 1421; the callback takes a different load/edit route.
+These events do not explain all output differences. Earlier private console
+entry/return observations do not qualify this public MCU/recipe pair, smooth
+gameplay, audio or other routes. Keep this profile opt-in with the timing/audio,
+bank/reset, other-path and physical-acceptance limits open. No delay is added
+to imitate the callback's overhead.

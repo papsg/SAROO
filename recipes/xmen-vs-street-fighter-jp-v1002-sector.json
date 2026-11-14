@@ -1,0 +1,53 @@
+{
+  "abi": 2,
+  "product_id": "T-1226G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L640",
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "c904a38644964e91e6dc0ee93ea41e921ca673efe708a8e2658207c736bfda70"
+    }
+  ],
+  "title": "X-Men vs. Street Fighter (Japan) V1.002: native memory-manager and bus edits",
+  "summary": "Use the original memory-manager success path and skip the later ASR0 store.",
+  "rationale": "Use CPK.EMM\u2019s existing success tail with the required 4 MiB personality; publish the inherited 5C/FF status without cartridge probing or bus reconfiguration. Keep the original CPK loader, wrapper, first-program entry and later-program handoff. Re-encode 113 existing MMPACK.PCA bytes without changing file size, its destination table or any of the complete 630460 decoded bytes except D82E to A001 at 06014098. The native branch skips the ASR0 store and retains stack cleanup and AREF. Its PC-relative delay-slot load is discarded by the following R0 restoration. No inserted code, compatibility helper or RAM patch writer. Complete production/independent checks cover all 258847 source bytes and exactly 47 stored changes. An 18000-frame comparison executes both original compiled callbacks; the native run loads the EMM entry at frame 799, publishes 5C/FF at 800 and loads the branch at 1421. Of 301 checkpoints, 242 video, 291 nonblack, 294 sample-count and 15 audio CRCs match; complete PCM differs. No full output equivalence, timing cause or physical acceptance is claimed. Keep inactive pending audio/timing, other-path and real Saturn validation. The 2112-byte pack adds 696 SD bytes over the former helper candidate and zero firmware bytes.",
+  "replaces_callback": true,
+  "cart_mode": 4,
+  "guards": [
+    {
+      "fad": 176,
+      "reason": "Bind unchanged first-program entry, native calls and MMPACK source selection."
+    },
+    {
+      "fad": 203,
+      "reason": "Bind the unchanged original CPK compressed container and loader."
+    }
+  ],
+  "writes": [
+    {
+      "fad": 1207,
+      "offset": 19,
+      "before": "08",
+      "after": "e2",
+      "effect": "Select CPK.EMM\u2019s original 060800E2 success tail.",
+      "reason": "Skip native cartridge probing and ASR0/AREF reconfiguration while preserving the module wrapper and return."
+    },
+    {
+      "fad": 1207,
+      "offset": 249,
+      "before": "01",
+      "after": "5c",
+      "effect": "Publish the required 4 MiB cartridge flag through the original success code.",
+      "reason": "Keep the inherited 5C/FF status result in the loaded module; no RAM flag writer."
+    },
+    {
+      "fad": 45612,
+      "offset": 170,
+      "before": "ffd8316082d82ed02f0f280260f6de1cee2d6fee2de013ff700a2a98622801a6f2d0bfc8e0ff009338d1264310211f028ffc7104eff231d124ff97ffe3b708d121ff900c1fff900af710d11cff9009d31ad1311bf20086f201f293770fd117ff9009d1c880f6a6d18114fa86fca0274004",
+      "after": "ffd8316082a001d02f0f280260f6de1cee2d60eefce013c3ff700a2a62280134f2d0bffdc8e0009338d126ff431021028ffc710478f231d124bfff97ffe308d121ff900cbd1fff900a10d11cff90098fd31ad11bf23100f201bcf2930fd117ff900903d1c8f69ca6d1142187fca0274004",
+      "effect": "Decode a branch at 06014098 around the ASR0 store.",
+      "reason": "Preserve all 630460 decoded bytes except D82E to A001; keep the native AREF write, stack cleanup and following program code."
+    }
+  ],
+  "disc_id": "T-1226G   V1.002"
+}

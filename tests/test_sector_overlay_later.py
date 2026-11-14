@@ -353,12 +353,18 @@ class LaterRecipeTests(unittest.TestCase):
     def check_delivery(self, recipe, raws):
         result, pack = self.compile(recipe)
         self.assertEqual(result.returncode, 0, result.stderr)
-        header = pack.read_bytes()[:24]
+        data = pack.read_bytes()
+        header = data[:24]
         targets = sorted({w['fad'] for w in recipe['writes']} |
                          {g['fad'] for g in recipe.get('guards', [])})
-        self.assertEqual(header[4:8], bytes([3, len(targets), 0,
+        expected_fads = [fad for fad in targets for _ in range(max(
+            [1] + [(len(w['before'])//2+43)//44 for w in recipe['writes'] if w['fad'] == fad]))]
+        record_fads = [int.from_bytes(data[at:at+4], 'big') for at in range(24, len(data), 348)]
+        self.assertEqual(record_fads, expected_fads)
+        self.assertEqual(header[4:8], bytes([3, len(expected_fads), 0,
                                           0x80 | recipe.get('cart_mode', 0)]))
-        for index, fad in enumerate(targets):
+        for fad in targets:
+            index = record_fads.index(fad)
             before = raws[fad]
             after = bytearray(before)
             edits = [w for w in recipe['writes'] if w['fad'] == fad]

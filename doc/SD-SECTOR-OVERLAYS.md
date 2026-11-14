@@ -19,9 +19,31 @@ tail has its disc byte order. A pack is 372–4,200 bytes.
 
 ABI 2 also admits a guard record with no edits. Its complete sector CRC must
 match at mount and at delivery, and it returns the original sector unchanged.
-ABI 3 admits a single contiguous edit of 5–44 bytes in one record. The compiler
+ABI 3 admits a contiguous edit of 5–44 bytes per record. The compiler
 checks its entire preimage, and the MCU checks the original complete sector CRC.
 Both forms are used by the corrected Pocket Fighter recipe.
+
+Callback-replacing profiles may also encode one contiguous span of up to 176
+bytes as adjacent 5–44-byte records for the same FAD. This narrowly adapts
+paps-g's `5a693a55` / `e42fd872` split-record support for X-Men's native source
+rewrite. The compiler counts fragments against the existing twelve-record
+limit. Each fragment binds the same original whole-sector CRC and carries
+the same complete final EDC/ECC. Admission requires ABI 3, replacement intent,
+contiguous nonoverlapping spans and identical source/tail identities. Ordinary
+alternatives retain their separate exact-one-match selection rule.
+
+Delivery authenticates the original sector before the first fragment, applies
+all fragments and copies the final tail once. A failed source check changes
+no destination bytes and retains the pack for a retry. All existing single
+records keep their original encoding. Older firmware rejects a split pack;
+use a matching MCU. No pack allocation or selection-mask capacity grows.
+The target App adds 164 load bytes with either GNU link mode: 58,628 bytes
+with LTO / 62,820 without, leaving 6,908 / 2,716 free. Static DTCM remains
+50,896 bytes. Non-LTO direct validation/apply frames grow 64→72 / 24→40 bytes;
+these are compiler function frames, not a complete task-stack qualification.
+There is no menu or FPGA change. Synthetic checks cover split boundaries,
+the twelve/thirteen-record boundary, malformed groups, complete raw sectors,
+preflight faults, retries and disc retirement with unchanged source files.
 
 The compiler accepts stored Mode 1 data at or after INDEX 01 and handles
 shared CUE FILEs with different sector widths, generated gaps and stored

@@ -150,6 +150,37 @@ class OverlayMountTests(support.MCUSaveTest):
                                         capture_output=True, text=True, timeout=25)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_fragment_group_admission_is_atomic_and_retains_retry_and_retirement(self):
+        for value in range(49, 54):
+            with self.subTest(value=value), tempfile.TemporaryDirectory(dir=self.target) as folder:
+                root = Path(folder)
+                card = root / 'card.img'
+                support.make_fat32(card)
+                raw = sector(151)
+                edited = bytearray(raw)
+                edited[32:145] = b'\xaa' * 113
+                edited = canonical(edited)
+                pack = bytearray(24 + 3 * 348)
+                pack[:20] = b'SSO1\x03\x03\x00\x84' + PRODUCT + len(pack).to_bytes(2, 'big')
+                for i, width in enumerate((44, 44, 25)):
+                    at, offset = 24 + i * 348, 32 + i * 44
+                    pack[at:at+8] = (151).to_bytes(4, 'big') + zlib.crc32(raw).to_bytes(4, 'big')
+                    pack[at+8] = 0x80 | width
+                    pack[at+12:at+14] = offset.to_bytes(2, 'big')
+                    pack[at+16:at+16+width] = b'\xaa' * width
+                    pack[at+60:at+348] = edited[2064:]
+                if value == 50:
+                    pack[24+2*348+4] ^= 1
+                seal(pack)
+                if value == 51:
+                    raw = sector(151, 0x72)
+                files = root / 'disc', root / 'expected', root / 'pack'
+                for path, data in zip(files, (sector(150, ip=True) + raw + sector(152), edited, pack)):
+                    path.write_bytes(data)
+                result = subprocess.run([self.binary, card, str(value), *files],
+                                        capture_output=True, text=True, timeout=25)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_guard_sector_controls_complete_mount_and_runtime_retry(self):
         for value in range(32, 36):
             with self.subTest(value=value), tempfile.TemporaryDirectory(dir=self.target) as folder:

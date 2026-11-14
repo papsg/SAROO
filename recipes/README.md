@@ -130,3 +130,9 @@ Pia Carrot 2 Japan V1.002 uses
 It carries three native A100 edits and no RAM-mode action. See
 [source proof and audio/bank limits](../doc/REMAINING-GAME-PROFILES.md#pia-carrot-2-japan-v1002).
 It remains opt-in; the full source track must match its recorded hash.
+
+[`xmen-vs-street-fighter-jp-v1002-sector.json`](xmen-vs-street-fighter-jp-v1002-sector.json)
+uses the native EMM success path, a complete-output-checked compressed rewrite
+and a 4 MiB action. It requires the split-record MCU; see
+[source, build and timing/audio limits](../doc/REMAINING-GAME-PROFILES.md#x-men-vs-street-fighter-japan-v1002).
+It remains opt-in.

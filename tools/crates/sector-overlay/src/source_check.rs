@@ -2,8 +2,8 @@
 //! This does not authenticate a complete disc or qualify a game or device.
 use crate::disc::{read_bounded, RAW_BYTES};
 use crate::{
-    crc32, disc_id_bytes, encode, fail, hex, mode1, product_bytes, targets, write_pack, Recipe,
-    Result,
+    crc32, disc_id_bytes, encode, fail, fragment_count, hex, mode1, product_bytes, record_count,
+    targets, write_pack, Recipe, Result,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -126,7 +126,7 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let product = product_bytes(&recipe.product_id)?;
     disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
     let (_, pack) = pinned(base, &manifest.pack, 24 + 12 * 348)?;
-    if pack.len() != 24 + edits.len() * 348 {
+    if pack.len() != 24 + record_count(&edits) * 348 {
         return fail("Reference pack length differs from the recipe");
     }
     let (decoder_path, decoder) = pinned(base, &manifest.decoder, 32 * 1024 * 1024)?;
@@ -207,11 +207,13 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let mut expected = encode(&recipe, product, &edits, originals)?;
     // Missing read-only guards are not fresh source checks. Retain their
     // reference CRC solely to compare the other metadata/available records.
-    for (index, &fad) in edits.keys().enumerate() {
+    let mut index = 0;
+    for (&fad, changes) in &edits {
         if unavailable_guards.contains(&fad) {
             let at = 24 + index * 348;
             expected[at + 4..at + 8].copy_from_slice(&pack[at + 4..at + 8]);
         }
+        index += fragment_count(changes);
     }
     expected[20..24].fill(0);
     let checksum = crc32(&expected);
@@ -234,9 +236,10 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let checksum = crc32(&for_decoder);
     for_decoder[20..24].copy_from_slice(&checksum.to_be_bytes());
     write_pack(&output.join("decoder.SOV"), &for_decoder)?;
-    const TOOL_INPUTS: [(&str, &[u8]); 6] = [
+    const TOOL_INPUTS: [(&str, &[u8]); 7] = [
         ("main.rs", include_bytes!("main.rs")),
         ("source_check.rs", include_bytes!("source_check.rs")),
+        ("pca.rs", include_bytes!("pca.rs")),
         ("mode1.rs", include_bytes!("mode1.rs")),
         ("disc.rs", include_bytes!("disc.rs")),
         ("Cargo.toml", include_bytes!("../Cargo.toml")),

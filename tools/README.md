@@ -18,11 +18,25 @@ Use the actual name returned by `name` in place of `1234ABCD.SOV`.
 An optional `disc_id` field gives the exact sixteen IP product/version
 bytes, including spaces. Omit it to retain the older product-only filename.
 The `bundle` command accepts two to twelve reviewed recipe/CUE pairs. Each
-must edit one sector and share the same product, optional revision and launch
+must fit one sector record and share the same product, optional revision and launch
 actions. Mount selects exactly one matching alternative.
 Short and contiguous edits can share a bundle, which uses the newest
 record ABI required by its inputs.
 See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
+
+### Offline PCA/PRS check
+
+For the reviewed PCA container, `sector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN`
+checks the complete PRS stream and prints input/output hashes and declared
+destination segments. Input and output are bounded to 1 MiB; at most sixteen
+disjoint, aligned high-Work-RAM segments are accepted, with lengths in
+longwords. Header count zero denotes a flat stream without declared destinations.
+Truncation, an invalid back-reference, trailing bytes, declared-length mismatch
+or output overflow refuses before creating output. Existing output is never
+overwritten. This reader adapts paps-g's native-source review; it adds no codec
+or execution hook to the firmware. A format decode does not establish native
+CPU state or hardware timing. Compare original and edited complete outputs,
+with source/hash pins, rather than accepting a matching edited window alone.
 
 ### Logical-source verification
 

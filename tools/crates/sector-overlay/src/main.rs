@@ -1,6 +1,7 @@
 //! Compile reviewed SD sector recipes against read-only game images.
 mod disc;
 mod mode1;
+mod pca;
 mod source_check;
 
 use disc::{Disc, RAW_BYTES};
@@ -127,10 +128,10 @@ fn hex(bytes: &[u8]) -> String {
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     let bytes = value.len() / 2;
     if value.len() % 2 != 0
-        || !(matches!(bytes, 1 | 2 | 4) || (5..=44).contains(&bytes))
+        || !(matches!(bytes, 1 | 2 | 4) || (5..=176).contains(&bytes))
         || !value.bytes().all(|b| b.is_ascii_hexdigit())
     {
-        return fail("Edits require 1, 2, 4 or 5–44 hex-encoded bytes");
+        return fail("Edits require 1, 2, 4 or 5–176 hex-encoded bytes");
     }
     (0..value.len())
         .step_by(2)
@@ -169,6 +170,7 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
             || write.offset + before.len() > TAIL_START
             || before.len() != after.len()
             || before == after
+            || (before.len() > 44 && !recipe.replaces_callback)
         {
             return fail("Invalid FAD, payload span or replacement");
         }
@@ -198,7 +200,20 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
             return fail("Too many or overlapping edits in a sector");
         }
     }
+    if record_count(&by_fad) > MAX_RECORDS {
+        return fail("Too many overlay records after splitting long edits");
+    }
     Ok(by_fad)
+}
+
+fn fragment_count(edits: &[Edit]) -> usize {
+    edits
+        .first()
+        .map_or(1, |edit| edit.before.len().div_ceil(44))
+}
+
+fn record_count(targets: &Targets) -> usize {
+    targets.values().map(|edits| fragment_count(edits)).sum()
 }
 
 /* Hash each source once, capturing each edited sector during that same read. */
@@ -312,7 +327,8 @@ fn encode(
     targets: &Targets,
     mut originals: BTreeMap<u32, [u8; RAW_BYTES]>,
 ) -> Result<Vec<u8>> {
-    let size = HEADER_BYTES + targets.len() * RECORD_BYTES;
+    let count = record_count(targets);
+    let size = HEADER_BYTES + count * RECORD_BYTES;
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
     let long_edit = targets.values().flatten().any(|edit| edit.before.len() > 4);
@@ -323,27 +339,49 @@ fn encode(
     } else {
         2
     };
-    pack[5] = targets.len() as u8;
+    pack[5] = count as u8;
     pack[7] = recipe.cart_mode | if recipe.replaces_callback { 0x80 } else { 0 };
     pack[8..18].copy_from_slice(&product);
     pack[18..20].copy_from_slice(&(size as u16).to_be_bytes());
-    for ((&fad, edits), record) in targets
-        .iter()
-        .zip(pack[HEADER_BYTES..].chunks_exact_mut(RECORD_BYTES))
-    {
+    let mut records = pack[HEADER_BYTES..].chunks_exact_mut(RECORD_BYTES);
+    for (&fad, edits) in targets {
         let mut sector = originals.remove(&fad).unwrap();
         mode1::check(&sector, fad)?;
-        record[..4].copy_from_slice(&fad.to_be_bytes());
-        record[4..8].copy_from_slice(&crc32(&sector).to_be_bytes());
-        if edits.is_empty() {
-            continue;
-        }
-        record[8] = edits.len() as u8;
+        let checksum = crc32(&sector);
         for edit in edits {
             if sector[edit.offset..edit.offset + edit.before.len()] != edit.before {
                 return fail(format!("Original bytes differ at FAD {fad}"));
             }
         }
+        if edits.first().is_some_and(|edit| edit.before.len() > 44) {
+            let edit = &edits[0];
+            sector[edit.offset..edit.offset + edit.after.len()].copy_from_slice(&edit.after);
+            mode1::rebuild(&mut sector);
+            let mut start = 0;
+            while start < edit.after.len() {
+                let remaining = edit.after.len() - start;
+                let mut width = remaining.min(44);
+                if remaining > width && remaining - width < 5 {
+                    width -= 5 - (remaining - width);
+                }
+                let record = records.next().unwrap();
+                record[..4].copy_from_slice(&fad.to_be_bytes());
+                record[4..8].copy_from_slice(&checksum.to_be_bytes());
+                record[8] = 0x80 | width as u8;
+                record[12..14].copy_from_slice(&((edit.offset + start) as u16).to_be_bytes());
+                record[16..16 + width].copy_from_slice(&edit.after[start..start + width]);
+                record[60..].copy_from_slice(&sector[TAIL_START..]);
+                start += width;
+            }
+            continue;
+        }
+        let record = records.next().unwrap();
+        record[..4].copy_from_slice(&fad.to_be_bytes());
+        record[4..8].copy_from_slice(&checksum.to_be_bytes());
+        if edits.is_empty() {
+            continue;
+        }
+        record[8] = edits.len() as u8;
         if edits[0].before.len() > 4 {
             let edit = &edits[0];
             record[8] = 0x80 | edit.before.len() as u8;
@@ -401,7 +439,7 @@ fn bundle(args: &[OsString]) -> Result<()> {
         }
         let single = compile(&recipe, Path::new(&pair[1]), product, disc_id)?;
         if single[5] != 1 {
-            return fail("Each alternative must touch exactly one sector");
+            return fail("Each alternative must fit exactly one record");
         }
         let identity = (recipe.product_id, recipe.disc_id, single[7]);
         if policy.as_ref().is_some_and(|prior| *prior != identity) {
@@ -446,10 +484,13 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
     if let [op, manifest, out] = args.as_slice() {
         if op == "verify-source" {
             return source_check::run(Path::new(manifest), Path::new(out));
+        }
+        if op == "decode-pca" {
+            return pca::run(Path::new(manifest), Path::new(out));
         }
     }
     if args.first().is_some_and(|arg| arg == "bundle") {

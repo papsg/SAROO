@@ -8,8 +8,9 @@ import test_sector_overlay as overlay
 import test_sector_overlay_later as later
 from check_later_callbacks_sh2 import execute, region
 from check_remaining_callbacks_sh2 import (BATMAN_HANDLER, MSH_HANDLER, SSCTRL_HELPER,
-                                            PIA_HANDLER, verify_batman_handler,
-                                            verify_msh_handler, verify_pia_handler)
+                                            PIA_HANDLER, XMEN_FIRST, XMEN_LAST,
+                                            verify_batman_handler, verify_msh_handler,
+                                            verify_pia_handler, verify_xmen_handlers)
 
 
 class RemainingRecipeTests(unittest.TestCase):
@@ -110,6 +111,26 @@ class RemainingRecipeTests(unittest.TestCase):
                 self.check_delivery(recipe, raws)
 
 
+    def test_xmen_preserves_both_loaders_and_uses_native_emm_success_and_split_prs_edit(self):
+        source = json.loads((overlay.ROOT / 'recipes/xmen-vs-street-fighter-jp-v1002-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-1226G   V1.002')
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual(source['cart_mode'], 4)
+        self.assertEqual([(w['fad'], w['offset']) for w in source['writes']],
+                         [(1207, 19), (1207, 249), (45612, 170)])
+        self.assertEqual([(w['before'], w['after']) for w in source['writes'][:2]],
+                         [('08', 'e2'), ('01', '5c')])
+        self.assertEqual(len(bytes.fromhex(source['writes'][2]['after'])), 113)
+        self.assertEqual([g['fad'] for g in source['guards']], [176, 203])
+        self.assertEqual((45612-150-45462)*2048+170-16, 154)
+        recipe, raws = self.source_fixture(source, b'V1.002', {
+            176: [(1260, 'd00f'), (1276, '400b')],
+            203: [(16, '00000000')],
+            1207: [(16, '06080008'), (242, 'e0ffd1192100e001d90429004f26000be000')],
+        })
+        self.check_delivery(recipe, raws)
+
+
 class BatmanInstructionTests(unittest.TestCase):
     def test_complete_original_conditional_handler_effects(self):
         verify_batman_handler(0x02008508, BATMAN_HANDLER)
@@ -201,6 +222,54 @@ class PiaInstructionTests(unittest.TestCase):
                 self.assertEqual(flags, [int(nonnegative)])
                 self.assertEqual(pr, 0x06054320)
                 self.assertEqual((after, writes, calls), ({}, [], []))
+
+
+class XMenInstructionTests(unittest.TestCase):
+    def test_complete_original_late_handlers_and_unchanged_flags_and_pr(self):
+        verify_xmen_handlers(0x0200818c, XMEN_FIRST, 0x02008174, XMEN_LAST)
+
+    def test_native_success_tail_keeps_flag_order_zero_result_and_saved_return_word(self):
+        for status in (1, 0x5c):
+            for initial_t in (0, 1):
+                code = bytes.fromhex('e0ffd1192100e0') + bytes([status]) + bytes.fromhex('d90429004f26000be000')
+                ram = region(0x060801fa, 12) | region(0x060feffc, 4)
+                ram.update(enumerate((0x06022080).to_bytes(4, 'big'), 0x060feffc))
+                ram.update(enumerate((0x06080200).to_bytes(4, 'big'), 0x0608014c))
+                ram.update(enumerate((0x060801fe).to_bytes(4, 'big'), 0x060800fc))
+                flags = [initial_t]
+                before, regs, pr, after, writes, calls = execute(
+                    code, 0x060800e2, 0x06022080, ram, registers={15: 0x060feffc},
+                    return_address=0x06054320, flags=flags)
+                expected = dict(ram)
+                expected[0x06080200], expected[0x060801fe] = 0xff, status
+                before[0], before[1], before[9], before[15] = 0, 0x06080200, 0x060801fe, 0x060ff000
+                self.assertEqual(regs, before)
+                self.assertEqual(after, expected)
+                self.assertEqual(writes, [(0x06080200, 1, 0xff), (0x060801fe, 1, status)])
+                self.assertEqual((pr, calls, flags), (0x06022080, [], [initial_t]))
+
+    def test_native_branch_discards_changed_pc_relative_slot_value_and_retains_stack_pops(self):
+        for mode in ('raw', 'callback', 'source'):
+            code = bytes.fromhex(('a001' if mode == 'source' else 'd82e') + 'd02f' +
+                                 ('0009' if mode == 'callback' else '2802') + '60f668f6')
+            ram = region(0x25fe00b0, 4) | region(0x060feff8, 8)
+            for addr, value in ((0x06014154, 0x25fe00b0), (0x06014158, 0x23301ff0),
+                                (0x0601415c, 0x25fe00b8), (0x060feff8, 0x81234567),
+                                (0x060feffc, 0x1234abcd)):
+                ram.update(enumerate(value.to_bytes(4, 'big'), addr))
+            for initial_t in (0, 1):
+                flags, trace = [initial_t], []
+                before, regs, pr, after, writes, calls = execute(
+                    code, 0x06014098, 0x060140a2, ram, flags=flags, trace=trace,
+                    registers={15: 0x060feff8}, return_address=0x06054320)
+                before[0], before[8], before[15] = 0x81234567, 0x1234abcd, 0x060ff000
+                self.assertEqual(regs, before)
+                self.assertEqual(writes, [(0x25fe00b0, 4, 0x23301ff0)] if mode == 'raw' else [])
+                self.assertEqual((pr, calls, flags), (0x06054320, [], [initial_t]))
+                literal = 0x0601415c if mode == 'source' else 0x06014158
+                self.assertIn(('read', literal, 4, 0x25fe00b8 if mode == 'source' else 0x23301ff0), trace)
+                if mode != 'raw':
+                    self.assertEqual(after, ram)
 
 
 if __name__ == '__main__':

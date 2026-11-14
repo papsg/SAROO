@@ -53,7 +53,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch', b'mshvssf_patch',
                   b'Phantasy_Star_Collection_patch', b'VAMPIRE_SAVIOR_patch',
                   b'Batman_Forever_The_Arcade_Game_patch', b'MARVEL_SUPER_patch',
-                  b'Pia_Carrot_e_Youkoso_2_patch'}
+                  b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -68,6 +68,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code += b'static void Batman_Forever_The_Arcade_Game_handle1(void) { assert(0); }\n'
         code += b'static void MARVEL_SUPER_handle(void) { assert(0); }\n'
         code += b'static void Pia_Carrot_e_Youkoso_2_handle1(void) { assert(0); }\n'
+        code += b'static void xmvsf_handle1(void) { assert(0); }\n'
+        code += b'static void xmvsf_handle2(void) { assert(0); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -98,7 +100,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
                      b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1', b'GROOVE_ON_FIGHT_handle',
                      b'HABITAT2_handle', b'mshvssf_handle1', b'Phantasy_Star_Collection_handle',
                      b'VAMPIRE_SAVIOR_handle', b'Batman_Forever_The_Arcade_Game_handle1',
-                     b'MARVEL_SUPER_handle', b'Pia_Carrot_e_Youkoso_2_handle1'):
+                     b'MARVEL_SUPER_handle', b'Pia_Carrot_e_Youkoso_2_handle1',
+                     b'xmvsf_handle1', b'xmvsf_handle2'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -202,6 +205,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_pia_replaces_only_admitted_callback_and_preserves_native_loader_and_user_config(self):
         self.scenario('pia')
+
+    def test_xmen_preserves_original_startup_or_both_fallback_handlers_and_user_ram_priority(self):
+        self.scenario('xmen')
 
 
 if __name__ == '__main__':

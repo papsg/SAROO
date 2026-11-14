@@ -21,6 +21,37 @@ PIA_HANDLER = bytes.fromhex(
     '8b07d21093156121611d31308f01e1092211d10d6212d10d32108b07d20d93096121'
     '611d31308f01e1092211d10a412b00092122490b0604677c23301ff00604673c'
     '06046808060467de06046784060468f80604674c06010000')
+XMEN_FIRST = bytes.fromhex(
+    '910ed208221172142211e25cd10621207102e2ff2120d105412b0009000b0009'
+    'e0000009060228e0060801fe06022000')
+XMEN_LAST = bytes.fromhex('d103e2092121d103412b0009000b00090601409c06014000')
+
+
+def verify_xmen_handlers(first_at, first, last_at, last):
+    assert len(first) == 48 and len(last) == 24
+    for initial_t in (0, 1):
+        ram = (region(0x060228dc, 8) | region(0x060228f0, 8) |
+               region(0x060801fa, 12))
+        flags = [initial_t]
+        before, regs, pr, after, writes, calls = execute(
+            first, first_at, 0x06022000, ram, flags=flags, return_address=0x06054320)
+        expected_writes = [(0x060228e0, 2, 0xe000), (0x060228f4, 2, 0xe000),
+                           (0x060801fe, 1, 0x5c), (0x06080200, 1, 0xff)]
+        expected = dict(ram)
+        for dest, width, value in expected_writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        before[1:3] = [0x06022000, 0xffffffff]
+        assert writes == expected_writes and after == expected and regs == before
+        assert flags == [initial_t] and pr == 0x06054320 and not calls
+        ram = region(0x06014098, 12)
+        flags = [initial_t]
+        before, regs, pr, after, writes, calls = execute(
+            last, last_at, 0x06014000, ram, flags=flags, return_address=0x06054320)
+        expected = dict(ram)
+        expected.update(enumerate(b'\x00\x09', 0x0601409c))
+        before[1:3] = [0x06014000, 9]
+        assert writes == [(0x0601409c, 2, 9)] and after == expected and regs == before
+        assert flags == [initial_t] and pr == 0x06054320 and not calls
 
 
 def verify_pia_handler(address, code):
@@ -214,6 +245,23 @@ def check(elf):
             assert pr == 0x06054320 and not calls
     print('Linked Pia initial/loader guards, all 64 late predicate combinations, exact writes, '
           'short-circuit reads, complete GPR/T/PR and both native entries pass')
+    (patch_at, patch), (first_at, first), (last_at, last) = linked_symbol_records(
+        elf, ('_xmvsf_patch', '_xmvsf_handle1', '_xmvsf_handle2'))
+    verify_xmen_handlers(first_at, first, last_at, last)
+    for initial_t in (0, 1):
+        ram = region(0x060084d8, 32) | region(0x0600851c, 28)
+        flags = [initial_t]
+        before, regs, pr, after, writes, calls = execute(patch, patch_at, 0x06054320, ram, flags=flags)
+        expected_writes = [(0x060084dd, 1, 0x10), (0x060084ec, 2, 0xb11c),
+                           (0x06008520, 4, first_at), (0x06008530, 4, last_at)]
+        expected = dict(ram)
+        for dest, width, value in expected_writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        before[1:3] = [0x06008520, last_at]
+        assert writes == expected_writes and after == expected and regs == before
+        assert flags == [initial_t] and pr == 0x06054320 and not calls
+    print('Linked X-Men launch delay-slot store, both complete late handlers and original '
+          'entry targets, writes, GPR/T/PR pass')
 
 
 if __name__ == '__main__':
