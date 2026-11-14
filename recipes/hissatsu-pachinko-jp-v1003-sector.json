@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "T-1503G",
+  "disc_id": "T-1503G   V1.003",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Hissatsu Pachinko Collection (Japan v1.003): CD-status polling",
+  "summary": "Preserve the upstream workaround for the CD-drive PAUSE-status loop.",
+  "rationale": "Preserve the original SAROO compatibility edit on this exact disc source, with complete FILE hash, raw-sector and preimage guards. See doc/OCTOBER-REVISION-PROFILES.md for source, instruction, callback-delivery evidence and timing/audio/physical limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "2bbe8999f101eeff6b9b53af0ffb60dd8d5c8e13488338e86501d2199b7d3795"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 174,
+      "offset": 157,
+      "before": "01",
+      "after": "78",
+      "effect": "Change CMP/EQ immediate at 0601088C from 1 to 0x78; retain BT and its target.",
+      "reason": "The first upstream guard at 0601085D is false on this revision; its second guard matches. Preserve that branch without editing the Rev A location."
+    }
+  ]
+}

@@ -55,7 +55,10 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'Batman_Forever_The_Arcade_Game_patch', b'MARVEL_SUPER_patch',
                   b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch', b'Die_Hard_Trilogy_patch',
                   b'FIGHTERS_MEGAMIX_JAP_patch', b'Fighting_Vipers_JAP_patch',
-                  b'Metal_Slug_patch', b'MANX_TT_SUPER_BIKE_patch', b'WHIZZ_patch'}
+                  b'Metal_Slug_patch', b'MANX_TT_SUPER_BIKE_patch', b'WHIZZ_patch',
+                  b'Ultimate_Mortal_Kombat_3_patch', b'Hebereke_Popoitto_patch',
+                  b'srmp7_patch', b'Hissatsu_Pachinko_Collection_patch',
+                  b'Heart_of_Darkness_patch', b'Metal_Slug_A_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -98,6 +101,10 @@ class MenuVDP1OrderTests(unittest.TestCase):
                       rb'(\1*)memory_at(\2)', code)
         code = re.sub(rb'\((u8|u16|u32|char)\s*\*\)(0x[0-9a-fA-F]+)',
                       rb'(\1*)memory_at(\2)', code)
+        # Heart updates the native high half of a previously loaded longword.
+        # Keep the big-endian scalar relation on a little-endian host fixture.
+        code = code.replace(b'(u16*)memory_at(0x060108C0)',
+                            b'(u16*)native_high_half(0x060108c0)')
         for name in (b'bup_init', b'my_cdplayer', b'my_06b0', b'kof95_handle',
                      b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1', b'GROOVE_ON_FIGHT_handle',
                      b'HABITAT2_handle', b'mshvssf_handle1', b'Phantasy_Star_Collection_handle',
@@ -156,6 +163,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_japanese_revision_callbacks_and_vipers_reva_no_edit_control(self):
         self.scenario('japanese-revisions')
+
+    def test_direct_revision_launches_and_existing_reva_policy_controls(self):
+        self.scenario('direct-revisions')
 
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')

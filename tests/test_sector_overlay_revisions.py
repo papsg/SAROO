@@ -184,6 +184,89 @@ class RevisionRecipeTests(unittest.TestCase):
                     self.assertEqual(writes, [(0x06003408, 2, command)])
                     self.assertEqual((pr, flags, calls), (0x06003196, [initial_t], []))
 
+    def test_six_direct_revision_profiles_use_separate_full_identity_keys(self):
+        cases = [
+            ('umk3-eu-v1007', 'T-25403H  V1.007',
+             [(221, 1898, '480b', '0009'), (221, 1982, '480b', '0009')]),
+            ('umk3-eu-reva-v2000', 'T-25403H  V2.000',
+             [(221, 1914, '480b', '0009'), (221, 1998, '480b', '0009')]),
+            ('hebereke-popoitto-jp', 'T-1504G   V1.002',
+             [(198, 905, '01', '56'), (198, 773, '01', '56')]),
+            ('super-real-mahjong-p7-special-jp', 'T-16510G  V1.003',
+             [(176, 536, '2232', '0009')]),
+            ('hissatsu-pachinko-jp-v1003', 'T-1503G   V1.003', [(174, 157, '01', '78')]),
+            ('heart-of-darkness-jp-proto', '999999999 V1.000',
+             [(172, 208, '0400', '0240'), (171, 1748, '2102', '0009')])]
+        keys = set()
+        for name, identity, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.fixture.output) as folder:
+                self.path = Path(folder)
+                source = json.loads((overlay.ROOT / 'recipes' / f'{name}-sector.json').read_text())
+                self.assertEqual(source['disc_id'], identity)
+                self.assertTrue(source['replaces_callback'])
+                self.assertNotIn('cart_mode', source)
+                self.assertNotIn(identity, keys)
+                keys.add(identity)
+                self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                                  for w in source['writes']], expected)
+                contexts = {}
+                if name.startswith('umk3-'):
+                    contexts = {221: [(w['offset']+2, 'e408') for w in source['writes']]}
+                elif name.startswith(('hissatsu-', 'hebereke-')):
+                    for w in source['writes']:
+                        contexts.setdefault(w['fad'], []).append((w['offset']-1, '88'))
+                elif name.startswith('heart-'):
+                    contexts = {172: [(210, '0000')], 171: [(1750, 'e0001102')]}
+                recipe, raws = self.source_fixture(source, identity[10:].encode(), contexts)
+                self.check_delivery(recipe, raws)
+
+    def test_status_compare_changes_only_t_for_all_status_bytes(self):
+        for immediate in (1, 0x56, 0x78):
+            for status in range(256):
+                for incoming_t in (0, 1):
+                    flags = [incoming_t]
+                    before, after, pr, memory, writes, calls = execute(
+                        bytes([0x88, immediate]), 0x06018000, 0x06018002, {},
+                        registers={0: status}, flags=flags)
+                    self.assertEqual(after, before)
+                    self.assertEqual(flags, [int(status == immediate)])
+                    self.assertEqual((pr, memory, writes, calls), (0x06018002, {}, [], []))
+
+    def test_umk3_keeps_original_argument_instruction_without_calling_cdon_helper(self):
+        address, helper, incoming_pr = 0x0601875a, 0x06017a3c, 0x06012340
+        for t in (0, 1):
+            flags = [t]
+            before, after, pr, ram, writes, calls = execute(
+                bytes.fromhex('0009e408'), address, address+4, {},
+                registers={8: helper}, return_address=incoming_pr, flags=flags)
+            before[4] = 8
+            self.assertEqual(after, before)
+            self.assertEqual((pr, ram, writes, calls, flags), (incoming_pr, {}, [], [], [t]))
+            result = execute(bytes.fromhex('480be408'), address, address+4, {},
+                             registers={8: helper}, external=helper, flags=[t])
+            self.assertEqual(result[-1], [(8, result[0][5])])
+
+    def test_heart_keeps_aref_clear_while_omitting_only_asr_store(self):
+        for t in (0, 1):
+            for value in (0, 0x1ff0, 0x23301ff0, 0xffffffff):
+                for store in (0x2102, 9):
+                    ram = region(0x25fe00b0, 16)
+                    code = store.to_bytes(2, 'big') + bytes.fromhex('e0001102')
+                    flags = [t]
+                    before, after, pr, memory, writes, calls = execute(
+                        code, 0x060106c4, 0x060106ca, ram, flags=flags,
+                        registers={0: value, 1: 0x25fe00b0})
+                    before[0] = 0
+                    self.assertEqual(after, before)
+                    expected = dict(ram)
+                    if store != 9:
+                        expected.update(enumerate(value.to_bytes(4, 'big'), 0x25fe00b0))
+                    expected.update(enumerate(bytes(4), 0x25fe00b8))
+                    self.assertEqual(memory, expected)
+                    self.assertEqual(writes, ([(0x25fe00b0, 4, value)] if store != 9 else []) +
+                                     [(0x25fe00b8, 4, 0)])
+                    self.assertEqual((pr, flags, calls), (0x060106ca, [t], []))
+
 
 if __name__ == '__main__':
     unittest.main()

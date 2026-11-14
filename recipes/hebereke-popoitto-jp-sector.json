@@ -1,0 +1,34 @@
+{
+  "abi": 2,
+  "product_id": "T-1504G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Popoitto Hebereke (Japan): PAUSE check",
+  "summary": "Preserve both inherited Japanese PAUSE-check edits.",
+  "rationale": "Preserve the original SAROO compatibility edit on this exact disc source, with complete FILE hash, raw-sector and preimage guards. See doc/OCTOBER-REVISION-PROFILES.md for source, instruction, callback-delivery evidence and timing/audio/physical limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "dad376198d07d6bafe74cc059408eaf685801adeaa6c17f96e2cb7bfe5a891b6"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 198,
+      "offset": 905,
+      "before": "01",
+      "after": "56",
+      "effect": "Change CMP/EQ immediate from 1 to 0x56; keep the following branch and register operands.",
+      "reason": "The original callback describes an endless PAUSE-status loop and changes both comparisons on this Japanese layout. This recipe reproduces those source edits; the underlying failure is not newly reproduced."
+    },
+    {
+      "fad": 198,
+      "offset": 773,
+      "before": "01",
+      "after": "56",
+      "effect": "Change CMP/EQ immediate from 1 to 0x56; keep the following branch and register operands.",
+      "reason": "The original callback describes an endless PAUSE-status loop and changes both comparisons on this Japanese layout. This recipe reproduces those source edits; the underlying failure is not newly reproduced."
+    }
+  ],
+  "disc_id": "T-1504G   V1.002"
+}

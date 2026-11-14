@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "T-16510G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Super Real Mahjong P7 P's Club Special: A-bus settings",
+  "summary": "Preserve the inherited removal of this game\u2019s ASR0 store.",
+  "rationale": "Preserve the original SAROO compatibility edit on this exact disc source, with complete FILE hash, raw-sector and preimage guards. See doc/OCTOBER-REVISION-PROFILES.md for source, instruction, callback-delivery evidence and timing/audio/physical limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "76efc47938bc08d80091cc7a671d7b3f6812f02484987df6fbe482a5f9c9a024"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 176,
+      "offset": 536,
+      "before": "2232",
+      "after": "0009",
+      "effect": "NOP MOV.L R3,@R2 at 06011208; the preceding literals resolve R2 to ASR0(25FE00B0) and R3 to 23301FF0.",
+      "reason": "Retain the existing SAROO-compatible bus setup. Sega specifies ASR0 bus settings, but the upstream source does not document this title\u2019s original symptom."
+    }
+  ],
+  "disc_id": "T-16510G  V1.003"
+}

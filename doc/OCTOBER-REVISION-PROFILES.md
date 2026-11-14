@@ -218,6 +218,98 @@ native-disc runs exclude SAROO's bus/service; the caller models park the slave,
 disable cache and model BIOS copying. Keep all profiles opt-in; full-game,
 concurrency, reset/return and physical qualification remain open.
 
+## Six direct revisions
+
+Adapted from paps-g `a9c15a7e`, with the later Hissatsu status interpretation.
+Attribution is [UMK3 issue #206](https://github.com/tpunix/SAROO/issues/206)
+and the retained tpunix callbacks `Ultimate_Mortal_Kombat_3_patch`,
+`Hebereke_Popoitto_patch`, `srmp7_patch`,
+`Hissatsu_Pachinko_Collection_patch` and `Heart_of_Darkness_patch` in the
+[original source](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+Our adaptation uses exact-disc source edits and revision-specific filenames;
+it does not newly prove the need for every inherited workaround.
+
+| Identity / recipe | Source operation |
+| --- | --- |
+| `T-25403H  V1.007` [UMK3 Europe](../recipes/umk3-eu-v1007-sector.json) | NOP `480b` at `0601875a`, `060187ae` |
+| `T-25403H  V2.000` [UMK3 Europe Rev A](../recipes/umk3-eu-reva-v2000-sector.json) | NOP `480b` at `0601876a`, `060187be` |
+| `T-1504G   V1.002` [Popoitto Hebereke](../recipes/hebereke-popoitto-jp-sector.json) | Compare immediates `1→56` at `0601d378`, `0601d2f4` |
+| `T-16510G  V1.003` [P7 Special](../recipes/super-real-mahjong-p7-special-jp-sector.json) | NOP `2232` ASR0 store at `06011208` |
+| `T-1503G   V1.003` [Hissatsu](../recipes/hissatsu-pachinko-jp-v1003-sector.json) | First guard false; compare `1→78` at `0601088c` |
+| `999999999 V1.000` [Heart prototype](../recipes/heart-of-darkness-jp-proto-sector.json) | Literal `04000000→02400000` at `060108c0`; NOP ASR0 store `2102` at `060106c4` |
+
+UMK3's helpers at `06017a3c`/`06017a4c` write argument8 to COMREG
+`2010001f`, with SF at `20100063`.
+[Sega SMPC command list, printed p.27](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf)
+identifies command08 as CDON. The recipes preserve both original `e408`
+argument instructions formerly in JSR delay slots. Bounded instruction checks
+show they execute after NOP with unchanged other GPR/T/PR state and no helper
+call; the original JSR control observes argument8. No separate detector or
+new runtime suppression is included.
+
+Hissatsu V1.003's first revision guard is false (`0601085d=03`). Its original
+status getter copies cached CD status while preserving the interrupt mask;
+`06010888` reads the byte, `0601088c` compares with1 and the following BT
+returns to `0601087e`. The inherited change is `78`, without moving that
+branch or changing the getter. **PAUSE is CD-drive status here.**
+[Sega CD communication interface, §7.2.4 data specification 4.0, Status and Report (1/2), printed p.59](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf)
+defines 01 as PAUSE; 78 is an inherited compatibility value, not a specified
+status. The later source review corrects the earlier ambiguous pause wording.
+It does not establish why the workaround was originally necessary or demonstrate
+hardware execution of that loop. Public instruction controls exhaust all256
+status bytes, both incoming T states and each inherited compare value.
+
+P7's literal-backed store writes `23301ff0` to ASR0. Heart's source preserves
+the following `e000 1102` AREF clear and the literal's PC-relative reader
+`d08c` at `0601068c`.
+[Sega SCU §3.6, pp.62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf)
+supports those register interpretations;
+[Hitachi Tables 2.12–2.14, pp.33–37](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+supports the memory and compare effects. These references do not prove every
+ASR write is prohibited or explain Heart's broader literal dependency.
+The prototype's generic nine-digit product ID requires the exact original
+track hash and complete sector/preimage guards, not a title/ID guess.
+
+Fresh full-CUE compilation rehashes all six complete data tracks and reproduces
+the archived packs byte for byte: seven records / 2,580 bytes. Current Rust/C
+source checks stream all complete IPs and first files, including Heart's full
+983,040-byte first file through `06100000`; none is shortened for a fixture.
+Hissatsu's complete postimage SHA-256 is
+`3e5f5f1e0eace80148923354fc05a3a3a776c9f10b42765ee8e0745c23456ddc`,
+matching the later independent full-file review. Generated unedited final-sector
+padding remains explicit. Original media is unchanged.
+
+Synthetic sector checks cover every exact edit, original delay slots and
+untouched AREF clear, and complete raw postimages/refusal/retry. The real C
+launch checks cover all six profiles and the already-public Hissatsu V1.007 /
+Metal Slug V1.005 controls, complete high Work RAM/VDP1, rejected/missing/physical
+routes and user RAM priority. The host fixture explicitly maps Heart's
+big-endian high-half store relative to its full scalar guard; separate byte
+oracles and SH-2 checks establish the source edit. A changed prototype literal
+retains the callback's no-write branch.
+
+Historical compiled callers use the full 32 KiB initial transfer and complete
+first files. The first Heart fixture put its artificial stack/return stub
+inside the game's load extent; the corrected fixture uses the linked menu's
+`0201d8d8` stack, checks all36 caller-stack bytes and moves its return stub to
+low Work RAM. That is a fixture correction, not a game fix. BIOS copies are
+modeled, cache disabled and slave parked; concurrency remains unqualified.
+
+Historical 7,201-frame native-disc pairs match all121 video checkpoints for
+each source. Popoitto, P7 Special, Hissatsu and Heart match all121 audio
+checkpoints and complete PCM. UMK3 Europe V1.007 / V2.000 match only47 /48
+audio checkpoints and full PCM differs. Those timing/audio holds remain open;
+no artificial delay is added. Later private Hissatsu trials report launch,
+purchase/firing and BIOS/menu return on a separate test pair, not qualification
+of this public firmware or proof that the edited loop executed. Test/input
+helpers from those trials are excluded.
+
+Hissatsu Rev A and Metal Slug Rev A replacement settings are already public and
+are deduplicated. Full sixteen-byte lookup keys permit each revision's pack to
+coexist without a new product-only alternative bundle. No firmware runtime or
+resource change, callback retirement, issue closure or new physical game
+qualification. Keep all six opt-in with the recorded route/timing limits.
+
 ## Reproducible checks
 
 ```sh

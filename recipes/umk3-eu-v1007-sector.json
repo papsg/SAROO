@@ -1,0 +1,34 @@
+{
+  "abi": 2,
+  "product_id": "T-25403H",
+  "origin": "https://github.com/tpunix/SAROO/issues/206",
+  "title": "Ultimate Mortal Kombat 3 (Europe): CDON calls",
+  "summary": "Skip the two matching SMPC CDON calls while retaining their delay slots.",
+  "rationale": "Preserve the original SAROO compatibility edit on this exact disc source, with complete FILE hash, raw-sector and preimage guards. See doc/OCTOBER-REVISION-PROFILES.md for source, instruction, callback-delivery evidence and timing/audio/physical limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "78d440a1f285fb48d1bcced86372ed3f38245674cd5f3c94b22945c54a5537e5"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 221,
+      "offset": 1898,
+      "before": "480b",
+      "after": "0009",
+      "effect": "Replace JSR @R8 with NOP; retain MOV #8,R4 in its delay slot.",
+      "reason": "The shared helper writes argument 8 to SMPC COMREG, which issues CDON and enables the native drive. Preserve the inherited SAROO compatibility workaround on this exact European revision."
+    },
+    {
+      "fad": 221,
+      "offset": 1982,
+      "before": "480b",
+      "after": "0009",
+      "effect": "Replace JSR @R8 with NOP; retain MOV #8,R4 in its delay slot.",
+      "reason": "The shared helper writes argument 8 to SMPC COMREG, which issues CDON and enables the native drive. Preserve the inherited SAROO compatibility workaround on this exact European revision."
+    }
+  ],
+  "disc_id": "T-25403H  V1.007"
+}

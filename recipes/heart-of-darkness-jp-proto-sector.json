@@ -1,0 +1,34 @@
+{
+  "abi": 2,
+  "product_id": "999999999",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Heart of Darkness prototype: literal and A-bus settings",
+  "summary": "Preserve the guarded prototype literal change and ASR0-store removal.",
+  "rationale": "Preserve the original SAROO compatibility edit on this exact disc source, with complete FILE hash, raw-sector and preimage guards. See doc/OCTOBER-REVISION-PROFILES.md for source, instruction, callback-delivery evidence and timing/audio/physical limits. Keep opt-in with the original callback available.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "0a1cea2dc43c182a7d786eaa907c7e0b1eef94fc70cdebf357812515b069b47e"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 172,
+      "offset": 208,
+      "before": "0400",
+      "after": "0240",
+      "effect": "Change the guarded 32-bit literal at 060108C0 from04000000 to 02400000 by replacing its first word.",
+      "reason": "Reproduce the matching prototype callback. The literal is read by MOV.L at 0601068C; the upstream source does not explain the broader game dependency."
+    },
+    {
+      "fad": 171,
+      "offset": 1748,
+      "before": "2102",
+      "after": "0009",
+      "effect": "NOP MOV.L R0,@R1 at 060106C4; the preceding literals resolve R1 to ASR0(25FE00B0) and R0 to 02201220. Keep the following AREF clear.",
+      "reason": "Preserve SAROO\u2019s inherited bus-setting workaround without suppressing the separate refresh-register write."
+    }
+  ],
+  "disc_id": "999999999 V1.000"
+}

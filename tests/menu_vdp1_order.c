@@ -43,6 +43,11 @@ static void *memory_at(uintptr_t address)
     assert(address == 0x02820000);
     return &mailbox;
 }
+static void *native_high_half(uintptr_t address)
+{
+    const uint16_t endian = 1;
+    return (u8*)memory_at(address) + (*(const u8*)&endian ? 2 : 0);
+}
 static u32 LE32(const u32 *p)
 {
     ++cfg_reads;
@@ -766,6 +771,34 @@ static void japanese_revisions(void)
     revision_launches(cases, sizeof cases / sizeof cases[0]);
 }
 
+static void direct_revisions(void)
+{
+    static const struct revision_case cases[] = {
+        {"T-25403H  V1.007", 0, 0, 0, {
+            {0x0601875a, 2, 0x480b, 9}, {0x0601875c, 2, 0xe408, 0xe408},
+            {0x060187ae, 2, 0x480b, 9}, {0x060187b0, 2, 0xe408, 0xe408}}},
+        {"T-25403H  V2.000", 0, 0, 0, {
+            {0x0601876a, 2, 0x480b, 9}, {0x0601876c, 2, 0xe408, 0xe408},
+            {0x060187be, 2, 0x480b, 9}, {0x060187c0, 2, 0xe408, 0xe408}}},
+        {"T-1504G   V1.002", 0, 0, 0, {
+            {0x0601d379, 1, 1, 0x56}, {0x0601d2f5, 1, 1, 0x56}}},
+        {"T-16510G  V1.003", 0, 0, 0, {{0x06011208, 2, 0x2232, 9}}},
+        {"T-1503G   V1.003", 0, 0x0601085d, 3, {{0x0601088d, 1, 1, 0x78}}},
+        {"999999999 V1.000", 0, 0, 0, {
+            {0x060108c0, 4, 0x04000000, 0x02400000}, {0x060106c4, 2, 0x2102, 9},
+            {0x060106c6, 2, 0xe000, 0xe000}, {0x060106c8, 2, 0x1102, 0x1102}}},
+        /* Already-public policies are controls, not additional profiles. */
+        {"T-1503G   V1.007", 0, 0, 0, {{0x0601085d, 1, 1, 0x56}}},
+        {"T-3111G   V1.005", 1, 0, 0, {{0x06079f90, 2, 0x2122, 9}}},
+    };
+    revision_launches(cases, sizeof cases / sizeof cases[0]);
+    reset("999999999 V1.000", 53);
+    REG32(0x060108c0) = 0x04000001;
+    REG16(0x060106c4) = 0x2102;
+    read_1st(); finished();
+    assert(REG32(0x060108c0) == 0x04000001 && REG16(0x060106c4) == 0x2102);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -806,6 +839,8 @@ int main(int argc, char **argv)
             }
     }else if(!strcmp(mode, "japanese-revisions")){
         japanese_revisions();
+    }else if(!strcmp(mode, "direct-revisions")){
+        direct_revisions();
     }else if(!strcmp(mode, "config")){
         for(int croc=0;croc<2;++croc){
             reset(croc ? "T-5029H-50V1.000" : "UNKNOWN", 97);
@@ -911,7 +946,13 @@ int main(int argc, char **argv)
                g->patch_func == Fighting_Vipers_JAP_patch ||
                g->patch_func == Metal_Slug_patch ||
                g->patch_func == MANX_TT_SUPER_BIKE_patch ||
-               g->patch_func == WHIZZ_patch) continue;
+               g->patch_func == WHIZZ_patch ||
+               g->patch_func == Ultimate_Mortal_Kombat_3_patch ||
+               g->patch_func == Hebereke_Popoitto_patch ||
+               g->patch_func == srmp7_patch ||
+               g->patch_func == Hissatsu_Pachinko_Collection_patch ||
+               g->patch_func == Heart_of_Darkness_patch ||
+               g->patch_func == Metal_Slug_A_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);
