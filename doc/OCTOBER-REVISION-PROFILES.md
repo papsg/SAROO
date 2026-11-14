@@ -212,7 +212,8 @@ Historical paired 7,201-frame native-disc runs retain these limits:
 | Metal Slug V1.002 | 61 / 49 | No |
 | Whizz | 102 / 121 | Yes |
 
-All preserved available comparison inputs rehash. Different video/audio remains
+Available saved comparison outputs rehash. Mutable shared input pins are
+accounted for separately below. Different video/audio remains
 recorded, without added delays or a claim of all-site execution. The original
 native-disc runs exclude SAROO's bus/service; the caller models park the slave,
 disable cache and model BIOS copying. Keep all profiles opt-in; full-game,
@@ -416,6 +417,63 @@ frame input can change progression. No compensating delay or original intended
 synchronization is inferred. Keep opt-in with audio/timing, other modes,
 computed/generated paths, cache/concurrency, reset/return and physical
 qualification open. No callback retirement or original issue closure.
+
+## Evidence inventory and build scope
+
+The six historical receipt inventories are independently rechecked, preserving
+the original receipts, sources, failed fixtures and observations. Their current
+dispositions are:
+
+| Receipt | Matching available pins | Unavailable | Changed shared inputs |
+| --- | ---: | ---: | ---: |
+| Die Hard USA migration | 159 | 28 | 4 |
+| Croc migration | 713 | 38 | 5 |
+| Additional Japanese revisions | 1059 | 1 | 5 |
+| Direct revisions | 915 | 30 | 6 |
+| Manx revisions | 211 | 19 | 7 |
+| Japanese Die Hard capacity | 402 | 18 | 11 |
+
+Changed inputs are later-mutated shared firmware images, source/tool/test files
+or explanatory recipe metadata. They are not counted as freshly verified
+historical runtime. Missing inputs include older external-library media. Fresh
+port checks use the current public compiler/decoder and preserved complete
+original sources; available complete discs are separately recompiled. No old
+receipt is rewritten to erase a mismatch. Historical comparisons remain
+historical, with their original limits; no new Saturn run is claimed.
+
+All sixteen current logical-source manifests (fifteen new profiles and the
+existing USA Manx control) pass, totaling6,661 streamed sectors,
+13,625,814 supplied logical bytes and43 target records. Complete postimages,
+original source/pack hashes and generated padding are checked. All fifteen new
+scoped keys are distinct across the published recipe library. These logical
+checks do not replace the separate complete-track compilation or authenticate
+missing original raw padding.
+
+The current sanitizer-enabled production C decoder additionally reproduces
+all43 complete target-sector postimages. For each record, seven independent
+damage locations span sync/header, payload and parity. All301 cases refuse
+without modifying the damaged buffer, retain the selection across two failed
+attempts and apply both correct retries. Unarmed, unrelated-FAD and cleared
+controls leave buffers unchanged. These checks use preserved original source
+payloads and the exact admitted records, separately from synthetic fixtures.
+
+MCU, menu and FPGA runtime sources exactly match the preceding public baseline.
+All input/SDK pins and saved ELF identities are rechecked against the existing
+target builds; no redundant runtime rebuild is claimed. GNU MCU load remains
+58,628 bytes with LTO /62,820 without, leaving6,908 /2,716 bytes; static DTCM
+span remains50,896. Menu body remains85,864 bytes with19,336 margin,
+9,488 BSS and16 KiB reserved stack. Existing linked SH-2 callback checks pass
+against that source-matched menu. These are source, host and link resource
+checks, not installed firmware or physical qualification.
+
+Final combined validation passes94 Python groups:1,120 passing methods and
+one Windows-only replacement-failure skip. All23 Rust workspace tests,
+formatting and strict Clippy pass. The optimized overlay profile passes91
+methods; the actual C launch checks pass29 in sanitizer and optimized builds,
+including an explicit four-byte alignment guarantee for the host comparison
+buffer. The full run includes compiled Arm RTX/QEMU and existing FPGA
+simulations. Windows replacement behavior and physical game acceptance remain
+unqualified. No new USB stack, runtime diagnostic or device operation is included.
 
 ## Reproducible checks
 

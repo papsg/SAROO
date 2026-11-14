@@ -714,7 +714,7 @@ struct revision_case {
 
 static void revision_launches(const struct revision_case *cases, unsigned count)
 {
-    static u8 reference[sizeof high];
+    static _Alignas(4) u8 reference[sizeof high];
     for(unsigned game=0;game<count;++game) for(unsigned physical=0;physical<2;++physical)
         for(unsigned tag=0;tag<3;++tag) for(unsigned override=0;override<2;++override) {
             const struct revision_case *c = cases + game;

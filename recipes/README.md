@@ -148,3 +148,14 @@ only to the pinned YZB 4 MiB image. Its two packed bytes reproduce the inherited
 ASR0 workaround without inserting a writer or redirecting startup. See
 [complete source/BIOS-output proof and remaining limits](../doc/REMAINING-GAME-PROFILES.md#the-king-of-fighters-97-exact-yzb-4-mib-v1000-source).
 It remains opt-in, with explicit user RAM settings taking priority.
+
+The [October revision profiles](../doc/OCTOBER-REVISION-PROFILES.md) add fifteen
+exact-source candidates: Die Hard Trilogy USA/Japan, Croc USA, five Japanese
+revisions (Megamix, Vipers Rev C, Metal Slug, Manx and Whizz), two European
+UMK3 releases, Popoitto, P7 Special, Hissatsu and the Heart of Darkness
+prototype, plus European Manx. Existing USA Manx and Rev A Metal Slug/Hissatsu
+policies are controls, not duplicate additions. These profiles retain original
+callbacks and remain opt-in with explicit audio/timing, route and physical
+limits. The linked notes provide original attribution, exact Sega/Hitachi
+sections, source identities and reproducible checks. Japanese Die Hard needs
+the already-public twelve-record engine; no new firmware runtime is added.
