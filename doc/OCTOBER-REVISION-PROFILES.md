@@ -83,6 +83,62 @@ defines BT. [Sega SCU §1.2, Figures 1.3 and 1.5, printed pp.4 and 6](https://an
 documents the A-bus map. These references interpret instructions/addresses;
 they do not endorse the game's original synchronization or certify this policy.
 
+## Croc USA V1.000
+
+[Recipe](../recipes/croc-us-v1000-sector.json), adapted from paps-g `5fcb1555`.
+The inherited final-VRAM-word workaround comes from
+[issue #181](https://github.com/tpunix/SAROO/issues/181#issuecomment-2295618018),
+[its reported success](https://github.com/tpunix/SAROO/issues/181#issuecomment-2296596138)
+and tpunix's retained `Croc_LOG_patch`. The source-mode repair is our
+independent adaptation; it does not resolve all reports in
+[issue #359](https://github.com/tpunix/SAROO/issues/359).
+
+The verified USA image has identity `T-5029H-50V1.000`, also used by Europe.
+The exact original CUE FILE SHA-256 in the recipe distinguishes the reviewed
+source: `8fca6a9e78d07fb1260305572cba7df60c4c1b44f177b4f1767c347064ecd7c1`.
+Do not select a recipe by region label or title alone. Original `0;1` is
+330,384 bytes at LBA22/load `06004000`, SHA-256
+`d6c1ce9c681b60b829ded4fa1d737a2cfbf43a42fb2b75be9904a9ac1a20eb5f`.
+
+Seven literals in five nontextured command-builder branches and one initialized
+polygon template contain PMOD `00a8`/`00ac`: SPD is clear and color mode5 is
+selected. Change them to `00c0`/`00c4`, preserving the Gouraud bit. Both
+textured branches and all reader/store instructions remain original. The
+seven PC-relative readers, complete reader-to-store contexts and command-type
+branches are freshly checked against the complete preserved file. The eighth
+value is in the original fullscreen polygon template, not a copied helper.
+The corrected address `060110e4` is the fourth reader; an earlier prose note
+omitted one digit. There is no callback writer or new RAM action.
+
+[Sega VDP1 §6.3, printed pp.86–88](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf)
+requires ECD=SPD=1 for polygons, polylines and lines; its color-mode definition
+and [§7.7, pp.126–127](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf)
+require mode000 for nontextured polygons. The observed native emulator reads
+the final VRAM word for the invalid mode, explaining why the inherited `FFFF`
+write changes opacity. That undocumented read is not claimed as guaranteed
+physical VDP1 behavior. The original programmer's broader register-initialization
+account does not independently identify these precise PMOD errors.
+
+Eight payload bytes change in six guarded sectors. The current compiler/C
+source check reproduces all 162 sectors of the complete file and the archived
+2,112-byte pack, SHA-256
+`fe7a4047f5360fdf4f9b908531590c40626d5fb0dd8f0948bf8163d3dd43c6a6`.
+The unedited final 1,392 padding bytes are generated explicitly. Whole raw-track
+identity remains historical because the complete original media is unavailable.
+Public synthetic tests check exact byte positions, ECD/SPD/color/Gouraud,
+complete raw postimages, refusal/retry and retained callback/configuration
+priority, including physical discs. No firmware runtime or resource changes.
+
+The rehashed historical 9,601-frame comparison reaches first-level gameplay:
+corrected source with cleared final VRAM matches the inherited `FFFF` control
+at all 161 video/audio/sample-count/nonblack checkpoints and across complete
+PCM. Corrected observed commands use `00c0`/`00c4`. A full-data-track scan of
+201,504,768 payload bytes found each 64-byte source window once; this does not
+exclude other, compressed or generated code. Earlier capped observers and
+invalid fixtures remain evidence and are not absence proofs. Keep opt-in;
+full-game paths, reset/return, paired compiled-menu launch and physical VDP1
+qualification remain open. No callback retirement or issue closure.
+
 ## Reproducible checks
 
 ```sh

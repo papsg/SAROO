@@ -1,0 +1,82 @@
+{
+  "abi": 2,
+  "product_id": "T-5029H-50",
+  "origin": "https://github.com/tpunix/SAROO/issues/181",
+  "title": "Croc (USA v1.000): nontextured polygon modes",
+  "summary": "Correct solid-polygon drawing flags in the game source instead of seeding unrelated video memory.",
+  "rationale": "Seven PC-relative literals in five nontextured command-builder branches and one initialized polygon template use 00A8/00AC: SPD is clear and color mode 5 is selected. Sega VDP1 manual sections 6.3 and 7.7 require ECD=SPD=1 and color mode 000 for polygons. Replace these specific values with 00C0/00C4, retaining Gouraud shading. Textured branch values remain unchanged. In the bounded emulator comparison, the corrected output matches the inherited FFFF workaround at all 161 checkpoints and across the complete audio stream, even with the final VRAM word cleared. Whole-track compilation identity and complete-sector runtime guards exclude unreviewed revisions. Inactive candidate: full game paths, paired SAROO launch and physical acceptance remain open; retain the original callback.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "8fca6a9e78d07fb1260305572cba7df60c4c1b44f177b4f1767c347064ecd7c1"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 196,
+      "offset": 1722,
+      "before": "00ac",
+      "after": "00c4",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x060106AA; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 197,
+      "offset": 1078,
+      "before": "00a8",
+      "after": "00c0",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x06010C26; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 197,
+      "offset": 1356,
+      "before": "00ac",
+      "after": "00c4",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x06010D3C; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 198,
+      "offset": 258,
+      "before": "00a8",
+      "after": "00c0",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x060110F2; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 198,
+      "offset": 548,
+      "before": "00ac",
+      "after": "00c4",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x06011214; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 199,
+      "offset": 1390,
+      "before": "00ac",
+      "after": "00c4",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x06011D5E; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 200,
+      "offset": 1054,
+      "before": "00ac",
+      "after": "00c4",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct a nontextured branch of a game command builder at 0x0601240E; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    },
+    {
+      "fad": 329,
+      "offset": 1206,
+      "before": "00a8",
+      "after": "00c0",
+      "effect": "Use the documented nontextured polygon mode with ECD=1, SPD=1 and color mode 000, retaining Gouraud shading where selected.",
+      "reason": "Correct the initialized polygon template at 0x06052CA6; remove dependence on the final VDP1 VRAM word without a RAM handler or firmware write."
+    }
+  ],
+  "disc_id": "T-5029H-50V1.000"
+}

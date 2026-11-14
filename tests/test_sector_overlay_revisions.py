@@ -91,6 +91,26 @@ class RevisionRecipeTests(unittest.TestCase):
             execute(original, address, address+8, {source_address: 0, source_address+1: 0},
                     registers={1: source_address})
 
+    def test_croc_changes_only_eight_polygon_mode_bytes_and_preserves_gouraud(self):
+        source = json.loads((overlay.ROOT / 'recipes/croc-us-v1000-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-5029H-50V1.000')
+        self.assertNotIn('cart_mode', source)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']], [
+            (196, 1722, '00ac', '00c4'), (197, 1078, '00a8', '00c0'),
+            (197, 1356, '00ac', '00c4'), (198, 258, '00a8', '00c0'),
+            (198, 548, '00ac', '00c4'), (199, 1390, '00ac', '00c4'),
+            (200, 1054, '00ac', '00c4'), (329, 1206, '00a8', '00c0')])
+        for w in source['writes']:
+            before, after = int(w['before'], 16), int(w['after'], 16)
+            self.assertEqual(before & 4, after & 4)  # Gouraud selection
+            self.assertEqual(after & 0xc0, 0xc0)  # ECD and SPD
+            self.assertEqual(after & 0x38, 0)  # nontextured color mode
+            self.assertEqual((before ^ after) & ~0x78, 0)
+        recipe, raws = self.source_fixture(source, b'V1.000', {})
+        self.check_delivery(recipe, raws)
+
 
 if __name__ == '__main__':
     unittest.main()

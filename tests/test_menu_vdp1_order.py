@@ -149,6 +149,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
     def test_diehard_replacement_and_retained_physical_and_rejected_callbacks(self):
         self.scenario('diehard')
 
+    def test_croc_optional_replacement_preserves_fallback_and_user_priority(self):
+        self.scenario('croc-overlay')
+
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')
 

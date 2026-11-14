@@ -708,6 +708,20 @@ int main(int argc, char **argv)
             *(u16*)(expected+0x7fffe) = 0xffff;
             read_1st(); finished(); assert(cfg_reads == 1);
         }
+    }else if(!strcmp(mode, "croc-overlay")){
+        static const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+        for(unsigned physical=0;physical<2;++physical) for(unsigned tag=0;tag<3;++tag)
+            for(unsigned override=0;override<2;++override) {
+                reset("T-5029H-50V1.000", 53);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                if(physical || tag != 1) *(u16*)(expected+0x7fffe) = 0xffff;
+                if(override) {
+                    put32(0, 0x20000000 | 0x05c7fffe); put32(4, 0x1234);
+                    *(u16*)(expected+0x7fffe) = 0x1234;
+                }
+                read_1st(); finished(); assert(!others && !cart_count);
+            }
     }else if(!strcmp(mode, "diehard")){
         static const char *ids[] = {"T-16103H  V1.000", "GS-9123   V1.000"};
         static const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT,
