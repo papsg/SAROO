@@ -12,13 +12,16 @@ import tempfile
 import unittest
 import zlib
 
-from check_later_callbacks_sh2 import verify_cyber_handler
+from check_later_callbacks_sh2 import execute, region, verify_cyber_handler, verify_groove_handler
 from test_sector_overlay import ROOT, PRODUCT, canonical, sector
 import test_sector_overlay as overlay_fixture
 
 
 CYBER_HANDLER = bytes.fromhex(
     'd103e2092121d103412b0009000b00090601695a0600d000')
+GROOVE_HANDLER = bytes.fromhex(
+    'd205e1092211d2052211d105d2052212412b0009000b0009'
+    '0600833806099a840600400000280008')
 
 
 class LaterRecipeTests(unittest.TestCase):
@@ -40,18 +43,41 @@ class LaterRecipeTests(unittest.TestCase):
         self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
                           for w in source['writes']], [(333, 362, '2122', '0009')])
         self.assertEqual([g['fad'] for g in source['guards']], [303])
+        return self.source_fixture(source, b'V1.002', {303: [(104, '0600d000')]})
+
+    def groove_fixture(self):
+        source = json.loads((ROOT / 'recipes/groove-on-fight-jp-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-14411G  V1.001')
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']],
+                         [(175, 596, '2012', '0009'), (179, 1736, '2322', '0009'),
+                          (310, 840, '2012', '0009'), (601, 660, '2322', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [174])
+        # Independent original-file extents bind source offsets to each real
+        # callback's destinations, including low Work RAM and a later file.
+        locations = []
+        for w in source['writes']:
+            lba, load = (24, 0x00200000) if w['fad'] < 302 else (152, 0x06004000)
+            locations.append(load + (w['fad'] - 150 - lba) * 2048 + w['offset'] - 16)
+        self.assertEqual(locations, [0x00200a44, 0x00202eb8, 0x06008338, 0x06099a84])
+        return self.source_fixture(source, b'V1.001', {174: [(1136, '06004000')]})
+
+    def source_fixture(self, source, version, guards):
         recipe = copy.deepcopy(source)
         recipe['product_id'] = PRODUCT.decode().strip()
-        recipe['disc_id'] = (PRODUCT + b'V1.002').decode()
+        recipe['disc_id'] = (PRODUCT + version).decode()
         recipe['tracks'] = []
-        raws = {150: sector(150, ip=True, version=b'V1.002'),
-                303: sector(303), 333: sector(333)}
-        guard = bytearray(raws[303])
-        guard[104:108] = bytes.fromhex('0600d000')
-        raws[303] = canonical(guard)
-        edited = bytearray(raws[333])
-        edited[362:364] = bytes.fromhex('2122')
-        raws[333] = canonical(edited)
+        fads = {w['fad'] for w in source['writes']} | set(guards)
+        raws = {150: sector(150, ip=True, version=version)}
+        for fad in sorted(fads):
+            raw = bytearray(sector(fad))
+            edits = [(w['offset'], w['before']) for w in source['writes'] if w['fad'] == fad]
+            for offset, value in edits + guards.get(fad, []):
+                data = bytes.fromhex(value)
+                raw[offset:offset+len(data)] = data
+            raws[fad] = canonical(raw)
         cue, previous = [], None
         for track, (fad, raw) in enumerate(raws.items(), 1):
             if previous is not None and fad != previous + 1:
@@ -79,22 +105,59 @@ class LaterRecipeTests(unittest.TestCase):
 
     def test_cyber_delivers_only_the_later_nop_and_keeps_original_dispatch(self):
         recipe, raws = self.cyber_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_groove_delivers_both_program_edits_without_redirecting_the_call(self):
+        recipe, raws = self.groove_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_streamed_program_keeps_guard_and_unrelated_sectors_unchanged(self):
+        recipe, raws = self.groove_fixture()
+        result, pack = self.compile(recipe)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        original, expected = bytearray(), bytearray()
+        for fad in range(174, 182):
+            raw = raws[fad] if fad in raws else sector(fad)
+            original.extend(raw)
+            post = bytearray(raw)
+            for w in recipe['writes']:
+                if w['fad'] == fad:
+                    value = bytes.fromhex(w['after'])
+                    post[w['offset']:w['offset']+len(value)] = value
+            expected.extend(canonical(post))
+        (self.path / 'original.raw').write_bytes(original)
+        (self.path / 'expected.raw').write_bytes(expected)
+        subprocess.run([self.fixture.decoder, 'stream', pack, self.path / 'original.raw',
+                        self.path / 'expected.raw', '174', '2'],
+                       check=True, capture_output=True, timeout=15)
+        # A bad byte in the final unrelated sector must also fail the oracle.
+        expected[-1] ^= 1
+        (self.path / 'expected.raw').write_bytes(expected)
+        result = subprocess.run([self.fixture.decoder, 'stream', pack,
+                                 self.path / 'original.raw', self.path / 'expected.raw',
+                                 '174', '2'], capture_output=True, timeout=15)
+        self.assertNotEqual(result.returncode, 0)
+
+    def check_delivery(self, recipe, raws):
         result, pack = self.compile(recipe)
         self.assertEqual(result.returncode, 0, result.stderr)
         header = pack.read_bytes()[:24]
-        self.assertEqual(header[4:8], bytes([3, 2, 0, 0x81]))
-        for index, fad in enumerate((303, 333)):
+        self.assertEqual(header[4:8], bytes([3, len(raws) - 1, 0,
+                                          0x80 | recipe.get('cart_mode', 0)]))
+        for index, fad in enumerate(sorted(set(raws) - {150})):
             before = raws[fad]
             after = bytearray(before)
-            if fad == 333:
-                after[362:364] = bytes.fromhex('0009')
+            edits = [w for w in recipe['writes'] if w['fad'] == fad]
+            for w in edits:
+                data = bytes.fromhex(w['after'])
+                after[w['offset']:w['offset']+len(data)] = data
             expected = canonical(after)
             self.assertEqual(before[104:108], expected[104:108])
             (self.path / 'raw').write_bytes(before)
             (self.path / 'post').write_bytes(expected)
-            subprocess.run([self.fixture.decoder, 'guard' if fad == 303 else 'apply',
+            subprocess.run([self.fixture.decoder, 'apply' if edits else 'guard',
                             pack, self.path / 'raw', self.path / 'post', str(index),
-                            '104' if fad == 303 else '362'],
+                            str(edits[0]['offset'] if edits else 104)],
                            check=True, capture_output=True, timeout=15)
 
     def test_cyber_refuses_a_different_revision_or_original_instruction(self):
@@ -124,6 +187,35 @@ class CyberCallbackModelTests(unittest.TestCase):
             code[offset:offset+2] = bytes.fromhex(replacement)
             with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
                 verify_cyber_handler(0x02008268, code)
+
+
+class GrooveCallbackModelTests(unittest.TestCase):
+    def test_original_loader_delay_slot_stores_the_selected_entry(self):
+        # Reviewed 1ST.BIN call sequence; literal values are supplied here.
+        # It explains why the pointer repair is needed by the old redirection
+        # and is already correct with the original, unredirected game target.
+        for target in (0x06004000, 0x020080e4):
+            code = bytearray(0x62)
+            code[:10] = bytes.fromhex('d316d2166133410b2232')
+            code[0x5a:0x5e] = target.to_bytes(4, 'big')
+            code[0x5e:0x62] = bytes.fromhex('00280008')
+            ram = region(0x00280000, 32)
+            _, regs, pr, _, writes, calls = execute(
+                code, 0x00200406, target, ram, return_address=0x06054320)
+            self.assertEqual(writes, [(0x00280008, 4, target)])
+            self.assertEqual(regs[1:4], [target, 0x00280008, target])
+            self.assertEqual(pr, 0x00200410)
+            self.assertFalse(calls)
+
+    def test_original_handler_restores_the_native_delay_slot_value(self):
+        verify_groove_handler(0x020080e4, GROOVE_HANDLER)
+
+    def test_wrong_low_ram_repair_or_continuation_is_rejected(self):
+        for offset in (35, 39):
+            code = bytearray(GROOVE_HANDLER)
+            code[offset] ^= 4
+            with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
+                verify_groove_handler(0x020080e4, code)
 
 
 if __name__ == '__main__':

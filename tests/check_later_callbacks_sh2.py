@@ -1,4 +1,4 @@
-"""Check linked Cyber Bots callbacks with bounded SH-2 instruction semantics.
+"""Check linked later-load callbacks with bounded SH-2 instruction semantics.
 
 Only the selected callbacks and the ssctrl_set call boundary are modeled.
 This is neither a game emulator nor a hardware timing qualification.
@@ -54,6 +54,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None):
             regs[n] = signed(read(pc + 4 + (op & 255) * 2, 2), 16) & 0xffffffff
         elif op >> 12 == 0xe:
             regs[n] = signed(op & 255, 8) & 0xffffffff
+        elif op & 0xf00f == 0x6003:
+            regs[n] = regs[m]
         elif op & 0xf00f in (0x2000, 0x2001, 0x2002):
             write(regs[n], 1 << (op & 3), regs[m])
         elif op == 0x4f22:
@@ -94,6 +96,23 @@ def verify_cyber_handler(address, code):
         assert regs == before, 'Unexpected incoming-register change'
 
 
+def verify_groove_handler(address, code):
+    assert len(code) == 40
+    for seed in (0, 1, 127, 255):
+        ram = (region(0x06008330, 32) | region(0x06099a80, 32) |
+               region(0x00280000, 32))
+        before, regs, pr, after, writes, calls = execute(
+            code, address, 0x06004000, ram, seed=seed, return_address=0x06054320)
+        assert writes == [(0x06008338, 2, 9), (0x06099a84, 2, 9),
+                          (0x00280008, 4, 0x06004000)] and not calls
+        expected = dict(ram)
+        for dest, width, value in writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        assert after == expected and pr == 0x06054320
+        before[1], before[2] = 0x06004000, 0x00280008
+        assert regs == before
+
+
 def check(elf):
     (patch_at, patch), (handler_at, handler), (cart_at, _) = linked_symbol_records(
         elf, ('_CYBER_BOTS_patch', '_CYBER_BOTS_handle1', '_ssctrl_set'))
@@ -111,6 +130,23 @@ def check(elf):
         assert after == expected and regs[8:] == before[8:] and pr == 0x06012340
     print('Linked Cyber Bots launch/cart call, all handler writes, continuation '
           'and incoming-register effects pass')
+    (patch_at, patch), (handler_at, handler) = linked_symbol_records(
+        elf, ('_GROOVE_ON_FIGHT_patch', '_GROOVE_ON_FIGHT_handle'))
+    verify_groove_handler(handler_at, handler)
+    for seed in (0, 1, 127, 255):
+        ram = (region(0x00200a40, 32) | region(0x00202eb0, 32) |
+               region(0x00200450, 32))
+        before, regs, pr, after, writes, calls = execute(
+            patch, patch_at, 0x06012340, ram, seed=seed)
+        assert writes == [(0x00200a44, 2, 9), (0x00202eb8, 2, 9),
+                          (0x00200460, 4, handler_at)] and not calls
+        expected = dict(ram)
+        for dest, width, value in writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        before[1], before[2] = 0x00200460, handler_at
+        assert after == expected and regs == before and pr == 0x06012340
+    print('Linked Groove launch edits, delay-slot pointer store, late writes '
+          'and original continuation pass')
 
 
 if __name__ == '__main__':

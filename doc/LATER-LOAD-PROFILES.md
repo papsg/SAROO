@@ -83,7 +83,78 @@ SAROO boot remain unqualified. Keep the recipe opt-in and the fallback installed
 Sega [ST-040-R4, §§4.3 and 4.7, printed pp. 28–29 and 31](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf)
 describes IP and first-read loading; it does not establish a game's later
 program mapping. That mapping comes from the retained exact-source review.
-The [SCU manual ST-097-R5, §3.2, Figure 3.24, printed p. 62](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf)
+The [SCU manual ST-097-R5, §3.6, Figure 3.24, printed p. 62](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=78)
 documents A-bus access timing. SAROO's 1 MB personality action and this
 game's workaround come from the original implementation, rather than a Sega
 requirement to apply these particular edits.
+
+## Groove on Fight Japan
+
+[Recipe](../recipes/groove-on-fight-jp-sector.json). Adapted from paps-g
+`b86f9f7c` and `b40bc0c5`, using the later `9eb2cb2b` native-source review.
+The original two launch writes and later handler are attributed to
+[tpunix's retained SAROO implementation](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+The exact revision is `T-14411G  V1.001`.
+
+| Original program | Loaded address | FAD / raw offset | Original → replacement |
+| --- | --- | --- | --- |
+| `1ST.BIN;1` | `00200a44` | 175 / 596 | `2012` → `0009` |
+| `1ST.BIN;1` | `00202eb8` | 179 / 1736 | `2322` → `0009` |
+| `G3_PROG.BIN;1` | `06008338` | 310 / 840 | `2012` → `0009` |
+| `G3_PROG.BIN;1` | `06099a84` | 601 / 660 | `2322` → `0009` |
+
+These are the four original ASR0 stores targeted by the inherited callbacks.
+Adjacent refresh-register writes and the original call target are preserved.
+FAD 174 guards that call path. The loader reads `06004000` from `00200460`,
+calls it, and stores the same target to `00280008` in its delay slot. The old
+callback redirects that target and therefore repairs the delay-slot value
+in its handler. With the original target intact, the game already stores
+`06004000`; no additional pointer repair or copied helper is needed.
+
+The 1,764-byte pack has four edited sectors and one read-only guard. It
+requests callback replacement and adds no cartridge action, matching the
+old callback's policy. Both retained comparisons used 1 MB expansion RAM;
+an explicit user cartridge setting remains authoritative. This port does not
+qualify every cartridge personality.
+
+The preserved complete files were freshly rehashed:
+
+| File | LBA / load address | Bytes | Original SHA-256 |
+| --- | --- | --- | --- |
+| `1ST.BIN;1` | 24 / `00200000` | 262,141 | `c6d93e695e5e6e52a3f4dd094f5d56ad081211b05a88478ac9db68701035888a` |
+| `G3_PROG.BIN;1` | 152 / `06004000` | 942,086 | `e53ac6491b12df26a29622682fad147e0c7df231860f8f61c21a4122f3a50014` |
+
+All five reconstructed target-sector CRCs match the archived pack. Compiling
+those exact fragments with the public compiler reproduces its bytes and
+SHA-256 `76cf14f986cc22c35fac1c61f4cd0e079a82cdd9d8fc5c53870078114773d441`.
+The current production decoder then passes both complete program streams:
+128 and 461 sectors, respectively. Only the eight intended logical bytes
+change. The final unedited partial sectors use generated zero padding;
+their original raw padding is not claimed recovered. The complete source
+track was unavailable, so this is not a fresh whole-track hash check.
+
+Two rehashed historical 12,000-frame comparisons use the original-address
+and relocated inherited controls. Each matches all 201 sampled video/audio,
+sample-count and visible-pixel checkpoints and the complete 35,378,032-byte
+PCM stream, SHA-256
+`e4cf13c5d96c56182dee5e74908b221eac2fbc4772036191e69d91a8618d44f0`.
+The earlier four-NOP comparison diverged under different test conditions;
+that difference remains unexplained and preserved. The later controlled
+evidence supports this opt-in native candidate without synthetic timing
+compensation. It does not erase the earlier result or qualify other paths.
+
+The commands above also check Groove's generated source, complete sector
+output, original loader delay slot, linked launch/late callbacks, absent or
+rejected-pack fallback, physical-disc branch and explicit user overrides.
+The stream fixture includes unrelated sectors so a comparison cannot count
+only changed bytes. Runtime firmware inputs and resource sizes are unchanged.
+Physical A-bus/cache behavior, audio, other loads and reset remain open.
+
+Sega [ST-097-R5, §3.6, printed pp. 62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=78)
+defines ASR0 and its timing fields. [ST-210, precautions 09 and 11, printed
+p. 5](https://antime.kapsi.fi/sega/files/ST-210-110194.pdf#page=9) restricts
+preread bits and requires a completed A-bus read before changing ASR.
+Those requirements do not establish a violation in these game routines
+without their preceding accesses. The choice to retain SAROO's existing
+NOP workaround comes from the original compatibility implementation, not
+an invented Sega mandate or a new diagnosis of the game's failure.

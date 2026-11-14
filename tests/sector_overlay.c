@@ -29,6 +29,31 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(!valid);
+    if (!strcmp(argv[1], "stream")) {
+        assert(argc == 7 && !sector_overlay_alternatives());
+        FILE *source = fopen(argv[3], "rb"), *post = fopen(argv[4], "rb");
+        assert(source && post);
+        unsigned fad = (unsigned)strtoul(argv[5], NULL, 10);
+        unsigned expected_hits = (unsigned)strtoul(argv[6], NULL, 10);
+        assert(fad >= 150 && fad < 450000);
+        uint8_t original[RAW_BYTES], expected[RAW_BYTES];
+        unsigned hits = 0, count = 0;
+        sector_overlay_arm();
+        for (;;) {
+            size_t bytes = fread(original, 1, sizeof original, source);
+            if (!bytes) break;
+            assert(bytes == sizeof original && count++ < 512 && fad < 450000);
+            assert(fread(expected, 1, sizeof expected, post) == sizeof expected);
+            int edited = sector_overlay_apply(fad++, original);
+            assert(edited >= 0 && !memcmp(original, expected, sizeof original));
+            hits += edited == 1;
+        }
+        assert(count && hits == expected_hits && !ferror(source));
+        assert(fgetc(post) == EOF && !ferror(post));
+        assert(!fclose(source) && !fclose(post));
+        printf("%u streamed sectors, %u edits: complete raw output passed\n", count, hits);
+        return 0;
+    }
     assert(argc >= 5 && argc <= 7);
     uint8_t original[RAW_BYTES], expected[RAW_BYTES], sector[RAW_BYTES];
     assert(load(argv[3], original, sizeof(original)) == sizeof(original));

@@ -82,3 +82,8 @@ retained callback.
 [Cyber Bots JP V1.002](cyberbots-jp-v1002-sector.json) preserves the later NOP,
 guards the original dispatch and selects 1 MB. Its built-in callback remains
 the fallback. [Source, attribution, reproducible checks and limits](../doc/LATER-LOAD-PROFILES.md#cyber-bots-japan-v1002).
+
+[Groove on Fight JP](groove-on-fight-jp-sector.json) delivers four native
+instruction edits across the first and later programs, preserving the
+original loader call. It adds no RAM-cart action or copied handler.
+[Source, later reevaluation and limits](../doc/LATER-LOAD-PROFILES.md#groove-on-fight-japan).

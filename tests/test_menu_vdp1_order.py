@@ -49,13 +49,15 @@ class MenuVDP1OrderTests(unittest.TestCase):
         table = patch[first:patch.index(b'void patch_game(', first)]
         names = set(re.findall(rb'"[^"\n]+",\s*([A-Za-z_0-9]+)\}', table))
         actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch',
-                  b'DND2_patch', b'FRIENDS_patch', b'kof97_patch', b'CYBER_BOTS_patch'}
+                  b'DND2_patch', b'FRIENDS_patch', b'kof97_patch', b'CYBER_BOTS_patch',
+                  b'GROOVE_ON_FIGHT_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
         # The launch callback installs this address; its linked instruction
         # effects are checked separately by check_later_callbacks_sh2.py.
         code = b'static void CYBER_BOTS_handle1(void) { assert(0); }\n'
+        code += b'static void GROOVE_ON_FIGHT_handle(void) { assert(0); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -83,7 +85,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code = re.sub(rb'\((u8|u16|u32|char)\s*\*\)(0x[0-9a-fA-F]+)',
                       rb'(\1*)memory_at(\2)', code)
         for name in (b'bup_init', b'my_cdplayer', b'my_06b0', b'kof95_handle',
-                     b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1'):
+                     b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1', b'GROOVE_ON_FIGHT_handle'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -163,6 +165,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_cyber_keeps_the_original_handoff_and_ordered_one_mb_setup(self):
         self.scenario('cyber')
+
+    def test_groove_retains_fallback_and_leaves_later_writes_to_the_game_load(self):
+        self.scenario('groove')
 
 
 if __name__ == '__main__':

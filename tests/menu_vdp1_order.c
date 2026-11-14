@@ -9,7 +9,7 @@
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
-static _Alignas(4) u8 vram[0x80000], high[0x100000], config[256];
+static _Alignas(4) u8 vram[0x80000], high[0x100000], low[0x100000], config[256];
 static _Alignas(4) u8 expected[sizeof vram], untouched[sizeof vram];
 enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
 static enum rom_kind rom_ready;
@@ -36,6 +36,7 @@ static void *memory_at(uintptr_t address)
     address &= 0x1fffffff; /* Cached and uncached hardware aliases. */
     if(address >= 0x05c00000 && address < 0x05c80000) return vram + (address - 0x05c00000);
     if(address >= 0x06000000 && address < 0x06100000) return high + (address - 0x06000000);
+    if(address >= 0x00200000 && address < 0x00300000) return low + (address - 0x00200000);
     assert(address == 0x02820000);
     return &mailbox;
 }
@@ -136,6 +137,7 @@ static void reset(const char *id, unsigned seed)
      * are preserved. Everything beyond that prefix is initially zero. */
     for(unsigned i=0;i<sizeof expected;i+=32) *(u16*)(expected+i) = 0x8000;
     memset(high, 0xa5, sizeof high);
+    memset(low, 0xa5, sizeof low);
     memset(config, 0, sizeof config);
     memcpy(high+0x2020, id, strlen(id)+1);
     REG32(0x06000284) = 0x6001234;
@@ -324,6 +326,32 @@ static void cyber_launches(void)
             }
 }
 
+static void groove_launches(void)
+{
+    for(unsigned admitted = 0; admitted < 2; ++admitted)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned override = 0; override < 3; ++override) {
+                reset("T-14411G  V1.001", 53);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(admitted ? SD_OVERLAY_REPLACEMENT : 0);
+                int selected = admitted && !physical;
+                REG32(0x00200460) = 0x06004000;
+                REG16(0x00200a44) = selected ? 9 : 0x2012;
+                REG16(0x00202eb8) = selected ? 9 : 0x2322;
+                REG16(0x06008338) = 0x2012;
+                REG16(0x06099a84) = 0x2322;
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                assert(REG16(0x00200a44) == 9 && REG16(0x00202eb8) == 9);
+                assert(REG32(0x00200460) == (selected ? 0x06004000 :
+                       (u32)(uintptr_t)GROOVE_ON_FIGHT_handle));
+                assert(REG16(0x06008338) == 0x2012 && REG16(0x06099a84) == 0x2322);
+                assert(!others && cart_count == (override != 0));
+                if(override) assert(cart_writes[0] ==
+                                    (override == 1 ? CS0_RAM1M : CS0_RAM4M));
+            }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -445,6 +473,8 @@ int main(int argc, char **argv)
         kof97_launches();
     }else if(!strcmp(mode, "cyber")){
         cyber_launches();
+    }else if(!strcmp(mode, "groove")){
+        groove_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -457,7 +487,7 @@ int main(int argc, char **argv)
             if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch ||
                g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
                g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch ||
-               g->patch_func == CYBER_BOTS_patch) continue;
+               g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);
