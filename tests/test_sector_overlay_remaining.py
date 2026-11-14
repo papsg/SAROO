@@ -8,7 +8,8 @@ import test_sector_overlay as overlay
 import test_sector_overlay_later as later
 from check_later_callbacks_sh2 import execute, region
 from check_remaining_callbacks_sh2 import (BATMAN_HANDLER, MSH_HANDLER, SSCTRL_HELPER,
-                                            verify_batman_handler, verify_msh_handler)
+                                            PIA_HANDLER, verify_batman_handler,
+                                            verify_msh_handler, verify_pia_handler)
 
 
 class RemainingRecipeTests(unittest.TestCase):
@@ -49,6 +50,26 @@ class RemainingRecipeTests(unittest.TestCase):
                 self.path = Path(folder)
                 recipe, raws = self.batman_fixture(region)
                 self.check_delivery(recipe, raws)
+
+    def test_pia_exact_a100_edits_keep_all_loader_and_refresh_context(self):
+        source = json.loads((overlay.ROOT / 'recipes/pia-carrot-2-jp-v1002-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-20114G  V1.002')
+        self.assertNotIn('cart_mode', source)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after']) for w in source['writes']],
+                         [(476, 1868, '2122', '0009'), (476, 1884, '490b', '0009'),
+                          (476, 2030, '2122', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [174, 248, 477])
+        self.assertEqual([0x06010000+(w['fad']-150-218)*2048+w['offset']-16
+                          for w in source['writes']], [0x0604673c, 0x0604674c, 0x060467de])
+        recipe, raws = self.source_fixture(source, b'V1.002', {
+            174: [(1692, '00210000'), (1728, '06021fe4')],
+            248: [(186, '490b0009'), (208, '06010000')],
+            476: [(1870, 'd110e2132122'), (1886, '000940118902e0fda0030009e000a0000009'),
+                  (1932, '23301ff025fe00b8060468f8'), (2032, 'd10ae2132122')],
+            477: [(24, '23301ff025fe00b8')],
+        })
+        self.check_delivery(recipe, raws)
 
     def test_batman_rejects_wrong_revision_source_and_instruction(self):
         for wrong in ('revision', 'source', 'instruction'):
@@ -150,6 +171,36 @@ class MarvelSuperInstructionTests(unittest.TestCase):
             (handler if which == 'handler' else helper)[at:at+2] = bytes.fromhex(value)
             with self.subTest(which=which, at=at), self.assertRaises((ValueError, AssertionError)):
                 verify_msh_handler(0x02008b94, handler, 0x02008990, helper)
+
+
+class PiaInstructionTests(unittest.TestCase):
+    def test_all_original_late_guard_instruction_and_complete_cpu_effects(self):
+        verify_pia_handler(0x02008414, PIA_HANDLER)
+
+    def test_changed_guard_store_or_fixed_entry_is_rejected(self):
+        for at, value in ((8, '0009'), (24, '0009'), (50, '0009'), (122, '0004')):
+            code = bytearray(PIA_HANDLER)
+            code[at:at+2] = bytes.fromhex(value)
+            with self.subTest(at=at), self.assertRaises((ValueError, AssertionError)):
+                verify_pia_handler(0x02008414, code)
+
+    def test_skipped_call_keeps_existing_signed_result_paths_without_synthesizing_success(self):
+        # The original JSR becomes a NOP; the following NOP and
+        # native CMP/PZ / BT paths stay intact. In particular R0 is not set
+        # to an invented test result when the JSR is skipped.
+        code = bytes.fromhex('0009000940118902e0fda0030009e000a0000009')
+        for value in (0, 1, 0x7fffffff, 0x80000000, 0xfffffffd, 0xffffffff):
+            for initial_t in (0, 1):
+                flags = [initial_t]
+                before, regs, pr, after, writes, calls = execute(
+                    code, 0x0604674c, 0x06046760, {}, registers={0: value}, flags=flags,
+                    return_address=0x06054320)
+                nonnegative = value < 0x80000000
+                before[0] = 0 if nonnegative else 0xfffffffd
+                self.assertEqual(regs, before)
+                self.assertEqual(flags, [int(nonnegative)])
+                self.assertEqual(pr, 0x06054320)
+                self.assertEqual((after, writes, calls), ({}, [], []))
 
 
 if __name__ == '__main__':

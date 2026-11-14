@@ -16,6 +16,48 @@ MSH_HANDLER = bytes.fromhex(
     'e109d20c2211d20cafee000920003000060d0ff4020089900600b0fc23301ff0'
     '0600b2d80600b0ac0600b1d406005f5c06005d8c06005d3c06005e6a')
 SSCTRL_HELPER = bytes.fromhex('d20464476121611d2419245b2241000b0009000925897004')
+PIA_HANDLER = bytes.fromhex(
+    'd1156212d11532108b07d21593226121611d31308f01e1092211d1126212d10f3210'
+    '8b07d21093156121611d31308f01e1092211d10d6212d10d32108b07d20d93096121'
+    '611d31308f01e1092211d10a412b00092122490b0604677c23301ff00604673c'
+    '06046808060467de06046784060468f80604674c06010000')
+
+
+def verify_pia_handler(address, code):
+    assert len(code) == 124
+    guards = [0x0604677c, 0x06046808, 0x06046784]
+    targets = [0x0604673c, 0x060467de, 0x0604674c]
+    signatures = [0x23301ff0, 0x23301ff0, 0x060468f8]
+    instructions = [0x2122, 0x2122, 0x490b]
+    for matches in itertools.product((False, True), repeat=6):
+        for initial_t in (0, 1):
+            ram = {}
+            for i, (guard, target) in enumerate(zip(guards, targets)):
+                ram |= region(guard-2, 8) | region(target-2, 8)
+                value = signatures[i] if matches[2*i] else 0x12340000+i
+                word = instructions[i] if matches[2*i+1] else 0xfed0+i
+                ram.update(enumerate(value.to_bytes(4, 'big'), guard))
+                ram.update(enumerate(word.to_bytes(2, 'big'), target))
+            flags, trace = [initial_t], []
+            before, regs, pr, after, writes, calls = execute(
+                code, address, 0x06010000, ram, flags=flags, trace=trace,
+                return_address=0x06054320)
+            expected_writes = [(targets[i], 2, 9) for i in range(3)
+                               if matches[2*i] and matches[2*i+1]]
+            expected = dict(ram)
+            for dest, width, value in expected_writes:
+                expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+            before[1] = 0x06010000
+            before[2] = targets[2] if matches[4] else 0x12340002
+            for i in range(3):
+                if matches[2*i]:
+                    before[3] = instructions[i]
+            expected_reads = [dest for i in range(3)
+                              for dest in ([guards[i], targets[i]] if matches[2*i] else [guards[i]])]
+            assert regs == before and after == expected and writes == expected_writes
+            assert flags == [int(matches[4] and matches[5])]
+            assert [e[1] for e in trace if e[0] == 'read'] == expected_reads
+            assert not calls and pr == 0x06054320
 
 
 def verify_msh_handler(address, code, helper_at, helper):
@@ -133,6 +175,45 @@ def check(elf):
             assert not calls and pr == 0x06054320
     print('Linked MSH pointer priority, one original loader call, exact SS_CTRL helper/RMW, '
           'retail/demo guard priority, complete writes/registers/flags/stack and return pass')
+    (patch_at, patch), (first_at, first), (last_at, last) = linked_symbol_records(
+        elf, ('_Pia_Carrot_e_Youkoso_2_patch', '_Pia_Carrot_e_Youkoso_2_handle1',
+              '_Pia_Carrot_e_Youkoso_2_handle2'))
+    verify_pia_handler(last_at, last)
+    for outer, inner, initial_t in itertools.product((False, True), repeat=3):
+        ram = region(0x06010688, 8) | region(0x060106ac, 8)
+        pointer = 0x06021fe4 if inner else 0x55556666
+        ram.update(enumerate((0x00210000 if outer else 0x77778888).to_bytes(4, 'big'), 0x0601068c))
+        ram.update(enumerate(pointer.to_bytes(4, 'big'), 0x060106b0))
+        flags = [int(initial_t)]
+        before, regs, pr, after, writes, calls = execute(patch, patch_at, 0x06054320, ram, flags=flags)
+        expected = dict(ram)
+        match = outer and inner
+        if match:
+            expected.update(enumerate(first_at.to_bytes(4, 'big'), 0x060106b0))
+        before[1] = 0x060106b0 if outer else 0x00210000
+        before[2] = first_at if match else 0x06021fe4 if outer else 0x77778888
+        if outer:
+            before[3] = pointer
+        assert after == expected and regs == before and flags == [int(match)]
+        assert writes == ([(0x060106b0, 4, first_at)] if match else [])
+        assert pr == 0x06054320 and not calls
+    for pointer in (0x06010000, last_at, 0, 0xffffffff):
+        for initial_t in (0, 1):
+            ram = region(0x002100bc, 12)
+            ram.update(enumerate(pointer.to_bytes(4, 'big'), 0x002100c0))
+            flags = [initial_t]
+            before, regs, pr, after, writes, calls = execute(
+                first, first_at, 0x06021fe4, ram, flags=flags, return_address=0x06054320)
+            match = pointer == 0x06010000
+            expected = dict(ram)
+            if match:
+                expected.update(enumerate(last_at.to_bytes(4, 'big'), 0x002100c0))
+            before[1:4] = [0x06021fe4, last_at if match else 0x06010000, pointer]
+            assert after == expected and regs == before and flags == [int(match)]
+            assert writes == ([(0x002100c0, 4, last_at)] if match else [])
+            assert pr == 0x06054320 and not calls
+    print('Linked Pia initial/loader guards, all 64 late predicate combinations, exact writes, '
+          'short-circuit reads, complete GPR/T/PR and both native entries pass')
 
 
 if __name__ == '__main__':

@@ -250,3 +250,86 @@ support the load/store, logical, call/return and PR/flag checks.
 defines the ASR0 bus-control register. The game-specific policy comes from
 the original SAROO contribution, rather than a Sega requirement to remove
 those game instructions.
+## Pia Carrot 2: Japan V1.002
+
+The [exact-disc recipe](../recipes/pia-carrot-2-jp-v1002-sector.json)
+adapts paps-g's later `6097f7ee` correction to the original September 30
+candidate. Its three edits reproduce
+[tpunix's guarded callback](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L902)
+directly in the original `A100.BIN;1`. Earlier copied-handler and entry-redirect
+experiments are superseded. No helper is inserted, no RAM mode is selected,
+and no loader or result code is rewritten.
+
+| Native address | FAD / raw offset | Original → selected | Effect |
+| --- | --- | --- | --- |
+| `0604673c` | 476 / 1868 | `2122 → 0009` | Omit first ASR0 store. |
+| `0604674c` | 476 / 1884 | `490b → 0009` | Omit cartridge-memory test JSR. |
+| `060467de` | 476 / 2030 | `2122 → 0009` | Omit second ASR0 store. |
+
+Both ASR0 stores write `23301ff0` to `25fe00b0`; both adjacent AREF=13 writes
+remain. The omitted routine at `060468f8` tests cartridge memory using
+address-derived values, complementary values and two bank selections. The
+following NOP, signed CMP/PZ, saved outer PR and existing return/error paths
+remain. The replacement does not invent a success result. Bounded checks with
+positive and negative incoming R0 values retain the native result branches;
+this does not assert what all real bank-selection paths put in R0.
+
+The register layout is documented in the
+[SCU user's manual](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf),
+§3.6, printed pp. 62–67. Instruction rules are in the
+[SH7604 hardware manual](https://antime.kapsi.fi/sega/files/sh7604.pdf),
+§2.4 Tables 2.13, 2.16 and 2.17, printed pp. 35–36, 39–40:
+CMP/PZ updates T, JSR updates PR and has a delay slot, and NOP leaves registers
+and T unchanged. These define the instruction effects, not a Sega requirement
+to omit the cartridge test or reconfigure ASR0 this way.
+
+| Original program | LBA / complete bytes | Original SHA-256 |
+| --- | --- | --- |
+| `A.BIN;1` | 24 / 150,292 | `b9e09eda512884058092193c19e10070e2fa52b3c98cf1c2ad821b37e2e05653` |
+| `A001.BIN;1` | 98 / 38,320 | `b0909993edf5a8d84cb93ecc5c157d56e5bb5e6a89b9fe4aa8db85b2d4fd89f5` |
+| `A002.BIN;1` | 117 / 206,400 | `28a78559091669d991987f09c9297e7ad473d34f2e261c35c55186ac04d59989` |
+| `A100.BIN;1` | 218 / 241,492 | `cd3884b0d384d802477957b533f729d282d2339ec3bf9d850f1eca6162d76e0e` |
+
+Fresh source correspondence and the current sanitizer-enabled production-C
+decoder cover all 312 sectors / 636,504 logical bytes. All guard sectors are
+source-verified. Only the six selected bytes in A100 change; its complete
+postimage is `32972c5b25dad28c2bba965adba805afd2ad359d75816e6b5689d904ed199a80`.
+The four-record, 1,416-byte pack reproduces archived SHA-256
+`5fa164eaa824d80e01c22b6a1daf0a7c0fdffdbfcf34e54fa2d6d07e7b82250e`.
+The complete disc is unavailable locally now. Its recorded track hash is
+`1bc9fb850c43bc8d0f593d7b76926b4139f73997f7a2dd938ab3980c80aadabd`;
+the normal owner-side compiler still requires that whole source. Logical-file
+verification does not freshly qualify the track hash or original final-sector
+padding.
+
+The first entry `06021fe4`, A001's JSR and `002100c0=06010000` literal stay
+unchanged. A002 and A100 load at `06010000`; A100 resets its stack and BSS.
+Guards at FAD 174/248/477 bind the original entries and later literal context.
+The current linked 48/36/124-byte callback and handlers are checked against
+all 64 late predicate combinations, both incoming T values, short-circuit
+reads, exact writes, complete GPR/T/PR state and both native entry targets.
+Actual launch checks cover accepted, absent and malformed handoffs, physical
+disc bypass and explicit user RAM-setting priority. Rejected or absent packs
+retain the original callback; the source recipe changes no firmware bytes.
+Both 62-method overlay and 21-method launch profiles pass sanitizer and
+optimized builds. All 37 fresh target-menu input hashes and resource sizes
+remain unchanged. The public commands above reproduce these checks without
+requiring a game image; full-file checks require the owner's exact source.
+
+The preserved 18,000-frame comparisons are revalidated from their pinned
+configuration, original logs and complete PCM. Both no-RAM and 4 MiB callback
+comparisons match all 301 sampled video/nonblack outputs, but only 46/301
+audio CRCs. The first audio difference at frame 2761 precedes A100's load at
+4407; it is not explained by the later six-byte edit. Sample counts match
+287/301 without RAM and 299/301 with 4 MiB. Each complete PCM has 53,073,720
+bytes and differs; no complete single-shift explanation is established.
+
+Against the unmodified image without RAM, all 301 sampled outputs and every
+PCM byte match, SHA-256
+`1968cd3cd9430b2f01fb513e18249c258a91d40f5e4600eb1022608f4c40c775`.
+With 4 MiB, video matches 275/301 and audio 84/301, with first difference
+4921 after A100 loads. The actual bank-test effects and complete cause remain
+open. These are historical model results, not a new console run or full-game
+qualification. Keep the profile opt-in pending physical bus/audio, bank/reset,
+other-program and full-game checks. No delay is added to imitate old helper
+overhead.

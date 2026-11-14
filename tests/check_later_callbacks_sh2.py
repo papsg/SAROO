@@ -77,6 +77,8 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             t = int(regs[0] == (signed(op & 255, 8) & 0xffffffff))
         elif op & 0xf00f == 0x3000:
             t = int(regs[n] == regs[m])
+        elif op & 0xf0ff == 0x4011:
+            t = int(signed(regs[n], 32) >= 0)
         elif op & 0xf00f == 0x2008:
             t = int((regs[n] & regs[m]) == 0)
         elif op & 0xf00f == 0x2009:

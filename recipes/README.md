@@ -125,3 +125,8 @@ both original instruction edits and 1 MB setup while retaining native calls.
 **Full US source is unavailable for fresh verification; physical RAM switching
 and timing remain unqualified.**
 [Attribution, complete callback checks, source and modeled audio limits](../doc/REMAINING-GAME-PROFILES.md#marvel-super-heroes-three-retail-discs-and-japanese-demo).
+Pia Carrot 2 Japan V1.002 uses
+[`pia-carrot-2-jp-v1002-sector.json`](pia-carrot-2-jp-v1002-sector.json).
+It carries three native A100 edits and no RAM-mode action. See
+[source proof and audio/bank limits](../doc/REMAINING-GAME-PROFILES.md#pia-carrot-2-japan-v1002).
+It remains opt-in; the full source track must match its recorded hash.

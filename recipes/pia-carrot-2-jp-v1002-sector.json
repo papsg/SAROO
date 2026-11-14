@@ -1,0 +1,56 @@
+{
+  "abi": 2,
+  "product_id": "T-20114G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L902",
+  "title": "Pia Carrot 2 (Japan): native cartridge-bus and test edits",
+  "summary": "Replace two original ASR0 stores and the original cartridge-memory test call in A100.BIN.",
+  "rationale": "All three edits belong to original A100.BIN at LBA218. Two stores write 23301FF0 to SCU ASR0 at 25FE00B0; keep adjacent AREF=13 writes. The skipped call tests cartridge memory with write/read/complement passes. Retain its following NOP, CMP/PZ, saved outer PR and native error/return paths; do not invent a success return. Original A.BIN and A001 loader pointers remain unchanged. Production decoder and complete source checks pass. Both 18000-frame original-callback comparisons match all sampled video; their audio differs before A100 loads. With no RAM cartridge, the direct overlay matches the unmodified game at all checkpoints and in complete PCM. The unmodified 4 MiB run diverges after A100 loads; further test/bank-path evidence remains open. These are cartridge-bus/test edits, not CDON. No inserted code, resident callback or RAM writer. Keep inactive pending real Saturn audio/bus, bank/reset and other-program checks.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "1bc9fb850c43bc8d0f593d7b76926b4139f73997f7a2dd938ab3980c80aadabd"
+    }
+  ],
+  "guards": [
+    {
+      "fad": 174,
+      "reason": "Bind the unmodified original first-program entry pointer 06021FE4."
+    },
+    {
+      "fad": 248,
+      "reason": "Bind original A001.BIN, including its unmodified 002100C0=06010000 entry literal and JSR."
+    },
+    {
+      "fad": 477,
+      "reason": "Bind the second ASR0 literal and neighboring refresh-register address."
+    }
+  ],
+  "writes": [
+    {
+      "fad": 476,
+      "offset": 1868,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Skip the original 0604673C ASR0 store, retaining the following refresh write.",
+      "reason": "Reproduce the first inherited bus edit directly in A100.BIN."
+    },
+    {
+      "fad": 476,
+      "offset": 1884,
+      "before": "490b",
+      "after": "0009",
+      "effect": "Skip the original cartridge-memory test call at 0604674C.",
+      "reason": "Preserve the inherited skipped JSR, its neutral following word and existing result handling; no helper or RAM edit."
+    },
+    {
+      "fad": 476,
+      "offset": 2030,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Skip the original 060467DE ASR0 store, retaining its adjacent refresh write.",
+      "reason": "Reproduce the second inherited bus edit on every native source read."
+    }
+  ],
+  "disc_id": "T-20114G  V1.002"
+}
