@@ -310,6 +310,56 @@ coexist without a new product-only alternative bundle. No firmware runtime or
 resource change, callback retirement, issue closure or new physical game
 qualification. Keep all six opt-in with the recorded route/timing limits.
 
+## Manx TT Europe V1.000
+
+[European recipe](../recipes/manx-tt-superbike-eu-v1000-sector.json), adapted
+from paps-g `d113a93c`, with the later full-IP lookup metadata. The
+[original tpunix MANX_TT_SUPER_BIKE_patch](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c)
+provides the six edits and guarded revision branches. Europe is
+`MK-81210  V1.000`, correcting an earlier unverified USA label. USA is
+`MK-81210  V1.001` and its [replacement profile](../recipes/manx-tt-superbike-us-sector.json)
+is already public. Runtime recipe fields match the private USA replacement
+checkpoint exactly; it is a control, not a second port.
+
+Europe's complete data-track SHA-256 is
+`e1c075e9a22fb91c731826bd1dac01afb75a1c20e9ee17dfc761bbd8582ac791`.
+Its first file `0.AAA;1` has 497,924 bytes at LBA21/load `06010000`, SHA-256
+`b7cb6d1151c804724056be8979414b678fdc43b22062554e8450e5b83a692c7a`.
+Six EXTS.W instructions become MOV without changing registers or T:
+low bytes at `0602037d`, `060203fd`, `060204d9` change `4f→43`,
+`06020619` changes `1f→13`, and `060219b3`/`060219e7` change `0f→03`.
+These are the same locations as Japan, not USA's sites 60 hex bytes later.
+[Hitachi Table 2.13, printed pp.35–36](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=51)
+and [Table 2.12, pp.33–34](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+explain original sign extension and selected full-width copies. The original
+symptom is undocumented; this is migration equivalence, not a newly diagnosed
+compatibility failure.
+
+Fresh full-European-CUE compilation reproduces the archived 720-byte pack:
+`f0bd3cbe6033f74e62bb561687593190c282d8bf29d1dbf6fdfcb30b17b00a47`.
+Current C/source checks reproduce both regions' complete declared IP and
+first-file postimages. USA's full raw-track source is unavailable; its exact
+720-byte pack and preserved logical files remain independently checked.
+Generated final padding is explicit. Recipe settings and fixed engine
+allocations are unchanged.
+
+The [existing revision lookup](SD-SECTOR-OVERLAYS.md#capacity-and-disc-revision)
+uses the entire sixteen-byte product/version field defined by
+[Sega Disc Format ST-040-R4-051795 §4.2, printed pp.25–27](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf#page=29).
+Only absence permits legacy lookup; an incompatible exact-path pack leaves
+the callback intact. No engine change or multisector bundle is needed here.
+Public compiler/decoder tests and actual C launch tests cover both originals,
+admitted overlays, absent/malformed packs, physical discs, configuration
+priority and both unmatched guards. The generic Manx CPU-state test covers
+all register pairs and sign boundaries.
+
+Historical 7,201-frame native-disc comparisons match all121 checkpoint fields
+and complete PCM in both regions. Historical full caller checks compare
+complete Work RAM, VDP1 and menu memory with the linked menu stack. They do not
+qualify physical bus/cache/concurrent service or all game paths. Keep both
+profiles opt-in and the original callback available; no issue closure or
+firmware runtime/resource change.
+
 ## Reproducible checks
 
 ```sh

@@ -267,6 +267,24 @@ class RevisionRecipeTests(unittest.TestCase):
                                      [(0x25fe00b8, 4, 0)])
                     self.assertEqual((pr, flags, calls), (0x060106ca, [t], []))
 
+    def test_manx_europe_and_existing_usa_coexist_with_distinct_version_keys(self):
+        eu = json.loads((overlay.ROOT / 'recipes/manx-tt-superbike-eu-v1000-sector.json').read_text())
+        us = json.loads((overlay.ROOT / 'recipes/manx-tt-superbike-us-sector.json').read_text())
+        self.assertEqual(eu['disc_id'], 'MK-81210  V1.000')
+        self.assertEqual(us['disc_id'], 'MK-81210  V1.001')
+        self.assertNotEqual(eu['tracks'], us['tracks'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after']) for w in eu['writes']], [
+            (206, 451, '0f', '03'), (206, 503, '0f', '03'),
+            (203, 909, '4f', '43'), (203, 1037, '4f', '43'),
+            (203, 1257, '4f', '43'), (203, 1577, '1f', '13')])
+        for source in (eu, us):
+            with self.subTest(identity=source['disc_id']), tempfile.TemporaryDirectory(dir=self.fixture.output) as folder:
+                self.path = Path(folder)
+                self.assertTrue(source['replaces_callback'])
+                self.assertNotIn('cart_mode', source)
+                recipe, raws = self.source_fixture(source, source['disc_id'][10:].encode(), {})
+                self.check_delivery(recipe, raws)
+
 
 if __name__ == '__main__':
     unittest.main()

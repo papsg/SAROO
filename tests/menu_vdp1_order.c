@@ -799,6 +799,31 @@ static void direct_revisions(void)
     assert(REG32(0x060108c0) == 0x04000001 && REG16(0x060106c4) == 0x2102);
 }
 
+static void manx_international(void)
+{
+    static const struct revision_case cases[] = {
+        {"MK-81210  V1.000", 0, 0x060219b1, 1, {
+            {0x060219b3, 1, 0x0f, 3}, {0x060219e7, 1, 0x0f, 3},
+            {0x0602037d, 1, 0x4f, 0x43}, {0x060203fd, 1, 0x4f, 0x43},
+            {0x060204d9, 1, 0x4f, 0x43}, {0x06020619, 1, 0x1f, 0x13}}},
+        {"MK-81210  V1.001", 0, 0x06021a11, 1, {
+            {0x06021a13, 1, 0x0f, 3}, {0x06021a47, 1, 0x0f, 3},
+            {0x060203dd, 1, 0x4f, 0x43}, {0x0602045d, 1, 0x4f, 0x43},
+            {0x06020539, 1, 0x4f, 0x43}, {0x06020679, 1, 0x1f, 0x13},
+            {0x060219b1, 1, 2, 2}}},
+    };
+    revision_launches(cases, sizeof cases / sizeof cases[0]);
+    for(unsigned game=0;game<2;++game) {
+        reset(cases[game].id, 53);
+        REG8(0x060219b1) = REG8(0x06021a11) = 2;
+        for(const struct revision_write *w=cases[game].writes;w->address;++w)
+            REG8(w->address) = w->before;
+        read_1st(); finished();
+        for(const struct revision_write *w=cases[game].writes;w->address;++w)
+            assert(REG8(w->address) == w->before);
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -841,6 +866,8 @@ int main(int argc, char **argv)
         japanese_revisions();
     }else if(!strcmp(mode, "direct-revisions")){
         direct_revisions();
+    }else if(!strcmp(mode, "manx-international")){
+        manx_international();
     }else if(!strcmp(mode, "config")){
         for(int croc=0;croc<2;++croc){
             reset(croc ? "T-5029H-50V1.000" : "UNKNOWN", 97);

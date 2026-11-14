@@ -167,6 +167,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
     def test_direct_revision_launches_and_existing_reva_policy_controls(self):
         self.scenario('direct-revisions')
 
+    def test_manx_europe_usa_and_unmatched_original_guards(self):
+        self.scenario('manx-international')
+
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')
 
