@@ -24,6 +24,51 @@ Short and contiguous edits can share a bundle, which uses the newest
 record ABI required by its inputs.
 See the [overlay format and source checks](../doc/SD-SECTOR-OVERLAYS.md).
 
+### Logical-source verification
+
+`sector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY` replaces
+manual logical-file extraction comparisons and repeated decoder commands.
+It reads pinned original files and checks complete postimages through the
+same record encoder used by `compile` and a caller-pinned host C verifier.
+It adds no firmware code or device access. Deployment packs still use the
+ordinary compiler's complete CUE/FILE checks.
+
+Build the existing C test verifier, then pin its resulting binary:
+
+```sh
+mkdir -p tests/build
+cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -IFirm_MCU/Saturn tests/sector_overlay.c Firm_MCU/Saturn/sector_overlay.c \
+  -o tests/build/overlay-source-verifier
+tools/target/debug/sector-overlay verify-source manifest.json tests/build/source-check
+```
+
+The manifest contains `recipe`, `pack` and `decoder` objects, each with `path`
+and lowercase `sha256`, plus `programs`. Each program contains a pinned
+`source` object, `lba` and the expected complete `postimage_sha256`. Paths
+resolve against the manifest's directory. Supply one to eight nonoverlapping
+logical files of at most 1 MiB each. The decoder must be your trusted build
+of the test verifier; its binary identity is pinned, rather than inferred
+from its filename. Synthetic examples and negative controls run in
+`tests/test_sector_overlay_later.py` as part of `make -C tests check-sector-overlay`.
+
+Preflight checks all pins, extents, preimages, complete postimage hashes and
+the recipe/reference-record correspondence before creating output. It refuses
+missing edited extents and nonmatching records. Missing read-only guard
+sectors are listed explicitly: `all_target_sources_verified` stays false.
+Those CRCs are retained only to compare the other reference fields, not called
+fresh source checks. `full_track_identity_verified` always stays false.
+Generated padding after an unedited partial last sector is not original raw
+padding. Target sectors require their complete original logical payloads.
+
+The fresh output retains generated streams, a copy of the pinned verifier,
+per-program logs and a structured receipt. `decoder.SOV` carries the test
+product ID for the host fixture; deployment
+uses the normal compiler and original CUE. Each verifier process has a
+30-second deadline; an incomplete/failed decode cannot produce a successful
+receipt. Existing outputs are refused. This is logical-source and host-decoder
+verification, with no complete-disc, bus/cache, timing or game qualification.
+
 ## Isolated firmware qualification
 
 `firmware-build` runs the original public menu Makefile on a source copy under

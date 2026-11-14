@@ -1,0 +1,44 @@
+{
+  "abi": 2,
+  "product_id": "T-1238G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L536",
+  "title": "Marvel Super Heroes vs. Street Fighter (Japan) V1.000: native cartridge-bus edits",
+  "summary": "Remove the original ASR0 store from each of the two loaded startup programs.",
+  "rationale": "00LOAD.BIN loads CPK.BIN and calls 06002000, then loads SYS.BIN and jumps to the same address. The inherited conditional handler edits 0600286E in CPK and 0600205A in SYS; they belong to different original files. Replace only those two 23301FF0 stores to SCU ASR0 at 25FE00B0. Keep the native JSR/JMP, their NOP delay slots, shared entry literal, file names, AREF writes and register setup unchanged. No copied handler, startup redirection, stack spill or RAM patch writer is supplied. Complete source and production-decoder checks cover both files and exactly four changed bytes. The 18000-frame 4 MiB modeled comparison matches all 301 video/audio/sample-count/nonblack checkpoints and complete PCM against the original compiled menu handler, with both native edits observed at load. An unmodified-image control differs after the second program loads; no physical cause is inferred from that comparison. These are inherited cartridge-bus compatibility edits, not CDON. The 1416-byte pack size is unchanged and no firmware bytes are added. Keep inactive pending real Saturn bus, audio, reset, other-load and full-game acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "8274307f9562d2da7fb7be0f5f306846edb74afde5913324bef04938ed3214f9"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 184,
+      "offset": 106,
+      "before": "2102",
+      "after": "0009",
+      "effect": "Skip the original SYS.BIN ASR0 store at 0600205A.",
+      "reason": "Preserve the inherited second-handoff bus edit in the loaded source itself, retaining the adjacent dummy reads and AREF write."
+    },
+    {
+      "fad": 1256,
+      "offset": 126,
+      "before": "2012",
+      "after": "0009",
+      "effect": "Skip the original CPK.BIN ASR0 store at 0600286E.",
+      "reason": "Preserve the inherited first-handoff bus edit without inserting a conditional RAM writer; keep the native AREF store in the RTS delay slot."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 947,
+      "reason": "Bind both unchanged native 00LOAD.BIN handoffs, shared 06002000 literal and cpk.bin/sys.bin file names."
+    },
+    {
+      "fad": 1255,
+      "reason": "Bind the original CPK.BIN entry before its later native ASR0 instruction."
+    }
+  ],
+  "disc_id": "T-1238G   V1.000"
+}

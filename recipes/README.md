@@ -92,3 +92,8 @@ original loader call. It adds no RAM-cart action or copied handler.
 modem-check instruction edit and guards both the entry and shared-handler
 context. **Modeled audio remains unresolved**; this is an opt-in source
 candidate. [Guarded behavior, attribution and limits](../doc/LATER-LOAD-PROFILES.md#habitat-ii-japan-v1004).
+
+[Marvel vs. Street Fighter JP V1.000](marvel-vs-street-fighter-jp-v1000-sector.json)
+carries both native startup-program edits while preserving the two original
+handoffs. It adds no copied handler or cartridge action.
+[Source checks, attribution and modeled comparison](../doc/LATER-LOAD-PROFILES.md#marvel-vs-street-fighter-japan-v1000).

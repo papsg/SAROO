@@ -50,7 +50,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         names = set(re.findall(rb'"[^"\n]+",\s*([A-Za-z_0-9]+)\}', table))
         actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch',
                   b'DND2_patch', b'FRIENDS_patch', b'kof97_patch', b'CYBER_BOTS_patch',
-                  b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch'}
+                  b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch', b'mshvssf_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -59,6 +59,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code = b'static void CYBER_BOTS_handle1(void) { assert(0); }\n'
         code += b'static void GROOVE_ON_FIGHT_handle(void) { assert(0); }\n'
         code += b'static void HABITAT2_handle(void) { assert(0); }\n'
+        code += b'static void mshvssf_handle1(void) { assert(0); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -87,7 +88,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
                       rb'(\1*)memory_at(\2)', code)
         for name in (b'bup_init', b'my_cdplayer', b'my_06b0', b'kof95_handle',
                      b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1', b'GROOVE_ON_FIGHT_handle',
-                     b'HABITAT2_handle'):
+                     b'HABITAT2_handle', b'mshvssf_handle1'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -173,6 +174,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_habitat_retains_the_shared_modem_callback_when_not_replaced(self):
         self.scenario('habitat')
+
+    def test_marvel_keeps_both_native_handoffs_or_installs_the_original_handler(self):
+        self.scenario('marvelvs')
 
 
 if __name__ == '__main__':

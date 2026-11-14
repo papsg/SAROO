@@ -1,6 +1,7 @@
 //! Compile reviewed SD sector recipes against read-only game images.
 mod disc;
 mod mode1;
+mod source_check;
 
 use disc::{Disc, RAW_BYTES};
 use mode1::{DATA_START, TAIL_START};
@@ -301,7 +302,16 @@ fn compile(
     if disc_id.is_some_and(|id| ip != id) {
         return fail("Full disc ID disagrees with the original Saturn IP");
     }
-    let mut originals = read_targets(&disc, recipe, &targets)?;
+    let originals = read_targets(&disc, recipe, &targets)?;
+    encode(recipe, product, &targets, originals)
+}
+
+fn encode(
+    recipe: &Recipe,
+    product: [u8; 10],
+    targets: &Targets,
+    mut originals: BTreeMap<u32, [u8; RAW_BYTES]>,
+) -> Result<Vec<u8>> {
     let size = HEADER_BYTES + targets.len() * RECORD_BYTES;
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
@@ -317,8 +327,8 @@ fn compile(
     pack[7] = recipe.cart_mode | if recipe.replaces_callback { 0x80 } else { 0 };
     pack[8..18].copy_from_slice(&product);
     pack[18..20].copy_from_slice(&(size as u16).to_be_bytes());
-    for ((fad, edits), record) in targets
-        .into_iter()
+    for ((&fad, edits), record) in targets
+        .iter()
         .zip(pack[HEADER_BYTES..].chunks_exact_mut(RECORD_BYTES))
     {
         let mut sector = originals.remove(&fad).unwrap();
@@ -329,7 +339,7 @@ fn compile(
             continue;
         }
         record[8] = edits.len() as u8;
-        for edit in &edits {
+        for edit in edits {
             if sector[edit.offset..edit.offset + edit.before.len()] != edit.before {
                 return fail(format!("Original bytes differ at FAD {fad}"));
             }
@@ -436,7 +446,12 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY";
+    if let [op, manifest, out] = args.as_slice() {
+        if op == "verify-source" {
+            return source_check::run(Path::new(manifest), Path::new(out));
+        }
+    }
     if args.first().is_some_and(|arg| arg == "bundle") {
         return bundle(&args[1..]);
     }

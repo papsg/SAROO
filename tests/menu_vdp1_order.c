@@ -28,6 +28,7 @@ static jmp_buf takeover;
 #define MASK_EXMEM 0x3000
 #define CS0_RAM1M 0x2000
 #define CS0_RAM4M 0x3000
+#define REG8(a) (*(u8*)memory_at(a))
 #define REG16(a) (*(u16*)memory_at(a))
 #define REG32(a) (*(u32*)memory_at(a))
 static void *memory_at(uintptr_t address)
@@ -379,6 +380,43 @@ static void habitat_launches(void)
     assert(REG32(0x060105b4) == (u32)(uintptr_t)HABITAT2_handle && !others);
 }
 
+static void marvel_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    for(unsigned tag = 0; tag < sizeof tags / sizeof tags[0]; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned override = 0; override < 3; ++override) {
+                reset("T-1238G   V1.000", 61);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                /* These two instructions are edited by BYTE, so preserve
+                 * their SH-2 byte order independently of host word order. */
+                REG8(0x060f000a) = 0xd1;
+                REG8(0x060f000b) = 0x20;
+                REG16(0x060f000c) = 0x410b;
+                REG16(0x060f000e) = 9;
+                REG8(0x060f001c) = 0xd1;
+                REG8(0x060f001d) = 0x1b;
+                REG16(0x060f001e) = 0x412b;
+                REG16(0x060f0020) = 9;
+                REG32(0x060f008c) = 0x06002000;
+                REG32(0x060f0124) = 0;
+                REG16(0x0600286e) = 0x2012;
+                REG16(0x0600205a) = 0x2102;
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                int selected = tag == 1 && !physical;
+                assert(REG8(0x060f000a) == 0xd1 && REG8(0x060f000b) == (selected ? 0x20 : 0x46));
+                assert(REG8(0x060f001c) == 0xd1 && REG8(0x060f001d) == (selected ? 0x1b : 0x41));
+                assert(REG32(0x060f0124) == (selected ? 0 : (u32)(uintptr_t)mshvssf_handle1));
+                assert(REG16(0x060f000c) == 0x410b && REG16(0x060f000e) == 9);
+                assert(REG16(0x060f001e) == 0x412b && REG16(0x060f0020) == 9);
+                assert(REG32(0x060f008c) == 0x06002000);
+                assert(REG16(0x0600286e) == 0x2012 && REG16(0x0600205a) == 0x2102);
+                assert(!others && cart_count == (override != 0));
+            }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -504,6 +542,8 @@ int main(int argc, char **argv)
         groove_launches();
     }else if(!strcmp(mode, "habitat")){
         habitat_launches();
+    }else if(!strcmp(mode, "marvelvs")){
+        marvel_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -517,7 +557,7 @@ int main(int argc, char **argv)
                g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
                g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch ||
                g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch ||
-               g->patch_func == HABITAT2_patch) continue;
+               g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

@@ -6,15 +6,18 @@ contain no game image. The SH-2 reference bytes are SAROO's own callback.
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 import unittest
 import zlib
 
 from check_later_callbacks_sh2 import (execute, region, verify_cyber_handler,
-                                       verify_groove_handler, verify_habitat_handler)
-from test_sector_overlay import ROOT, PRODUCT, canonical, sector
+                                       verify_groove_handler, verify_habitat_handler,
+                                       verify_marvel_handler)
+from test_sector_overlay import ROOT, PRODUCT, canonical, sector, seal
 import test_sector_overlay as overlay_fixture
 
 
@@ -26,6 +29,9 @@ GROOVE_HANDLER = bytes.fromhex(
 HABITAT_HANDLER = bytes.fromhex(
     'd108601088118f037101e209a0052121d105601088118df87101d104412b0009'
     '000b00090602a15d0602b52d06020000')
+MARVEL_HANDLER = bytes.fromhex(
+    'd20b93126121611d31308f01e1092211d208930b6121611d31308f01e1092211'
+    'd105412b0009000b00092012210200090600286e0600205a06002000')
 
 
 class LaterRecipeTests(unittest.TestCase):
@@ -113,6 +119,22 @@ class LaterRecipeTests(unittest.TestCase):
                                    {173: [(1446, '430b0009'), (1476, '06020000')],
                                     212: [(365, 'f4')]})
 
+    def marvel_fixture(self):
+        source = json.loads((ROOT / 'recipes/marvel-vs-street-fighter-jp-v1000-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-1238G   V1.000')
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']],
+                         [(184, 106, '2102', '0009'), (1256, 126, '2012', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [947, 1255])
+        for w, lba, target in zip(source['writes'], [34, 1105], [0x0600205a, 0x0600286e]):
+            self.assertEqual(0x06002000 + (w['fad']-150-lba)*2048 + w['offset']-16, target)
+        return self.source_fixture(source, b'V1.000',
+                                   {947: [(26, 'd120410b0009'), (44, 'd11b412b0009'),
+                                          (156, '06002000'), (308, '00000000')],
+                                    1255: [(106, '2fc6')]})
+
     def compile(self, recipe):
         source = self.path / 'recipe.json'
         source.write_text(json.dumps(recipe))
@@ -132,6 +154,10 @@ class LaterRecipeTests(unittest.TestCase):
 
     def test_habitat_binds_the_original_entry_and_other_shared_predicate(self):
         recipe, raws = self.habitat_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_marvel_covers_both_loaded_programs_and_preserves_both_handoffs(self):
+        recipe, raws = self.marvel_fixture()
         self.check_delivery(recipe, raws)
 
     def test_streamed_program_keeps_guard_and_unrelated_sectors_unchanged(self):
@@ -161,6 +187,120 @@ class LaterRecipeTests(unittest.TestCase):
                                  '174', '2'], capture_output=True, timeout=15)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_source_verifier_checks_complete_files_and_reports_missing_guards(self):
+        recipe, raws = self.groove_fixture()
+        result, pack = self.compile(recipe)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        def pin(path):
+            return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+        manifest = {'recipe': pin(self.path / 'recipe.json'), 'pack': pin(pack),
+                    'decoder': pin(self.fixture.decoder), 'programs': []}
+        images = []
+        for index, (lba, count) in enumerate(((24, 8), (152, 300))):
+            original = bytearray([0x71]) * (2048 * count)
+            for fad, raw in raws.items():
+                offset = (fad - 150 - lba) * 2048
+                if 0 <= offset < len(original):
+                    original[offset:offset+2048] = raw[16:2064]
+            post = bytearray(original)
+            for w in recipe['writes']:
+                offset = (w['fad'] - 150 - lba) * 2048 + w['offset'] - 16
+                if 0 <= offset < len(post):
+                    value = bytes.fromhex(w['after'])
+                    post[offset:offset+len(value)] = value
+            source = self.path / f'source-{index}.bin'
+            source.write_bytes(original)
+            manifest['programs'].append({'source': pin(source), 'lba': lba,
+                                         'postimage_sha256': hashlib.sha256(post).hexdigest()})
+            images.append((original, post))
+
+        def verify(value, destination):
+            source = self.path / 'manifest.json'
+            source.write_text(json.dumps(value))
+            return subprocess.run([self.fixture.tool, 'verify-source', source, destination],
+                                  capture_output=True, text=True, timeout=60)
+
+        output = self.path / 'verified'
+        result = verify(manifest, output)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((output / 'receipt.json').read_text())
+        self.assertTrue(receipt['complete'] and receipt['all_target_sources_verified'])
+        self.assertFalse(receipt['full_track_identity_verified'])
+        self.assertEqual(receipt['unverified_guard_fads'], [])
+        self.assertEqual([p['edited_sectors'] for p in receipt['programs']], [2, 2])
+        saved = (output / 'receipt.json').read_bytes()
+        self.assertNotEqual(verify(manifest, output).returncode, 0)
+        self.assertEqual((output / 'receipt.json').read_bytes(), saved)
+
+        partial = copy.deepcopy(manifest)
+        source = self.path / 'partial.bin'
+        source.write_bytes(images[0][0][2048:])
+        partial['programs'][0] = {'source': pin(source), 'lba': 25,
+                                  'postimage_sha256': hashlib.sha256(images[0][1][2048:]).hexdigest()}
+        partial_out = self.path / 'partial'
+        result = verify(partial, partial_out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((partial_out / 'receipt.json').read_text())
+        self.assertTrue(receipt['complete'])
+        self.assertFalse(receipt['all_target_sources_verified'])
+        self.assertEqual(receipt['unverified_guard_fads'], [174])
+
+        for wrong in ('source', 'postimage', 'overlap', 'missing', 'overflow', 'unrelated',
+                      'decoder', 'pack', 'policy', 'disc-id'):
+            value = copy.deepcopy(manifest)
+            if wrong == 'source':
+                value['programs'][0]['source']['sha256'] = '0' * 64
+            elif wrong == 'postimage':
+                value['programs'][0]['postimage_sha256'] = '0' * 64
+            elif wrong == 'overlap':
+                value['programs'][1]['lba'] = 24
+            elif wrong == 'missing':
+                value['programs'].pop()
+            elif wrong == 'overflow':
+                value['programs'][0]['lba'] = 0xffffffff
+            elif wrong == 'decoder':
+                value['decoder']['sha256'] = '0' * 64
+            elif wrong == 'pack':
+                data = bytearray(pack.read_bytes())
+                data[24 + 348 + 20] ^= 1
+                seal(data)
+                path = self.path / 'wrong.SOV'
+                path.write_bytes(data)
+                value['pack'] = pin(path)
+            elif wrong in ('policy', 'disc-id'):
+                data = copy.deepcopy(recipe)
+                if wrong == 'policy':
+                    data['replaces_callback'] = False
+                else:
+                    data['disc_id'] = 'wrong'
+                path = self.path / ('wrong-' + wrong + '.json')
+                path.write_text(json.dumps(data))
+                value['recipe'] = pin(path)
+            else:
+                data = bytearray(images[0][0])
+                data[-1] ^= 1
+                path = self.path / 'corrupt.bin'
+                path.write_bytes(data)
+                value['programs'][0]['source'] = pin(path)
+            target = self.path / ('refused-' + wrong)
+            with self.subTest(wrong=wrong):
+                self.assertNotEqual(verify(value, target).returncode, 0)
+                self.assertFalse(target.exists())
+
+        # An explicit failing child is a reporter control, not a source decoder.
+        c = self.path / 'reject.c'
+        c.write_text('int main(void) { return 1; }\n')
+        binary = self.path / ('reject.exe' if os.name == 'nt' else 'reject')
+        subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), c, '-o', binary],
+                       check=True, capture_output=True, timeout=60)
+        failing = copy.deepcopy(manifest)
+        failing['decoder'] = pin(binary)
+        failed_out = self.path / 'failed-child'
+        self.assertNotEqual(verify(failing, failed_out).returncode, 0)
+        self.assertFalse(json.loads((failed_out / 'receipt.json').read_text())['complete'])
+
     def check_delivery(self, recipe, raws):
         result, pack = self.compile(recipe)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -175,7 +315,8 @@ class LaterRecipeTests(unittest.TestCase):
                 data = bytes.fromhex(w['after'])
                 after[w['offset']:w['offset']+len(data)] = data
             expected = canonical(after)
-            self.assertEqual(before[104:108], expected[104:108])
+            if not edits:
+                self.assertEqual(before, expected)
             (self.path / 'raw').write_bytes(before)
             (self.path / 'post').write_bytes(expected)
             subprocess.run([self.fixture.decoder, 'apply' if edits else 'guard',
@@ -270,6 +411,31 @@ class HabitatCallbackModelTests(unittest.TestCase):
                     self.assertEqual(pr, 0x06054320)
                     self.assertEqual(after, {0x25885029: modem})
                     self.assertFalse(writes or calls)
+
+
+class MarvelCallbackModelTests(unittest.TestCase):
+    def test_both_original_guarded_writes_are_independent(self):
+        verify_marvel_handler(0x020081e4, MARVEL_HANDLER)
+
+    def test_losing_either_write_comparison_or_continuation_is_detected(self):
+        for offset, value in ((14, '0009'), (30, '0009'), (24, '0009'), (58, '2004')):
+            code = bytearray(MARVEL_HANDLER)
+            code[offset:offset+2] = bytes.fromhex(value)
+            with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
+                verify_marvel_handler(0x020081e4, code)
+
+    def test_original_loader_retains_call_and_jump_delay_slots(self):
+        for start, instructions, literal, expected_pr in (
+                (0x060f000a, 'd120410b0009', 0x82, 0x060f0010),
+                (0x060f001c, 'd11b412b0009', 0x70, 0x06054320)):
+            code = bytearray(literal + 4)
+            code[:6] = bytes.fromhex(instructions)
+            code[literal:literal+4] = bytes.fromhex('06002000')
+            _, regs, pr, _, writes, calls = execute(
+                code, start, 0x06002000, {}, return_address=0x06054320)
+            self.assertEqual(regs[1], 0x06002000)
+            self.assertEqual(pr, expected_pr)
+            self.assertFalse(writes or calls)
 
 
 if __name__ == '__main__':

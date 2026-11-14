@@ -61,10 +61,16 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             regs[n] = (regs[n] + signed(op & 255, 8)) & 0xffffffff
         elif op & 0xff00 == 0x8800:
             t = int(regs[0] == (signed(op & 255, 8) & 0xffffffff))
+        elif op & 0xf00f == 0x3000:
+            t = int(regs[n] == regs[m])
         elif op & 0xf00f == 0x6000:
             regs[n] = signed(read(regs[m], 1), 8) & 0xffffffff
+        elif op & 0xf00f == 0x6001:
+            regs[n] = signed(read(regs[m], 2), 16) & 0xffffffff
         elif op & 0xf00f == 0x600c:
             regs[n] = regs[m] & 255
+        elif op & 0xf00f == 0x600d:
+            regs[n] = regs[m] & 65535
         elif op & 0xf00f == 0x6003:
             regs[n] = regs[m]
         elif op >> 12 == 0xa:
@@ -159,6 +165,28 @@ def verify_habitat_handler(address, code):
                 assert flags == [int(chosen != 0)], 'Shared guard order or T effect changed'
 
 
+def verify_marvel_handler(address, code):
+    assert len(code) == 60
+    for cpk in (0, 0x2012, 0x4610, 0xffff):
+        for system in (0, 0x2102, 0x2fc6, 0xffff):
+            for initial_t in (0, 1):
+                ram = region(0x06002860, 32) | region(0x06002050, 32)
+                ram.update(enumerate(cpk.to_bytes(2, 'big'), 0x0600286e))
+                ram.update(enumerate(system.to_bytes(2, 'big'), 0x0600205a))
+                flags = [initial_t]
+                before, regs, pr, after, writes, calls = execute(
+                    code, address, 0x06002000, ram, return_address=0x06054320, flags=flags)
+                expected_writes = ([(0x0600286e, 2, 9)] if cpk == 0x2012 else [])
+                expected_writes += [(0x0600205a, 2, 9)] if system == 0x2102 else []
+                assert writes == expected_writes and not calls
+                expected = dict(ram)
+                for dest, width, value in expected_writes:
+                    expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+                before[1:4] = [0x06002000, 0x0600205a, 0x2102]
+                assert regs == before and after == expected and pr == 0x06054320
+                assert flags == [int(system == 0x2102)], 'Independent guards became mutually exclusive'
+
+
 def check(elf):
     (patch_at, patch), (handler_at, handler), (cart_at, _) = linked_symbol_records(
         elf, ('_CYBER_BOTS_patch', '_CYBER_BOTS_handle1', '_ssctrl_set'))
@@ -205,6 +233,23 @@ def check(elf):
     assert after == expected and regs == before and pr == 0x06012340
     print('Linked shared Habitat/Pad guard priority, all conditional writes, '
           'launch pointer, T and continuation pass')
+    (patch_at, patch), (handler_at, handler) = linked_symbol_records(
+        elf, ('_mshvssf_patch', '_mshvssf_handle1'))
+    verify_marvel_handler(handler_at, handler)
+    for initial_t in (0, 1):
+        ram = region(0x060f0000, 48) | region(0x060f0120, 16)
+        flags = [initial_t]
+        before, regs, pr, after, writes, calls = execute(
+            patch, patch_at, 0x06012340, ram, flags=flags)
+        assert writes == [(0x060f000b, 1, 0x46), (0x060f001d, 1, 0x41),
+                          (0x060f0124, 4, handler_at)] and not calls
+        expected = dict(ram)
+        for dest, width, value in writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        before[1], before[2] = 0x060f0124, handler_at
+        assert after == expected and regs == before and pr == 0x06012340 and flags == [initial_t]
+    print('Linked Marvel two-handoff redirection, both independent late guards '
+          'and original continuation pass')
 
 
 if __name__ == '__main__':
