@@ -78,3 +78,7 @@ its inherited NOP outside the complete IP range.
 the inherited NOP and 1 MB setup. The other `T-4401G` route uses its
 retained callback.
 [Branch checks, fallback and limits](../doc/SD-SECTOR-OVERLAYS.md#kof-97-japan-1-mb-branch).
+
+[Cyber Bots JP V1.002](cyberbots-jp-v1002-sector.json) preserves the later NOP,
+guards the original dispatch and selects 1 MB. Its built-in callback remains
+the fallback. [Source, attribution, reproducible checks and limits](../doc/LATER-LOAD-PROFILES.md#cyber-bots-japan-v1002).

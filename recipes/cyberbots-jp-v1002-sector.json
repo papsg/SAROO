@@ -1,0 +1,33 @@
+{
+  "abi": 2,
+  "product_id": "T-1217G",
+  "origin": "https://github.com/tpunix/SAROO/commit/ca1d4caebdd132e9f2aa17ca3406c6849d2c11fa",
+  "title": "Cyber Bots (Japan) V1.002: guarded later-load edit",
+  "summary": "Select 1 MiB expansion RAM and deliver the upstream later-loaded NOP from the original disc sector.",
+  "rationale": "Issue #50 reports boot and graphics faults in T-1217G V1.002. The original callback selects 1 MiB RAM, substitutes a handler for the first program's 0600D000 call target, NOPs one later-loaded instruction and jumps to that original target. This pack leaves the original call target untouched, selects the same cart mode and supplies the NOP in its source sector. A guard on FAD 303 checks the original call target's complete sector before the paired menu skips the callback. The candidate remains inactive pending physical gameplay acceptance. A later natural control executes the exact 24-byte compiled handler at its linked menu address 02008B38. With fixed region, clock and 1 MiB cart, all 201 four-field checkpoints and the complete 35379664-byte PCM stream match over 12000 frames. Full menu/MCU integration and physical cartridge switching remain unverified.",
+  "cart_mode": 1,
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "758fa7956aa6139460c391ec5225e69cc9cde13dfe2281e8c544e594d201dbd1"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 333,
+      "offset": 362,
+      "before": "2122",
+      "after": "0009",
+      "effect": "NOP the instruction later loaded at 0601695A for the exact V1.002 image.",
+      "reason": "The original Cyber Bots handler makes the same edit before jumping to the game's 0600D000 continuation."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 303,
+      "reason": "Confirm the first program retains the original 0600D000 call target at raw offset 104 (RAM 060DD058); callback replacement must not inherit a foreign trampoline."
+    }
+  ],
+  "disc_id": "T-1217G   V1.002"
+}
