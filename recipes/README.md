@@ -87,3 +87,8 @@ the fallback. [Source, attribution, reproducible checks and limits](../doc/LATER
 instruction edits across the first and later programs, preserving the
 original loader call. It adds no RAM-cart action or copied handler.
 [Source, later reevaluation and limits](../doc/LATER-LOAD-PROFILES.md#groove-on-fight-japan).
+
+[Habitat II JP V1.004](habitat-ii-jp-v1004-sector.json) carries the original
+modem-check instruction edit and guards both the entry and shared-handler
+context. **Modeled audio remains unresolved**; this is an opt-in source
+candidate. [Guarded behavior, attribution and limits](../doc/LATER-LOAD-PROFILES.md#habitat-ii-japan-v1004).

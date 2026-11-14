@@ -1,0 +1,36 @@
+{
+  "abi": 2,
+  "product_id": "GS-7105",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Habitat II (Japan) V1.004: native modem-check edit",
+  "summary": "Skip the missing-modem branch in the original later program.",
+  "rationale": "Numeric file 1 loads at 06020000. Its original routine at 0602B526 reads byte 25885029, compares it with 11 and branches to return zero when it differs. Replacing only BF at 0602B52E with NOP retains the read, comparison, T flag, return-one instruction and RTS delay slot. FAD 214 contains those original instructions; no callback, resident handler or later RAM writer is supplied. FAD 173 guards the unchanged native entry pointer 06020000; FAD 212 guards the other inherited predicate, which is unrelated code in this exact file. Other programs loaded at the same RAM address retain their original sectors. The old call-time helper and earlier comparisons remain historical controls. This is a source-reviewed replacement candidate: fresh production-decoder checks, extended game comparisons and physical acceptance are recorded separately. Modem operation and unexercised paths remain unqualified; keep inactive. The preserved 18000-frame native comparison matches all 301 video checkpoints, 156 audio CRCs and 299 sample counts; complete PCM differs after the later handoff. This unresolved modeled audio difference is a hold, not audio equivalence or a physical sound diagnosis.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "6b71ebb83c666ade734b89058d433ff433143b9da701b32af0884a84d377df70"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 214,
+      "offset": 1342,
+      "before": "8b02",
+      "after": "0009",
+      "effect": "Let the original modem-presence routine return one while preserving its comparison flag.",
+      "reason": "The inherited Habitat callback makes this NOP after numeric program 1 loads. Edit its actual source instruction instead; BF has no delay slot."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 173,
+      "reason": "Verify the original JSR/NOP and unchanged 06020000 entry pointer at raw offset 1476."
+    },
+    {
+      "fad": 212,
+      "reason": "Verify that the first inherited Pad predicate belongs to different native code on this exact Habitat revision."
+    }
+  ],
+  "disc_id": "GS-7105   V1.004"
+}

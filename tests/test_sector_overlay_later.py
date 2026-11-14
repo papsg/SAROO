@@ -12,7 +12,8 @@ import tempfile
 import unittest
 import zlib
 
-from check_later_callbacks_sh2 import execute, region, verify_cyber_handler, verify_groove_handler
+from check_later_callbacks_sh2 import (execute, region, verify_cyber_handler,
+                                       verify_groove_handler, verify_habitat_handler)
 from test_sector_overlay import ROOT, PRODUCT, canonical, sector
 import test_sector_overlay as overlay_fixture
 
@@ -22,6 +23,9 @@ CYBER_HANDLER = bytes.fromhex(
 GROOVE_HANDLER = bytes.fromhex(
     'd205e1092211d2052211d105d2052212412b0009000b0009'
     '0600833806099a840600400000280008')
+HABITAT_HANDLER = bytes.fromhex(
+    'd108601088118f037101e209a0052121d105601088118df87101d104412b0009'
+    '000b00090602a15d0602b52d06020000')
 
 
 class LaterRecipeTests(unittest.TestCase):
@@ -94,6 +98,21 @@ class LaterRecipeTests(unittest.TestCase):
         (self.path / 'fixture.cue').write_text('\n'.join(cue) + '\n')
         return recipe, raws
 
+    def habitat_fixture(self):
+        source = json.loads((ROOT / 'recipes/habitat-ii-jp-v1004-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'GS-7105   V1.004')
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']], [(214, 1342, '8b02', '0009')])
+        self.assertEqual([g['fad'] for g in source['guards']], [173, 212])
+        w = source['writes'][0]
+        self.assertEqual(0x06020000 + (w['fad'] - 150 - 42)*2048 + w['offset'] - 16,
+                         0x0602b52e)
+        return self.source_fixture(source, b'V1.004',
+                                   {173: [(1446, '430b0009'), (1476, '06020000')],
+                                    212: [(365, 'f4')]})
+
     def compile(self, recipe):
         source = self.path / 'recipe.json'
         source.write_text(json.dumps(recipe))
@@ -109,6 +128,10 @@ class LaterRecipeTests(unittest.TestCase):
 
     def test_groove_delivers_both_program_edits_without_redirecting_the_call(self):
         recipe, raws = self.groove_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_habitat_binds_the_original_entry_and_other_shared_predicate(self):
+        recipe, raws = self.habitat_fixture()
         self.check_delivery(recipe, raws)
 
     def test_streamed_program_keeps_guard_and_unrelated_sectors_unchanged(self):
@@ -216,6 +239,37 @@ class GrooveCallbackModelTests(unittest.TestCase):
             code[offset] ^= 4
             with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
                 verify_groove_handler(0x020080e4, code)
+
+
+class HabitatCallbackModelTests(unittest.TestCase):
+    def test_shared_handler_keeps_predicate_priority_writes_and_flags(self):
+        verify_habitat_handler(0x020082d4, HABITAT_HANDLER)
+
+    def test_changed_predicate_delay_slot_or_continuation_is_rejected(self):
+        for offset in (5, 21, 25, 47):
+            code = bytearray(HABITAT_HANDLER)
+            code[offset] ^= 1
+            with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
+                verify_habitat_handler(0x020082d4, code)
+
+    def test_native_check_keeps_modem_read_comparison_and_return_flags(self):
+        original = bytearray(46)
+        original[:22] = bytes.fromhex('d00a6000600c88118b02e001000b0009e000000b0009')
+        original[42:46] = bytes.fromhex('25885029')
+        patched = bytearray(original)
+        patched[8:10] = bytes.fromhex('0009')
+        for modem in range(256):
+            for initial_t in (0, 1):
+                for code, expected in ((original, int(modem == 0x11)), (patched, 1)):
+                    flags = [initial_t]
+                    before, regs, pr, after, writes, calls = execute(
+                        code, 0x0602b526, 0x06054320, {0x25885029: modem}, flags=flags)
+                    self.assertEqual(regs[0], expected)
+                    self.assertEqual(regs[1:], before[1:])
+                    self.assertEqual(flags, [int(modem == 0x11)])
+                    self.assertEqual(pr, 0x06054320)
+                    self.assertEqual(after, {0x25885029: modem})
+                    self.assertFalse(writes or calls)
 
 
 if __name__ == '__main__':

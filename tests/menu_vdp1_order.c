@@ -352,6 +352,33 @@ static void groove_launches(void)
             }
 }
 
+static void habitat_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    for(unsigned tag = 0; tag < sizeof tags / sizeof tags[0]; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical)
+            for(unsigned override = 0; override < 3; ++override) {
+                reset("GS-7105   V1.004", 59);
+                disc_type = physical;
+                overlay_handoff = __builtin_bswap32(tags[tag]);
+                REG32(0x060105b4) = 0x06020000;
+                REG16(0x0602b52e) = 0x8b02;
+                if(override) put32(0, 0x30000000 | (override == 1 ? 1 : 4));
+                read_1st(); finished();
+                int selected = tag == 1 && !physical;
+                assert(REG32(0x060105b4) == (selected ? 0x06020000 :
+                       (u32)(uintptr_t)HABITAT2_handle));
+                assert(REG16(0x0602b52e) == 0x8b02 && !others);
+                assert(cart_count == (override != 0));
+            }
+    /* Valid control for the other existing table entry sharing this callback.
+     * No Habitat pack is admitted for that title. */
+    reset("GS-7101   V1.007", 59);
+    REG32(0x060105b4) = 0x06020000;
+    read_1st(); finished();
+    assert(REG32(0x060105b4) == (u32)(uintptr_t)HABITAT2_handle && !others);
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -475,6 +502,8 @@ int main(int argc, char **argv)
         cyber_launches();
     }else if(!strcmp(mode, "groove")){
         groove_launches();
+    }else if(!strcmp(mode, "habitat")){
+        habitat_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -487,7 +516,8 @@ int main(int argc, char **argv)
             if(g->patch_func == Croc_LOG_patch || g->patch_func == ULTRAMAN_patch ||
                g->patch_func == kof95_patch || g->patch_func == DND2_patch ||
                g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch ||
-               g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch) continue;
+               g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch ||
+               g->patch_func == HABITAT2_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

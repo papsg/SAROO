@@ -9,7 +9,7 @@ from pathlib import Path
 from check_menu_clock_sh2 import linked_symbol_records, signed
 
 
-def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None):
+def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, flags=None):
     program = dict(enumerate(code, start))
     memory = dict(ram)
     regs = [0x13570000 + i * 0x100 + seed for i in range(16)]
@@ -17,6 +17,7 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None):
     initial = regs.copy()
     pc, pr, delayed = start, stop if return_address is None else return_address, None
     writes, calls = [], []
+    t = flags[0] if flags is not None else 0
 
     def read(address, width):
         source = program if address in program else memory
@@ -34,6 +35,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None):
     for _ in range(128):
         if pc == stop:
             assert delayed is None
+            if flags is not None:
+                flags[0] = t
             return initial, regs, pr, memory, writes, calls
         if pc == cart:
             assert delayed is None
@@ -54,8 +57,28 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None):
             regs[n] = signed(read(pc + 4 + (op & 255) * 2, 2), 16) & 0xffffffff
         elif op >> 12 == 0xe:
             regs[n] = signed(op & 255, 8) & 0xffffffff
+        elif op >> 12 == 7:
+            regs[n] = (regs[n] + signed(op & 255, 8)) & 0xffffffff
+        elif op & 0xff00 == 0x8800:
+            t = int(regs[0] == (signed(op & 255, 8) & 0xffffffff))
+        elif op & 0xf00f == 0x6000:
+            regs[n] = signed(read(regs[m], 1), 8) & 0xffffffff
+        elif op & 0xf00f == 0x600c:
+            regs[n] = regs[m] & 255
         elif op & 0xf00f == 0x6003:
             regs[n] = regs[m]
+        elif op >> 12 == 0xa:
+            assert target is None
+            delayed = pc + 4 + signed(op & 0xfff, 12) * 2
+        elif op & 0xff00 in (0x8900, 0x8b00, 0x8d00, 0x8f00):
+            assert target is None
+            taken = not t if op & 0x200 else bool(t)
+            if taken:
+                branch = pc + 4 + signed(op & 255, 8) * 2
+                if op & 0x400:
+                    delayed = branch
+                else:
+                    following = branch
         elif op & 0xf00f in (0x2000, 0x2001, 0x2002):
             write(regs[n], 1 << (op & 3), regs[m])
         elif op == 0x4f22:
@@ -113,6 +136,29 @@ def verify_groove_handler(address, code):
         assert regs == before
 
 
+def verify_habitat_handler(address, code):
+    assert len(code) == 48
+    for pad in (0, 0x11, 0x80, 0xf4, 0xdc):
+        for habitat in (0, 0x11, 0x80, 0x26):
+            for initial_t in (0, 1):
+                ram = region(0x0602a150, 32) | region(0x0602b520, 32)
+                ram[0x0602a15d], ram[0x0602b52d] = pad, habitat
+                flags = [initial_t]
+                before, regs, pr, after, writes, calls = execute(
+                    code, address, 0x06020000, ram, return_address=0x06054320, flags=flags)
+                chosen = 0x0602a15e if pad == 0x11 else 0x0602b52e if habitat == 0x11 else 0
+                expected_writes = [(chosen, 2, 9)] if chosen else []
+                assert writes == expected_writes and not calls
+                expected = dict(ram)
+                if chosen:
+                    expected.update({chosen: 0, chosen+1: 9})
+                    before[2] = 9
+                before[0] = signed(pad if pad == 0x11 else habitat, 8) & 0xffffffff
+                before[1] = 0x06020000
+                assert regs == before and after == expected and pr == 0x06054320
+                assert flags == [int(chosen != 0)], 'Shared guard order or T effect changed'
+
+
 def check(elf):
     (patch_at, patch), (handler_at, handler), (cart_at, _) = linked_symbol_records(
         elf, ('_CYBER_BOTS_patch', '_CYBER_BOTS_handle1', '_ssctrl_set'))
@@ -147,6 +193,18 @@ def check(elf):
         assert after == expected and regs == before and pr == 0x06012340
     print('Linked Groove launch edits, delay-slot pointer store, late writes '
           'and original continuation pass')
+    (patch_at, patch), (handler_at, handler) = linked_symbol_records(
+        elf, ('_HABITAT2_patch', '_HABITAT2_handle'))
+    verify_habitat_handler(handler_at, handler)
+    ram = region(0x060105a0, 32)
+    before, regs, pr, after, writes, calls = execute(patch, patch_at, 0x06012340, ram)
+    assert writes == [(0x060105b4, 4, handler_at)] and not calls
+    expected = dict(ram)
+    expected.update(enumerate(handler_at.to_bytes(4, 'big'), 0x060105b4))
+    before[1], before[2] = 0x060105b4, handler_at
+    assert after == expected and regs == before and pr == 0x06012340
+    print('Linked shared Habitat/Pad guard priority, all conditional writes, '
+          'launch pointer, T and continuation pass')
 
 
 if __name__ == '__main__':

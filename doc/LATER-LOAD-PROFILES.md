@@ -158,3 +158,69 @@ Those requirements do not establish a violation in these game routines
 without their preceding accesses. The choice to retain SAROO's existing
 NOP workaround comes from the original compatibility implementation, not
 an invented Sega mandate or a new diagnosis of the game's failure.
+
+## Habitat II Japan V1.004
+
+[Recipe](../recipes/habitat-ii-jp-v1004-sector.json). This is an opt-in native
+source candidate with an **unresolved modeled audio difference**. Adapted
+from paps-g `b86f9f7c`, `21ca2e9b` and the later `95bcc4d4` source review.
+The original shared `HABITAT2_patch`/`HABITAT2_handle` modem workaround is
+attributed to [tpunix's SAROO implementation](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+The built-in callback remains the ordinary fallback. This port does not
+close the audio hold or claim modem/game qualification.
+
+The exact source is `GS-7105   V1.004`, original Track 1 SHA-256
+`6b71ebb83c666ade734b89058d433ff433143b9da701b32af0884a84d377df70`.
+FAD 214/raw offset 1342 supplies `8b02` → `0009` at `0602b52e` in numeric
+program `1;1`. The original function reads modem byte `25885029`, compares
+it with `11`, and branches to return zero if different. The NOP preserves
+the read, comparison, T and existing return-one path, exactly as the old
+handler's instruction write does for this loaded program. No copied handler
+or new RAM writer is supplied, and no cartridge action is added.
+
+The shared handler checks the Pad predicate first, then the Habitat predicate.
+In the preserved `1;1` source those encoded bytes are `f4` and `11`, so only
+the Habitat write applies. FAD 212 guards that first predicate's source;
+FAD 173 guards the unmodified initial JSR/NOP and `060105b4=06020000` target.
+The later `2;1` reuses the same RAM addresses with bytes `dc` and `26`.
+Neither old predicate matches, and its separate source sectors remain
+entirely unedited. A matching RAM address alone never authorizes an edit.
+
+Both complete preserved files were freshly rehashed and passed through the
+current decoder: 115 sectors / 234,120 logical bytes for `1;1` at LBA 42,
+and 165 sectors / 337,056 bytes for `2;1` at LBA 157. Only the intended two
+bytes change in the first; the second is byte-identical. Original SHA-256s:
+`5a561a55e2681ed57362acbeda0eb0800e4eee27398f52bd51fa5d8e2a1307b3`
+and `e716d7a3e865ef7de5dfe618baf911e293c67532a4a8f27fbd7481209e1d956a`.
+The first postimage is
+`899d765e631ab5f7850b630a948f3037a6d8cbed9fe96b0db442b428dc172a18`.
+Reconstructed FADs 212/214 match the archived original raw-sector CRCs.
+FAD 173's preserved source window rehashes, but its complete original raw
+sector and the whole track were unavailable. Last unedited partial-sector
+padding is generated; no recovery or fresh hash of the original track is claimed.
+
+The archived 1,068-byte pack has one edit and two read-only guards. Public
+checks compile generated source for all three, verify full sector output and
+repeated source rejection/retry, execute the actual launch caller and check
+the current linked shared handler's guard priority, writes and T effects.
+The handler's 48 bytes match the retained comparison ELF. The isolated
+native check runs both original and patched instructions for all 256 modeled
+modem bytes and both incoming T values. It preserves the comparison flag
+and reads the modeled port in both versions; it does not operate a modem.
+The commands above run these checks without game images or device access.
+
+The rehashed historical 18,000-frame comparison matches all 301 video and
+visible-pixel checkpoints, but only 156 audio CRCs and 299 sample counts.
+Both 53,071,856-byte complete PCM streams remain preserved and have different
+hashes. The first CRC difference follows the second handoff. Its cause is
+unresolved: no latency-only explanation, compensating delay or physical sound
+diagnosis follows from these records. Keep the candidate opt-in; audio,
+other modem paths and physical acceptance remain open. Runtime firmware
+inputs, image sizes and FPGA are unchanged.
+
+[Hitachi SH7604 Hardware Manual, §2.4.1, Tables 2.16–2.17, printed
+pp. 39–40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=55) specifies
+the BF and NOP encodings and unchanged T effects. The game's modem workaround
+comes from the original SAROO code, rather than a Sega requirement to fake
+modem presence. The exact program extents and later loading are established
+by source and retained execution evidence, rather than the general boot format.
