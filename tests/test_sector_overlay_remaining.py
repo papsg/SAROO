@@ -1,0 +1,116 @@
+"""Remaining stock profiles against synthetic sources and production C code."""
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+import test_sector_overlay as overlay
+import test_sector_overlay_later as later
+from check_later_callbacks_sh2 import execute, region
+from check_remaining_callbacks_sh2 import BATMAN_HANDLER, verify_batman_handler
+
+
+class RemainingRecipeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        overlay.SectorOverlayTests.setUpClass()
+        cls.fixture = overlay.SectorOverlayTests
+
+    setUp = later.LaterRecipeTests.setUp
+    source_fixture = later.LaterRecipeTests.source_fixture
+    compile = later.LaterRecipeTests.compile
+    check_delivery = later.LaterRecipeTests.check_delivery
+
+    def batman_fixture(self, region):
+        ids = {'us': 'T-8140H   V1.000', 'jp': 'T-8118G   V1.000',
+               'eu-50': 'T-8140H-50V1.000'}
+        first = 178 if region == 'eu-50' else 181
+        source = json.loads((overlay.ROOT / 'recipes' /
+                            f'batman-forever-arcade-{region}-v1000-sector.json').read_text())
+        self.assertEqual(source['disc_id'], ids[region])
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']],
+                         [(first, 724, '0600af9c', '0600d000'),
+                          (664, 1620, 'd439490b6583d239612221188ffceb00',
+                           'd23a612221188bfcd437490b6583eb00')])
+        self.assertEqual([g['fad'] for g in source['guards']], [150, first+13])
+        self.assertEqual(0x06004100 + 724-16, 0x060043c4)
+        self.assertEqual(0x0600d000 + (664-150-469)*2048 + 1620-16, 0x06023e44)
+        return self.source_fixture(source, b'V1.000',
+                                   {150: [(240, '00000f0c')],
+                                    first+13: [(1708, 'd0034f22400b00094f26000b000900000600d000')]})
+
+    def test_batman_all_regions_deliver_only_native_edits_and_original_ip_and_wrapper(self):
+        for region in ('us', 'jp', 'eu-50'):
+            with self.subTest(region=region), tempfile.TemporaryDirectory(dir=self.fixture.output) as folder:
+                self.path = Path(folder)
+                recipe, raws = self.batman_fixture(region)
+                self.check_delivery(recipe, raws)
+
+    def test_batman_rejects_wrong_revision_source_and_instruction(self):
+        for wrong in ('revision', 'source', 'instruction'):
+            recipe, _ = self.batman_fixture('us')
+            if wrong == 'revision':
+                recipe['disc_id'] = (overlay.PRODUCT + b'V1.001').decode()
+            elif wrong == 'source':
+                recipe['tracks'][0]['sha256'] = '0'*64
+            else:
+                recipe['writes'][1]['before'] = '0009'*8
+            result, pack = self.compile(recipe)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(pack.exists())
+
+
+class BatmanInstructionTests(unittest.TestCase):
+    def test_complete_original_conditional_handler_effects(self):
+        verify_batman_handler(0x02008508, BATMAN_HANDLER)
+
+    def test_bad_guard_partial_copy_or_entry_fails(self):
+        for at, value in ((6, '0009'), (20, '0009'), (62, 'd004')):
+            code = bytearray(BATMAN_HANDLER)
+            code[at:at+2] = bytes.fromhex(value)
+            with self.subTest(at=at), self.assertRaises((ValueError, AssertionError)):
+                verify_batman_handler(0x02008508, code)
+
+    def test_corrected_sequence_waits_before_reusing_the_worker_input(self):
+        for corrected, words in ((False, 'd439490b6583d239612221188ffceb00'),
+                                 (True, 'd23a612221188bfcd437490b6583eb00')):
+            code = bytearray(0xf0)
+            code[:16] = bytes.fromhex(words)
+            code[0xe8:0xec] = bytes.fromhex('06023df8')
+            code[0xec:0xf0] = bytes.fromhex('260d2810')
+            events = []
+            _, regs, _, _, writes, calls = execute(
+                code, 0x06023e44, 0x06023e54, region(0x260d2810, 4),
+                cart=0x13570900, trace=events, read_values={0x260d2810: [1, 1, 0]})
+            polls = [i for i, e in enumerate(events) if e[:2] == ('read', 0x260d2810)]
+            call = next(i for i, e in enumerate(events) if e[0] == 'call')
+            self.assertEqual([events[i][3] for i in polls], [1, 1, 0])
+            self.assertEqual(call > polls[-1], corrected)
+            self.assertEqual(calls, [(0x06023df8, 0x13570800)])
+            self.assertEqual(regs[11], 0)
+            self.assertFalse(writes)
+
+    def test_native_and_handler_entry_keep_each_original_callers_pr_and_delay_slot(self):
+        handler_at = 0x02008508
+        for pc, words, pr in ((0x0600437a, 'd012400b0009', 0x06004380),
+                              (0x06004390, '480b0009', 0x06004394),
+                              (0x0600439e, 'e201480b2a22', 0x060043a4)):
+            for old in (False, True):
+                target = handler_at if old else 0x0600d000
+                code = bytearray(0x060043c8-pc)
+                code[:len(bytes.fromhex(words))] = bytes.fromhex(words)
+                code[-4:] = target.to_bytes(4, 'big')
+                ram = (region(0x06023e40, 32) | region(0x13570a00, 4) |
+                       dict(enumerate(BATMAN_HANDLER, handler_at)))
+                ram.update(enumerate(bytes.fromhex('000b0416'), 0x06023e44))
+                _, regs, result_pr, _, writes, _ = execute(
+                    code, pc, 0x0600d000, ram, registers={8: target})
+                self.assertEqual(result_pr, pr)
+                self.assertEqual(writes, [(0x13570a00, 4, 1)] if pc == 0x0600439e else [])
+
+
+if __name__ == '__main__':
+    unittest.main()

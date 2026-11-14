@@ -87,7 +87,7 @@ class LaterRecipeTests(unittest.TestCase):
         fads = {w['fad'] for w in source['writes']} | set(guards)
         raws = {150: sector(150, ip=True, version=version)}
         for fad in sorted(fads):
-            raw = bytearray(sector(fad))
+            raw = bytearray(raws[fad] if fad in raws else sector(fad))
             edits = [(w['offset'], w['before']) for w in source['writes'] if w['fad'] == fad]
             for offset, value in edits + guards.get(fad, []):
                 data = bytes.fromhex(value)
@@ -102,7 +102,7 @@ class LaterRecipeTests(unittest.TestCase):
             (self.path / leaf).write_bytes(raw)
             cue += [f'FILE "{leaf}" BINARY', f'  TRACK {track:02} MODE1/2352',
                     '    INDEX 01 00:00:00']
-            if track > 1:
+            if track > 1 or fad in fads:
                 recipe['tracks'].append({'number': track,
                                          'sha256': hashlib.sha256(raw).hexdigest()})
             previous = fad
@@ -354,9 +354,11 @@ class LaterRecipeTests(unittest.TestCase):
         result, pack = self.compile(recipe)
         self.assertEqual(result.returncode, 0, result.stderr)
         header = pack.read_bytes()[:24]
-        self.assertEqual(header[4:8], bytes([3, len(raws) - 1, 0,
+        targets = sorted({w['fad'] for w in recipe['writes']} |
+                         {g['fad'] for g in recipe.get('guards', [])})
+        self.assertEqual(header[4:8], bytes([3, len(targets), 0,
                                           0x80 | recipe.get('cart_mode', 0)]))
-        for index, fad in enumerate(sorted(set(raws) - {150})):
+        for index, fad in enumerate(targets):
             before = raws[fad]
             after = bytearray(before)
             edits = [w for w in recipe['writes'] if w['fad'] == fad]

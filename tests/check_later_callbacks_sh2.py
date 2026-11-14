@@ -9,11 +9,16 @@ from pathlib import Path
 from check_menu_clock_sh2 import linked_symbol_records, signed
 
 
-def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, flags=None):
+def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, flags=None,
+            read_values=None, trace=None, registers=None):
     program = dict(enumerate(code, start))
     memory = dict(ram)
     regs = [0x13570000 + i * 0x100 + seed for i in range(16)]
     regs[15] = 0x060ff000
+    if registers is not None:
+        for number, value in registers.items():
+            assert 0 <= number < 16 and 0 <= value <= 0xffffffff
+            regs[number] = value
     initial = regs.copy()
     pc, pr, delayed = start, stop if return_address is None else return_address, None
     writes, calls = [], []
@@ -23,7 +28,14 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
         source = program if address in program else memory
         if not all(address + i in source for i in range(width)):
             raise ValueError(f'Unmodeled callback read {address:08x}/{width}')
-        return int.from_bytes(bytes(source[address+i] for i in range(width)), 'big')
+        value = int.from_bytes(bytes(source[address+i] for i in range(width)), 'big')
+        if source is memory:
+            if read_values is not None and address in read_values:
+                values = read_values[address]
+                value = values.pop(0) if len(values) > 1 else values[0]
+            if trace is not None:
+                trace.append(('read', address, width, value))
+        return value
 
     def write(address, width, value):
         if not all(address + i in memory for i in range(width)):
@@ -41,6 +53,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
         if pc == cart:
             assert delayed is None
             calls.append((regs[4], regs[5]))
+            if trace is not None:
+                trace.append(('call', pc, regs[4], regs[5]))
             # A caller must tolerate volatile-register changes across the
             # existing MMIO accessor. The accessor's hardware is not modeled.
             for i in range(8):
@@ -63,6 +77,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             t = int(regs[0] == (signed(op & 255, 8) & 0xffffffff))
         elif op & 0xf00f == 0x3000:
             t = int(regs[n] == regs[m])
+        elif op & 0xf00f == 0x2008:
+            t = int((regs[n] & regs[m]) == 0)
         elif op & 0xf00f == 0x6000:
             regs[n] = signed(read(regs[m], 1), 8) & 0xffffffff
         elif op & 0xf00f == 0x6001:
@@ -94,6 +110,8 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
                     following = branch
         elif op & 0xf00f in (0x2000, 0x2001, 0x2002):
             write(regs[n], 1 << (op & 3), regs[m])
+        elif op >> 12 == 1:
+            write(regs[n] + (op & 15) * 4, 4, regs[m])
         elif op == 0x4f22:
             regs[15] -= 4
             write(regs[15], 4, pr)

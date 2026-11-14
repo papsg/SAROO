@@ -109,3 +109,10 @@ inherited fixed-entry handoffs and the later NOP without copied handlers.
 Both source guards remain. **Physical timing and normal first-route play
 remain unqualified**; keep this opt-in.
 [Source checks, original attribution and modeled timing limits](../doc/LATER-LOAD-PROFILES.md#vampire-savior-japan-v1000).
+
+Batman Forever Arcade V1.000 [USA](batman-forever-arcade-us-v1000-sector.json),
+[Japan](batman-forever-arcade-jp-v1000-sector.json) and
+[Europe](batman-forever-arcade-eu-50-v1000-sector.json) carry native worker-wait
+ordering and the inherited direct entry. No copied helper or new cartridge
+action is supplied. **USA/Europe modeled audio differences remain open.**
+[Exact sources, attribution, reproduction and limits](../doc/REMAINING-GAME-PROFILES.md).

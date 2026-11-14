@@ -474,6 +474,29 @@ static void vampire_launches(void)
         }
 }
 
+static void batman_launches(void)
+{
+    const char *ids[] = {"T-8140H   V1.000", "T-8118G   V1.000", "T-8140H-50V1.000"};
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    const u32 pointers[] = {0x0600af9c, 0x0600d000, 0xffffffff};
+    for(unsigned id = 0; id < 3; ++id)
+        for(unsigned tag = 0; tag < 3; ++tag)
+            for(unsigned physical = 0; physical < 2; ++physical)
+                for(unsigned pointer = 0; pointer < 3; ++pointer) {
+                    reset(ids[id], 61);
+                    disc_type = physical;
+                    overlay_handoff = __builtin_bswap32(tags[tag]);
+                    int replaced = tag == 1 && !physical;
+                    REG32(0x060043c4) = replaced ? 0x0600d000 : pointers[pointer];
+                    REG32(0x06023e44) = 0xd439490b;
+                    read_1st(); finished();
+                    u32 expected = replaced ? 0x0600d000 : pointer == 0
+                        ? (u32)(uintptr_t)Batman_Forever_The_Arcade_Game_handle1 : pointers[pointer];
+                    assert(REG32(0x060043c4) == expected);
+                    assert(REG32(0x06023e44) == 0xd439490b && !others && !cart_count);
+                }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -605,6 +628,8 @@ int main(int argc, char **argv)
         phantasy_launches();
     }else if(!strcmp(mode, "vampire")){
         vampire_launches();
+    }else if(!strcmp(mode, "batman")){
+        batman_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -620,7 +645,8 @@ int main(int argc, char **argv)
                g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch ||
                g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch ||
                g->patch_func == Phantasy_Star_Collection_patch ||
-               g->patch_func == VAMPIRE_SAVIOR_patch) continue;
+               g->patch_func == VAMPIRE_SAVIOR_patch ||
+               g->patch_func == Batman_Forever_The_Arcade_Game_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

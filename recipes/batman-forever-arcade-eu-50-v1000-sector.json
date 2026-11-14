@@ -1,0 +1,44 @@
+{
+  "abi": 2,
+  "product_id": "T-8140H-50",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L959",
+  "title": "Batman Forever: The Arcade Game (Europe) V1.000: native task-ordering edits",
+  "summary": "Wait for WING8 decompression before loading WHEEL8 into its input buffer; retain the inherited direct program entry.",
+  "rationale": "The original frontend queues slave decompression from00210000, then overwrites that buffer with WHEEL8 before waiting for completion. Move the existing mailbox wait before that load using the inherited sixteen-byte instruction reorder. Correct the original060043C4 literal to0600D000 so all three existing JSR sites that use this literal enter the loaded program with their original caller PR, matching the inherited tail-entry route. Leave the native IP declaration, call delay slots, original wrapper bytes and GAME.BIN unchanged. No copied callback or RAM patch writer is supplied. Complete original-source/production-decoder checks cover16 changed bytes across the first and frontend files. The 9000-frame European comparison matches all 151 video/nonblack checkpoints; audio differs during frontend startup. The preserved-wrapper alternative and all previous controls remain archived; no production delay or emulator adjustment is added. This is a task-ordering compatibility edit, not CDON. Keep inactive pending audio explanation where applicable, real Saturn reset, load, video/audio and other-path acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "5da6ea9354f2025a54c67c5ffed9a73d85137c0d5fd4d11043a3dbfec485d226"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 178,
+      "offset": 724,
+      "before": "0600af9c",
+      "after": "0600d000",
+      "effect": "Call the existing0600D000 loaded-program entry directly.",
+      "reason": "Retain the caller PR and original call delay slots while matching the inherited direct tail-entry route."
+    },
+    {
+      "fad": 664,
+      "offset": 1620,
+      "before": "d439490b6583d239612221188ffceb00",
+      "after": "d23a612221188bfcd437490b6583eb00",
+      "effect": "Move the original worker-completion wait ahead of the WHEEL8 texture-load call.",
+      "reason": "Retain the upstream sixteen-byte task-ordering edit directly in FRONTEND.BIN."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 150,
+      "reason": "Bind the unchanged native IP declaration."
+    },
+    {
+      "fad": 191,
+      "reason": "Bind the unchanged original 0600AF9C wrapper."
+    }
+  ],
+  "disc_id": "T-8140H-50V1.000"
+}
