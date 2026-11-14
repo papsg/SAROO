@@ -51,7 +51,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         actual = {b'Croc_LOG_patch', b'ULTRAMAN_patch', b'kof95_patch',
                   b'DND2_patch', b'FRIENDS_patch', b'kof97_patch', b'CYBER_BOTS_patch',
                   b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch', b'mshvssf_patch',
-                  b'Phantasy_Star_Collection_patch'}
+                  b'Phantasy_Star_Collection_patch', b'VAMPIRE_SAVIOR_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -62,6 +62,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code += b'static void HABITAT2_handle(void) { assert(0); }\n'
         code += b'static void mshvssf_handle1(void) { assert(0); }\n'
         code += b'static void Phantasy_Star_Collection_handle(void) { assert(0); }\n'
+        code += b'static void VAMPIRE_SAVIOR_handle(void) { assert(0); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -90,7 +91,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
                       rb'(\1*)memory_at(\2)', code)
         for name in (b'bup_init', b'my_cdplayer', b'my_06b0', b'kof95_handle',
                      b'kof95_yzb_hack_handle', b'CYBER_BOTS_handle1', b'GROOVE_ON_FIGHT_handle',
-                     b'HABITAT2_handle', b'mshvssf_handle1', b'Phantasy_Star_Collection_handle'):
+                     b'HABITAT2_handle', b'mshvssf_handle1', b'Phantasy_Star_Collection_handle',
+                     b'VAMPIRE_SAVIOR_handle'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -182,6 +184,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_phantasy_retains_its_conditional_fallback_without_a_source_replacement(self):
         self.scenario('phantasy')
+
+    def test_vampire_retains_both_native_dispatches_or_the_complete_fallback(self):
+        self.scenario('vampire')
 
 
 if __name__ == '__main__':

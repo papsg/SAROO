@@ -16,7 +16,8 @@ import zlib
 
 from check_later_callbacks_sh2 import (execute, region, verify_cyber_handler,
                                        verify_groove_handler, verify_habitat_handler,
-                                       verify_marvel_handler, verify_phantasy_handler)
+                                       verify_marvel_handler, verify_phantasy_handler,
+                                       verify_vampire_handler)
 from test_sector_overlay import ROOT, PRODUCT, canonical, sector, seal
 import test_sector_overlay as overlay_fixture
 
@@ -34,6 +35,8 @@ MARVEL_HANDLER = bytes.fromhex(
     'd105412b0009000b00092012210200090600286e0600205a06002000')
 PHANTASY_HANDLER = bytes.fromhex(
     'd104d205631233208b01d2042122d104412b00090602345c06021b580600083c06020000')
+VAMPIRE_HANDLER = bytes.fromhex(
+    'd103e2092121d103412b0009000b000906014a520600d000')
 
 
 class LaterRecipeTests(unittest.TestCase):
@@ -160,6 +163,28 @@ class LaterRecipeTests(unittest.TestCase):
                                     501: [(1074, 'd10e410b00094f266af669f6000b68f60009'),
                                           (1132, '06021b58')]})
 
+    def vampire_fixture(self):
+        source = json.loads((ROOT / 'recipes/vampire-savior-jp-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'T-1229G   V1.000')
+        self.assertEqual(source.get('cart_mode', 0), 0)
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                          for w in source['writes']],
+                         [(18022, 610, '2012', '0009'), (180, 738, '6232', '6233'),
+                          (180, 968, '060ddb30', '0600d000'), (188, 1082, '6232', '6233'),
+                          (188, 1164, '060ddb68', '0600d000')])
+        self.assertEqual([g['fad'] for g in source['guards']], [231, 303])
+        for w, lba, base, target in zip(source['writes'], [17857, 30, 30, 30, 30],
+                                       [0x0600d000, *([0x060a0000]*4)],
+                                       [0x06014a52, 0x060a02d2, 0x060a03b8,
+                                        0x060a442a, 0x060a447c]):
+            self.assertEqual(base + (w['fad']-150-lba)*2048 + w['offset']-16, target)
+        return self.source_fixture(source, b'V1.000',
+                                   {180: [(734, 'd33a4f266232422b6ef6')],
+                                    188: [(1078, 'd3154f266232422b6ef6')],
+                                    231: [(2028, '562e42494e00')],
+                                    303: [(832, '0600d000'), (888, '0600d000')]})
+
     def test_cyber_delivers_only_the_later_nop_and_keeps_original_dispatch(self):
         recipe, raws = self.cyber_fixture()
         self.check_delivery(recipe, raws)
@@ -178,6 +203,10 @@ class LaterRecipeTests(unittest.TestCase):
 
     def test_phantasy_changes_only_the_call_and_keeps_native_pointer_and_epilogue(self):
         recipe, raws = self.phantasy_fixture()
+        self.check_delivery(recipe, raws)
+
+    def test_vampire_delivers_both_fixed_handoffs_and_the_later_nop(self):
+        recipe, raws = self.vampire_fixture()
         self.check_delivery(recipe, raws)
 
     def test_streamed_program_keeps_guard_and_unrelated_sectors_unchanged(self):
@@ -469,6 +498,52 @@ class PhantasyCallbackModelTests(unittest.TestCase):
             code[offset:offset+2] = bytes.fromhex(value)
             with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
                 verify_phantasy_handler(0x02008588, code)
+
+
+class VampireCallbackModelTests(unittest.TestCase):
+    def test_original_handler_keeps_the_fixed_entry_and_only_its_inherited_nop(self):
+        verify_vampire_handler(0x02008130, VAMPIRE_HANDLER)
+
+    def test_wrong_nop_width_literal_or_entry_is_detected(self):
+        for offset, value in ((4, '2120'), (18, '4a56'), (22, 'd004')):
+            code = bytearray(VAMPIRE_HANDLER)
+            code[offset:offset+2] = bytes.fromhex(value)
+            with self.subTest(offset=offset), self.assertRaises((AssertionError, ValueError)):
+                verify_vampire_handler(0x02008130, code)
+
+    def test_both_dispatches_restore_pr_and_r14_and_ignore_mutable_pointer_values(self):
+        handler_at = 0x02008130
+        for start, literal, load, pointer in ((0x060a02ce, 0xea, 'd33a', 0x060ddb30),
+                                              (0x060a4426, 0x56, 'd315', 0x060ddb68)):
+            for table in (0, 0x0600d000, 0x06012340, 0xffffffff):
+                for candidate in (False, True):
+                    code = bytearray(literal + 4)
+                    # The old menu changes JMP @R2 to JMP @R3 and its literal
+                    # to the actual handler. The candidate supplies the fixed
+                    # target directly, retaining JMP @R2 and the delay slot.
+                    code[:10] = bytes.fromhex(load + '4f26' +
+                                             ('6233422b' if candidate else '6232432b') + '6ef6')
+                    code[literal:literal+4] = (0x0600d000 if candidate else handler_at).to_bytes(4, 'big')
+                    ram = (region(0x06014a40, 32) | dict(enumerate(VAMPIRE_HANDLER, handler_at)) |
+                           dict(enumerate(bytes.fromhex('06054320060bcafe'), 0x060ff000)))
+                    ram.update(enumerate(table.to_bytes(4, 'big'), pointer))
+                    if candidate:
+                        ram.update({0x06014a52: 0, 0x06014a53: 9})
+                    flags = [1]
+                    before, regs, pr, after, writes, calls = execute(
+                        code, start, 0x0600d000, ram, flags=flags)
+                    self.assertEqual(pr, 0x06054320)
+                    self.assertEqual(regs[14:], [0x060bcafe, 0x060ff008])
+                    self.assertEqual(regs[3], 0x0600d000 if candidate else handler_at)
+                    self.assertEqual(regs[2], 0x0600d000 if candidate else 9)
+                    self.assertEqual(regs[1], before[1] if candidate else 0x0600d000)
+                    self.assertEqual(regs[:1] + regs[4:14], before[:1] + before[4:14])
+                    self.assertEqual(flags, [1])
+                    self.assertEqual(writes, [] if candidate else [(0x06014a52, 2, 9)])
+                    expected = dict(ram)
+                    expected.update({0x06014a52: 0, 0x06014a53: 9})
+                    self.assertEqual(after, expected)
+                    self.assertFalse(calls)
 
 
 if __name__ == '__main__':

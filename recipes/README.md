@@ -103,3 +103,9 @@ skips the original PS2 callback call and preserves its native pointers and
 epilogue. No copied helper or resident stub is required. **Modeled audio
 remains unresolved**; this is an opt-in source candidate.
 [Attribution, conditional fallback, verification and limits](../doc/LATER-LOAD-PROFILES.md#phantasy-star-collection-japan-v1003).
+
+[Vampire Savior JP V1.000](vampire-savior-jp-sector.json) preserves both
+inherited fixed-entry handoffs and the later NOP without copied handlers.
+Both source guards remain. **Physical timing and normal first-route play
+remain unqualified**; keep this opt-in.
+[Source checks, original attribution and modeled timing limits](../doc/LATER-LOAD-PROFILES.md#vampire-savior-japan-v1000).

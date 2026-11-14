@@ -302,7 +302,7 @@ differences remain preserved. Physical bus/audio, other loads, reset and
 full-game behavior remain unqualified; keep the recipe opt-in.
 
 Sega [ST-097-R5, §3.6, printed pp. 62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=78)
-defines ASR0. [Hitachi SH7604, §2.4.1, Table 2.12, printed pp. 32–33](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=48)
+defines ASR0. [Hitachi SH7604, §2.4.1, Table 2.12, printed pp. 33–34](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
 and [Table 2.17, printed p. 40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=56)
 describe the MOV.L and NOP encodings and T behavior. These references support
 the instruction interpretation; the game-specific workaround comes from
@@ -377,3 +377,93 @@ two-space declaration; its ten existing CD-player controls also pass.
 specifies JSR and its delay slot; [Table 2.17, p.40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=56)
 specifies NOP. These instruction references do not prescribe this game
 workaround. The original contribution supplies that policy.
+
+## Vampire Savior Japan V1.000
+
+[Recipe](../recipes/vampire-savior-jp-sector.json). Adapted from paps-g
+`8b791fd4` / `b4b24d58`, retaining the later fixed-entry and startup-dependence
+reviews. The inherited launch redirects and later NOP come from
+[tpunix's original implementation](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L450).
+The preserved, independently pinned IP identifies `T-1229G   V1.000`.
+Recorded data-track SHA-256:
+`1c6a4fdf3c24228f72929abc1f635600c7d58bfc5addc459c9b2099f0f79fc18`.
+The complete track is unavailable for a fresh hash.
+
+| File / address | FAD / raw offset | Original → replacement |
+| --- | --- | --- |
+| `0.BIN`, `060a02d2` | 180 / 738 | `6232` → `6233` |
+| `0.BIN`, `060a03b8` | 180 / 968 | `060ddb30` → `0600d000` |
+| `0.BIN`, `060a442a` | 188 / 1082 | `6232` → `6233` |
+| `0.BIN`, `060a447c` | 188 / 1164 | `060ddb68` → `0600d000` |
+| `V.BIN`, `06014a52` | 18022 / 610 | `2012` → `0009` |
+
+The original handler writes the later NOP, then always jumps to `0600d000`.
+It does not follow the mutable table slots. Both recipe dispatches preserve
+that fixed target: MOV.L @R3,R2 becomes MOV R3,R2, and its literal supplies
+`0600d000` directly. Both original JMP @R2 instructions and R14-restoring
+delay slots stay intact. PR is restored before each jump; the recipe adds
+no copied handler, runtime table dependency, delay or cartridge action.
+
+FAD 231 guards the first loader's original `V.BIN` filename, and FAD 303
+guards both original table slots initialized to `0600d000`. These guards
+identify the source, rather than promising that RAM values never change.
+Both complete preserved files rehash:
+
+| File | LBA / load address | Bytes | Original SHA-256 |
+| --- | --- | --- | --- |
+| `0.BIN;1` | 30 / `060a0000` | 274,708 | `43548deae3e16f1bf240eb82554f798e724b1b70eeca7f744b942ec06ccf8c5f` |
+| `V.BIN;1` | 17857 / `0600d000` | 410,704 | `a7aeeb5391b2bcbce3220e15f21a77546ca54f0f59cf888ca9f43610655d80fa` |
+
+All 336 sectors / 685,412 logical bytes pass the public source verifier and
+current production C decoder. All five source records, including both guards,
+match the archived 1,764-byte pack, SHA-256
+`e3aaa02bdd2ccbe95fe81efe8ca9beb5d20f2bba253085fc3ebe5a1024b56756`.
+The complete first-file postimage matches the preserved reference; the later
+postimage differs only at the inherited NOP. Unedited final-sector padding is
+generated. The exact-revision lookup key is a public-port adaptation.
+
+Linked checks cover every byte/longword write in the original launch callback,
+its RTS delay-slot store and the 24-byte handler's complete register/memory/T
+and fixed-entry effects. Its handler bytes match the preserved original-menu
+ELF. The actual launch fixture verifies both admitted native dispatches and
+complete callback fallback. Both dispatch instruction models restore PR/R14,
+preserve other registers and T, and ignore four differing runtime table values.
+All 49 overlay methods and 18 launch methods pass with sanitizers and optimized
+C. The commands above reproduce these checks without a game image.
+
+The incoming R1/R2/R3 values differ between the callback and native routes.
+The rehashed 23-input historical source analysis checks 58 startup instructions
+and 76 abstract states, exploring both CRT-loop outcomes. It finds those
+incoming differences overwritten before affecting addresses, stores or control;
+four deliberately damaged overwrite/flag controls are rejected. This is a
+conditional dependence argument: it assumes equal resident code/data and other
+state, and excludes asynchronous differences and faults. It is not an ISA,
+termination or physical timing proof.
+
+The stronger original-menu comparison differs from the callback-free candidate
+at 324/535 video and 443/535 audio CRC checkpoints. Its rehashed 31-input timing
+control changes only modeled 16/32-bit reads from the exact aligned 32-byte menu
+line to Work RAM timing. It then matches all 535 four-field checkpoints and the
+complete 94,342,452-byte candidate PCM, SHA-256
+`76d845f4183ed2adae37dc4b0d722361d6cc31c2f990a132e291514387291cbb`.
+The same binary with the timing control disabled reproduces the original
+94,342,844-byte control PCM and all checkpoints. A separate source-NOP control
+retaining the menu callback also reproduces that original output. The mutable
+old ELF path has since changed; an archived ELF with the exact pinned hash
+was recovered for this recheck. No historical evidence was replaced.
+
+This isolates that recorded emulator discrepancy to modeled cartridge reads,
+not a different delivered instruction. No production timing compensation is
+included. The natural 32,000-frame path observes the second dispatch. The
+artificial first-dispatch pair has 201 matching checkpoints but ends black
+on both sides; it does not qualify normal first-route play. The comparisons
+use 4 MB expansion RAM; this recipe leaves cartridge configuration to the
+existing setup. Physical bus/cache/audio, first-route play, other reloads and
+paired-firmware acceptance remain open. Keep the recipe opt-in and retain
+the built-in callback. Firmware runtime sources and sizes are unchanged.
+
+[Hitachi SH7604 §2.4.1, Table 2.12, printed pp.33–34](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+defines MOV and its addressing modes; [Table 2.16, p.39](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=55)
+defines delayed JMP; [Table 2.17, p.40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=56)
+defines LDS.L and NOP. These primary references support the instruction/flag
+checks; SAROO's original contribution supplies the compatibility policy.

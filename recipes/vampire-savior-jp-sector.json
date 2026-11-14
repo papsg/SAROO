@@ -1,0 +1,68 @@
+{
+  "abi": 2,
+  "product_id": "T-1229G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L450",
+  "title": "Vampire Savior (Japan): fixed-entry later-code candidate",
+  "summary": "Deliver the later V.BIN NOP and retain both inherited fixed-entry handoffs without menu trampolines.",
+  "rationale": "The inherited menu handler writes the NOP at 06014A52, then always jumps to 0600D000, ignoring the original pointer slots at 060DDB30/060DDB68. Preserve that fixed entry directly in both source dispatches: change their MOV.L @R3,R2 to MOV R3,R2 and their PC-relative literals to 0600D000. Both original JMP @R2 and R14-restoring delay slots remain intact. The guarded V.BIN source supplies the same NOP, and its startup overwrites incoming R1/R2/R3 before use and compares before consuming T. Filename and original table guards still pin this source revision. The fixed target no longer depends on runtime changes to those table entries. The actual C core verifies all five raw-sector postimages and wrong-source refusal. Fixed-clock emulator comparisons match the compiled control at 535 video/audio checkpoints over 32000 natural-path frames and 201 checkpoints in the artificial first-loader fixture. The forced fixture ends black on both paths and does not certify normal first-route play. Keep inactive pending deferred paired firmware, cartridge/cache timing and physical acceptance. The stronger natural control at original menu address 02008A00 differs from the callback-free candidate: 211/535 video checkpoints and 92/535 audio checkpoints match, with the first video difference at frame 7321. The earlier relocated-handler parity is not an original-menu-address equivalence result. A diagnostic supplying the same source NOP while retaining the exact menu callback matches all 535 four-field checkpoints and the complete 94342844-byte control PCM stream. This isolates the tested discrepancy to callback execution rather than a different target instruction, but does not establish physical timing equivalence or an audible defect. No production delay is added; the candidate stays inactive. A complete-line timing diagnostic changes only CPU 16/32-bit reads from the exact 32-byte aligned original menu line at 02008A00 to modeled Work RAM timing. It then matches all 535 four-field checkpoints and the candidate complete 94342452-byte PCM stream; the same binary with that diagnostic disabled matches the original control completely. This isolates the recorded emulator difference to modeled cartridge reads, not a differing target game instruction. It does not qualify physical bus timing; the pack remains unchanged and inactive. A source-byte paired-value analysis now checks all 58 startup instructions and both outcomes of every CRT-loop branch: arbitrary incoming R1/R2/R3 differences are overwritten before they can influence any memory access, store or control decision. All exit registers converge before 0600D088, with four deliberately damaged overwrite/flag controls rejected. This conditional source argument covers either fixed-entry handoff; normal first-route play and physical timing remain unqualified.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "1c6a4fdf3c24228f72929abc1f635600c7d58bfc5addc459c9b2099f0f79fc18"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 18022,
+      "offset": 610,
+      "before": "2012",
+      "after": "0009",
+      "effect": "NOP the later-loaded instruction.",
+      "reason": "Original menu handler writes the same NOP at 06014A52."
+    },
+    {
+      "fad": 180,
+      "offset": 738,
+      "before": "6232",
+      "after": "6233",
+      "effect": "Pass the fixed entry directly into R2 at the first dispatch.",
+      "reason": "The original compiled menu handler always jumps to 0600D000; preserve its target without depending on the original table value."
+    },
+    {
+      "fad": 180,
+      "offset": 968,
+      "before": "060ddb30",
+      "after": "0600d000",
+      "effect": "Load the inherited fixed entry instead of the first mutable pointer slot.",
+      "reason": "The original compiled menu handler always jumps to 0600D000; preserve its target without depending on the original table value."
+    },
+    {
+      "fad": 188,
+      "offset": 1082,
+      "before": "6232",
+      "after": "6233",
+      "effect": "Pass the fixed entry directly into R2 at the second dispatch.",
+      "reason": "The original compiled menu handler always jumps to 0600D000; preserve its target without depending on the original table value."
+    },
+    {
+      "fad": 188,
+      "offset": 1164,
+      "before": "060ddb68",
+      "after": "0600d000",
+      "effect": "Load the inherited fixed entry instead of the second mutable pointer slot.",
+      "reason": "The original compiled menu handler always jumps to 0600D000; preserve its target without depending on the original table value."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 231,
+      "reason": "Check that the first loader's 060B9FDC filename remains V.BIN."
+    },
+    {
+      "fad": 303,
+      "reason": "Check both original entry-pointer slots at 060DDB30/060DDB68, initialized to 0600D000."
+    }
+  ],
+  "disc_id": "T-1229G   V1.000"
+}

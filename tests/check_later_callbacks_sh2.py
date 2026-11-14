@@ -69,6 +69,11 @@ def execute(code, start, stop, ram, *, cart=None, seed=0, return_address=None, f
             regs[n] = signed(read(regs[m], 2), 16) & 0xffffffff
         elif op & 0xf00f == 0x6002:
             regs[n] = read(regs[m], 4)
+        elif op & 0xf00f == 0x6006:
+            value = read(regs[m], 4)
+            if n != m:
+                regs[m] = (regs[m] + 4) & 0xffffffff
+            regs[n] = value
         elif op & 0xf00f == 0x600c:
             regs[n] = regs[m] & 255
         elif op & 0xf00f == 0x600d:
@@ -208,6 +213,23 @@ def verify_phantasy_handler(address, code):
             assert regs == before and flags == [int(match)]
 
 
+def verify_vampire_handler(address, code):
+    assert len(code) == 24
+    for seed in (0, 1, 127, 255):
+        for initial_t in (0, 1):
+            ram = region(0x06014a40, 32)
+            flags = [initial_t]
+            before, regs, pr, after, writes, calls = execute(
+                code, address, 0x0600d000, ram, seed=seed,
+                return_address=0x06054320, flags=flags)
+            expected = dict(ram)
+            expected.update({0x06014a52: 0, 0x06014a53: 9})
+            assert writes == [(0x06014a52, 2, 9)] and not calls
+            before[1:3] = [0x0600d000, 9]
+            assert after == expected and regs == before and pr == 0x06054320
+            assert flags == [initial_t]
+
+
 def check(elf):
     (patch_at, patch), (handler_at, handler), (cart_at, _) = linked_symbol_records(
         elf, ('_CYBER_BOTS_patch', '_CYBER_BOTS_handle1', '_ssctrl_set'))
@@ -291,6 +313,25 @@ def check(elf):
             assert not calls and pr == 0x06012340
     print('Linked Phantasy launch and late pointer predicates, all writes, '
           'register/T effects and native continuation pass')
+    (patch_at, patch), (handler_at, handler) = linked_symbol_records(
+        elf, ('_VAMPIRE_SAVIOR_patch', '_VAMPIRE_SAVIOR_handle'))
+    verify_vampire_handler(handler_at, handler)
+    for initial_t in (0, 1):
+        ram = (region(0x060a02d0, 16) | region(0x060a4420, 32) |
+               region(0x060a03b0, 16) | region(0x060a4470, 16))
+        flags = [initial_t]
+        before, regs, pr, after, writes, calls = execute(
+            patch, patch_at, 0x06012340, ram, flags=flags)
+        assert writes == [(0x060a02d4, 1, 0x43), (0x060a442c, 1, 0x43),
+                          (0x060a03b8, 4, handler_at), (0x060a447c, 4, handler_at)]
+        expected = dict(ram)
+        for dest, width, value in writes:
+            expected.update(enumerate(value.to_bytes(width, 'big'), dest))
+        before[1:3] = [handler_at, 0x060a447c]
+        assert after == expected and regs == before and pr == 0x06012340
+        assert not calls and flags == [initial_t]
+    print('Linked Vampire both dispatch edits, exact later NOP, fixed entry, '
+          'register/T effects and return state pass')
 
 
 if __name__ == '__main__':

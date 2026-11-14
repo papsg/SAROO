@@ -442,6 +442,38 @@ static void phantasy_launches(void)
             }
 }
 
+static void vampire_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT, SD_OVERLAY_REPLACEMENT | 2};
+    const u32 branches[] = {0x060a02d4, 0x060a442c};
+    const u32 literals[] = {0x060a03b8, 0x060a447c};
+    const u32 tables[] = {0x060ddb30, 0x060ddb68};
+    for(unsigned tag = 0; tag < sizeof tags / sizeof tags[0]; ++tag)
+        for(unsigned physical = 0; physical < 2; ++physical) {
+            reset("T-1229G   V1.000", 61);
+            disc_type = physical;
+            overlay_handoff = __builtin_bswap32(tags[tag]);
+            int replaced = tag == 1 && !physical;
+            for(unsigned i = 0; i < 2; ++i) {
+                REG16(branches[i] - 2) = replaced ? 0x6233 : 0x6232;
+                REG8(branches[i]) = 0x42; REG8(branches[i] + 1) = 0x2b;
+                REG16(branches[i] + 2) = 0x6ef6;
+                REG32(literals[i]) = replaced ? 0x0600d000 : tables[i];
+                REG32(tables[i]) = 0x0600d000;
+            }
+            REG16(0x06014a52) = 0x2012;
+            read_1st(); finished();
+            for(unsigned i = 0; i < 2; ++i) {
+                assert(REG16(branches[i] - 2) == (replaced ? 0x6233 : 0x6232));
+                assert(REG8(branches[i]) == (replaced ? 0x42 : 0x43));
+                assert(REG8(branches[i] + 1) == 0x2b && REG16(branches[i] + 2) == 0x6ef6);
+                assert(REG32(literals[i]) == (replaced ? 0x0600d000 : (u32)(uintptr_t)VAMPIRE_SAVIOR_handle));
+                assert(REG32(tables[i]) == 0x0600d000);
+            }
+            assert(REG16(0x06014a52) == 0x2012 && !others && !cart_count);
+        }
+}
+
 static void kof97_launches(void)
 {
     for(unsigned four_mb = 0; four_mb < 2; ++four_mb) {
@@ -571,6 +603,8 @@ int main(int argc, char **argv)
         marvel_launches();
     }else if(!strcmp(mode, "phantasy")){
         phantasy_launches();
+    }else if(!strcmp(mode, "vampire")){
+        vampire_launches();
     }else if(!strcmp(mode, "cart-action")){
         cartridge_actions();
     }else if(!strcmp(mode, "siblings")){
@@ -585,7 +619,8 @@ int main(int argc, char **argv)
                g->patch_func == FRIENDS_patch || g->patch_func == kof97_patch ||
                g->patch_func == CYBER_BOTS_patch || g->patch_func == GROOVE_ON_FIGHT_patch ||
                g->patch_func == HABITAT2_patch || g->patch_func == mshvssf_patch ||
-               g->patch_func == Phantasy_Star_Collection_patch) continue;
+               g->patch_func == Phantasy_Star_Collection_patch ||
+               g->patch_func == VAMPIRE_SAVIOR_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);
