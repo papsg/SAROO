@@ -111,6 +111,79 @@ class RevisionRecipeTests(unittest.TestCase):
         recipe, raws = self.source_fixture(source, b'V1.000', {})
         self.check_delivery(recipe, raws)
 
+    def test_five_japanese_exact_revisions_and_native_edits(self):
+        cases = [
+            ('fighters-megamix-jp-v1001', 'GS-9126   V1.001', 0,
+             [(227, 1028, '400b', '0009')]),
+            ('fighting-vipers-jp-revc', 'GS-9101   V1.013', 0,
+             [(240, 624, '400b', '0009')]),
+            ('metal-slug-jp-v1002', 'T-3111G   V1.002', 1,
+             [(337, 252, '2122', '0009')]),
+            ('manx-tt-superbike-jp-v1001', 'GS-9102   V1.001', 0,
+             [(206, 451, '0f', '03'), (206, 503, '0f', '03'),
+              (203, 909, '4f', '43'), (203, 1037, '4f', '43'),
+              (203, 1257, '4f', '43'), (203, 1577, '1f', '13')]),
+            ('whizz-jp', 'T-36102G  V1.000', 0, [(152, 419, '09', '08')])]
+        for name, identity, mode, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.fixture.output) as folder:
+                self.path = Path(folder)
+                source = json.loads((overlay.ROOT / 'recipes' / f'{name}-sector.json').read_text())
+                self.assertEqual(source['disc_id'], identity)
+                self.assertEqual(source.get('cart_mode', 0), mode)
+                self.assertTrue(source['replaces_callback'])
+                self.assertEqual([(w['fad'], w['offset'], w['before'], w['after'])
+                                  for w in source['writes']], expected)
+                contexts = ({152: [(418, 'e1')]} if name == 'whizz-jp' else
+                            {w['fad']: [(w['offset']+2, '0009')] for w in source['writes']}
+                            if name.startswith(('fighters-', 'fighting-')) else {})
+                recipe, raws = self.source_fixture(source, identity[10:].encode(), contexts)
+                self.check_delivery(recipe, raws)
+
+    def test_vipers_reva_no_edit_control_refuses_revc_source(self):
+        source = json.loads((overlay.ROOT / 'recipes/fighting-vipers-jp-revc-sector.json').read_text())
+        recipe, _ = self.source_fixture(source, b'V1.010', {240: [(624, 'd13b')]})
+        # Even with synthetic matching FILE hashes the reviewed preimage is absent.
+        result, pack = self.compile(recipe)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(pack.exists())
+
+    def test_manx_register_copy_keeps_full_width_and_flags_for_every_register_pair(self):
+        values = (0, 1, 0x7fff, 0x8000, 0xffff, 0x10000, 0x12348000, 0xffffffff)
+        for n in range(16):
+            for m in range(16):
+                for value in values:
+                    for incoming_t in (0, 1):
+                        for low in (0xf, 3):
+                            code = (0x6000 | n << 8 | m << 4 | low).to_bytes(2, 'big')
+                            flags = [incoming_t]
+                            before, after, pr, memory, writes, calls = execute(
+                                code, 0x06018000, 0x06018002, {}, flags=flags,
+                                registers={m: value})
+                            expected = before.copy()
+                            expected[n] = (value if low == 3 else
+                                           ((value & 0x7fff) - (value & 0x8000)) & 0xffffffff)
+                            self.assertEqual(after, expected)
+                            self.assertEqual(flags, [incoming_t])
+                            self.assertEqual((pr, memory, writes, calls), (0x06018002, {}, [], []))
+
+    def test_whizz_changes_only_the_staged_clipping_command(self):
+        for initial_t in (0, 1):
+            for seed in (0, 127, 255):
+                for command in (8, 9):
+                    flags = [initial_t]
+                    code = bytes([0xe1, command, 0x28, 0x11])
+                    ram = region(0x06003400, 32)
+                    before, after, pr, memory, writes, calls = execute(
+                        code, 0x06003192, 0x06003196, ram, seed=seed,
+                        registers={8: 0x06003408}, flags=flags)
+                    before[1] = command
+                    self.assertEqual(after, before)
+                    expected = dict(ram)
+                    expected.update({0x06003408: 0, 0x06003409: command})
+                    self.assertEqual(memory, expected)
+                    self.assertEqual(writes, [(0x06003408, 2, command)])
+                    self.assertEqual((pr, flags, calls), (0x06003196, [initial_t], []))
+
 
 if __name__ == '__main__':
     unittest.main()

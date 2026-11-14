@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "GS-9126",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Fighters Megamix (Japan v1.001): A-bus setup",
+  "summary": "Skip the inherited cartridge-bus setup call.",
+  "rationale": "The call at060203F4 reaches0602EC2C then0602066C, which writes02201220 to ASR0 at25FE00B0 and zero to AREF at25FE00B8. NOP the same call removed by the upstream Japanese callback, retaining its delay-slot NOP. This is a compatibility edit for cartridge bus settings; ordinary ASR writes are not inherently forbidden. Whole data-track identity is required at compilation; complete original sectors guard runtime substitution. Native C delivery and bounded emulator checks are recorded in docs/additional-menu-revisions-20261002.md. Inactive candidate: retain the callback pending paired startup and deferred physical acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "fad159721bbc0f433fcd873c90bda34a53e3a7425d094cb28948896fb0349751"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 227,
+      "offset": 1028,
+      "before": "400b",
+      "after": "0009",
+      "effect": "Skip the inherited ASR setup call; preserve its delay-slot NOP.",
+      "reason": "Preserve the matching upstream callback edit at 060203F4 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    }
+  ],
+  "disc_id": "GS-9126   V1.001"
+}

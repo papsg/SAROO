@@ -106,6 +106,8 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             regs[n] = regs[m] & 255
         elif op & 0xf00f == 0x600d:
             regs[n] = regs[m] & 65535
+        elif op & 0xf00f == 0x600f:
+            regs[n] = signed(regs[m] & 65535, 16) & 0xffffffff
         elif op & 0xf00f == 0x6003:
             regs[n] = regs[m]
         elif op >> 12 == 0xa:

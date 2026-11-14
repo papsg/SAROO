@@ -53,7 +53,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'GROOVE_ON_FIGHT_patch', b'HABITAT2_patch', b'mshvssf_patch',
                   b'Phantasy_Star_Collection_patch', b'VAMPIRE_SAVIOR_patch',
                   b'Batman_Forever_The_Arcade_Game_patch', b'MARVEL_SUPER_patch',
-                  b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch', b'Die_Hard_Trilogy_patch'}
+                  b'Pia_Carrot_e_Youkoso_2_patch', b'xmvsf_patch', b'Die_Hard_Trilogy_patch',
+                  b'FIGHTERS_MEGAMIX_JAP_patch', b'Fighting_Vipers_JAP_patch',
+                  b'Metal_Slug_patch', b'MANX_TT_SUPER_BIKE_patch', b'WHIZZ_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -151,6 +153,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_croc_optional_replacement_preserves_fallback_and_user_priority(self):
         self.scenario('croc-overlay')
+
+    def test_japanese_revision_callbacks_and_vipers_reva_no_edit_control(self):
+        self.scenario('japanese-revisions')
 
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')

@@ -1,0 +1,66 @@
+{
+  "abi": 2,
+  "product_id": "GS-9102",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Manx TT SuperBike (Japan v1.001): full-width values",
+  "summary": "Preserve six full-width register values at the inherited Japanese patch sites.",
+  "rationale": "The source satisfies the Japanese branch guard at060219B1. All six edits convert EXTS.W Rm,Rn into MOV Rm,Rn with the same register fields, preserving32 source bits and leaving T unchanged. This migrates the inherited behavior; its original source does not establish the game symptom. Whole data-track identity is required at compilation; complete original sectors guard runtime substitution. Native C delivery and bounded emulator checks are recorded in docs/additional-menu-revisions-20261002.md. Inactive candidate: retain the callback pending paired startup and deferred physical acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "2cf8ae7c911a5d06e806acc00f0367069a681944755064c32de78fdc2f38c9ae"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 206,
+      "offset": 451,
+      "before": "0f",
+      "after": "03",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 060219B3 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    },
+    {
+      "fad": 206,
+      "offset": 503,
+      "before": "0f",
+      "after": "03",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 060219E7 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    },
+    {
+      "fad": 203,
+      "offset": 909,
+      "before": "4f",
+      "after": "43",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 0602037D on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    },
+    {
+      "fad": 203,
+      "offset": 1037,
+      "before": "4f",
+      "after": "43",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 060203FD on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    },
+    {
+      "fad": 203,
+      "offset": 1257,
+      "before": "4f",
+      "after": "43",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 060204D9 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    },
+    {
+      "fad": 203,
+      "offset": 1577,
+      "before": "1f",
+      "after": "13",
+      "effect": "Replace this EXTS.W with MOV using the same source/destination registers; preserve all 32 source bits and leave T unchanged.",
+      "reason": "Preserve the matching upstream callback edit at 06020619 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    }
+  ],
+  "disc_id": "GS-9102   V1.001"
+}

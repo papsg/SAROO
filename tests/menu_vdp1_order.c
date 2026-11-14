@@ -698,6 +698,74 @@ static void kof97_launches(void)
     }
 }
 
+struct revision_write { uintptr_t address; unsigned width, before, after; };
+struct revision_case {
+    const char *id;
+    unsigned mode;
+    uintptr_t guard;
+    unsigned guard_value;
+    struct revision_write writes[8];
+};
+
+static void revision_launches(const struct revision_case *cases, unsigned count)
+{
+    static u8 reference[sizeof high];
+    for(unsigned game=0;game<count;++game) for(unsigned physical=0;physical<2;++physical)
+        for(unsigned tag=0;tag<3;++tag) for(unsigned override=0;override<2;++override) {
+            const struct revision_case *c = cases + game;
+            reset(c->id, 53);
+            disc_type = physical;
+            int admitted = !physical && tag == 1;
+            overlay_handoff = __builtin_bswap32(tag == 1 ? SD_OVERLAY_REPLACEMENT | c->mode :
+                                                tag == 2 ? SD_OVERLAY_REPLACEMENT | 2 : 0);
+            if(c->guard) REG8(c->guard) = c->guard_value;
+            for(const struct revision_write *w=c->writes;w->address;++w) {
+                if(w->width == 1) REG8(w->address) = w->after;
+                else if(w->width == 2) REG16(w->address) = w->after;
+                else { assert(w->width == 4); REG32(w->address) = w->after; }
+            }
+            memcpy(reference, high, sizeof high);
+            if(!admitted) for(const struct revision_write *w=c->writes;w->address;++w) {
+                if(w->width == 1) REG8(w->address) = w->before;
+                else if(w->width == 2) REG16(w->address) = w->before;
+                else REG32(w->address) = w->before;
+            }
+            if(override) put32(0, 0x30000004);
+            read_1st(); finished();
+            /* read_1st always installs the shared BIOS helper after dispatch. */
+            memcpy(reference+0x6b8, code_06b8, sizeof code_06b8);
+            *(u32*)(reference+0x6d4) = (u32)(uintptr_t)my_06b0;
+            *(u32*)(reference+0x358) = (u32)(uintptr_t)bup_init;
+            *(u32*)(reference+0x26c) = (u32)(uintptr_t)my_cdplayer;
+            if(memcmp(high, reference, sizeof high))
+                for(unsigned i=0;i<sizeof high;++i) if(high[i] != reference[i]) {
+                    fprintf(stderr, "revision %u physical %u tag %u override %u at %08x: %02x != %02x\n",
+                            game, physical, tag, override, 0x06000000+i, high[i], reference[i]);
+                    break;
+                }
+            assert(!memcmp(high, reference, sizeof high) && !others);
+            assert(cart_count == (c->mode != 0) + override);
+            if(c->mode) assert(cart_writes[0] == (c->mode == 1 ? CS0_RAM1M : CS0_RAM4M));
+            if(override) assert(cart_writes[cart_count-1] == CS0_RAM4M);
+        }
+}
+
+static void japanese_revisions(void)
+{
+    static const struct revision_case cases[] = {
+        {"GS-9126   V1.001", 0, 0, 0, {{0x060203f4, 2, 0x400b, 9}, {0x060203f6, 2, 9, 9}}},
+        {"GS-9101   V1.013", 0, 0, 0, {{0x06022a60, 2, 0x400b, 9}, {0x06022a62, 2, 9, 9}}},
+        {"GS-9101   V1.010", 0, 0, 0, {{0x06022a60, 2, 0xd13b, 0xd13b}}},
+        {"T-3111G   V1.002", 1, 0, 0, {{0x06079dec, 2, 0x2122, 9}}},
+        {"GS-9102   V1.001", 0, 0x060219b1, 1, {
+            {0x060219b3, 1, 0x0f, 3}, {0x060219e7, 1, 0x0f, 3},
+            {0x0602037d, 1, 0x4f, 0x43}, {0x060203fd, 1, 0x4f, 0x43},
+            {0x060204d9, 1, 0x4f, 0x43}, {0x06020619, 1, 0x1f, 0x13}}},
+        {"T-36102G  V1.000", 0, 0, 0, {{0x06003192, 1, 0xe1, 0xe1}, {0x06003193, 1, 9, 8}}},
+    };
+    revision_launches(cases, sizeof cases / sizeof cases[0]);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -736,6 +804,8 @@ int main(int argc, char **argv)
                 assert(cs0_ready == ((!physical && tag == 1) ? 0x32 : 0xff));
                 assert(!others && !cart_count);
             }
+    }else if(!strcmp(mode, "japanese-revisions")){
+        japanese_revisions();
     }else if(!strcmp(mode, "config")){
         for(int croc=0;croc<2;++croc){
             reset(croc ? "T-5029H-50V1.000" : "UNKNOWN", 97);
@@ -836,7 +906,12 @@ int main(int argc, char **argv)
                g->patch_func == MARVEL_SUPER_patch ||
                g->patch_func == Pia_Carrot_e_Youkoso_2_patch ||
                g->patch_func == xmvsf_patch ||
-               g->patch_func == Die_Hard_Trilogy_patch) continue;
+               g->patch_func == Die_Hard_Trilogy_patch ||
+               g->patch_func == FIGHTERS_MEGAMIX_JAP_patch ||
+               g->patch_func == Fighting_Vipers_JAP_patch ||
+               g->patch_func == Metal_Slug_patch ||
+               g->patch_func == MANX_TT_SUPER_BIKE_patch ||
+               g->patch_func == WHIZZ_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

@@ -139,6 +139,85 @@ invalid fixtures remain evidence and are not absence proofs. Keep opt-in;
 full-game paths, reset/return, paired compiled-menu launch and physical VDP1
 qualification remain open. No callback retirement or issue closure.
 
+## Five Japanese revisions
+
+Adapted from paps-g `af511e24`. Inherited operations and attribution are the
+original tpunix callbacks `FIGHTERS_MEGAMIX_JAP_patch`,
+`Fighting_Vipers_JAP_patch`, `Metal_Slug_patch`, `MANX_TT_SUPER_BIKE_patch`
+and `WHIZZ_patch` in the
+[original game-patch source](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+These preserve existing compatibility policy; an undocumented symptom is not
+newly established as fixed merely by moving its edit.
+
+| Exact identity / recipe | Reviewed change | Records |
+| --- | --- | ---: |
+| `GS-9126   V1.001` [Fighters Megamix](../recipes/fighters-megamix-jp-v1001-sector.json) | NOP JSR `060203f4`; retain following NOP | 1 |
+| `GS-9101   V1.013` [Fighting Vipers Rev C](../recipes/fighting-vipers-jp-revc-sector.json) | NOP matching JSR `06022a60`; retain following NOP | 1 |
+| `T-3111G   V1.002` [Metal Slug](../recipes/metal-slug-jp-v1002-sector.json) | NOP ASR0 store `06079dec`; select 1 MiB RAM | 1 |
+| `GS-9102   V1.001` [Manx TT](../recipes/manx-tt-superbike-jp-v1001-sector.json) | Six EXTS.W instructions become full-width MOV | 2 |
+| `T-36102G  V1.000` [Whizz](../recipes/whizz-jp-sector.json) | IP `e109` becomes `e108` at `06003192` | 1 |
+
+The Megamix/Vipers helpers write `02201220` to ASR0 and zero to AREF;
+Metal Slug's removed store writes `23301ff0` to ASR0. The independent literal
+readers, callees and source preimages remain preserved. The
+[Sega SCU §3.6, printed pp.62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf)
+defines ASR0 `25fe00b0`, AREF `25fe00b8` and device-dependent bus settings.
+This corrects an earlier §3.2 citation. The manual does not prohibit every
+game-side ASR write; the exact removals are SAROO compatibility policy.
+
+[Hitachi SH7604 Tables 2.12–2.13, printed pp.33–36](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+confirm MOV and EXTS.W, while [Table 2.16, p.39](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=55)
+defines delayed JSR. Manx preserves register fields and T but intentionally
+keeps all 32 source bits. Public instruction checks cover all 256 register
+pairs, eight boundary values and both T states for original and selected forms.
+Whizz stages command8 at `06003408`, later copied to VDP1 command memory;
+it changes system clipping9 to user clipping8. The original comment's claim
+of complete VDP1 initialization is broader than this edit.
+[Sega VDP1 §§7.1–7.2, pp.110–113](https://antime.kapsi.fi/sega/files/ST-013-R3-061694.pdf)
+defines those commands. Bounded checks preserve every other register, T and
+staged-memory byte for both command values.
+
+Fresh full-CUE compilation reproduces all five complete archived packs and
+rehashes their exact original data tracks. Current production-C source checks
+stream each complete declared IP and complete first executable. All six
+records and full logical postimages match. Partial final padding is generated
+and reported, separate from full raw-track compilation. All five packs total
+2,208 bytes; no MCU/menu/FPGA runtime code, RAM allocation or helper is added.
+
+Vipers Rev A `GS-9101   V1.010` has `d13b` at the guard; the retained callback
+performs no edit. Actual source compilation refuses the Rev C recipe on Rev A,
+and actual C launch checks preserve that no-edit control. No Rev A patch is
+invented. Megamix plain/1M/2M complete data tracks rehash identically, including
+their first files/IP; this does not establish audio-track/whole-disc identity.
+Metal Slug Rev A V1.005 is already public with the same replacement/1 MiB policy
+and remains a separate exact-revision control. Full sixteen-byte keys keep the
+two recipes separate; no competing product-only file or new bundle is needed.
+
+The real C launch checks compare complete 1 MiB high Work RAM and VDP1 for
+admitted, missing/malformed and physical routes, with explicit user RAM-mode
+priority. They include the menu's unchanged BIOS helper writes. Earlier fixture
+failure omitted those shared writes and remains preserved as a test failure,
+not a firmware defect. Synthetic sector tests cover exact edits and retries.
+Historical compiled callers additionally compare 2 MiB Work RAM, 512 KiB VDP1
+and 128 KiB menu memory; Metal Slug leaves only the known four-byte saved-PR
+slot in dead menu stack. Returned state and other expected bytes match.
+
+Historical paired 7,201-frame native-disc runs retain these limits:
+
+| Profile | Equal video / audio checkpoints (121) | Complete PCM equal |
+| --- | --- | --- |
+| Megamix | 121 / 121 | Yes |
+| Vipers Rev C | 121 / 121 | Yes |
+| Manx Japan | 121 / 121 | Yes |
+| Metal Slug V1.002 | 61 / 49 | No |
+| Whizz | 102 / 121 | Yes |
+
+All preserved available comparison inputs rehash. Different video/audio remains
+recorded, without added delays or a claim of all-site execution. The original
+native-disc runs exclude SAROO's bus/service; the caller models park the slave,
+disable cache and model BIOS copying. Keep all profiles opt-in; full-game,
+concurrency, reset/return and physical qualification remain open.
+
 ## Reproducible checks
 
 ```sh

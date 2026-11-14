@@ -1,0 +1,26 @@
+{
+  "abi": 2,
+  "product_id": "GS-9101",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Fighting Vipers (Japan Rev C): A-bus setup",
+  "summary": "Skip the inherited Rev C cartridge-bus setup call.",
+  "rationale": "The exact Rev C source passes the upstream400B guard at06022A60. Its call reaches0602B88C then06022CB8, which writes02201220 to ASR0 and zero to AREF. Preserve the same call removal and its delay-slot NOP. Rev A hasD13B at the guard and receives no edit. Whole data-track identity is required at compilation; complete original sectors guard runtime substitution. Native C delivery and bounded emulator checks are recorded in docs/additional-menu-revisions-20261002.md. Inactive candidate: retain the callback pending paired startup and deferred physical acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "6e721bac86b9d8ea21faeed39214ef62c39b178ee6147bb78bafb106b3ba76e8"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 240,
+      "offset": 624,
+      "before": "400b",
+      "after": "0009",
+      "effect": "Skip the inherited Rev C ASR setup call; preserve its delay-slot NOP.",
+      "reason": "Preserve the matching upstream callback edit at 06022A60 on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    }
+  ],
+  "disc_id": "GS-9101   V1.013"
+}

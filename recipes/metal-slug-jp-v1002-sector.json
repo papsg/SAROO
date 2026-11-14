@@ -1,0 +1,27 @@
+{
+  "abi": 2,
+  "product_id": "T-3111G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Metal Slug (Japan v1.002): expansion RAM and A-bus setup",
+  "summary": "Select 1 MB expansion RAM and omit the matching inherited ASR0 store.",
+  "rationale": "The source instruction2122 at06079DEC stores23301FF0 to ASR0 at25FE00B0. Preserve the v1.002 callback by replacing that store with NOP and publishing its existing1MB cartridge action after complete preflight. The v1.005 source has a different guarded sector and is rejected by this pack. Whole data-track identity is required at compilation; complete original sectors guard runtime substitution. Native C delivery and bounded emulator checks are recorded in docs/additional-menu-revisions-20261002.md. Inactive candidate: retain the callback pending paired startup and deferred physical acceptance.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "d4f19ef8ce144d3ead45b616674466be5160022e6a6d66dac0e9e9beceba0718"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 337,
+      "offset": 252,
+      "before": "2122",
+      "after": "0009",
+      "effect": "Preserve the inherited 1 MB cartridge action and omit its matching game-side register store.",
+      "reason": "Preserve the matching upstream callback edit at 06079DEC on this exact source revision. Physical timing and whole-game acceptance remain unqualified."
+    }
+  ],
+  "cart_mode": 1,
+  "disc_id": "T-3111G   V1.002"
+}
