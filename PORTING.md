@@ -2784,3 +2784,25 @@ Final combined verification:
 - All six historical inventories are audited without rewriting receipts. Matching, unavailable and later-mutated shared input pins are recorded separately in the [evidence table](https://github.com/papsg/SAROO/blob/main/doc/OCTOBER-REVISION-PROFILES.md#evidence-inventory-and-build-scope). Saved available comparison outputs rehash; changed shared firmware/tool/recipe inputs are not counted as freshly verified historical runtime. Original source, failures and all evidence remain preserved.
 - MCU/menu/FPGA runtime source is unchanged from806bbfe. Both standard GNU MCU links and all37 menu inputs, SDK inputs and three ELF identities match current source. No redundant runtime rebuild is claimed: MCU stays58,628 LTO /62,820 non-LTO load bytes, with6,908 /2,716 free and50,896 static DTCM span. Menu stays85,864 body bytes,19,336 margin,9,488 BSS and16 KiB stack. Both existing linked SH-2 callback checks pass. These are source/host/simulator/link checks, not physical game qualification.
 - Every contribution has original attribution, exact applicable Sega/Hitachi sections, reproducible checks and explicit remaining limits. Public deltas, history and noreply commit identities pass leak/PII review. No PR, USB integration, runtime diagnostic, proprietary binary or device operation is introduced. Private HEAD/branch/complete refs/stashes/worktree match the initial fingerprint; private evidence and research branches remain untouched. Public main and this ledger are committed and pushed; final remote-ref and clean-worktree checks are recorded by the pursue task before completion.
+
+## October 2 special-service overlays
+
+Starting from `a3a6c70`, port six groups in order, one verified contribution at
+a time. This work preserves original callbacks and configuration priority;
+the private retired-callback build is a comparison source, not the public policy.
+No USB stack, runtime diagnostics, proprietary binaries or device operations
+are included. The private workspace and Saturn remain untouched.
+
+- [ ] `a5ac9179`: Command & Conquer USA GDI/NOD, complete loaded-file guard and one-time overlay lifetime.
+- [ ] `e2029f04`: In the Hunt USA V1.000, complete-read guarded music preload/copy.
+- [ ] `e2029f04`: exact Fenrir 2020-07-22 virtual-disc loader adapter.
+- [ ] `3fafb587`: Kaitei Daisensou Japan V1.004 regional music path.
+- [ ] `3fafb587` with `8704963f`/`d42a84a6`: KOF95 Europe/Japan final native MM source edits and generic ROM startup. Superseded overwritten IP helpers stay excluded.
+- [ ] `3fafb587`: Ultraman Japan V1.001, checked generic ROM startup at its first-read phase.
+
+These are ten recipe sources with identical-pack aliases deduplicated.
+Full-version lookup, Shichuu, Waku Waku and previously published reset/ROM safety
+fixes are existing controls. Each group requires current source/evidence
+revalidation, relevant checks/builds, citations and attribution. Music timing,
+startup/return, cache/concurrency and physical qualification limits remain
+explicit. No completion or hardware acceptance is claimed at this boundary.
