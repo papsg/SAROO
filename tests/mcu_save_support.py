@@ -12,6 +12,7 @@ import unittest
 from menu_command_source import load_case
 from file_buffer_source import file_buffer_source
 from cdc_reply_source import bswap_source
+from test_menu_cdplayer import function as menu_function
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'tests/build/mcu-save'
@@ -223,10 +224,13 @@ class MCUSaveTest(unittest.TestCase):
             (cls.target / 'sort.inc').write_bytes(module[begin:end].replace(b'0x2400a000', b'TEST_SORT_ADDR'))
             path = Path(os.environ.get('SAROO_MENU_BINARY_SOURCE', ROOT / 'Firm_Saturn/main.c'))
             data = path.read_bytes(); inputs['Firm_Saturn/main.c'] = data
-            begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(', begin)
+            # Select complete functions, not the next unrelated menu callback.
+            # Launch-choice declarations now legitimately sit between them.
+            binary = b''
             if b'static int load_binary_file(' in data:
-                begin = data.index(b'static int load_binary_file(')
-            binary = data[begin:end]
+                binary += menu_function(data, 'load_binary_file')
+            binary += menu_function(data, 'run_binary')
+            harnesses += ['test_menu_cdplayer.py']
             if b'static u32 file_capacity(' in data:
                 helper = data.index(b'static u32 file_capacity(')
                 binary = data[helper:data.index(b'\n}', helper)+2] + b'\n' + binary
