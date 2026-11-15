@@ -2868,7 +2868,7 @@ to import that separate private-provider correction.
 - [x] paps-g `692f9716`, SSR-007 → [`009cf98`](https://github.com/papsg/SAROO/commit/009cf98). The original selected RTX provider reproduces all five false successes (zero, locked relative/absolute, idle relative/absolute), after successful positive/expired/current/masked-IRQ controls. The owned licensed delay unit passes23 assertions through actual Cortex-M7 API/SVC/kernel execution, with ordinary, LTO and stock-kernel GNU-archive selection controls. Both App/BootLoader project targets explicitly select it; three unchanged Arm source-private headers are the necessary compilation interface, with original notice/license/provenance retained. No unrelated SVC ABI, mutex or dispatcher corrections are imported. Rust12 unit+2 RTL tests, strict clippy/format, four existing profile checks, actual Arm allocation control and22 UART regressions pass. Fresh GNU App/166-vector builds grow8 LTO/16 non-LTO load bytes to59,444/63,720; free ITCM6,092/1,816. Static spans stay50,896; relative direct frame stays8, non-LTO absolute16→8 and LTO absolute is unreferenced. [Arm CMSIS-RTOS2 2.1.3 return-value citations, attribution, reproduction, source selection and limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md). Standard software timers stay disabled; no added runtime tasks or diagnostics. GNU archive checks are not proprietary Keil-linker qualification, and physical timing/stack/game acceptance remains unclaimed. Original failures and complete public build/command/source receipts are preserved. No device access or issue closure.
 - [x] paps-g `b5760f73`, SSR-008 → [`724b205`](https://github.com/papsg/SAROO/commit/724b205). The actual32-bit parent API admits eleven huge payload sizes with4/8/12-byte blocks; the failed witness queries/deletes them without oversized copies. Selected, LTO and stock-kernel archive variants reject all top33 sizes and pass37 assertions covering ordinary7-byte priority/content delivery, dimensions/products, deletion/reallocation and SSR-007 wait regressions. Both original project targets and GNU explicitly select the licensed owned provider. Matching staged headers/provenance and compiler/builder hashes are preserved; strict SDK admission refuses mismatches. Rust12+2 tests, formatting and strict clippy pass. Fresh LTO/non-LTO App/166-vector checks retain every loaded segment byte and59,444/63,720 load bytes,6,092/1,816 ITCM margin and all static resources; constructor is absent in both standard images. Whole LTO ELF/debug identity is not claimed. [Arm CMSIS-RTOS2 2.1.3 constructor/storage/alignment citations, attribution, commands and conditional limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md#ssr-008-validate-the-queue-block-before-rounding). Standard queues/audio are not demonstrated failures, software timers remain disabled, and no Saturn/device operation or issue closure occurred.
 - [x] paps-g `f5da5ea0`, SSR-009 → [`4d36925`](https://github.com/papsg/SAROO/commit/4d36925). Actual optional Cortex-M7 kernel tests reproduce10/10 callbacks after a running restart to3; selected, LTO and stock-kernel archive variants pass six running/stopped/equal/different restart, one-shot and common-deadline phases, with3/3,3/3,3/3 and7/7 intervals. NULL/zero refusals, state, nonrepetition and deletion pass. Both original project targets and GNU select the narrow licensed timer override; parameter/service refusals and list/callback ownership stay unchanged. Software timers remain disabled in standard firmware; the virtual application's512-byte stack/eight-entry queue are test-only. Fresh LTO/non-LTO App/166-vector checks retain every loaded byte,59,444/63,720 load bytes,6,092/1,816 ITCM margin and all static resources; timer constructor/start and queue constructor are absent. Rust12+2 tests, formatting/strict clippy and four profile controls pass. [Arm CMSIS-RTOS2 2.1.3 start/restart citation, attribution, reproduction and physical/Keil/game limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md#ssr-009-restart-a-periodic-timer-with-the-new-period). No device operation, added standard task, runtime diagnostic or issue closure.
-- [ ] paps-g `ba3938b0`, SSR-012: constrain mounted volumes to their MBR partitions.
+- [x] paps-g `ba3938b0`, SSR-012 → [`4c7f3aa`](https://github.com/papsg/SAROO/commit/4c7f3aa). The actual public-parent FatFs mounts short/empty/wrapping partitions; the short fixture performs one write outside its MBR interval and replaces all512 next-partition marker bytes with0x5a through ordinary file creation. Independent BPB/MBR decoding, image hashes and payload/marker bytes are preserved. The correction retains all four sizes, rejects empty/wrapping intervals before their VBR reads and rejects oversized BPBs inside the existing candidate loop. All14 focused methods pass ASan/UBSan and optimization, retaining exact/larger/fourth-slot partitions, skip-after-rejection discovery, superfloppies, active-FAT/FSInfo/mirror recovery and six optional FAT12/16/exFAT bounds controls. A read-only virtual mapping mounts the actual VBR/FSInfo with last sector0xffffffff and unchanged image; this proves arithmetic, not physical capacity. Initial failed I/O-count fixtures remain preserved; the old end-wrap case now requires refusal after one MBR read. Fresh LTO/non-LTO App/166-vector links differ only in `ff.c` among firmware/SDK inputs: load+44/+40 to59,488/63,760; ITCM free6,048/1,776; data/BSS/static span and80,176 main-stack/heap gap unchanged. Individual mount frames48→64; no peak-stack claim. [Microsoft FAT v1.03 p13 primary citation, paps-g/ChaN attribution, public reproduction, adaptations and physical/Keil/GPT/capacity limits](https://github.com/papsg/SAROO/blob/main/doc/PARTITION-SAFETY.md). No physical SD/Saturn, installed firmware or media/game failure claim.
 
 The initial public menu launches immediately on A press and has no per-session
 choice. The current MCU already defines an unflagged ordinary LOADDISC request
@@ -2877,3 +2877,33 @@ The hold-A adaptation will test that existing path before adding protocol bits
 or MCU runtime. Retained RTOS providers and UART/MBR source still contain the
 later corrected expressions. Conditional APIs, source reachability and fresh
 public-parent controls must be distinguished from demonstrated game failures.
+
+All six checkpoints are on public main in the requested order. Test-only
+follow-up [`c2b676e`](https://github.com/papsg/SAROO/commit/c2b676e) repairs two
+older coupled cover/discovery fixture slices exposed by the hold-A declarations:
+they now use the existing balanced function reader and preserve its input pin.
+The original two setup errors remain archived; all24 affected methods pass.
+No runtime behavior or validation assertion was weakened by that follow-up.
+
+Combined accepted regressions cover900 Python case executions:45 actual-FatFs,
+94 completed MCU-save cases plus24 previously unexecuted cover/discovery cases,
+440 overlay/CD/FIFO/routing/file-transfer,244 menu/UART/audio/RTX-profile and53
+SD/disk-interface cases. The initial save command stopped before its disk-interface
+target because of those setup errors; only the two failed groups and the
+unexecuted target were run afterward. The14 focused partition methods also pass
+both sanitizer and optimized profiles. Nine final actual Cortex-M7 kernel runs
+cover delay, queue and optional timer contracts in plain/LTO/archive variants,
+with all owned providers present. Rust12 unit+2 RTL tests, formatting and strict
+clippy pass. These are offline source/API/emulator checks, not physical/game
+qualification or a claim that every unrelated public test target was rerun.
+
+The final native link's complete firmware/SDK inputs still match; all40 linked
+menu input pins remain unchanged since the accepted hold-A build. Standard
+software timers and filesystem reentrancy stay disabled; no new tasks, USB,
+runtime diagnostics, loaders, CDON recipes, PRs or issue closures are introduced.
+The source-range privacy review finds no local paths, secrets or PII, and no
+media binaries/private patch framework enter public source. Private
+HEAD/refs/stashes/worktree and all preserved research/evidence remain unchanged;
+the archived FPGA trial's pre-existing two edits retain their original full-file
+hash. Active main and ledger will be checked clean against their pushed refs;
+the archived evidence worktree is intentionally preserved with its earlier edits.
