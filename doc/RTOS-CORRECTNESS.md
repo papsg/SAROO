@@ -116,3 +116,44 @@ Fresh standard LTO/non-LTO App links retain every loaded segment byte,
 its code and direct frame are conditional test costs, not added standard
 firmware costs. LTO debug metadata changes with source selection; whole ELF
 identity is not claimed. Menu and FPGA sources remain unchanged.
+
+## SSR-009: restart a periodic timer with the new period
+
+A running timer restarted from10 ticks to3 previously changed only its next
+expiration; later callbacks incorrectly reverted to10 ticks. Publish the new
+reload for both admitted running and stopped starts, immediately before the
+unchanged list insertion. Parameter and unavailable-service refusals still
+return first. List ordering, expiration, callbacks and stop/delete ownership
+are unchanged. This adapts paps-g `f5da5ea0`/SSR-009, retains Arm's original
+Apache-2.0 source/notice and adds papsg's explicit build integration. No original
+tpunix issue/PR is identified for this independent finding.
+
+Arm CMSIS-RTOS2 API 2.1.3, **Timer Management**, `osTimerStart`, the **ticks**
+parameter and start/restart description specify the supplied period:
+[Arm osTimerStart](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__TimerMgmt.html#gab6ee2859ea657641b7adfac599b8121d).
+The matching locally cached reference and actual provider were reviewed.
+No Sega-specific software-timer rule is inferred.
+
+`rtos-check --case timer` enables an explicitly test-only512-byte virtual
+timer-thread stack and8 callback queue entries. The original provider reports
+10/10 callback intervals after a running restart to3, then fails. Selected, LTO
+and stock-kernel archive variants complete six phases: running10→3, stopped10→3,
+running3→3, running3→7, restarted one-shot and simultaneous periodic deadlines.
+Measured intervals are3/3,3/3,3/3 and7/7 kernel ticks. NULL/zero refusal, state,
+one-shot nonrepetition, exact common-deadline callbacks and deletion pass.
+Both timer starts must occur in one tick; the fixture retries that setup at
+most8 times if the calls cross a boundary. `--baseline` reverts only the timer
+provider, retaining the prior delay and queue corrections.
+
+The standard timer configuration remains zero stack/zero callback queue.
+No timer task, constructor call, test executable, diagnostics or loader enters
+standard firmware. The kernel API, exception assembly and timer implementation
+are real; virtual startup and semihosting belong only to the offline test.
+This does not qualify wall-clock periods, task stack high-water, physical
+interrupt latency, proprietary Keil linkage or games.
+
+Fresh LTO/non-LTO App/166-vector links retain every loaded byte,59,444/63,720
+load bytes,6,092/1,816 ITCM margin and unchanged data/BSS/static span. Neither
+`osTimerNew`, `osTimerStart` nor `osMessageQueueNew` is linked. These are
+standard-image costs; the optional virtual application's allocations and
+periods are separate. Menu and FPGA sources are unchanged.

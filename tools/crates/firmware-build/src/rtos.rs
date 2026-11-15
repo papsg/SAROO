@@ -42,6 +42,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     let provider = match case {
         "delay" => "rtx_delay.c",
         "queue" => "rtx_msgqueue.c",
+        "timer" => "rtx_timer.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     for flag in &args[15..] {
@@ -88,7 +89,11 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     let compiler_version = capture(Command::new(&cc).arg("--version"))?;
     let compiler_sha256 = sha(&fs::read(&cc)?);
     let builder_sha256 = sha(&fs::read(std::env::current_exe()?)?);
-    for name in ["rtos_contract.c", "rtos_contract.ld"] {
+    for name in [
+        "rtos_contract.c",
+        "rtos_contract.ld",
+        "rtos_timer_contract.inc",
+    ] {
         mcu::copy_file(
             &repo.join("tests").join(name),
             &out.join(name),
@@ -148,6 +153,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 "-DSTM32H750xx",
                 "-DHSE_VALUE=16000000",
             ]);
+            if case == "timer" {
+                command.args([
+                    "-DTEST_RTX_TIMERS=1",
+                    "-DOS_TIMER_THREAD_STACK_SIZE=512",
+                    "-DOS_TIMER_CB_QUEUE=8",
+                ]);
+            }
             if case == "queue" {
                 command.arg("-DTEST_RTX_QUEUE=1");
             }

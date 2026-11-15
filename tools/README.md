@@ -448,7 +448,7 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay` or `--case queue`. Choose a fresh `--out tests/build/...`
+arguments as `mcu`, plus `--case delay`, `--case queue` or `--case timer`. Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results;
 `--lto` repeats with LTO and `--archive` checks owned-source selection against

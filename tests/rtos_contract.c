@@ -88,6 +88,9 @@ static void queue_constructor_contract(void) {
     CHECK(queue && osMessageQueueDelete(queue)==osOK);
 }
 #endif
+#ifdef TEST_RTX_TIMERS
+#include "rtos_timer_contract.inc"
+#else
 static void main_task(void *argument) {
 #ifdef TEST_RTX_QUEUE
     queue_constructor_contract();
@@ -128,6 +131,7 @@ static void main_task(void *argument) {
     CHECK(osKernelGetTickCount()>=1 && osKernelGetTickCount()<100);
     output("PASS delay assertions=");number(assertions);output("\n");finish(0);
 }
+#endif
 void Reset_Handler(void) {
     extern uint32_t _sidata[],_sdata[],_edata[],_sbss[],_ebss[];
     uint32_t *s=_sidata;
