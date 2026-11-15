@@ -129,4 +129,3 @@ class VandalNativeRecipeTests(unittest.TestCase):
             line = next(line for line in source.splitlines() if b'{"' + product + b'"' in line)
             self.assertIn(b'VANDAL_HEARTS_CN_patch', line)
         self.assertIn('rationale', self.source())
-

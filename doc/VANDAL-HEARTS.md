@@ -156,7 +156,7 @@ The maximum observed private stack is 156 bytes; it is not a full game's
 stack-headroom measurement. Modeled CD replies/clock effects are bounded
 fixture inputs, not a complete BIOS/game boot or hardware timing test.
 The [Hitachi SH7604 manual](https://antime.kapsi.fi/sega/files/sh7604.pdf),
-§2.1.3, Figure2.3, printed p.17, defines the PC as four bytes ahead of
+§2.1.3, Figure 2.3, printed p. 17, defines the PC as four bytes ahead of
 the current instruction. The checker distinguishes instruction addresses
 from the core's pipelined trace PC and executes the literal/branch controls;
 it does not treat a disassembly listing as proof of runtime behavior.
@@ -214,7 +214,9 @@ observed PCM limit or to qualify the direct emulator reset as SYSRES.
 ## Pack and firmware costs
 
 The pack is 2,808 bytes: 24-byte header and eight 348-byte records over six
-distinct sectors. Versus the earlier unguarded proposal it adds three
+distinct sectors. Its SHA-256 is
+`353d3b91cb4b4ff5cf8f6ca25506c72435aba15721e92531473a4ce66c5edb85`.
+Versus the earlier unguarded proposal it adds three
 read-only context records, 1,044 SD bytes and three mount preflight reads.
 It retains the existing 12-record firmware allocation. No title-specific
 MCU/menu/FPGA runtime code or persistent RAM allocation is added here.
