@@ -9,7 +9,9 @@
 #include <pthread.h>
 static FILE *disk;
 static LBA_t sectors;
-static LBA_t boot_alias;
+static LBA_t boot_alias, boot_alias_span;
+static LBA_t watched_start, watched_length;
+static unsigned outside_writes, watch_partition, watched_vbr_reads;
 static unsigned reads,writes,syncs,failures;
 enum Media { MEDIA_READY, MEDIA_ABSENT, MEDIA_DIFFERENT, MEDIA_RETURNED };
 static enum Media media;
@@ -41,8 +43,13 @@ DSTATUS disk_initialize(BYTE drive)
 }
 DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 {
+    if (watch_partition && sector==watched_start) watched_vbr_reads++;
     /* One synthetic partition boot sector near the LBA limit. */
-    if (boot_alias && sector == boot_alias) { assert(count == 1); sector = 1; }
+    if (boot_alias && sector == boot_alias && !boot_alias_span) { assert(count == 1); sector = 1; }
+    else if (boot_alias_span && sector >= boot_alias) {
+        assert(sector - boot_alias < boot_alias_span && count <= boot_alias_span - (sector - boot_alias));
+        sector = 1 + sector - boot_alias;
+    }
     assert(!drive && media == MEDIA_READY && count && sector<sectors && count<=sectors-sector);reads++;
     if (reads == fail_read) {
         failures++;
@@ -53,6 +60,8 @@ DRESULT disk_read(BYTE drive,BYTE *out,LBA_t sector,UINT count)
 DRESULT disk_write(BYTE drive,const BYTE *data,LBA_t sector,UINT count)
 {
     assert(!drive && media == MEDIA_READY && count && sector+count<=sectors);writes++;
+    if (watch_partition && (sector < watched_start ||
+        (uint64_t)sector + count > (uint64_t)watched_start + watched_length)) outside_writes++;
     if (abort_fault.payload) {
         uintptr_t ptr=(uintptr_t)data, start=(uintptr_t)abort_fault.payload;
         int matches=abort_fault.cache ? data==abort_fault.cache :
@@ -624,6 +633,46 @@ static void fat32_active(unsigned flags, int one_fat)
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
 
+/* papsg adaptation of paps-g SSR-012; real FatFs, synthetic media only. */
+static int extent_image(unsigned value)
+{
+    unsigned slot=value & 3;
+    assert(slot < 4);
+    BYTE mbr[512], payload[512];
+    assert(disk_read(0,mbr,0,1)==RES_OK);
+    watched_start=little_word(mbr+446+slot*16+8);
+    watched_length=little_word(mbr+446+slot*16+12);
+    watch_partition=1;
+    if (value & 8) { boot_alias=watched_start; boot_alias_span=watched_length; }
+    FATFS fs={0};FIL file;UINT count=0;
+    FRESULT result=f_mount(&fs,"0:",1);
+    printf("extent mount=%u type=%u start=%lu length=%lu writes=%u vbr_reads=%u\n",
+           result,fs.fs_type,(unsigned long)watched_start,(unsigned long)watched_length,writes,watched_vbr_reads);
+    if(result==FR_OK) {
+        assert(fs.volbase==watched_start);
+        if (value & 4) {
+            assert(!writes && f_mount(NULL,"0:",0)==FR_OK);
+            puts("extent readonly writes=0");
+            return result;
+        }
+        memset(payload,0x5a,sizeof payload);
+        assert(f_open(&file,"CROSS.BIN",FA_CREATE_NEW|FA_WRITE)==FR_OK);
+        assert(f_write(&file,payload,sizeof payload,&count)==FR_OK && count==sizeof payload);
+        DWORD allocated=file.obj.sclust;
+        assert(f_close(&file)==FR_OK);
+        BYTE actual[512];
+        assert(f_open(&file,"CROSS.BIN",FA_READ)==FR_OK);
+        assert(f_read(&file,actual,sizeof actual,&count)==FR_OK && count==sizeof actual);
+        assert(!memcmp(actual,payload,sizeof actual));
+        assert(f_close(&file)==FR_OK && f_mount(NULL,"0:",0)==FR_OK);
+        printf("extent cluster=%lu writes=%u outside=%u\n",(unsigned long)allocated,writes,outside_writes);
+    } else {
+        assert(!fs.fs_type && !writes);
+    }
+    return result;
+}
+
+
 /* Format with the generic fixture and mount with the App fixture. */
 static void format_profile_card(int type, int partitioned)
 {
@@ -908,7 +957,8 @@ static void fat_mount_extent(unsigned which)
     FATFS fs;
     FRESULT result = f_mount(&fs, "0:", 1);
     printf("FAT32 case %u: result %u, reads %u\n", which, result, reads);
-    assert(!writes && reads == 1u + !!boot_alias);
+    /* SSR-012 now rejects a wrapping MBR interval before its VBR read. */
+    assert(!writes && reads == (which == END_WRAP ? 1u : 1u + !!boot_alias));
     if (which < END_EXACT) assert(result == FR_NO_FILESYSTEM && !fs.fs_type);
     else {
         assert(result == FR_OK && fs.fs_type == FS_FAT32 && fs.volbase == boot_alias);
@@ -1122,7 +1172,10 @@ int main(int argc,char **argv)
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
     int value = atoi(argv[3]);
-    if (!strcmp(argv[2], "format-profile")) {
+    if (!strcmp(argv[2], "partition-extent")) {
+        int result=extent_image((unsigned)value);
+        assert(!fclose(disk)); return result;
+    } else if (!strcmp(argv[2], "format-profile")) {
         format_profile_card(value & 7, value >> 3);
     } else if (!strcmp(argv[2], "mount-profile")) {
         profile_mount(value & 7, value >> 3);

@@ -3561,7 +3561,7 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 )
 {
 	UINT fmt, i;
-	DWORD mbr_pt[4];
+	DWORD mbr_pt[4], mbr_size[4];
 
 
 	fmt = check_fs(fs, 0);				/* Load sector 0 and check if it is an FAT VBR as SFD format */
@@ -3594,10 +3594,26 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 	if (FF_MULTI_PARTITION && part > 4) return 3;	/* MBR has 4 partitions max */
 	for (i = 0; i < 4; i++) {		/* Load partition offset in the MBR */
 		mbr_pt[i] = ld_dword(fs->win + MBR_Table + i * SZ_PTE + PTE_StLba);
+		mbr_size[i] = ld_dword(fs->win + MBR_Table + i * SZ_PTE + PTE_SizLba);
 	}
 	i = part ? part - 1 : 0;		/* Table index to find first */
 	do {							/* Find an FAT volume */
-		fmt = mbr_pt[i] ? check_fs(fs, mbr_pt[i]) : 3;	/* Check if the partition is FAT */
+		/* Reject empty/wrapping extents before reading their VBR. SSR-012. */
+		fmt = mbr_pt[i] && mbr_size[i] &&
+			(LBA_t)mbr_size[i] - 1 <= (LBA_t)-1 - mbr_pt[i]
+			? check_fs(fs, mbr_pt[i]) : 3;
+		if (fmt <= 1) {
+#if FF_FS_EXFAT
+			if (fmt == 1) {
+				if (ld_qword(fs->win + BPB_TotSecEx) > mbr_size[i]) fmt = 3;
+			} else
+#endif
+			{
+				DWORD volume = ld_word(fs->win + BPB_TotSec16);
+				if (!volume) volume = ld_dword(fs->win + BPB_TotSec32);
+				if (volume > mbr_size[i]) fmt = 3;
+			}
+		}
 	} while (part == 0 && fmt >= 2 && ++i < 4);
 	return fmt;
 }
