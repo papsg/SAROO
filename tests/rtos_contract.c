@@ -51,7 +51,47 @@ __attribute__((noreturn)) void osRtxIdleThread(void *argument) {
 }
 static void fault(void) { output("FAULT\n"); finish(4); }
 
+#ifdef TEST_RTX_QUEUE
+static void queue_constructor_contract(void) {
+    _Static_assert(sizeof(os_message_t)==12,"target queue header extent");
+    const uint8_t low[7]={1,2,3,4,5,6,7}, high[7]={8,9,10,11,12,13,14};
+    uint8_t data[7], priority;
+    osMessageQueueId_t queue=osMessageQueueNew(2,7,NULL);
+    CHECK(queue);
+    CHECK(osMessageQueueGetCapacity(queue)==2 && osMessageQueueGetMsgSize(queue)==7);
+    CHECK(osMessageQueuePut(queue,low,1,0)==osOK);
+    CHECK(osMessageQueuePut(queue,high,9,0)==osOK);
+    CHECK(osMessageQueueGet(queue,data,&priority,0)==osOK);
+    CHECK(priority==9 && !memcmp(data,high,7));
+    CHECK(osMessageQueueGet(queue,data,&priority,0)==osOK);
+    CHECK(priority==1 && !memcmp(data,low,7));
+    CHECK(osMessageQueueDelete(queue)==osOK);
+    CHECK(osMessageQueueNew(0,7,NULL)==NULL);
+    CHECK(osMessageQueueNew(1,0,NULL)==NULL);
+    CHECK(osMessageQueueNew(UINT32_MAX,7,NULL)==NULL);
+    unsigned admitted=0;
+    for(unsigned offset=0;offset<=32;++offset) {
+        uint32_t size=UINT32_MAX-offset;
+        queue=osMessageQueueNew(1,size,NULL);
+        if(queue) {
+            /* Observe/delete the malformed object without a payload copy. */
+            output("QUEUE bad_size=");number(size);
+            output(" block=");number(osRtxMessageQueueId(queue)->mp_info.block_size);
+            output("\n");
+            admitted++;
+            CHECK(osMessageQueueDelete(queue)==osOK);
+        }
+    }
+    output("QUEUE invalid_admissions=");number(admitted);output("\n");
+    CHECK(admitted==0);
+    queue=osMessageQueueNew(2,7,NULL);
+    CHECK(queue && osMessageQueueDelete(queue)==osOK);
+}
+#endif
 static void main_task(void *argument) {
+#ifdef TEST_RTX_QUEUE
+    queue_constructor_contract();
+#endif
     CHECK(argument==(void *)0x9173);
     uint32_t before=osKernelGetTickCount();
     CHECK(osDelay(2)==osOK);

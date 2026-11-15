@@ -13,6 +13,10 @@ pub(super) fn validate(app: &Path, rtx: &Path) -> Result<()> {
     if !owned.is_dir() {
         return Ok(());
     }
+    validate_owned(&owned, rtx)
+}
+
+fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
     let pins: Value = serde_json::from_slice(&fs::read(owned.join("provenance.json"))?)?;
     for section in ["headers", "providers"] {
         for (name, expected) in pins[section].as_object().ok_or("Missing RTX pins")? {
@@ -35,9 +39,11 @@ pub(super) fn validate(app: &Path, rtx: &Path) -> Result<()> {
 
 pub(super) fn run(args: &[String]) -> Result<()> {
     let case = args[14].as_str();
-    if case != "delay" {
-        return fail("Unknown RTOS contract case");
-    }
+    let provider = match case {
+        "delay" => "rtx_delay.c",
+        "queue" => "rtx_msgqueue.c",
+        _ => return fail("Unknown RTOS contract case"),
+    };
     for flag in &args[15..] {
         if !["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             return fail("Unknown RTOS contract option");
@@ -71,8 +77,17 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     ] {
         mcu::copy_tree(&from, &out.join(name), key, &mut pins)?;
     }
-    // Same validator and owned providers as the full application build.
-    validate(&repo.join("Firm_MCU"), &out.join("rtos"))?;
+    mcu::copy_file(
+        &repo.join("Firm_MCU/RTE/CMSIS/RTX/provenance.json"),
+        &out.join("config/RTX/provenance.json"),
+        "Firm_MCU/RTE/CMSIS/RTX/provenance.json".into(),
+        &mut pins,
+    )?;
+    // Validate the staged owner, not a later read of the working tree.
+    validate_owned(&out.join("config/RTX"), &out.join("rtos"))?;
+    let compiler_version = capture(Command::new(&cc).arg("--version"))?;
+    let compiler_sha256 = sha(&fs::read(&cc)?);
+    let builder_sha256 = sha(&fs::read(std::env::current_exe()?)?);
     for name in ["rtos_contract.c", "rtos_contract.ld"] {
         mcu::copy_file(
             &repo.join("tests").join(name),
@@ -97,11 +112,10 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             kernel.join("GCC/irq_cm4f.S"),
             out.join("rtos/Source/os_systick.c"),
         ];
-        let provider = format!("rtx_{case}.c");
         let mut kernel_objects = Vec::new();
         for source in &mut sources {
             let name = source.file_name().ok_or("Missing kernel source name")?;
-            if owned.join(name).is_file() && !(baseline && name == provider.as_str()) {
+            if owned.join(name).is_file() && !(baseline && name == provider) {
                 direct.push(owned.join(name));
                 if !archive {
                     *source = owned.join(name);
@@ -134,6 +148,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 "-DSTM32H750xx",
                 "-DHSE_VALUE=16000000",
             ]);
+            if case == "queue" {
+                command.arg("-DTEST_RTX_QUEUE=1");
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -219,7 +236,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;

@@ -74,3 +74,45 @@ service direct frame stays 8 bytes; absolute is unreferenced with LTO and
 its non-LTO direct frame changes 16→8. These are compiler direct frames,
 not maximum task stack measurements. All 166 linked vector checks pass.
 The menu/FPGA and configured software-timer exclusion are unchanged.
+
+## SSR-008: validate the queue block before rounding
+
+A very large message size can wrap during 4-byte alignment/header addition,
+leaving a tiny backing block for a huge advertised payload. Reject sizes above
+`UINT32_MAX - sizeof(os_message_t) - 3` before either addition, allocation
+or publication. The existing product-admission check then sees the actual,
+nonzero block size. Ordinary capacities, attributes and priority behavior stay
+unchanged. This adapts paps-g `b5760f73`/SSR-008; Arm's original provider remains
+under its existing Apache-2.0 notice, with papsg's integration identified.
+
+Arm CMSIS-RTOS2 API 2.1.3, **Message Queue**, `osMessageQueueNew`, **Parameters**,
+**Returns** and the following storage/alignment description, requires storage
+for the requested capacity and message size and NULL on constructor error:
+[Arm Message Queue](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__Message.html#ga24e895a00f9d484db33aaf784c57bfed).
+This is the locally cached matching reference, not a Sega-specific API rule.
+No original tpunix issue/PR was identified for this independent finding.
+
+Use `rtos-check --case queue` with the same arguments above. The genuine
+32-bit Cortex-M7 API/SVC/kernel parent admits eleven capacity-one queues
+for sizes `0xfffffff5` through `0xffffffff`; its complete failed witness
+reports their 4/8/12-byte backing blocks, then deletes them without copying
+a giant payload. The selected, LTO and stock-kernel archive variants reject
+all top33 sizes and pass37 assertions including ordinary two-message/7-byte
+priority/content delivery, zero dimensions, overflowing capacity, deletion,
+subsequent allocation and the complete SSR-007 wait controls. `--baseline`
+reverts only this case's queue provider, retaining the delay correction.
+Receipts pin the staged provenance, provider/header inputs, compiler and
+builder. SDK/header mismatches refuse without modifying the SDK.
+
+App and BootLoader explicitly select this owned source in the original project;
+the GNU builder excludes its stock duplicate. Standard firmware has no public
+queue-constructor caller. These API checks establish the conditional defect;
+they do not establish an ordinary game, audio or physical memory-corruption
+failure. No oversized payload is copied and no software timer is enabled.
+
+Fresh standard LTO/non-LTO App links retain every loaded segment byte,
+59,444/63,720 load bytes, 6,092/1,816 ITCM margin, data/BSS/static span and
+166 vectors from SSR-007. `osMessageQueueNew` is absent from both links;
+its code and direct frame are conditional test costs, not added standard
+firmware costs. LTO debug metadata changes with source selection; whole ELF
+identity is not claimed. Menu and FPGA sources remain unchanged.

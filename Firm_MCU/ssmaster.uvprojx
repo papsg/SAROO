@@ -664,6 +664,11 @@
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_delay.c</FilePath>
             </File>
+            <File>
+              <FileName>rtx_msgqueue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_msgqueue.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
@@ -1384,6 +1389,11 @@
               <FileName>rtx_delay.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_delay.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtx_msgqueue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_msgqueue.c</FilePath>
             </File>
           </Files>
         </Group>
