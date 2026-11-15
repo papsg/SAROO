@@ -1,0 +1,49 @@
+{
+  "abi": 2,
+  "product_id": "T-1219G",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Vandal Hearts Chinese DLCT v20240517 native startup (opt-in)",
+  "summary": "Native AIP clock/display setup and packed ASR0-source NOP, with finite startup delivery.",
+  "rationale": "Exact Chinese DLCT v20240517 source, which identifies as T-1219G V1.002 and matches the inherited second predicate. The existing 122-byte AIP retains its read/decode/data adjustment and adds the original clock/display setup; no compatibility stub or later instruction writer is added. The BIOS unpacker obtains the ASR0 NOP directly from the packed literal. The original 95-sector read starts at FAD292214 and ends at292308; ABI6 retires only after both source edits have been delivered and this final original sector is accepted. FAD152 would suppress the later packed edit and must not be used. See doc/VANDAL-HEARTS.md for exact source, attribution, verification and limits. Native-state checks and modeled reset rereads pass. Complete modeled PCM differs from the inherited control. Direct power-on/warm-reset model rereads pass; audible significance, actual reset/BIOS-return routes and physical/full-game qualification remain unqualified. The existing callbacks remain the fallback, including unknown B1/modified T-9526G sources.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "0e9361f5b1d130af6b513a8a80ad9f4d872b14669655159e77ff7ee339a21178"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 151,
+      "offset": 1808,
+      "before": "7ff091370103ed04c94020088df9e40092310203ed40e001e55f4d18401845184d00cb8145083dfc402845007d104008e3bf2f026c03e002623c40184208cbe642004018682266d330dce400931403031f02e956ea6c54f2491866424a0846017402480b65f33acc794a63a27f1033984c2b2a3203c201f200b8",
+      "after": "7ff0b1e2e400c84089fbdc17b0fc2fc2e6404618460036fc7610d514b075e400e4124418644b34dc921b6822664246017402480b65f399159a153acc63a233982a327f10d10a6112410be401bb220009e301d008911062022211b9c310324c2b000905f8564a01b0060400000002f8000600032006002d7c8001",
+      "effect": "Replace only the existing native AIP startup body.",
+      "reason": "Retain native loading and relocation, then perform the inherited clock/display work inside the existing122-byte AIP body; no external compatibility patch writer."
+    },
+    {
+      "fad": 292306,
+      "offset": 1766,
+      "before": "2202",
+      "after": "0009",
+      "effect": "Decode NOP at 060400C4 instead of the ASR0 store.",
+      "reason": "Packed literal at chunk offsetD6; complete5440-byte stock-BIOS decode changes only C4-C5. Expiry follows the last native95-sector read."
+    }
+  ],
+  "expire_after_fad": 292308,
+  "disc_id": "T-1219G   V1.002",
+  "guards": [
+    {
+      "fad": 150,
+      "reason": "Bind the IP metadata and original VDP initialization/publication callees."
+    },
+    {
+      "fad": 152,
+      "reason": "Bind the original CD filter, reader and status callees; this is not an expiry marker."
+    },
+    {
+      "fad": 292307,
+      "reason": "Bind the unchanged middle of the complete packed bootstrap tail."
+    }
+  ]
+}

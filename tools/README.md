@@ -158,6 +158,12 @@ adds no Rust code to either processor's firmware. Tests are available with
 
 ### Vandal Hearts native startup comparison
 
+The [native-source profile](../doc/VANDAL-HEARTS.md) includes reproducible
+`vandal-source` assembly/ELF checks and `sector-overlay vandal-inputs`
+extraction/production-C checks using caller-owned media. It documents all
+commands, exact hashes, finite delivery, attribution and remaining sound,
+reset and physical limits. No proprietary media is distributed.
+
 `firmware-build vandal` builds a headless interpreter and the public
 [`tests/vandal_native.c`](../tests/vandal_native.c) comparison. It uses a clean,
 caller-supplied local [Yabause source checkout](https://github.com/Yabause/yabause/tree/7e38821dbac265490f115e163c523a939acda759)

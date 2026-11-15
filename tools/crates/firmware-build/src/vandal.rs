@@ -173,6 +173,159 @@ fn replace(path: &Path, before: &str, after: &str) -> Result<()> {
     Ok(())
 }
 
+fn source_image(elf: &[u8], image: &[u8], recipe: &Value) -> Result<()> {
+    use super::word;
+    if elf.get(..6) != Some(b"\x7fELF\x01\x02")
+        || word(elf, 16, 2)? != 2
+        || word(elf, 18, 2)? != 42
+        || word(elf, 24, 4)? != 0x06002f00
+    {
+        return fail("Require the linked big-endian SH-2 native entry");
+    }
+    let offset = word(elf, 32, 4)? as usize;
+    let stride = word(elf, 46, 2)? as usize;
+    let count = word(elf, 48, 2)? as usize;
+    if stride != 40 || count == 0 || count > 64 {
+        return fail("Invalid native section table");
+    }
+    if offset
+        .checked_add(stride * count)
+        .is_none_or(|end| end > elf.len())
+    {
+        return fail("Truncated native section table");
+    }
+    let mut allocated = 0;
+    for i in 0..count {
+        let at = offset
+            .checked_add(i * stride)
+            .ok_or("Native section overflow")?;
+        let flags = word(elf, at + 8, 4)?;
+        let size = word(elf, at + 20, 4)?;
+        if flags & 2 != 0 && size != 0 {
+            if flags != 6
+                || size != 124
+                || word(elf, at + 4, 4)? != 1
+                || word(elf, at + 12, 4)? != 0x06002f00
+            {
+                return fail("Unexpected native allocation");
+            }
+            let data = word(elf, at + 16, 4)? as usize;
+            if elf.get(data..data.checked_add(124).ok_or("Native text overflow")?) != Some(image) {
+                return fail("ELF/text binary correspondence differs");
+            }
+            allocated += 1;
+        }
+    }
+    let edit = &recipe["writes"][0];
+    let text = edit["after"].as_str().ok_or("Missing native postimage")?;
+    if !text.is_ascii()
+        || text.len() != 244
+        || edit["fad"] != 151
+        || edit["offset"] != 1808
+        || image.len() != 124
+        || image[122..] != [0, 9]
+        || allocated != 1
+    {
+        return fail("Native source boundary/padding differs");
+    }
+    let expected = (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    if image[..122] != expected {
+        return fail("Assembled native AIP differs from the reviewed recipe");
+    }
+    Ok(())
+}
+
+/// Link only our existing-routine rewrite, without any game/BIOS input.
+pub fn source(repo: &Path, output: &Path, recipe_path: &Path) -> Result<()> {
+    let repo = repo.canonicalize()?;
+    let recipe_path = recipe_path.canonicalize()?;
+    let recipe_bytes = read(&recipe_path, 16384)?;
+    let recipe: Value = serde_json::from_slice(&recipe_bytes)?;
+    let input_path = repo.join("recipes/assembly/vandal-hearts-cn-dlct-v20240517.S");
+    let input = read(&input_path, 16384)?;
+    let endpoint = if let Ok(value) = std::env::var("DOCKER_HOST") {
+        value
+    } else {
+        capture(Command::new("docker").args([
+            "context",
+            "inspect",
+            "--format",
+            "{{.Endpoints.docker.Host}}",
+        ]))?
+    };
+    if !endpoint.starts_with("unix://") {
+        return fail("Only local Unix-socket Docker is admitted");
+    }
+    let out = new_build_output(&repo, output)?.canonicalize()?;
+    fs::write(out.join("input.S"), &input)?;
+    fs::write(out.join("recipe.json"), &recipe_bytes)?;
+    // GCC's default SH linker script also emits a four-byte .stack object.
+    // This source edit uses the original caller's stack and has no allocation.
+    let linker="ENTRY(_start)\nSECTIONS { .text 0x06002f00 : { *(.text) } .data : { *(.data) } .bss : { *(.bss) *(COMMON) } /DISCARD/ : { *(.comment) *(.note*) } }\n";
+    fs::write(out.join("native.ld"), linker)?;
+    let id = format!(
+        "saroo-vandal-source-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    );
+    let commands=format!("set -eu\n{p}gcc --version\n{p}gcc -m2 -mb -nostdlib -Wl,-T,/work/native.ld,--build-id=none -o /work/native.elf /work/input.S\n{p}objcopy -O binary -j .text /work/native.elf /work/native.bin\n{p}objdump -dr /work/native.elf > /work/native.asm\n",p=super::PREFIX);
+    let mut docker = Command::new("docker");
+    docker
+        .args([
+            "--host",
+            &endpoint,
+            "run",
+            "--rm",
+            "--pull=never",
+            "--network=none",
+            "--read-only",
+            "--platform=linux/amd64",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--memory=512m",
+            "--cpus=2",
+            "--pids-limit=64",
+            "--tmpfs=/tmp:rw,size=16m",
+            "--name",
+            &id,
+            "--mount",
+        ])
+        .arg(format!("type=bind,source={},target=/work", out.display()))
+        .args(["--entrypoint=/bin/sh", super::IMAGE, "-c", &commands]);
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let result = execute(&mut docker, &out, "link", deadline);
+    if !matches!(&result, Ok((true, _, _))) {
+        let _ = execute(
+            Command::new("docker").args(["--host", &endpoint, "rm", "--force", &id]),
+            &out,
+            "cleanup",
+            Instant::now() + Duration::from_secs(30),
+        );
+        result?;
+        return fail("Native source link failed; preserved logs contain the reason");
+    }
+    let elf = read(&out.join("native.elf"), 1024 * 1024)?;
+    let image = read(&out.join("native.bin"), 4096)?;
+    source_image(&elf, &image, &recipe)?;
+    if read(&recipe_path, 16384)? != recipe_bytes || read(&input_path, 16384)? != input {
+        return fail("Native recipe/source changed during link");
+    }
+    let receipt = json!({"complete":true,"image":super::IMAGE,"source_sha256":sha(&input),"linker_sha256":sha(linker.as_bytes()),"recipe_sha256":sha(&recipe_bytes),"elf_sha256":sha(&elf),"text_sha256":sha(&image),"used_text_sha256":sha(&image[..122]),"linked_text_bytes":124,"recipe_bytes":122,"discarded_linker_padding_bytes":2,"entry":"06002f00","other_allocated_bytes":0,"qualification":"Source/ELF/recipe correspondence only; native execution, BIOS/media and device qualification are separate."});
+    fs::write(
+        out.join("receipt.json"),
+        serde_json::to_vec_pretty(&receipt)?,
+    )?;
+    println!(
+        "Native source: 122 recipe bytes match the linked routine; two padding bytes excluded"
+    );
+    Ok(())
+}
+
 fn execute(
     command: &mut Command,
     out: &Path,
@@ -412,6 +565,56 @@ pub fn run(repo: &Path, output: &Path, upstream: &Path, config: &Path) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linked_source_rejects_bad_entry_extra_allocation_padding_and_postimage() {
+        let mut image = vec![0x5a; 124];
+        image[122..].copy_from_slice(&[0, 9]);
+        let mut elf = vec![0; 256];
+        elf[..6].copy_from_slice(b"\x7fELF\x01\x02");
+        for (offset, width, value) in [
+            (16, 2, 2u32),
+            (18, 2, 42),
+            (24, 4, 0x06002f00),
+            (32, 4, 52),
+            (46, 2, 40),
+            (48, 2, 2),
+            (96, 4, 1),
+            (100, 4, 6),
+            (104, 4, 0x06002f00),
+            (108, 4, 132),
+            (112, 4, 124),
+        ] {
+            elf[offset..offset + width].copy_from_slice(&value.to_be_bytes()[4 - width..]);
+        }
+        elf[132..].copy_from_slice(&image);
+        use std::fmt::Write;
+        let mut text = String::with_capacity(244);
+        for byte in &image[..122] {
+            write!(&mut text, "{byte:02x}").unwrap();
+        }
+        let recipe = json!({"writes":[{"fad":151,"offset":1808,"after":text}]});
+        assert!(source_image(&elf, &image, &recipe).is_ok());
+        for (at, value) in [(27, 1), (100, 3), (115, 0), (49, 0), (49, 65), (47, 39)] {
+            let mut bad = elf.clone();
+            bad[at] = value;
+            assert!(source_image(&bad, &image, &recipe).is_err(), "offset {at}");
+        }
+        let mut extra = elf.clone();
+        extra[60..64].copy_from_slice(&3u32.to_be_bytes());
+        extra[72..76].copy_from_slice(&4u32.to_be_bytes());
+        assert!(source_image(&extra, &image, &recipe).is_err());
+        for at in [0, 121, 122, 123] {
+            let mut bad = image.clone();
+            bad[at] ^= 1;
+            let mut matching_elf = elf.clone();
+            matching_elf[132..].copy_from_slice(&bad);
+            assert!(source_image(&matching_elf, &bad, &recipe).is_err());
+        }
+        for width in [0, 6, 51, 131, 255] {
+            assert!(source_image(&elf[..width], &image, &recipe).is_err());
+        }
+    }
 
     #[test]
     fn refuses_collateral_ip_and_packed_changes_without_panicking_on_short_inputs() {

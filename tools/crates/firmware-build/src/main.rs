@@ -425,7 +425,23 @@ fn run() -> Result<()> {
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
+        println!("firmware-build vandal-source --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --recipe RECIPE.json\nAssemble/link the native AIP with the cached pinned SH-2 toolchain and check the recipe bytes; no downloads or devices.");
         return Ok(());
+    }
+    if args.len() == 7
+        && args[0] == "vandal-source"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--recipe"
+    {
+        #[cfg(unix)]
+        return vandal::source(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+        );
+        #[cfg(not(unix))]
+        return fail("Native source linking requires a Unix host");
     }
     if args.len() == 9
         && args[0] == "vandal"
@@ -482,7 +498,7 @@ fn run() -> Result<()> {
         return fail("The MCU compile/link check requires a Unix host");
     }
     if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
-        return fail("Expected menu, mcu, fpga or vandal arguments; use --help");
+        return fail("Expected menu, mcu, fpga, vandal or vandal-source arguments; use --help");
     }
     build(Path::new(&args[2]), Path::new(&args[4]))
 }

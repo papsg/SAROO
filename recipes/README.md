@@ -42,6 +42,13 @@ identifies them. Existing Terra Cresta 3D and UMK3 pilot sources remain
 available in this directory.
 [Original SAROO source](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
 
+[Vandal Hearts Chinese DLCT v20240517](vandal-hearts-cn-dlct-v20240517-sector.json)
+converts the inherited second-predicate startup workaround into edits within
+the existing AIP and compressed source, with finite delivery and complete
+source-context guards. It adds no copied helper. **Modeled PCM differs from
+the inherited control; physical and full-game acceptance remain open.**
+[Exact identity, attribution, primary citations, reproduction and limits](../doc/VANDAL-HEARTS.md).
+
 The expansion RAM group adapts paps-g `4ac082e1`. These eight sources select
 1 MB and preserve the corresponding inherited instruction writes. An explicit
 user cartridge configuration takes precedence.

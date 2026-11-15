@@ -6,6 +6,7 @@ mod pca;
 mod pins;
 mod rom;
 mod source_check;
+mod vandal_inputs;
 
 use disc::{Disc, RAW_BYTES};
 use mode1::{DATA_START, TAIL_START};
@@ -556,7 +557,18 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay verify-receipt RECEIPT.json NEW-REPORT.json [--base DIRECTORY]\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay vandal-inputs RECIPE.json DISC.cue BIOS.bin C-DECODER NEW-OUTPUT-DIRECTORY\nsector-overlay verify-receipt RECEIPT.json NEW-REPORT.json [--base DIRECTORY]\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
+    if let [op, recipe, cue, bios, decoder, out] = args.as_slice() {
+        if op == "vandal-inputs" {
+            return vandal_inputs::run(
+                Path::new(recipe),
+                Path::new(cue),
+                Path::new(bios),
+                Path::new(decoder),
+                Path::new(out),
+            );
+        }
+    }
     if let [op, manifest, out, option, base] = args.as_slice() {
         if op == "verify-receipt" && option == "--base" {
             return pins::run(Path::new(manifest), Path::new(out), Some(Path::new(base)));

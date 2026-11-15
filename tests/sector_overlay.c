@@ -37,7 +37,18 @@ int main(int argc, char **argv)
         assert(load(argv[5], source[1], RAW_BYTES) == RAW_BYTES);
         assert(load(argv[6], post[1], RAW_BYTES) == RAW_BYTES);
         assert(load(argv[7], marker, RAW_BYTES) == RAW_BYTES);
-        const uint32_t fads[] = {151, 154};
+        uint32_t fads[2] = {0};
+        unsigned sources = 0;
+        assert(pack[4] == 6);
+        for (unsigned i = 0; i < sector_overlay_count(); ++i) {
+            uint32_t fad = sector_overlay_fad(i);
+            if (!pack[24 + i * SECTOR_OVERLAY_RECORD_BYTES + 8]) continue;
+            if (sources && fads[sources - 1] == fad) continue;
+            assert(sources < 2);
+            fads[sources++] = fad;
+        }
+        assert(sources == 2);
+        uint32_t completion = sector_overlay_fad(sector_overlay_count() - 1);
         const unsigned action = pack[7];
         assert(action == 0x80 || action == 0x81 || action == 0x84);
         assert(!sector_overlay_action());
@@ -47,11 +58,11 @@ int main(int argc, char **argv)
             /* Preflight and an early marker cannot stand in for delivery. */
             for (unsigned i = 0; i < sector_overlay_count(); ++i) {
                 uint32_t fad = sector_overlay_fad(i);
-                if (fad == 151 || fad == 154)
-                    assert(!sector_overlay_check(i, source[fad == 154]));
+                if (fad == fads[0] || fad == fads[1])
+                    assert(!sector_overlay_check(i, source[fad == fads[1]]));
             }
             memcpy(buffer, marker, RAW_BYTES);
-            assert(!sector_overlay_apply(155, buffer) && !memcmp(buffer, marker, RAW_BYTES));
+            assert(!sector_overlay_apply(completion, buffer) && !memcmp(buffer, marker, RAW_BYTES));
             unsigned first = order, second = order ^ 1;
             memcpy(buffer, source[first], RAW_BYTES); buffer[2064] ^= 1;
             assert(sector_overlay_apply(fads[first], buffer) < 0);
@@ -59,15 +70,15 @@ int main(int argc, char **argv)
             memcpy(buffer, source[second], RAW_BYTES);
             assert(sector_overlay_apply(fads[second], buffer) == 1 && !memcmp(buffer, post[second], RAW_BYTES));
             memcpy(buffer, marker, RAW_BYTES);
-            assert(!sector_overlay_apply(155, buffer));
+            assert(!sector_overlay_apply(completion, buffer));
             memcpy(buffer, source[first], RAW_BYTES);
             assert(sector_overlay_apply(fads[first], buffer) == 1 && !memcmp(buffer, post[first], RAW_BYTES));
             memcpy(buffer, marker, RAW_BYTES); buffer[2351] ^= 1;
-            assert(sector_overlay_apply(155, buffer) < 0);
+            assert(sector_overlay_apply(completion, buffer) < 0);
             memcpy(buffer, source[second], RAW_BYTES);
             assert(sector_overlay_apply(fads[second], buffer) == 1 && !memcmp(buffer, post[second], RAW_BYTES));
             memcpy(buffer, marker, RAW_BYTES);
-            assert(!sector_overlay_apply(155, buffer) && !memcmp(buffer, marker, RAW_BYTES));
+            assert(!sector_overlay_apply(completion, buffer) && !memcmp(buffer, marker, RAW_BYTES));
             assert(sector_overlay_action() == action && sector_overlay_replaces_callback());
             assert(sector_overlay_select(0) < 0);
             for (unsigned i = 0; i < 2; ++i) {
