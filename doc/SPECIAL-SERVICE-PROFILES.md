@@ -153,3 +153,71 @@ python3 -B -m unittest discover -s tests -p test_menu_vdp1_order.py -v
 python3 -B -m unittest discover -s tests -p test_menu_command_completion.py -v
 python3 -B -m unittest discover -s tests -p test_menu_launch_errors.py -v
 ```
+
+## In the Hunt USA V1.000
+
+[Recipe](../recipes/in-the-hunt-us-v1000-sector.json) and
+[reviewed assembly](../recipes/assembly/in-the-hunt-us-preload.S). Adapted from
+paps-g `e2029f04`, preserving the
+[original upstream music service, 8928b7da](https://github.com/tpunix/SAROO/commit/8928b7da7311edb65b7b2d0e9fd1989cc25c4202)
+and the already-public complete-read correction. This is an optional delivery
+of that workaround, not proof of a native-game defect or an audio-equivalent
+replacement. Original menu callbacks remain available.
+
+`T-10001G  V1.000` loads `0;1`, LBA23, 605,536 bytes at `06004000`.
+Complete original SHA-256 is
+`8be9ff04a0f116742ef5cdcbf22a836083d91ac2959a564ab90d55e9de9cecb8`;
+postimage is `5d3e8dfe70bae47cbaa87e798ee9a57a4b23fc5abe13799e829a1a94ad763aac`.
+The recipe separately pins the complete original data track. Original first
+caller is JSR at `060072EA`, using the pointer literal at `06007324`.
+That literal remains unchanged. The second pointer at `060044E0` selects the
+copy entry at `0600A3F4`.
+
+The 108-byte body begins at `0600A3B8`; it includes a P2 flag at `2600A420`.
+Before every preload it clears the flag, reads the existing `02000F04` function
+pointer, and requests FAD2612 /`54F00` bytes into `22400000`. Only an exact
+complete count enables copying the same `54F00` bytes to `002AA000`. Short,
+failed and oversized returns leave copying disabled, including after a previous
+success. Repeated successful copies remain permitted. PR, SP and saved
+registers are preserved. This is a functional preload/copy routine; it is not
+a resident compatibility callback that writes other game instructions.
+
+The source uses literal loads before JSR and a NOP delay slot. The rejected
+104-byte draft placed a PC-relative load in that slot.
+[Hitachi SH7604 §2.4, Table 2.12 pp.33–34 and Table 2.17 p.40](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+defines these loads, delayed transfers and register operations;
+[Renesas SH software manual §6.1.34, pp.202–203](https://www.renesas.com/en/document/mas/sh-1sh-2sh-dsp-software-manual)
+specifies the PC-relative delay-slot address rule. The 108-byte version retains
+its resolved literal addresses. The file mapping uses
+[Sega ST-040 §4.3, pp.28–29 and §4.7](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf).
+
+The ABI3 pack has four records over two sectors, 1,416 bytes, SHA-256
+`8f50e5f6bd567acdb5b05ccb32a39fecc3a3f497391f88a4a322a30d9ef2f4b4`.
+It uses the existing long-span decoder and exported reader; no firmware runtime
+or resource change is required. Current Rust/C checks reproduce the complete
+preserved IP/first-file postimages. Synthetic source/decoder checks cover
+312 streamed sectors; 672 unedited final padding bytes are generated, not
+newly authenticated original raw padding. The full raw disc is unavailable,
+so its complete track hash remains historical. Additional checks cover
+atomic fragments, source/version/hash refusal and retries. Instruction checks
+execute the actual recipe bytes across absent, complete, short, failed,
+oversized and repeated reads/copies, comparing the complete modeled memory and
+saved registers. Reader transport and bus aliases are explicit models. Actual
+menu launch checks preserve admitted source pointers, retained missing/rejected/
+physical callbacks, explicit skip and later user configuration priority.
+
+Historical 38-operation ABI checks and four natural US/JP startup runs remain
+separate evidence. Each natural route completes two real-reader preloads and
+retains the body/flag/callers at four snapshots. US video matches all121
+checkpoints; audio matches17/121 and complete PCM differs. That natural route
+never reaches the copy entry; bounded instruction checks cover it. Do not infer
+full-game, audio, concurrent-cache or Saturn qualification. The intermittent
+SMPC startup freeze remains unresolved. The original shared receipt recheck
+records956 matches,2 unavailable pins and3 later-changed shared inputs; the
+final frozen inventory records6,107 matches,111 missing and zero changed pins.
+Missing evidence is preserved as a limit, never rewritten into a passing result.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_sector_overlay_special.py -v
+python3 -B -m unittest discover -s tests -p test_menu_vdp1_order.py -v
+```

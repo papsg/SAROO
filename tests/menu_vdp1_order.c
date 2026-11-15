@@ -13,6 +13,7 @@ static _Alignas(4) u8 vram[0x80000], high[0x100000], low[0x100000], config[256];
 static _Alignas(4) u8 expected[sizeof vram], untouched[sizeof vram];
 enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
 static enum rom_kind rom_ready;
+static u8 kaitei_music_ready;
 static int CHEAT_ADDRES, need_bup, skip_patch;
 static int game_break_pc, to_stm32, gets_from_stm32;
 static int disc_type __attribute__((unused));
@@ -199,6 +200,33 @@ static void finished(void)
     assert(breaks == !!game_break_pc && installs == !!game_break_pc);
     assert(to_stm32 == !!game_break_pc && gets_from_stm32 == !!game_break_pc);
     assert(mailbox == (game_break_pc ? 0 : 0x76543210));
+}
+
+static void music_launches(void)
+{
+    const char *ids[] = {"T-10001G  V1.000", "T-15006G  V1.004"};
+    for (unsigned region = 0; region < 2; ++region)
+        for (unsigned route = 0; route < 5; ++route) {
+            reset(ids[region], 93);
+            kaitei_music_ready = 7;
+            REG32(0x06007324) = 0x0600a3b8;
+            REG32(0x060044e0) = 0x0600a3f4;
+            overlay_handoff = __builtin_bswap32(route ? SD_OVERLAY_REPLACEMENT : 0);
+            if (route == 2) disc_type = 4;
+            if (route == 3) skip_patch = 1;
+            if (route == 4) {
+                put32(0, 0x40000000 | 0x060044e0); put32(4, 0x0600aa00);
+            }
+            read_1st(); finished();
+            int fallback = route == 0 || route == 2;
+            assert(REG32(0x06007324) == (fallback ?
+                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle1 : 0x0600a3b8));
+            assert(REG32(0x060044e0) == (route == 4 ? 0x0600aa00 : fallback ?
+                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle2 : 0x0600a3f4));
+            assert(kaitei_music_ready == (fallback ? 0 : 7));
+            assert(!others && !cards && !jumps);
+            for (unsigned i = 0; i < 108; ++i) assert(high[0xa3b8+i] == 0xa5);
+        }
 }
 
 static void cnc_reset(void)
@@ -1030,6 +1058,8 @@ int main(int argc, char **argv)
         cnc_reset();
     }else if(!strcmp(mode, "cnc-overlay")){
         cnc_overlay();
+    }else if(!strcmp(mode, "music")){
+        music_launches();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){
@@ -1055,7 +1085,8 @@ int main(int argc, char **argv)
                g->patch_func == srmp7_patch ||
                g->patch_func == Hissatsu_Pachinko_Collection_patch ||
                g->patch_func == Heart_of_Darkness_patch ||
-               g->patch_func == Metal_Slug_A_patch) continue;
+               g->patch_func == Metal_Slug_A_patch ||
+               g->patch_func == KAITEI_DAISENSOU_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

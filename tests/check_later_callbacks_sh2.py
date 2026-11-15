@@ -10,7 +10,8 @@ from check_menu_clock_sh2 import linked_symbol_records, signed
 
 
 def execute(code, start, stop, ram, *, external=None, seed=0, return_address=None, flags=None,
-            read_values=None, trace=None, registers=None):
+            read_values=None, trace=None, registers=None, external_handler=None,
+            max_steps=128):
     program = dict(enumerate(code, start))
     memory = dict(ram)
     regs = [0x13570000 + i * 0x100 + seed for i in range(16)]
@@ -44,7 +45,7 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
         writes.append((address, width, value))
         memory.update(enumerate(value.to_bytes(width, 'big'), address))
 
-    for _ in range(128):
+    for _ in range(max_steps):
         if pc == stop:
             assert delayed is None
             if flags is not None:
@@ -57,8 +58,11 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
                 trace.append(('call', pc, regs[4], regs[5]))
             # The declared external callee preserves the ABI's saved state
             # and returns with arbitrary volatile-register values.
-            for i in range(8):
-                regs[i] = 0xdead0000 + i
+            if external_handler is not None:
+                external_handler(regs, memory)
+            else:
+                for i in range(8):
+                    regs[i] = 0xdead0000 + i
             pc = pr
             continue
         op = read(pc, 2)
@@ -81,6 +85,11 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             t = int(regs[n] == regs[m])
         elif op & 0xf0ff == 0x4011:
             t = int(signed(regs[n], 32) >= 0)
+        elif op & 0xf0ff == 0x4010:
+            regs[n] = (regs[n] - 1) & 0xffffffff
+            t = int(regs[n] == 0)
+        elif op & 0xf0ff == 0x0029:
+            regs[n] = t
         elif op & 0xf00f == 0x2008:
             t = int((regs[n] & regs[m]) == 0)
         elif op & 0xf00f == 0x2009:

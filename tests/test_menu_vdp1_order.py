@@ -58,7 +58,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'Metal_Slug_patch', b'MANX_TT_SUPER_BIKE_patch', b'WHIZZ_patch',
                   b'Ultimate_Mortal_Kombat_3_patch', b'Hebereke_Popoitto_patch',
                   b'srmp7_patch', b'Hissatsu_Pachinko_Collection_patch',
-                  b'Heart_of_Darkness_patch', b'Metal_Slug_A_patch'}
+                  b'Heart_of_Darkness_patch', b'Metal_Slug_A_patch', b'KAITEI_DAISENSOU_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -75,6 +75,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code += b'static void Pia_Carrot_e_Youkoso_2_handle1(void) { assert(0); }\n'
         code += b'static void xmvsf_handle1(void) { assert(0); }\n'
         code += b'static void xmvsf_handle2(void) { assert(0); }\n'
+        code += b'static void KAITEI_DAISENSOU_handle1(void) { assert(0); }\n'
+        code += b'static void KAITEI_DAISENSOU_handle2(void) { assert(0); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -114,7 +116,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
                      b'HABITAT2_handle', b'mshvssf_handle1', b'Phantasy_Star_Collection_handle',
                      b'VAMPIRE_SAVIOR_handle', b'Batman_Forever_The_Arcade_Game_handle1',
                      b'MARVEL_SUPER_handle', b'Pia_Carrot_e_Youkoso_2_handle1',
-                     b'xmvsf_handle1', b'xmvsf_handle2'):
+                     b'xmvsf_handle1', b'xmvsf_handle2', b'KAITEI_DAISENSOU_handle1',
+                     b'KAITEI_DAISENSOU_handle2'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -245,6 +248,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_native_kof97_yzb_preserves_original_ip_or_guarded_fallback_and_ram_priority(self):
         self.scenario('kof97-native')
+
+    def test_music_source_delivery_retains_fallback_skip_and_user_configuration(self):
+        self.scenario('music')
 
 
 if __name__ == '__main__':

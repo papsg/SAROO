@@ -165,3 +165,8 @@ Command & Conquer USA [GDI](command-conquer-us-gdi-sector.json) and
 complete loaded-file guard. Both compile to the same pack. They require the
 checked-load MCU/menu capability; the original callback remains available.
 See [source, attribution, pairing and limits](../doc/SPECIAL-SERVICE-PROFILES.md).
+
+[In the Hunt USA V1.000](in-the-hunt-us-v1000-sector.json) supplies the existing
+timed music preload/copy through an exact-source profile. Its checked-read
+guard and reader ABI are preserved; timing/audio and whole-game qualification
+remain open. See [service notes](../doc/SPECIAL-SERVICE-PROFILES.md#in-the-hunt-usa-v1000).

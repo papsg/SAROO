@@ -1,0 +1,34 @@
+{
+  "abi": 2,
+  "product_id": "T-10001G",
+  "disc_id": "T-10001G  V1.000",
+  "origin": "https://github.com/tpunix/SAROO/commit/8928b7da7311edb65b7b2d0e9fd1989cc25c4202",
+  "title": "In the Hunt (USA) V1.000 music preload",
+  "summary": "Keep the original timed music preload and complete-read guard in source-loaded hooks.",
+  "rationale": "Optional exact-source profile. The original first program has one pointer to each music routine and no relative BRA/BSR entries to them. Replace the first routine with the reviewed 108-byte source-loaded handlers and redirect the second music call to its copy hook. FAD 2612 supplies 0x54F00 bytes to 22400000; only a complete read enables the identical 002AA000 copy. The flag starts clear with the program and is cleared before every read. The existing 02000F04 sector-reader pointer is required. This preserves the music workaround; it does not remove it or claim to fix the deferred intermittent SMPC freeze. Other execution paths, Japanese revision and physical timing remain unqualified.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "c85f673c7f0e82ce270469fe4ab790cb6fb5a1734b5ba7e60cb97b225f405323"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 185,
+      "offset": 968,
+      "before": "2fe64f227ff4d416d316430be50063f3d2151f21d415d216420b1f32d3152302de15d316430b64032e02e501d314430b6403d514d3146552430b64e2e70056f2d3126573430b64e2970856f165f2d310430b64e27f0c4f26000b6ef60800ffff0600a1ec06072e18002aa000",
+      "after": "4f22d109e0002100d0086002d408d509d609400b0009d10730100029d10221004f26000b000900092600a42002000f0400000a3400054f0022400000d106601020088907d105d206d30660162202720443108bfa000b00092600a42022400000002aa000000153c000000009",
+      "effect": "Embed the preload, guarded copy and initially clear flag in the first program.",
+      "reason": "Replace only the original music-loader routine; leave its single caller and other loading routines in place."
+    },
+    {
+      "fad": 173,
+      "offset": 1264,
+      "before": "0600a44c",
+      "after": "0600a3f4",
+      "effect": "Redirect the second music call to the source-loaded guarded copy.",
+      "reason": "Preserve the original callback timing and skip copying after incomplete or failed reads."
+    }
+  ]
+}
