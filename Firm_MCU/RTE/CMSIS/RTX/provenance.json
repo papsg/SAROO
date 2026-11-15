@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/ARM-software/CMSIS_5/tree/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2",
+  "kernel_version": "5.5.1",
+  "api_version": "2.1.3",
+  "license": "Apache-2.0",
+  "copyright": "Arm Limited; see original file headers",
+  "adaptation": "papsg, SSR-007, after paps-g 692f9716; only refused wait result handling changes. Header copies are unchanged Cortex-M provider prerequisites.",
+  "headers": {
+    "rtx_lib.h": "4d30b22420eb6ade4ecff64d82fff1bed19b12d90ff75f888a9f29949c1b1660",
+    "rtx_core_c.h": "60b116453652bd663223ffc2d69176c8367c22fb94d11ace948c74ed9523ead7",
+    "rtx_core_cm.h": "55f7271ab159e2dabfd93685d9d1f8aeb7d0da34302751a42b6e2999bb03d0e2"
+  },
+  "providers": {
+    "rtx_delay.c": "8f4286937fb81c0d527acc21037346e7c39c25425afe0db9f06a300d6242808b"
+  }
+}

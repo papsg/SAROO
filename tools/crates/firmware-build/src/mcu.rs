@@ -13,8 +13,8 @@ use std::{
 };
 
 #[derive(Default)]
-struct Inputs {
-    hashes: BTreeMap<String, String>,
+pub(super) struct Inputs {
+    pub(super) hashes: BTreeMap<String, String>,
     bytes: u64,
 }
 
@@ -25,7 +25,7 @@ unsafe extern "C" {
 // Keep the complete application together for cross-file size decisions.
 const LTO_FLAGS: [&str; 2] = ["-flto=4", "-flto-partition=one"];
 
-fn copy_file(from: &Path, to: &Path, key: String, hashes: &mut Inputs) -> Result<()> {
+pub(super) fn copy_file(from: &Path, to: &Path, key: String, hashes: &mut Inputs) -> Result<()> {
     if !from.symlink_metadata()?.is_file()
         || from.metadata()?.len() > 8 * 1024 * 1024
         || hashes.hashes.len() >= 4096
@@ -46,7 +46,7 @@ fn copy_file(from: &Path, to: &Path, key: String, hashes: &mut Inputs) -> Result
     Ok(())
 }
 
-fn copy_tree(from: &Path, to: &Path, prefix: &str, hashes: &mut Inputs) -> Result<()> {
+pub(super) fn copy_tree(from: &Path, to: &Path, prefix: &str, hashes: &mut Inputs) -> Result<()> {
     if prefix.split('/').count() > 16 {
         return fail("MCU SDK input nesting exceeds 16 levels");
     }
@@ -203,7 +203,7 @@ fn verify_vectors(elf: &[u8], names: &[String], symbols: &BTreeMap<String, u32>)
     Ok(())
 }
 
-fn execute(
+pub(super) fn execute(
     command: &mut Command,
     out: &Path,
     rows: &mut Vec<Value>,
@@ -313,10 +313,16 @@ pub fn build(
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<_>>()?;
     rtx_sources.sort();
+    super::rtos::validate(&app, &sdk.join("rtos"))?;
     sources.extend(
         rtx_sources
             .into_iter()
-            .filter(|x| x.extension().is_some_and(|s| s == "c")),
+            .filter(|x| x.extension().is_some_and(|s| s == "c"))
+            .filter(|x| {
+                !app.join("RTE/CMSIS/RTX")
+                    .join(x.file_name().unwrap())
+                    .is_file()
+            }),
     );
     sources.push(sdk.join("rtos/RTX/Source/GCC/irq_cm4f.S"));
     sources.push(sdk.join("rtos/Source/os_systick.c"));

@@ -444,3 +444,15 @@ runtime after these development dependencies are installed.
 For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 [the build qualification](../doc/ARABIC.md#build-qualification). The original
 `sh-elf` toolchain with libc remains supported by the existing menu Makefile.
+
+### Actual RTX API contracts, offline
+
+`firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
+arguments as `mcu`, plus `--case delay`. Choose a fresh `--out tests/build/...`
+for each invocation. `--baseline` selects the original provider for that case
+and intentionally fails the contract after displaying its false-success results;
+`--lto` repeats with LTO and `--archive` checks owned-source selection against
+a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
+`mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
+No download, device access or test firmware installation occurs. See
+[RTOS correctness](../doc/RTOS-CORRECTNESS.md) for controls, licenses and limits.

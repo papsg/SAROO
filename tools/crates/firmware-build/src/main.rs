@@ -14,6 +14,8 @@ mod fpga;
 #[cfg(unix)]
 mod mcu;
 #[cfg(unix)]
+mod rtos;
+#[cfg(unix)]
 mod vandal;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -423,6 +425,7 @@ fn run() -> Result<()> {
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
+        println!("firmware-build rtos-check --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 --case delay [--baseline] [--lto] [--archive]\nActual RTX API/SVC/kernel contracts in local QEMU; never accesses SAROO.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
         println!("firmware-build vandal-source --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --recipe RECIPE.json\nAssemble/link the native AIP with the cached pinned SH-2 toolchain and check the recipe bytes; no downloads or devices.");
@@ -474,6 +477,21 @@ fn run() -> Result<()> {
         );
         #[cfg(not(unix))]
         return fail("The FPGA build check requires a Unix host");
+    }
+    if args.len() >= 15
+        && args[0] == "rtos-check"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--toolchain"
+        && args[7] == "--cmsis"
+        && args[9] == "--stm32"
+        && args[11] == "--rtx"
+        && args[13] == "--case"
+    {
+        #[cfg(unix)]
+        return rtos::run(&args);
+        #[cfg(not(unix))]
+        return fail("The RTOS contract check requires a Unix host");
     }
     if (args.len() == 13 || (args.len() == 14 && args[13] == "--no-lto"))
         && args[0] == "mcu"
