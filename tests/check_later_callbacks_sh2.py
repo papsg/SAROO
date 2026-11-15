@@ -11,9 +11,11 @@ from check_menu_clock_sh2 import linked_symbol_records, signed
 
 def execute(code, start, stop, ram, *, external=None, seed=0, return_address=None, flags=None,
             read_values=None, trace=None, registers=None, external_handler=None,
-            max_steps=128):
-    program = dict(enumerate(code, start))
-    memory = dict(ram)
+            max_steps=128, entry_pc=None, mapped_code=False, write_observer=None):
+    program = {} if mapped_code else dict(enumerate(code, start))
+    memory = ram.copy()
+    if mapped_code:
+        memory.update(enumerate(code, start))
     regs = [0x13570000 + i * 0x100 + seed for i in range(16)]
     regs[15] = 0x060ff000
     if registers is not None:
@@ -21,7 +23,7 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             assert 0 <= number < 16 and 0 <= value <= 0xffffffff
             regs[number] = value
     initial = regs.copy()
-    pc, pr, delayed = start, stop if return_address is None else return_address, None
+    pc, pr, delayed = start if entry_pc is None else entry_pc, stop if return_address is None else return_address, None
     writes, calls = [], []
     t = flags[0] if flags is not None else 0
 
@@ -44,6 +46,8 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
         value &= (1 << (8 * width)) - 1
         writes.append((address, width, value))
         memory.update(enumerate(value.to_bytes(width, 'big'), address))
+        if write_observer is not None:
+            write_observer(address, width, value, memory)
 
     for _ in range(max_steps):
         if pc == stop:
@@ -59,7 +63,9 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             # The declared external callee preserves the ABI's saved state
             # and returns with arbitrary volatile-register values.
             if external_handler is not None:
-                external_handler(regs, memory)
+                changed_t = external_handler(regs, memory)
+                if changed_t is not None:
+                    t = changed_t
             else:
                 for i in range(8):
                     regs[i] = 0xdead0000 + i
@@ -119,6 +125,8 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
             regs[n] = signed(regs[m] & 65535, 16) & 0xffffffff
         elif op & 0xf00f == 0x6003:
             regs[n] = regs[m]
+        elif op & 0xf00f == 0x300c:
+            regs[n] = (regs[n] + regs[m]) & 0xffffffff
         elif op >> 12 == 0xa:
             assert target is None
             delayed = pc + 4 + signed(op & 0xfff, 12) * 2
@@ -133,6 +141,10 @@ def execute(code, start, stop, ram, *, external=None, seed=0, return_address=Non
                     following = branch
         elif op & 0xf00f in (0x2000, 0x2001, 0x2002):
             write(regs[n], 1 << (op & 3), regs[m])
+        elif op & 0xf00f == 0x2006:
+            value = regs[m]
+            regs[n] = (regs[n] - 4) & 0xffffffff
+            write(regs[n], 4, value)
         elif op >> 12 == 1:
             write(regs[n] + (op & 15) * 4, 4, regs[m])
         elif op == 0x4f22:

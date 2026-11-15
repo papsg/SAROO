@@ -68,6 +68,9 @@ static int my_bios_loadcd_init(void) { return 0; }
 static __attribute__((unused)) int cdblock_off(void) { return 0; }
 static void my_cdplayer(void) { players++; player_mode=use_sys_load; }
 static int rom_result, rom_checks;
+static int overlay_result, overlay_checks;
+static int overlay_prepare_rom(int virtual_disc)
+{ assert(virtual_disc == (disc_type == 0)); overlay_checks++; return overlay_result; }
 static __attribute__((unused)) int prepare_game_rom(const char *id)
 {
     assert(id == (const char *)(ip_buffer + 0x20) && transfers == 1);
@@ -227,6 +230,10 @@ int main(int argc, char **argv) {
         result=my_bios_loadcd_read();
         assert(result == (n==27 ? -2 : n==28 ? 0 : -1));
         assert(transfers == (n==28));
+    } else if (n>=50 && n<=52) {
+        overlay_result=n==50?1:n==51?-4:0;
+        assert(bios_cd_cmd(0)==(n==51?-4:0));
+        assert(overlay_checks==1 && rom_checks==(n==52) && transfers==1 && !players);
     } else if (n == 48 || n == 49) {
         player_return(n == 48);
     } else if (n >= 33) {

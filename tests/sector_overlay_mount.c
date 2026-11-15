@@ -97,6 +97,27 @@ int main(int argc, char **argv)
     create("/D/a.bin", original, original_bytes);
     create(cue_name, single, strlen(single));
     int which = atoi(argv[2]);
+    if (which >= 61) {
+        assert(which<=68);
+        create(pack_name,pack,pack_bytes);unsigned writes=disk_writes;media_case=1;
+        if(which==66) inject_read=4;
+        if(which==67) fail_overlay_save=1;
+        int result=load_disc(which==64 ? SD_OVERLAY_REQUEST : 0,
+                            which==62 ? 3 : which==63 || which==64 ? 1 : 7);
+        int admitted=which==61 || which==68;
+        assert((result!=0)==(which==66 || which==67));
+        assert(overlay_sysinfo[0x38/4]==(admitted ? SD_OVERLAY_ROM : 0));
+        assert(sector_overlay_rom_cart()==admitted);
+        assert(preflight_reads==((which>=62 && which<=64) ? 0 : 1));
+        verify_overlay(1,admitted);verify_image();
+        if(which==68) {
+            assert(!load_disc(0,0));assert(!sector_overlay_rom_cart()&&!overlay_sysinfo[0x38/4]);
+            verify_overlay(1,0);
+        }
+        assert(!unload_disc()&&!handles_count&&!lock_depth&&disk_writes==writes);
+        assert(!sector_overlay_rom_cart()&&!overlay_sysinfo[0x38/4]);
+        assert(!fclose(disk));return 0;
+    }
     if (which >= 54) {
         assert(which <= 60);
         create(pack_name,pack,pack_bytes);

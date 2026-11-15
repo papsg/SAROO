@@ -96,13 +96,24 @@ raw evidence. Full track identity remains a separate compiler check.
 
 `sector-overlay verify-receipt RECEIPT.json NEW-REPORT.json` replaces repeated
 one-off historical inventory hashing. It accepts `inputs[]` / `pins[]` or a `files{}`
-map with paths, byte counts and lowercase SHA-256. Relative paths resolve from
-the receipt. It streams bounded regular files, writes a new report and prints
+map with paths, byte counts and lowercase SHA-256. Historical `source_inputs{}`
+and `inputs{}` maps containing SHA-256 alone are also accepted; their absent
+byte counts remain explicit. Relative paths resolve from the receipt, or an
+explicit `--base DIRECTORY` for inventories authored relative to a repository.
+It streams bounded regular files, writes a new report and prints
 counts. Missing/changed/unreadable pins cause nonzero exit after preserving
 the report; malformed receipts or I/O errors refuse. Existing output is never
 overwritten. Keep reports with local paths in ignored evidence storage. A
 matching inventory proves current file hashes, not historical execution,
 source ownership, game correctness or hardware qualification.
+
+Optional `rom_cart` profiles compile ABI5 packs with bounded SOR1 metadata in
+verified original IP padding. They require the advertised ROM-capable initial
+launch. `verify-source` requires the complete original32KiB initial transfer
+as well as every edited first/later file; it validates padding/IP bounds and
+reproduces the descriptor rather than trusting reference metadata. The tool
+does not bundle or distribute companion ROMs. See
+[ROM startup, pairing and limits](../doc/SPECIAL-SERVICE-PROFILES.md#checked-generic-rom-startup).
 
 ## Isolated firmware qualification
 

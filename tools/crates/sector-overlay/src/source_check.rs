@@ -149,8 +149,13 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let mut programs = Vec::new();
     let mut guard_header = None;
     let mut guard_file = None;
+    let mut rom_ip_verified = false;
     for program in &manifest.programs {
         let (_, data) = pinned(base, &program.source, 0x100000)?;
+        if recipe.rom_cart.is_some() && program.lba == 0 {
+            crate::rom::check_ip(&data)?;
+            rom_ip_verified = true;
+        }
         if let Some(d) = &guard {
             let length = u32::from_be_bytes(d[4..8].try_into().unwrap()) as usize;
             if program.lba == 0 && data.len() >= 0xf4 && data.starts_with(b"SEGA SEGASATURN ") {
@@ -268,6 +273,9 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
             return fail("Complete loaded postimage CRC differs");
         }
     }
+    if recipe.rom_cart.is_some() && !rom_ip_verified {
+        return fail("ROM source checks require the complete original initial transfer");
+    }
     let mut unavailable_guards = Vec::new();
     for (&fad, changes) in &edits {
         if let std::collections::btree_map::Entry::Vacant(entry) = originals.entry(fad) {
@@ -313,7 +321,7 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let checksum = crc32(&for_decoder);
     for_decoder[20..24].copy_from_slice(&checksum.to_be_bytes());
     write_pack(&output.join("decoder.SOV"), &for_decoder)?;
-    const TOOL_INPUTS: [(&str, &[u8]); 9] = [
+    const TOOL_INPUTS: [(&str, &[u8]); 10] = [
         ("main.rs", include_bytes!("main.rs")),
         ("source_check.rs", include_bytes!("source_check.rs")),
         ("pca.rs", include_bytes!("pca.rs")),
@@ -321,6 +329,7 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
         ("disc.rs", include_bytes!("disc.rs")),
         ("first_read.rs", include_bytes!("first_read.rs")),
         ("pins.rs", include_bytes!("pins.rs")),
+        ("rom.rs", include_bytes!("rom.rs")),
         ("Cargo.toml", include_bytes!("../Cargo.toml")),
         ("Cargo.lock", include_bytes!("../../../Cargo.lock")),
     ];

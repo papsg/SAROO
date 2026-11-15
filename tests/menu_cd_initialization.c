@@ -73,6 +73,7 @@ static int bios_player_init(void) { ++player_init_calls; return 17; }
 static int jhl_auth_hack(int delay) { assert(delay==100000);++auth_calls;return auth_result; }
 static int my_bios_loadcd_read(void) { ++read_calls;return read_result; }
 static void my_cdplayer(void) { ++players; }
+static int overlay_prepare_rom(int virtual_disc) { assert(virtual_disc==(disc_type==0));return 0; }
 static int prepare_game_rom(const char *id) { assert(id==game_id);++rom_calls;return rom_result; }
 #include "actual.inc"
 

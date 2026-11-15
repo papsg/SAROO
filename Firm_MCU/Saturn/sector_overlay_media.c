@@ -16,7 +16,8 @@ void sector_overlay_publish_handoff(void)
     unsigned action = sector_overlay_action();
     const uint8_t *guard = sector_overlay_loaded_guard();
     if (guard) memcpy((void *)(SYSINFO_ADDR + 0x40), guard, 24);
-    REG(SYSINFO_ADDR + 0x38) = action ? (guard ? 0x534f5700u : SD_OVERLAY_TAG) | action : 0;
+    unsigned tag = guard ? 0x534f5700u : sector_overlay_rom_cart() ? 0x534f5800u : SD_OVERLAY_TAG;
+    REG(SYSINFO_ADDR + 0x38) = action ? tag | action : 0;
 }
 
 static void overlay_path(char path[28], const char *gameid, size_t id_bytes)
@@ -62,7 +63,8 @@ int sector_overlay_mount_checked(const char gameid[16], int checked_load)
         goto done;
     if (got != length) { result = -1; goto done; }
     if (sector_overlay_validate(length, gameid)) goto done;
-    if (pack[4] == 4 && !checked_load) goto rejected;
+    if ((pack[4] == 4 && !(checked_load & 1)) ||
+        (pack[4] == 5 && !(checked_load & 2))) goto rejected;
 
     uint8_t *scratch = (uint8_t *)0x24002000;
     unsigned track_index = 0;

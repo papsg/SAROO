@@ -10,13 +10,17 @@ use std::path::{Path, PathBuf};
 #[derive(Deserialize)]
 struct Pin {
     path: PathBuf,
-    bytes: u64,
+    bytes: Option<u64>,
     sha256: String,
 }
 
 fn pins(value: &Value) -> Result<Vec<Pin>> {
-    let entries = if let Some(inputs) = value.get("inputs").or_else(|| value.get("pins")) {
-        serde_json::from_value::<Vec<Pin>>(inputs.clone())?
+    let (entries, hash_only) = if let Some(inputs) = value
+        .get("inputs")
+        .filter(|v| v.is_array())
+        .or_else(|| value.get("pins"))
+    {
+        (serde_json::from_value::<Vec<Pin>>(inputs.clone())?, false)
     } else if let Some(files) = value.get("files").and_then(Value::as_object) {
         let mut result = Vec::new();
         for (path, value) in files {
@@ -26,14 +30,29 @@ fn pins(value: &Value) -> Result<Vec<Pin>> {
                 .insert("path".into(), json!(path));
             result.push(serde_json::from_value(pin)?);
         }
-        result
+        (result, false)
+    } else if let Some(inputs) = value
+        .get("source_inputs")
+        .or_else(|| value.get("inputs"))
+        .and_then(Value::as_object)
+    {
+        let mut result = Vec::new();
+        for (path, value) in inputs {
+            result.push(Pin {
+                path: path.into(),
+                bytes: None,
+                sha256: value.as_str().ok_or("Invalid source hash pin")?.into(),
+            });
+        }
+        (result, true)
     } else {
-        return fail("Receipt requires inputs[], pins[] or files{} pins");
+        return fail("Receipt requires inputs[], pins[], files{} or source_inputs{} pins");
     };
     if entries.is_empty()
         || entries.len() > 100_000
         || entries.iter().any(|p| {
             p.path.as_os_str().is_empty()
+                || (!hash_only && p.bytes.is_none())
                 || p.sha256.len() != 64
                 || !p
                     .sha256
@@ -46,12 +65,17 @@ fn pins(value: &Value) -> Result<Vec<Pin>> {
     Ok(entries)
 }
 
-pub fn run(input: &Path, output: &Path) -> Result<()> {
+pub fn run(input: &Path, output: &Path, relative_base: Option<&Path>) -> Result<()> {
     let input = std::fs::canonicalize(input)?;
     let source = read_bounded(&input, 32 * 1024 * 1024)?;
     let value: Value = serde_json::from_slice(&source)?;
     let entries = pins(&value)?;
-    let base = input.parent().ok_or("Receipt has no parent")?;
+    let base = std::fs::canonicalize(
+        relative_base.unwrap_or(input.parent().ok_or("Receipt has no parent")?),
+    )?;
+    if !base.is_dir() {
+        return fail("Receipt relative base must be a directory");
+    }
     let mut counts = [0; 4];
     let mut rows = Vec::new();
     let mut buffer = vec![0; 1024 * 1024];
@@ -81,9 +105,13 @@ pub fn run(input: &Path, output: &Path) -> Result<()> {
                     observed = observed
                         .checked_add(count as u64)
                         .ok_or("Receipt file size overflow")?;
+                    if observed > 64 * 1024 * 1024 * 1024 {
+                        return fail("Receipt input grew beyond the regular-file bound");
+                    }
                 }
                 let digest = hex(&hash.finalize());
-                let matches = observed == pin.bytes && digest == pin.sha256;
+                let matches =
+                    pin.bytes.is_none_or(|bytes| observed == bytes) && digest == pin.sha256;
                 counts[if matches { 0 } else { 2 }] += 1;
                 row["status"] = json!(if matches { "matched" } else { "changed" });
                 if !matches {
@@ -99,7 +127,7 @@ pub fn run(input: &Path, output: &Path) -> Result<()> {
         }
         rows.push(row);
     }
-    let report = json!({"receipt_sha256":hex(&Sha256::digest(&source)),
+    let report = json!({"receipt_sha256":hex(&Sha256::digest(&source)),"relative_base":base,
         "matched":counts[0],"missing":counts[1],"changed":counts[2],"unreadable":counts[3],
         "pins":rows,"qualification":"Current file hashes only; no runtime, hardware or game qualification."});
     write_pack(output, &serde_json::to_vec_pretty(&report)?)?;
@@ -126,13 +154,18 @@ mod tests {
         for value in [list, named, map] {
             let rows = pins(&value).unwrap();
             assert_eq!(rows.len(), 1);
-            assert_eq!(rows[0].bytes, 3);
+            assert_eq!(rows[0].bytes, Some(3));
             assert_eq!(rows[0].sha256, digest);
         }
+        let hashes = json!({"source_inputs":{"fixture.bin":digest}});
+        let rows = pins(&hashes).unwrap();
+        assert_eq!(rows[0].bytes, None);
+        assert_eq!(rows[0].sha256, digest);
         for value in [
             json!({}),
             json!({"inputs":[]}),
             json!({"inputs":[{"path":"x","bytes":3,"sha256":"ABC"}]}),
+            json!({"inputs":[{"path":"x","sha256":digest}]}),
         ] {
             assert!(pins(&value).is_err());
         }
@@ -159,15 +192,28 @@ mod tests {
         let input = root.join("receipt.json");
         let output = root.join("report.json");
         std::fs::write(&input, serde_json::to_vec(&json!({"inputs":rows})).unwrap()).unwrap();
-        assert!(run(&input, &output).is_err());
+        assert!(run(&input, &output, None).is_err());
         let bytes = std::fs::read(&output).unwrap();
         let report: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(report["matched"], 1);
         assert_eq!(report["changed"], 1);
         assert_eq!(report["missing"], 1);
-        assert!(run(&input, &output).is_err());
+        assert!(run(&input, &output, None).is_err());
         assert_eq!(std::fs::read(&output).unwrap(), bytes);
         assert_eq!(std::fs::read(root.join("original")).unwrap(), b"abc");
+        let evidence = root.join("evidence");
+        std::fs::create_dir(&evidence).unwrap();
+        let hashes = evidence.join("hashes.json");
+        std::fs::write(
+            &hashes,
+            serde_json::to_vec(&json!({"inputs":{"original":digest}})).unwrap(),
+        )
+        .unwrap();
+        let audit = evidence.join("audit.json");
+        run(&hashes, &audit, Some(&root)).unwrap();
+        let report: Value = serde_json::from_slice(&std::fs::read(audit).unwrap()).unwrap();
+        assert_eq!(report["matched"], 1);
+        assert!(report["pins"][0]["bytes"].is_null());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

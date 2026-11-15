@@ -78,6 +78,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
         code += b'static void xmvsf_handle2(void) { assert(0); }\n'
         code += b'static void KAITEI_DAISENSOU_handle1(void) { assert(0); }\n'
         code += b'static void KAITEI_DAISENSOU_handle2(void) { assert(0); }\n'
+        code += b'static int overlay_rom_after_read(void) { return host_rom_after_read(); }\n'
         code += b'\n'.join(function(patch, name.decode()) if name in actual else
                           b'void ' + name + b'(void) { other_patch(); }'
                           for name in sorted(names))
@@ -95,6 +96,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
             code = define[0] + b'\n#define TEST_OVERLAY_HANDOFF 1\n' + code
             if b'SD_OVERLAY_TAG' in code:
                 code = re.search(rb'^#define SD_OVERLAY_TAG .+$', header, re.M)[0] + b'\n' + code
+            if b'SD_OVERLAY_ROM' in code:
+                code = re.search(rb'^#define SD_OVERLAY_ROM .+$', header, re.M)[0] + b'\n' + code
 
         # Keep the real dispatch and memory writes while mapping the bus
         # pointers and executable targets to the host fixture.
@@ -255,6 +258,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_fenrir_virtual_source_retains_physical_and_missing_profile_callbacks(self):
         self.scenario('fenrir')
+
+    def test_explicit_rom_profile_routes_phase_two_before_vdp_and_refuses_missing_state(self):
+        self.scenario('rom-profile')
 
 
 if __name__ == '__main__':

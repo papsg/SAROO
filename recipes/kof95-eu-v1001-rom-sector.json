@@ -1,0 +1,55 @@
+{
+  "abi": 2,
+  "product_id": "MK-81088",
+  "disc_id": "MK-81088  V1.001",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "KOF95 native ROM startup",
+  "summary": "Preserve SAROO bus timing and load the companion ROM through native startup.",
+  "rationale": "Optional exact-source profile. Apply the three inherited MM.BIN edits as sectors load, then use the existing checked 2 MiB SOR1 handoff. Preserve native file loading and the European disc-change rejection. The former IP helper was overwritten by MM.BIN before entry.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "d129e0c49d1eecd9d1ed958690efc1093ab9cdddb6c40e10d6f2aab3b2b5a965"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 173,
+      "offset": 16,
+      "before": "d10cd00d21024f22e430d50cd00c6002400b0009b01f0009d30a430b000940118b14b0210009b1490009b0630009d006402b000925fe00a00000bfff06085a78060003100607ed3806002048",
+      "after": "d10fd00d21024f22e430d50cd01c6002400b0009b01f0009d30a430b000940118b14b0210009b1490009b0630009d0066002402b000900a00000bfff06085a7825fe00a00607ed3802000f18",
+      "effect": "Share the BIOS-pointer literal, relocate IMS and route the native entry tail through the generic ROM handoff.",
+      "reason": "Keep the original loader and BIOS return delay slot; finish with a NOP-delayed jump instead of a RAM patch writer."
+    },
+    {
+      "fad": 193,
+      "offset": 146,
+      "before": "2802",
+      "after": "0009",
+      "effect": "Omit the ASR0 write in native MM code.",
+      "reason": "Retain the upstream SAROO bus-timing correction at its original instruction."
+    },
+    {
+      "fad": 193,
+      "offset": 334,
+      "before": "400b4f22",
+      "after": "00090009",
+      "effect": "Skip the native cartridge-check call and its PR-saving delay slot.",
+      "reason": "Match the upstream startup behavior while the verified companion ROM awaits the generic handoff."
+    }
+  ],
+  "guards": [
+    {
+      "fad": 151,
+      "reason": "Authenticate the stock IP ROM-cart predicate."
+    }
+  ],
+  "rom_cart": {
+    "path": "/SAROO/ISO/KOF95.BIN",
+    "sha256": "1dd154a9fcee1816749502b5b2497bf4b1f2d973df38d0984905ee83b12d5e81",
+    "crc32": "90412e10",
+    "phase": "game_entry",
+    "resume": 100671560
+  }
+}

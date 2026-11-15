@@ -1110,7 +1110,7 @@ static int sel_handle(int ctrl)
 			u8 overlay_version = REG8(SYSINFO_ADDR + 0x3c);
 			if (!skip_patch && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
 				SS_ARG = index;
-				SS_CMD = SSCMD_FIRSTDISC;
+				SS_CMD = overlay_version >= 4 ? SSCMD_ROMDISC : SSCMD_FIRSTDISC;
 			} else {
 				SS_ARG = index | (!skip_patch && overlay_version >= 1 && overlay_version < 3 ?
 				                  SD_OVERLAY_REQUEST : 0u);
@@ -1737,6 +1737,8 @@ int _main(void)
 	*(u32*)(0x060002dc) = *(u32*)(0x2000111c);
 
 	*(u32*)(0x02000f04) =  (u32)cdc_read_sector;
+	*(u32*)(0x02000f18) = (u32)overlay_rom_launch;
+	*(u32*)(0x02000f1c) = 0x534f5231; /* SOR1 */
 	*(u32*)(0x02000f08) =  (u32)read_file;
 	*(u32*)(0x02000f0c) =  (u32)write_file;
     /* Optional bounded-reader ABI v1; original four-argument entries stay intact. */

@@ -4,6 +4,7 @@ mod first_read;
 mod mode1;
 mod pca;
 mod pins;
+mod rom;
 mod source_check;
 
 use disc::{Disc, RAW_BYTES};
@@ -42,6 +43,7 @@ struct Recipe {
     #[serde(default)]
     cart_mode: u8,
     first_read_guard: Option<ChecksumGuard>,
+    rom_cart: Option<rom::RomCart>,
 }
 
 #[derive(Deserialize)]
@@ -169,7 +171,7 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
         }
     }
     if recipe.abi != 2
-        || recipe.writes.is_empty()
+        || (recipe.writes.is_empty() && recipe.rom_cart.is_none())
         || recipe.writes.len() > MAX_RECORDS * 4
         || !matches!(recipe.cart_mode, 0 | 1 | 4)
     {
@@ -201,6 +203,7 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
             after,
         });
     }
+    rom::add_target(recipe, &mut by_fad)?;
     for guard in &recipe.guards {
         check_text(&[&guard.reason])?;
         if !(150..450000).contains(&guard.fad) || by_fad.insert(guard.fad, Vec::new()).is_some() {
@@ -353,12 +356,16 @@ fn compile(
     } else {
         None
     };
-    let empty = BTreeMap::new();
+    let rom_witnesses = if recipe.rom_cart.is_some() {
+        rom::witnesses(&disc)?
+    } else {
+        BTreeMap::new()
+    };
     let originals = read_targets(
         &disc,
         recipe,
         &targets,
-        plan.as_ref().map_or(&empty, |p| &p.witnesses),
+        plan.as_ref().map_or(&rom_witnesses, |p| &p.witnesses),
     )?;
     let mut pack = encode(recipe, product, &targets, originals)?;
     if let Some(plan) = plan {
@@ -378,7 +385,9 @@ fn encode(
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
     let long_edit = targets.values().flatten().any(|edit| edit.before.len() > 4);
-    pack[4] = if recipe.replaces_callback || long_edit {
+    pack[4] = if recipe.rom_cart.is_some() {
+        5
+    } else if recipe.replaces_callback || long_edit {
         3
     } else if recipe.guards.is_empty() {
         1
@@ -530,7 +539,12 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay verify-receipt RECEIPT.json NEW-REPORT.json\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay verify-receipt RECEIPT.json NEW-REPORT.json [--base DIRECTORY]\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
+    if let [op, manifest, out, option, base] = args.as_slice() {
+        if op == "verify-receipt" && option == "--base" {
+            return pins::run(Path::new(manifest), Path::new(out), Some(Path::new(base)));
+        }
+    }
     if let [op, manifest, out] = args.as_slice() {
         if op == "verify-source" {
             return source_check::run(Path::new(manifest), Path::new(out));
@@ -539,7 +553,7 @@ fn run() -> Result<()> {
             return pca::run(Path::new(manifest), Path::new(out));
         }
         if op == "verify-receipt" {
-            return pins::run(Path::new(manifest), Path::new(out));
+            return pins::run(Path::new(manifest), Path::new(out), None);
         }
     }
     if args.first().is_some_and(|arg| arg == "bundle") {

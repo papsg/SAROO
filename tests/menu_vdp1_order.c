@@ -20,6 +20,7 @@ static int disc_type __attribute__((unused));
 static int loads, cards, jumps, others, cfg_reads, breaks, installs;
 static int clears;
 static int jump_returns;
+static unsigned rom_profile_phase;
 static u32 mailbox;
 static u32 overlay_handoff;
 static u8 cs0_ready;
@@ -28,6 +29,14 @@ static u16 cnc_instruction;
 static jmp_buf guard_failure;
 static unsigned cart_writes[8], cart_count;
 static jmp_buf takeover;
+static int host_rom_after_read(void)
+{
+    if (!rom_profile_phase || skip_patch) return 0;
+    need_bup = 0;
+    assert(!clears && !cfg_reads && !CHEAT_ADDRES);
+    if (rom_profile_phase == 2) { cards++; jumps++; longjmp(takeover, 1); }
+    return 1;
+}
 
 #define SYSINFO_ADDR ((uintptr_t)config - 0x100)
 #define MASK_EXMEM 0x3000
@@ -178,6 +187,7 @@ static void reset(const char *id, unsigned seed)
     loads = cards = jumps = others = cfg_reads = breaks = installs = clears = 0;
     CHEAT_ADDRES = 13; need_bup = 17; skip_patch = jump_returns = 0;
     rom_ready = ROM_NONE;
+    rom_profile_phase = 0;
     game_break_pc = 0; to_stm32 = gets_from_stm32 = 0; mailbox = 0x76543210;
     disc_type = 0;
     overlay_handoff = 0;
@@ -253,6 +263,31 @@ static void fenrir_launches(void)
                (u32)(uintptr_t)bios_cd_cmd : 0x02000f30));
         assert(!others && !cards && !jumps);
     }
+}
+
+static void rom_profile_launches(void)
+{
+    for (unsigned phase=1;phase<=2;phase++) {
+        reset(phase==1 ? "T-3101G   V1.000" : "T-13308G  V1.001",81);
+        rom_profile_phase=phase;
+        overlay_handoff=__builtin_bswap32(SD_OVERLAY_ROM);
+        if (!setjmp(takeover)) { read_1st();assert(phase==1);finished(); }
+        if (phase==2) {
+            assert(loads==1 && !CHEAT_ADDRES && !need_bup && cards==1 && jumps==1);
+            assert(!clears && !cfg_reads && !memcmp(vram,untouched,sizeof vram));
+        } else assert(!cards && !jumps && !others && !need_bup);
+    }
+    for (unsigned bad=0;bad<3;bad++) {
+        reset("T-3101G   V1.000",81);
+        rom_profile_phase=bad==1 ? 0 : 1;
+        skip_patch=bad==2;
+        overlay_handoff=__builtin_bswap32(SD_OVERLAY_ROM | (bad==0));
+        if (!setjmp(guard_failure)) { read_1st();assert(0); }
+        assert(loads==1 && !cards && !jumps && !clears && !cfg_reads);
+    }
+    reset("TEST",81);rom_profile_phase=2;
+    overlay_handoff=__builtin_bswap32(SD_OVERLAY_REPLACEMENT);
+    read_1st();finished();assert(!cards && !jumps && need_bup==1);
 }
 
 static void cnc_reset(void)
@@ -1088,6 +1123,8 @@ int main(int argc, char **argv)
         music_launches();
     }else if(!strcmp(mode, "fenrir")){
         fenrir_launches();
+    }else if(!strcmp(mode, "rom-profile")){
+        rom_profile_launches();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){

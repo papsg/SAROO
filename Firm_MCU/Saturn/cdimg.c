@@ -577,7 +577,7 @@ int load_disc(int index, int start_save)
     static unsigned overlay_session;
     unsigned overlay_requested = overlay_session;
     int open_disc = start_save != 0;
-    int checked_load = (start_save & 2) != 0;
+    int checked_load = (unsigned)start_save >> 1;
     if (start_save) {
         if (checked_load) overlay_requested = SD_OVERLAY_REQUEST;
         else {

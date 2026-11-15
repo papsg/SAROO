@@ -92,6 +92,9 @@ class MenuCDPlayerTests(unittest.TestCase):
     def test_toc_never_reads_after_rejected_command(self):
         self.cases(5, 6, 7)
 
+    def test_rom_profile_preflight_avoids_duplicate_legacy_reads_and_aborts_errors(self):
+        self.cases(50, 51, 52)
+
     def test_audio_and_bad_toc_do_not_request_data(self):
         self.cases(8, 9, 10, 11, 12, 13, 27, 28, 29)
 

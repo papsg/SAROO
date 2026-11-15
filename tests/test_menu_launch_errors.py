@@ -25,6 +25,8 @@ class MenuLaunchErrorTests(unittest.TestCase):
             names += (b'SD_OVERLAY_REQUEST', b'SD_OVERLAY_VERSION')
         if b'SSCMD_FIRSTDISC' in code:
             names += (b'SSCMD_FIRSTDISC',)
+        if b'SSCMD_ROMDISC' in code:
+            names += (b'SSCMD_ROMDISC',)
         definitions = b''.join(
             re.search(rb'^#define ' + name + rb'\b[^\r\n]+', header, re.M).group() + b'\n'
             for name in names)

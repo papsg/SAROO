@@ -13,6 +13,7 @@
 #define SD_OVERLAY_REPLACEMENT 0x534f5680u
 #define SD_OVERLAY_TAG 0x534f5600u
 #define SD_OVERLAY_GUARDED 0x534f5780u
+#define SD_OVERLAY_ROM 0x534f5880u
 
 /* The disc owner stages and checks a pack before arming it for delivery. */
 void sector_overlay_clear(void);
@@ -26,12 +27,14 @@ int sector_overlay_select(unsigned index);
 int sector_overlay_replaces_callback(void);
 unsigned sector_overlay_action(void);
 const uint8_t *sector_overlay_loaded_guard(void);
+int sector_overlay_rom_cart(void);
 int sector_overlay_check(unsigned index, const uint8_t sector[2352]);
 void sector_overlay_arm(void);
 /* A negative result leaves both the destination and the mounted pack intact. */
 int sector_overlay_apply(uint32_t fad, uint8_t sector[2352]);
 /* Runs after the new CUE/ISO tracks are open and before disc publication. */
 int sector_overlay_mount(const char gameid[16]);
+/* checked_load bit0: complete-file guard; bit1: ROM-cart service. */
 int sector_overlay_mount_checked(const char gameid[16], int checked_load);
 void sector_overlay_reset_handoff(void);
 void sector_overlay_publish_handoff(void);

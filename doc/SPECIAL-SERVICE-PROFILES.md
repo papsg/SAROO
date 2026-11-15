@@ -305,3 +305,154 @@ differs. The natural route does not call the copy entry. The intermittent
 SMPC startup freeze, audio/timing differences, later routes and physical
 qualification remain open. Current source/host verification does not close
 them. Run the same public tests as the US profile; profiles stay opt-in.
+
+## Checked generic ROM startup
+
+Adapted from paps-g `3fafb587`, with a public pairing/ownership adaptation.
+Original ROM callbacks, the ROM-free KOF95 path and existing transport/copy/
+clock/reset fixes remain. The private build's blanket callback retirement and
+global protocol replacement are excluded.
+
+ABI5 retains ABI3 record encoding. A distinct capability4, `ROMDISC=0010`
+and action `534f5880` admit this service. The full16-bit argument is preserved,
+including the existing `ffff` unload value. Tagged command normalization covers
+1–16; file/archive/BIN assignments remain separate. Ordinary, older checked,
+player and automatic disc-change launches cannot arm ABI5. Preflight/source,
+save-selection or transport failure cannot publish it. Unload clears ownership.
+
+| Pair | Overlay behavior |
+| --- | --- |
+| New menu with capability1/2 | Existing legacy load and ABI1–3 behavior |
+| New menu with capability3 | Existing `FIRSTDISC`, including ABI4; no ROM admission |
+| Capability4 menu/MCU | `ROMDISC` admits ABI1–5 with explicit ROM action |
+| Earlier menu with capability4 MCU | Unrecognized capability keeps ordinary load and original callbacks |
+| Ordinary or `FIRSTDISC` command sent to new MCU | Cannot admit ABI5 |
+
+The previous real ABI4 decoder rejects current ABI5 packs. No new title ID,
+resume/movie address or ROM-specific gameplay command enters MCU code.
+
+SOR1 occupies the last64 bytes at `06009FC0` of SAROO's existing32KiB initial
+transfer. The compiler verifies original raw geometry, declared IP length/
+alignment, zero source padding and complete FILE identity. Inspected header/
+tail bytes must match the same hashed source read. It refuses mixed complete-
+file/ROM guards, overlapping writes, unsupported actions and noncanonical paths.
+[Sega Disc Format ST-040 §4.3, pp.28–29 and §4.7](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf)
+defines declared IP/AIP and first-file fields; the fixed32KiB transfer is
+SAROO's existing implementation property.
+
+| Descriptor offsets | Big-endian content |
+| --- | --- |
+| 0–3 /4 | `SOR1` /phase1 game entry or2 first-read handoff |
+| 8–11 | Even resume in `06002000..060037FE` |
+| 12–15 /16–19 | Exact2MiB length /complete asset CRC32 |
+| 24–55 | Bounded `/SAROO/ISO/[A-Z0-9_-]+.BIN`, NUL and zero padding |
+| 60–63 | CRC32 of preceding60 bytes |
+
+Bytes5–7,20–23 and56–59 are zero. Runtime validation occurs before I/O; malformed
+metadata, short/failed/oversized reads or wrong complete CRC refuse launch.
+Each attempt clears generic and old ROM ownership. Missing/ordinary/physical
+profiles retain original admission. An accepted profile performs one asset
+read; it does not repeat the old title lookup/read. Skip suppresses overlay
+requests before source admission. An inconsistent late ROM state refuses game
+entry instead of executing an unstaged handoff.
+
+The public workspace remains `TMPBUFF_ADDR+100 = 220C7100`, not the private
+build's different staging address. It fits before artwork and uses the existing
+file transport. The source service captures the resume address, calls the
+original installer and transfers to the original forward copy in low Work RAM.
+It adds no2MiB buffer. Phase1 retains normal initialization/configuration before
+the later native call; phase2 transfers before VDP1 clear/configuration, matching
+the existing direct-ROM behavior. No artificial unwinding or delay is added.
+Existing clock/reset behavior and forward-overlap direction remain unchanged;
+[Hitachi SH7604 Table2.12, pp.33–34, §4.5 and §8.4](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+define the instruction, delay and alias semantics used here.
+
+Current source checks cover complete synthetic assets, full4MiB cart and2MiB
+Work-RAM/stack state, invalid fields/paths, every descriptor byte's checksum,
+header bounds, stale ownership, skip/physical scope and reader failures.
+The linked-menu check executes actual launch/installer instructions and the
+relocated36-byte native forward copy in both phases. It uses the bounded
+instruction model with explicit `memcpy` and memory/cart boundaries. It checks complete cart/Work-RAM and exact stack
+writes, saved registers, PR, copy endpoints/last word and publication after all
+three fragments. It stops at the requested resume; it does not execute the
+original game continuation or natural BIOS startup. Separate existing checks
+execute the linked clock fragments and validate ROM transport/installation.
+
+The complete-memory oracle exposed a fixture alias error: SYSINFO was modeled
+as separate storage even though the ROM copy overwrites that cart location.
+The corrected fixture shares its cart bytes. Another rejected fixture changed
+an even resume to a different valid even address while expecting rejection;
+the corrected negative changes alignment. Those failures remain preserved;
+they are not firmware defects or physical reproductions.
+
+Fresh builds: MCU59,220 LTO /63,420 non-LTO load bytes, leaving6,316 /2,116;
+static DTCM span stays50,896. Menu body87,336 (+1,024 from C&C), BSS9,496 (+8),
+margin17,856 and reserved stack16KiB. Compiler-direct service/launch/after-read
+frames are24/8/4 bytes, not full interrupt-stack qualification. The native copy
+stays36 bytes within its existing96-byte installed reservation; clock/reset
+fragments stay96/36. FPGA source remains unchanged.
+
+```sh
+make -C tests check-sector-overlay check-menu-safety check-file-transfer
+SAROO_OVERLAY_MENU_ELF="$PWD/tests/build/rom-menu/source/ssfirm.elf" \
+  python3 -B -m unittest discover -s tests -p test_menu_overlay_rom.py -v
+```
+
+## KOF95 native startup
+
+[Europe](../recipes/kof95-eu-v1001-rom-sector.json) and Japan
+[1M](../recipes/kof95-jp-1M-rom-sector.json) /[2M](../recipes/kof95-jp-2M-rom-sector.json)
+/[3M](../recipes/kof95-jp-3M-rom-sector.json). paps-g `3fafb587` supplied the
+generic ROM migration; `8704963f` and `d42a84a6` replace its overwritten IP
+helper with native source edits. Original compatibility behavior comes from
+[upstream `kof95_patch` /`kof95_handle`](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c#L269).
+The three omitted MM instructions retain that workaround; no general native
+game/spec violation is asserted.
+
+The former32-byte helper at `06003780` did not survive the native MM load at
+`06002040`. Current original files reproduce that overwrite. The replacement
+shares an existing BIOS pointer literal, relocates the unchanged IMS-address
+literal, preserves native file loading, then dereferences the existing
+`02000F18` service slot. No replacement IP helper is emitted.
+MM changes `2802→0009` at `060020C2` and `400B4F22→00090009` at
+`0600217E/80`. The BIOS return delay slot remains NOP. The European original
+`BSR` at `0607CDAA` and its downstream DCHG rejection remain unchanged.
+[Sega SCU ST-097 §3.5/Figure3.21, p.57 and §3.6/Figure3.24, pp.62–67](https://antime.kapsi.fi/sega/files/ST-097-R5-072694.pdf#page=73)
+identify IMS/ASR0; [CD-block ST-162 §3.1, HIRQREQ, p.28](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf)
+defines DCHG bit5. [Hitachi SH7604 §2.4, pp.33–40 and §4.5](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49)
+defines the shared literal/branch/NOP behavior.
+
+| Source | First file `0;1` | `MM.BIN;1` | Pack |
+| --- | --- | --- | --- |
+| Europe `MK-81088  V1.001` | LBA23,40,360B at `0607CD80` | LBA43,360,172B at `06002040` | `2B0CAF87.SOV` |
+| Japan `T-3101G   V1.000`,1M/2M/3M | LBA25,40,784B, same load | LBA45,380,044B, same load | `675EF097.SOV` |
+
+Complete first-file SHA-256: Europe
+`d301002c65ff34a02b0dc7a6d550add892ede9d71078c12c160d63ea0f4ef2ad`;
+Japan `25cf3d668ca28b766ce984049225c2558bf697a64c93d3cf60d29866b51c007a`.
+MM source SHA-256: Europe
+`a195bf8e5aa4c1f6f4b28eb66e6c2104ef303fa038f24cf17c3f9477a1a997e5`;
+Japan `ab938524fd6f3d2012db8e99096e3da66cd51a8dbb59a57c8859a48168d3076f`.
+Both packs are2,112 bytes/six records and change21 native source bytes plus
+the descriptor. Pack SHA-256: Europe
+`4e58215e9c404a538c31eaa5744a0ca61a9acdab9b0f79e03bf35f8ed8e0aa4b`;
+Japan `f6f9db8946629b8520cc739f1e45ebc02543e5dc482c99bc12cbfba2f3b7330d`.
+
+The2MiB companion `KOF95.BIN` is not supplied. Its preserved original rehashes
+to `1dd154a9fcee1816749502b5b2497bf4b1f2d973df38d0984905ee83b12d5e81`,
+CRC32 `90412e10`. Current Rust/C checks reproduce complete original IP/first/MM
+postimages and archived packs. All three Japanese whole data tracks recompile
+identically; these aliases are not independent gameplay qualification.
+European complete raw media are unavailable; their track hash stays historical.
+Current source/decoder proofs are separate from that missing whole-track check.
+
+Public tests exercise atomic descriptor/native fragments, earlier-decoder
+refusal, correct/malformed sources and independent IMS/first-call/tail register
+semantics. The European DCHG instruction and complete unchanged surrounding
+file remain source controls. Historical native-startup/ROM-service/MM-stack
+joins remain separate, with explicit BIOS/file/MMIO/cache models. Current receipt
+audits record JP19 matched/7 changed; Europe20 matched/2 missing/5 changed;
+joined320 matched/6 changed. Later-mutated shared code/recipe pins are not
+counted as freshly verified historical runtime. Full natural startup, installed
+clock/reset execution under gameplay, later routes/input/audio/return and
+physical timing remain open. No issue closure or Saturn qualification is made.

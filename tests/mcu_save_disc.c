@@ -192,6 +192,7 @@ static void remove_card(void)
 static void gif_decode_exit(void) {}
 #define SSCMD_LOADDISC 3
 #define SSCMD_FIRSTDISC 15
+#define SSCMD_ROMDISC 16
 #define SSCMD_SAVE_ACK 0x20
 static int menu_step(int index)
 {

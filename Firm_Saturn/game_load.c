@@ -486,6 +486,14 @@ static void read_1st(void)
 
 	/* SYSINFO is little-endian and shared with the MCU. */
 	u32 action = disc_type == 0 ? __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38)) : 0;
+	int rom_profile = (action & 0xffffff80u) == SD_OVERLAY_ROM;
+	if (rom_profile) {
+		if (action != SD_OVERLAY_ROM) {
+			printk("Invalid ROM profile action; reset required.\n");
+			while (1);
+		}
+		action = SD_OVERLAY_REPLACEMENT;
+	}
 	if ((action & 0xffffff80u) == 0x534f5780u) {
 		action = sd_overlay_checked_action(action);
 		if (action == 0xffffffffu) {
@@ -503,7 +511,7 @@ static void read_1st(void)
 	default:
 		action = 0;
 	}
-	patch_game((char*)0x06002020, !!(action & 0x80), action & 0x7f);
+	patch_game((char*)0x06002020, !!(action & 0x80), action & 0x7f, rom_profile);
 	if(need_bup){
 		*(u32*)(0x06000358) = (u32)bup_init;
 		*(u32*)(0x0600026c) = (u32)my_cdplayer;
@@ -579,8 +587,9 @@ int bios_cd_cmd(int type)
 			return retv;
 		}
 
-        retv = prepare_game_rom((const char *)0x06002020);
-        if (retv)
+        retv = overlay_prepare_rom(type == 0);
+        if (!retv) retv = prepare_game_rom((const char *)0x06002020);
+        if (retv < 0)
             return retv;
 
 		// emulate bios_loadcd_boot

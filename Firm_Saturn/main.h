@@ -64,13 +64,15 @@ typedef unsigned long long u64;
 #define BIN_PATH_CAPACITY 0xf0u
 #define BIN_ROOT "/SAROO/BIN"
 #define MENU_ACK_VERSION 1u
-#define SD_OVERLAY_VERSION 3u
+#define SD_OVERLAY_VERSION 4u
 #define SD_OVERLAY_REQUEST 0x8000u
 #define SD_OVERLAY_REPLACEMENT 0x534f5680u
 #define SD_OVERLAY_TAG 0x534f5600u
+#define SD_OVERLAY_ROM 0x534f5880u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
 #define SSCMD_FIRSTDISC 0x000f
+#define SSCMD_ROMDISC   0x0010
 
 u32 sd_overlay_checked_action(u32 action);
 
@@ -467,7 +469,10 @@ extern int skip_patch;
 extern int need_bup;
 
 int prepare_game_rom(const char *id);
-void patch_game(char *id, int replace_callback, unsigned cart_mode);
+int overlay_prepare_rom(int virtual_disc);
+void overlay_rom_launch(void);
+int overlay_rom_after_read(void);
+void patch_game(char *id, int replace_callback, unsigned cart_mode, int rom_profile);
 
 
 /*****************************************************************************/

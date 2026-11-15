@@ -96,6 +96,11 @@ const uint8_t *sector_overlay_loaded_guard(void)
     return armed && pack[4] == 4 ? record_at(0) + 24 : NULL;
 }
 
+int sector_overlay_rom_cart(void)
+{
+    return armed && pack[4] == 5;
+}
+
 int sector_overlay_validate(size_t size, const char product[10])
 {
     sector_overlay_clear();
@@ -103,10 +108,11 @@ int sector_overlay_validate(size_t size, const char product[10])
         memcmp(pack, "SSO1", 4) || !pack[5] ||
         pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] > 1 ||
         (pack[6] && pack[5] < 2) ||
-        pack[4] < 1 || pack[4] > 4 ||
+        pack[4] < 1 || pack[4] > 5 ||
         ((pack[7] & 0x7f) != 0 && (pack[7] & 0x7f) != 1 && (pack[7] & 0x7f) != 4) ||
         (pack[7] & 0x80 && pack[4] < 3) ||
         (pack[4] == 4 && !(pack[7] & 0x80)) ||
+        (pack[4] == 5 && (pack[6] || pack[7] != 0x80)) ||
         size != SECTOR_OVERLAY_HEADER_BYTES + pack[5] * SECTOR_OVERLAY_RECORD_BYTES ||
         be16(pack + 18) != size || memcmp(pack + 8, product, 10)) return -1;
 
@@ -134,6 +140,7 @@ int sector_overlay_validate(size_t size, const char product[10])
                 be32(r) + (length - 1) / 2048 - offset / 2048) return -1;
     }
 
+    unsigned format = pack[4] == 5 ? 3 : pack[4];
     uint32_t previous = 149;
     for (unsigned i = 0; i < pack[5]; ++i) {
         const uint8_t *record = record_at(i);
@@ -150,7 +157,7 @@ int sector_overlay_validate(size_t size, const char product[10])
                 /* One callback-replacing source span may use adjacent ABI 3
                  * records. All fragments bind the same original and final
                  * EDC/ECC; refuse overlap, gaps and mixed record kinds. */
-                if (pack[4] != 3 || !(pack[7] & 0x80) ||
+                if (format != 3 || !(pack[7] & 0x80) ||
                     !(edits & 0x80) || !(prior[8] & 0x80) ||
                     be32(record + 4) != be32(prior + 4) ||
                     be16(record + 12) != be16(prior + 12) + (prior[8] & 0x7f) ||
@@ -166,7 +173,7 @@ int sector_overlay_validate(size_t size, const char product[10])
         if (nonzero(record + RECORD_TAIL + 4, 8)) return -1;
         if (edits & 0x80) {
             unsigned width = edits & 0x7f, offset = be16(record + 12);
-            if (pack[4] != 3 || width < 5 || width > 44 ||
+            if (format != 3 || width < 5 || width > 44 ||
                 offset < DATA_START || offset + width > TAIL_START ||
                 nonzero(record + 14, 2) || nonzero(record + 16 + width, 44 - width))
                 return -1;

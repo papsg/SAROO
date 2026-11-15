@@ -60,6 +60,8 @@ static int my_bios_loadcd_init(void) { return operation(INIT); }
 static int my_bios_loadcd_read(void) { return operation(IP); }
 static int prepare_game_rom(const char *id)
 { assert(id==memory_at(0x06002020));return operation(ROM); }
+static int overlay_prepare_rom(int virtual_disc)
+{ assert(virtual_disc==(disc_type==0));return 0; }
 static void my_cdplayer(void) { operation(PLAYER); }
 static void read_1st(void) { assert(0); }
 static int cdc_read_sector(int fad, int size, u8 *buffer)

@@ -179,3 +179,11 @@ See [exact scope and checks](../doc/SPECIAL-SERVICE-PROFILES.md#fenrir-loader-20
 [Kaitei Daisensou Japan V1.004](kaitei-daisensou-jp-v1004-sector.json) supplies
 the regional music preload/copy with its own exact-source and literal addresses.
 See [regional checks and remaining limits](../doc/SPECIAL-SERVICE-PROFILES.md#kaitei-daisensou-japan-v1004).
+
+KOF95 [Europe V1.001](kof95-eu-v1001-rom-sector.json) and Japan V1.000
+[1M](kof95-jp-1M-rom-sector.json) /[2M](kof95-jp-2M-rom-sector.json)
+/[3M](kof95-jp-3M-rom-sector.json) use final native startup/MM edits and the
+checked generic ROM service. The Japanese sources yield one identical pack.
+The superseded overwritten IP helper is excluded; original callbacks remain.
+These opt-in profiles require the ROM-capable menu/MCU pair and an independently
+supplied exact companion ROM. See [citations and qualification limits](../doc/SPECIAL-SERVICE-PROFILES.md#kof95-native-startup).

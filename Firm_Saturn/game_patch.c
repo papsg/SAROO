@@ -249,6 +249,71 @@ int prepare_game_rom(const char *id)
 }
 
 
+/* Adapted from paps-g 3fafb587. The descriptor occupies existing IP-transfer
+ * padding; use the public menu's original ROM workspace and transport. */
+#define OVERLAY_ROM_DESCRIPTOR 0x06009fc0u
+static u32 overlay_rom_entry;
+static u8 overlay_rom_phase;
+
+void card_init(void);
+
+static u32 rom_be32(const u8 *p)
+{
+    return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3];
+}
+
+/* 1: verified profile; 0: ordinary fallback; negative: refuse this launch. */
+int overlay_prepare_rom(int virtual_disc)
+{
+    overlay_rom_entry = overlay_rom_phase = 0;
+    rom_ready = ROM_NONE;
+    if (skip_patch || !virtual_disc) return 0;
+    u32 action = __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38));
+    if ((action & 0xffffff80u) != SD_OVERLAY_ROM) return 0;
+    if (action != SD_OVERLAY_ROM) return -1;
+    const u8 *d = (const u8 *)OVERLAY_ROM_DESCRIPTOR;
+    u32 ip_size = REG32(0x060020e0), entry = rom_be32(d + 8);
+    if (rom_be32(d) != 0x534f5231u || ip_size < 0x1000 || ip_size > 0x7fc0 ||
+        (ip_size & 3) || (d[4] != 1 && d[4] != 2) || d[5] || d[6] || d[7] ||
+        entry < 0x06002000u || entry >= 0x06003800u || (entry & 1) ||
+        rom_be32(d + 12) != ROM_IMAGE_SIZE || rom_be32(d + 20) ||
+        d[56] || d[57] || d[58] || d[59] ||
+        crc32((u8 *)d, 60, 0) != rom_be32(d + 60)) return -1;
+    const char *path = (const char *)d + 24;
+    unsigned length = 0;
+    while (length < 32 && path[length]) ++length;
+    if (length < 16 || length == 32 || strncmp(path, "/SAROO/ISO/", 11) ||
+        memcmp(path + length - 4, ".BIN", 4)) return -1;
+    for (unsigned i = 11; i < length - 4; ++i)
+        if (!((path[i] >= 'A' && path[i] <= 'Z') ||
+              (path[i] >= '0' && path[i] <= '9') || path[i] == '_' || path[i] == '-')) return -1;
+    for (unsigned i = length + 1; i < 32; ++i)
+        if (path[i]) return -1;
+    int count = read_file((char *)path, 0, ROM_IMAGE_SIZE, (void *)ROM_IMAGE_ADDR);
+    if (count != ROM_IMAGE_SIZE) return count < 0 ? count : -1;
+    if (crc32((u8 *)ROM_IMAGE_ADDR, ROM_IMAGE_SIZE, 0) != rom_be32(d + 16)) return -1;
+    overlay_rom_entry = entry;
+    overlay_rom_phase = d[4];
+    return 1;
+}
+
+void overlay_rom_launch(void)
+{
+    if (!overlay_rom_phase || skip_patch) return;
+    u32 entry = overlay_rom_entry;
+    card_init();
+    ((void (*)(int))0x00200000)((int)entry);
+}
+
+int overlay_rom_after_read(void)
+{
+    if (!overlay_rom_phase || skip_patch) return 0;
+    need_bup = 0;
+    if (overlay_rom_phase == 2) overlay_rom_launch();
+    return 1;
+}
+
+
 #ifdef __sh__
 /* ROM loading overwrites the menu. Both clock fragments fit the existing
  * WRAM hook and the unused BIOS clock tail before the literal at 060006dc. */
@@ -1354,12 +1419,17 @@ GAME_DB game_dbs[] = {
 };
 
 
-void patch_game(char *id, int replace_callback, unsigned cart_mode)
+void patch_game(char *id, int replace_callback, unsigned cart_mode, int rom_profile)
 {
 	void (*patch_func)(void) = NULL;
 
 	CHEAT_ADDRES = 0;
 	need_bup = 1;
+	if (rom_profile && !overlay_rom_after_read()) {
+		printk("Invalid ROM profile state; reset required.\n");
+		while (1);
+	}
+
 
 	if(!skip_patch && !replace_callback){
 		for(GAME_DB *gdb = game_dbs; gdb->id; ++gdb){

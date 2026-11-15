@@ -106,12 +106,12 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "power")) { check_power_gate();return 0; }
 #ifdef SD_OVERLAY_REQUEST
     if (!strcmp(argv[1], "overlay")) {
-        for (unsigned capability = 0; capability <= 4; ++capability) {
+        for (unsigned capability = 0; capability <= 5; ++capability) {
             sysinfo[0x3c] = capability;
             expected_overlay_bit = capability >= 1 && capability < 3 ?
                                    SD_OVERLAY_REQUEST : 0;
             expected_load_command = capability >= 3 && capability <= SD_OVERLAY_VERSION ?
-                                    SSCMD_FIRSTDISC : SSCMD_LOADDISC;
+                                    (capability >= 4 ? SSCMD_ROMDISC : SSCMD_FIRSTDISC) : SSCMD_LOADDISC;
             check(PAD_A, 0, 0);
             expected_overlay_bit = 0;
             expected_load_command = SSCMD_LOADDISC;
