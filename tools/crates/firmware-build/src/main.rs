@@ -15,6 +15,8 @@ mod fpga;
 mod mcu;
 #[cfg(unix)]
 mod vandal;
+#[cfg(unix)]
+mod vandal_game;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const IMAGE: &str =
@@ -425,7 +427,23 @@ fn run() -> Result<()> {
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
+        println!("firmware-build vandal-lifetime --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --inputs INPUTS.json\nOffline accepted-delivery/reset model with an explicitly pinned local core; no devices.");
         return Ok(());
+    }
+    if args.len() == 7
+        && args[0] == "vandal-lifetime"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--inputs"
+    {
+        #[cfg(unix)]
+        return vandal_game::run(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+        );
+        #[cfg(not(unix))]
+        return fail("The lifetime comparison requires a Unix host");
     }
     if args.len() == 9
         && args[0] == "vandal"
@@ -482,7 +500,7 @@ fn run() -> Result<()> {
         return fail("The MCU compile/link check requires a Unix host");
     }
     if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
-        return fail("Expected menu, mcu, fpga or vandal arguments; use --help");
+        return fail("Expected menu, mcu, fpga, vandal or vandal-lifetime arguments; use --help");
     }
     build(Path::new(&args[2]), Path::new(&args[4]))
 }

@@ -220,6 +220,52 @@ PCM/audio, gameplay or a Saturn. It does not publish or activate a recipe.
 The standard Cargo test command above also tests refusal of incomplete native
 results, collateral edits and malformed extents without proprietary assets.
 
+#### Retained-model lifetime follow-up
+
+The separate `vandal-lifetime` command builds the public host frontend and
+unchanged production C editor, then observes accepted CDB delivery through two
+boot epochs. It requires the locally retained instrumented core SHA-256
+`70e075ec857c65b7bf802e302f2a8dfdaf0468cb8d6ba28d3193340c43dcb96b`.
+This command does **not** rebuild that separate core. Its full-core source/build
+reproducibility remains a follow-up; the clean-source native check above has
+no dependency on that retained core. No core, BIOS, game or RTC bytes are
+distributed here.
+
+```sh
+cargo build --offline --locked --release --manifest-path tools/Cargo.toml -p firmware-build
+tools/target/release/firmware-build vandal-lifetime --repo "$PWD" \
+  --out tests/build/vandal-lifetime-native --inputs /path/to/lifetime.json
+```
+
+The JSON has pinned `core`, `libretro_header`, `cue`, `track` and `pack` objects
+using `path`/`sha256`, plus a `seeds` array with the two reviewed BIOS images
+and retained fixed RTC seed. `control` is `native` or `inherited`; use the same
+inputs for both. `frames` is1900–2400 and `reset_frame` is900–1200, with at
+least900 frames after reset. The reviewed run uses2100/1100. All inputs remain
+read-only; only source/seed copies, build products and observations enter the
+new ignored output. The original complete DLCT CUE/track and BIOS identities
+are required. Child runtime is bounded to360 seconds and output logs to8MiB.
+
+The tool requires both edits before retirement, all three original target
+sectors after reset, retained native launch ownership, one inherited callback
+only in its control, actual NOP/original-instruction execution in the two
+epochs, complete frame identities, delivery counts and final host cleanup.
+Truncated/malformed observations and wrong retirement refuse a successful
+receipt. The small public observation fixtures contain control/check metadata,
+not game snapshots. Both2100-frame runs pass and all36 sampled video CRCs
+match. Audio CRCs match14/36; this is not PCM/audio qualification.
+
+`retro_reset` invokes this retained core's power-on model, which clears its
+work RAM and resets its CD device. It is not a physical reset-button or warm
+SMPC-reset test. Host `sector_overlay_clear` after unloading models selection
+cleanup; actual SAROO mount/menu ownership remains covered separately by the
+real-C/FatFs tests. The relevant primary boundaries are
+[Sega Disc Format ST-040-R4, §4.7, printed p.31](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf#page=35)
+and [SMPC ST-169-R1, §2.3, commands8–9, printed pp.29–30](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=39).
+Those describe boot/reset/clock effects, not emulator or SAROO qualification.
+The host frontend is GPL-2.0-or-later under the fixture license above. This
+follow-up does not activate a recipe or change any firmware build.
+
 ### Original MCU App compile/link check
 
 The `mcu` command stages public MCU inputs unchanged and offline CMSIS/STM32/RTX

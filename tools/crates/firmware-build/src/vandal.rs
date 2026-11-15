@@ -26,7 +26,7 @@ unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
 }
 
-fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(super) fn read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     if !path.symlink_metadata()?.is_file() || path.metadata()?.len() > limit as u64 {
         return fail("Native input is not a bounded regular file");
     }
@@ -173,11 +173,21 @@ fn replace(path: &Path, before: &str, after: &str) -> Result<()> {
     Ok(())
 }
 
-fn execute(
+pub(super) fn execute(
     command: &mut Command,
     out: &Path,
     label: &str,
     deadline: Instant,
+) -> Result<(bool, String, String)> {
+    execute_bounded(command, out, label, deadline, Duration::from_secs(60))
+}
+
+pub(super) fn execute_bounded(
+    command: &mut Command,
+    out: &Path,
+    label: &str,
+    deadline: Instant,
+    child_limit: Duration,
 ) -> Result<(bool, String, String)> {
     let stdout_path = out.join(format!("{label}.stdout"));
     let stderr_path = out.join(format!("{label}.stderr"));
@@ -188,6 +198,10 @@ fn execute(
             "args":command.get_args().map(|s|s.to_string_lossy()).collect::<Vec<_>>()
         }))?,
     )?;
+    let explicit_env = command
+        .get_envs()
+        .map(|(k, v)| (k.to_owned(), v.map(|x| x.to_owned())))
+        .collect::<Vec<_>>();
     command
         .current_dir(out)
         .env_clear()
@@ -196,6 +210,11 @@ fn execute(
         .stdout(Stdio::from(fs::File::create(&stdout_path)?))
         .stderr(Stdio::from(fs::File::create(&stderr_path)?))
         .process_group(0);
+    for (key, value) in explicit_env {
+        if let Some(value) = value {
+            command.env(key, value);
+        }
+    }
     // Preserve the caller's actual home for local Homebrew/CMake discovery;
     // never redirect it or inherit arbitrary tool-injection variables.
     if let Some(home) = std::env::var_os("HOME") {
@@ -207,7 +226,7 @@ fn execute(
         if let Some(status) = child.try_wait()? {
             break status;
         }
-        if start.elapsed() > Duration::from_secs(60)
+        if start.elapsed() > child_limit
             || Instant::now() >= deadline
             || stdout_path.metadata()?.len() > 8 * 1024 * 1024
             || stderr_path.metadata()?.len() > 8 * 1024 * 1024

@@ -1,0 +1,9 @@
+LIFETIME_DELIVERY,frame=430,fad=151,result=1,before=fbdc79c0,after=89da30c9,action=128
+LIFETIME_DELIVERY,frame=722,fad=292306,result=1,before=bbb147c7,after=ed631514,action=128
+LIFETIME_DELIVERY,frame=722,fad=292308,result=0,before=daee2a88,after=daee2a88,action=128
+VANDAL_AIP_TRACE,pc=060400c8,cache=0,op=0009,sr=00000001,pr=060400aa
+LIFETIME_RESET,frame=1100,action=128
+LIFETIME_DELIVERY,frame=1530,fad=151,result=0,before=fbdc79c0,after=fbdc79c0,action=128
+LIFETIME_DELIVERY,frame=1822,fad=292306,result=0,before=bbb147c7,after=bbb147c7,action=128
+LIFETIME_DELIVERY,frame=1822,fad=292308,result=0,before=daee2a88,after=daee2a88,action=128
+VANDAL_AIP_TRACE,pc=060400c8,cache=0,op=2202,sr=00000001,pr=060400aa
