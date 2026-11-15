@@ -140,5 +140,33 @@ class ROMRecipeTests(unittest.TestCase):
                 if wrong=='cart':recipe['cart_mode']=1
                 run,pack=self.compile(recipe);self.assertNotEqual(run.returncode,0);self.assertFalse(pack.exists())
 
+    def test_ultraman_has_no_game_edit_and_uses_first_read_resume(self):
+        source=json.loads((overlay.ROOT/'recipes/ultraman-jp-v1001-rom-sector.json').read_text())
+        self.assertEqual(source['disc_id'],'T-13308G  V1.001')
+        self.assertEqual(source['writes'],[])
+        self.assertEqual(source['rom_cart']['phase'],'first_read')
+        self.assertEqual(source['rom_cart']['resume'],0x06002222)
+        self.assertEqual(source['rom_cart']['crc32'],'b9644b52')
+        self.assertEqual([g['fad'] for g in source['guards']],[151])
+        recipe,raws=self.fixture_source(source);pack=self.check_pack(recipe,raws)
+        self.assertEqual((len(pack),pack[5]),(1068,3))
+
+    def test_ultraman_compiler_changes_only_the_reserved_initial_transfer_tail(self):
+        source=json.loads((overlay.ROOT/'recipes/ultraman-jp-v1001-rom-sector.json').read_text())
+        recipe,raws=self.fixture_source(source)
+        run,pack=self.compile(recipe);self.assertEqual(run.returncode,0,run.stderr)
+        original=b''.join(raws.values());post=bytearray(original)
+        # Independent descriptor is checked by check_pack above; reconstruct it
+        # from the two actual chunks here, then verify the complete raw stream.
+        value=pack.read_bytes();d=value[24+348+16:24+348+60]+value[24+696+16:24+696+36]
+        changed=bytearray(raws[165]);changed[2000:2064]=d
+        post[15*2352:16*2352]=overlay.canonical(changed)
+        self.assertEqual(b''.join(post[i+16:i+2064] for i in range(0,len(post),2352))[:-64],
+                         b''.join(original[i+16:i+2064] for i in range(0,len(original),2352))[:-64])
+        self.path.joinpath('original.raw').write_bytes(original);self.path.joinpath('post.raw').write_bytes(post)
+        run=subprocess.run([self.fixture.decoder,'stream',pack,self.path/'original.raw',self.path/'post.raw','150','1'],
+                           capture_output=True,text=True,timeout=15)
+        self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+
 
 if __name__=='__main__': unittest.main()

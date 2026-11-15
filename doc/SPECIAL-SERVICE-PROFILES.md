@@ -456,3 +456,53 @@ joined320 matched/6 changed. Later-mutated shared code/recipe pins are not
 counted as freshly verified historical runtime. Full natural startup, installed
 clock/reset execution under gameplay, later routes/input/audio/return and
 physical timing remain open. No issue closure or Saturn qualification is made.
+
+## Ultraman Japan V1.001
+
+[Recipe](../recipes/ultraman-jp-v1001-rom-sector.json), adapted from paps-g
+`3fafb587` and the
+[original upstream `ULTRAMAN_patch`](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+The [generic service and its exact primary citations](#checked-generic-rom-startup)
+preserve the existing2MiB copy, clock/reset installation and immediate takeover.
+This group adds no firmware runtime; it uses the already-verified phase2 path.
+The original callback remains available.
+
+`T-13308G  V1.001` loads `1ST_READ.PRG;1`, LBA28,66,952 bytes at `06004000`.
+Its complete original and unchanged postimage SHA-256 is
+`cde4f3c7c2a16a8966352ebd3422adf46f8c8484044a167f2ba4c16046bcdb82`.
+The complete original6,144-byte declared IP rehashes to
+`e29e12f2dd9bedb8ad04370c6baf8087c9927769d6f9e2dfba9564ad3a0915d6`,
+matching all independently retained native-IP windows. The preserved32KiB
+initial transfer is `9215624ae15e5604b68ade76f367dd82b3ac0900eff00394d0e5c8a6fb7bcd80`.
+
+The recipe has no game-code writes. It authenticates the stock IP predicate,
+then inserts only SOR1 in the reserved transfer tail. Phase2 resumes at
+`06002222` before ordinary VDP1 initialization/configuration. The admitted
+initial-transfer postimage is
+`5036419016b46cdd6197f453454c423e38ecbdf6c4609fee1c157f1afa9a8ad2`.
+The pack `183B8EAF.SOV` has three records/1,068 bytes, SHA-256
+`e3b4223eef6890c8c83a8d7a5815400c784c4b3e66e2a37b291a3b4e2c5a4949`.
+
+Current Rust/C verification reproduces that final archived pack and both
+complete logical postimages over49 sectors. The632 unedited first-file padding
+bytes are generated; the original full data track remains unavailable and
+its recipe hash stays historical. The earlier different predecessor pack was
+not substituted for the retained final ABI5 artifact. The independently supplied
+`ULTRAMAN.BIN` is exactly2MiB, SHA-256
+`6e3b35af6e45d9005460cfe44e3907563bde7a4636926ebd316dc84913efdd1b`,
+CRC32 `b9644b52`; its preserved original rehashes. No companion asset is supplied.
+
+Public source tests compare the complete initial stream, showing unchanged
+original payload outside the64-byte descriptor, and exercise the production
+decoder and prior-decoder refusal. The existing actual caller test transfers
+before VDP1/configuration, with retained ordinary/physical/missing callbacks and
+explicit skip. The current linked phase2 service/copy check compares complete
+cart/Work-RAM/stack state and the exact retained frame at resume. It stops there.
+
+Historical four native IP/menu/service/AIP joins remain separate. They reached
+the first program's native SP/SR initialization with explicit BIOS/file/MMIO/
+cache models. The current inventory recheck records317 matching and4 later-
+changed shared pins; no historical frame contract is claimed for a different
+menu build. Natural BIOS entry, actual bus/interrupt timing, later gameplay,
+audio/input/return and physical acceptance remain open. No issue is closed.
+Use the public ROM/overlay/menu tests above; profiles remain opt-in.

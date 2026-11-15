@@ -1,0 +1,30 @@
+{
+  "abi": 2,
+  "product_id": "T-13308G",
+  "disc_id": "T-13308G  V1.001",
+  "origin": "https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c",
+  "title": "Ultraman ROM-cart startup",
+  "summary": "Stage the companion ROM before boot and preserve its WRAM handoff.",
+  "rationale": "Optional exact-source profile. SOR1 menu service required. Exact IP sector guards retain stock-ROM selection; the complete 2 MiB asset is checked before the forward overlapping copy. Preserve boot phase and WRAM clock/reset hook.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "d4a450c06fb025d0f32b6e95626bbb5bf56707d6b83b18cd414a4e01a47fe2a8"
+    }
+  ],
+  "writes": [],
+  "guards": [
+    {
+      "fad": 151,
+      "reason": "Authenticate the stock IP ROM-cart predicate."
+    }
+  ],
+  "rom_cart": {
+    "path": "/SAROO/ISO/ULTRAMAN.BIN",
+    "sha256": "6e3b35af6e45d9005460cfe44e3907563bde7a4636926ebd316dc84913efdd1b",
+    "crc32": "b9644b52",
+    "phase": "first_read",
+    "resume": 100672034
+  }
+}

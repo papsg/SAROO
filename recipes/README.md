@@ -187,3 +187,7 @@ checked generic ROM service. The Japanese sources yield one identical pack.
 The superseded overwritten IP helper is excluded; original callbacks remain.
 These opt-in profiles require the ROM-capable menu/MCU pair and an independently
 supplied exact companion ROM. See [citations and qualification limits](../doc/SPECIAL-SERVICE-PROFILES.md#kof95-native-startup).
+
+[Ultraman Japan V1.001](ultraman-jp-v1001-rom-sector.json) uses the same checked
+ROM service at the first-read phase. It adds no game-instruction edit and keeps
+the original direct-ROM fallback. See [source identity and limits](../doc/SPECIAL-SERVICE-PROFILES.md#ultraman-japan-v1001).
