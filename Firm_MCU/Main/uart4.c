@@ -179,7 +179,8 @@ uint8_t _getc(void)
 
 int _getc_tmout(int tmout_ms)
 {
-	int ticks = tmout_ms*20000;
+	/* Widen before multiplication; retain the complete signed-int API domain. */
+	int64_t ticks = (int64_t)tmout_ms*20000;
 
 	while((UART4->ISR & 0x20)==0){
 		ticks -= 1;

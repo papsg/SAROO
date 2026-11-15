@@ -1,5 +1,55 @@
 # UART transmit safety
 
+## SSR-006 — preserve the legacy receive timeout's integer domain
+
+Adapted from paps-g `18dd95d7`, independently revalidated on public `7b02b36`.
+The inherited `_getc_tmout(int)` multiplies its signed argument by 20,000
+before checking UART readiness. At 107,375 ms this exceeds 32-bit signed
+range even when a received byte is already ready. The cached
+[C11 draft N1570 §6.5 paragraph 5](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)
+defines an unrepresentable arithmetic result as undefined behavior.
+
+Widening the operand before multiplication makes every 32-bit signed input
+and the first decrement fit the 64-bit budget. The receive API and results
+are unchanged: ready data returns immediately; nonpositive budgets expire
+after the first status check; positive waits keep their original probe
+counts. No diagnostic, transfer stack, timer service or USB code is added.
+The original stock UART implementation and attribution remain in place.
+
+This is an arithmetic correction, not a demonstrated game failure. Known
+current callers use 0, 10 and 1,000, which do not reach the old multiplication
+overflow. The polling loop is still not a calibrated millisecond clock;
+the wider counter's physical timing remains unqualified. Unlike the old
+private release cited by its historical evidence, this public application
+does retain the getter, so its actual linked cost is measured below.
+
+The new exact-C regression reproduces the public parent's overflow under
+UBSan and retains a separate passing original-domain control. The candidate
+passes all 22 UART methods under ASan/UBSan and optimized builds, including
+the existing App/BOOT transmit-unit controls. Inputs cover both old overflow
+boundaries, zero, negative values, `INT_MIN`/`INT_MAX`, immediate/later ready
+transitions and independent 20,000/40,000-probe expiration/final-ready cases.
+These modeled accesses do not qualify UART wiring or elapsed wall time.
+
+```sh
+make -C tests check-uart
+SAROO_UART_PROFILE=release make -C tests check-uart
+```
+
+Set `SAROO_UART_SOURCE` to a saved parent `uart4.c` to reproduce the
+full-domain failure while the original-domain control continues to pass.
+The fixture compiles the actual C receive function, independently of the
+existing C++ MMIO transport model. No oversized real-world wait is needed.
+
+Fresh paired parent/candidate GNU App builds use the same commit epoch,
+compiler and SDK. Only `Main/uart4.c` differs among 145 source/dependency
+pins; the other 144 match. The linked LTO getter grows 36→44 bytes with a
+zero-byte direct compiler frame. LTO load becomes 59,436 bytes (+8), leaving
+6,100 free; non-LTO becomes 63,704 (+8), leaving 1,832. Each profile's data,
+BSS and 50,896-byte static DTCM span remain unchanged. Menu/FPGA sources
+are unchanged by this checkpoint. Native BootLoader/Keil builds, physical
+timeout calibration and game behavior are not newly qualified.
+
 ## STM32-DMA-001 — enable the required transfer mode
 
 The v0.8-derived MCU configures DMA1 Stream 0 for UART4 TX with

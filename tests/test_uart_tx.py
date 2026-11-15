@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from test_menu_cdplayer import function
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,16 @@ class UARTTransmitTests(unittest.TestCase):
         build = ROOT / "tests/build/uart-tx"
         build.mkdir(parents=True, exist_ok=True)
         cls.output = Path(tempfile.mkdtemp(prefix="case-", dir=build))
+        (cls.output / "timeout.inc").write_bytes(function(raw, '_getc_tmout'))
+        cls.timeout_binary = cls.output / 'timeout'
+        timeout_flags = ['-O2'] if os.environ.get('SAROO_UART_PROFILE') == 'release' else [
+            '-O1', '-fsanitize=address,undefined', '-fno-sanitize-recover=undefined']
+        result = subprocess.run([*shlex.split(os.environ.get('CC','cc')), '-std=c11',
+            '-Wall','-Wextra','-Werror',*timeout_flags,'-I',str(cls.output),
+            str(ROOT / 'tests/uart_timeout.c'),'-o',str(cls.timeout_binary)],
+            capture_output=True,timeout=60)
+        (cls.output / 'timeout-compile.log').write_bytes(result.stdout+result.stderr)
+        if result.returncode: raise AssertionError(result.stdout+result.stderr)
         (cls.output / "uart.inc").write_bytes(code)
         profiles = ["-O2"] if os.environ.get("SAROO_UART_PROFILE") == "release" else [
             "-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
@@ -49,6 +60,20 @@ class UARTTransmitTests(unittest.TestCase):
         (self.output / f"{case}.log").write_bytes(result.stdout + result.stderr)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(b"pass", result.stdout)
+
+    def test_legacy_timeout_full_int_domain(self):
+        self.run_timeout('all')
+
+    def test_legacy_timeout_preserves_valid_original_budgets_and_readiness(self):
+        self.run_timeout('valid')
+
+    def run_timeout(self, mode):
+        args=[str(self.timeout_binary)] + ([] if mode=='all' else ['valid'])
+        result=subprocess.run(args,capture_output=True,timeout=15,
+            env={**os.environ,'UBSAN_OPTIONS':'halt_on_error=1'})
+        (self.output / f'timeout-{mode}.log').write_bytes(result.stdout+result.stderr)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn(b'pass:',result.stdout)
 
     def test_healthy_stream_crosses_ring_end_in_order(self):
         self.run_case("healthy")
