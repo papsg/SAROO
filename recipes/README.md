@@ -175,3 +175,7 @@ remain open. See [service notes](../doc/SPECIAL-SERVICE-PROFILES.md#in-the-hunt-
 only for the pinned raw conversion of that official ISO delivered by SAROO.
 It preserves the original callback and does not qualify physical Fenrir reads.
 See [exact scope and checks](../doc/SPECIAL-SERVICE-PROFILES.md#fenrir-loader-2020-07-22).
+
+[Kaitei Daisensou Japan V1.004](kaitei-daisensou-jp-v1004-sector.json) supplies
+the regional music preload/copy with its own exact-source and literal addresses.
+See [regional checks and remaining limits](../doc/SPECIAL-SERVICE-PROFILES.md#kaitei-daisensou-japan-v1004).

@@ -1,5 +1,7 @@
     ! Adapted from paps-g e2029f04; upstream music service 8928b7da.
     ! Link at 0x0600A3B8, replacing the US first program's original loader.
+    ! Kaitei JP V1.004 uses the same source at 0x0600A2D4 (paps-g 3fafb587).
+    ! Its copy_ready and P2 ready addresses become 0x0600A310 / 0x2600A33C.
     ! Its only direct pointer literal is 0x06007324. Redirect 0x060044E0 to copy_ready.
     ! Preserve SAROO's complete-read guard and fixed music buffer/copy extent.
     ! 0x02000F04 is the existing sector-reader pointer slot, not executable code.

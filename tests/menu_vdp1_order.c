@@ -210,8 +210,10 @@ static void music_launches(void)
         for (unsigned route = 0; route < 5; ++route) {
             reset(ids[region], 93);
             kaitei_music_ready = 7;
-            REG32(0x06007324) = 0x0600a3b8;
-            REG32(0x060044e0) = 0x0600a3f4;
+            u32 body = region ? 0x0600a2d4 : 0x0600a3b8;
+            u32 copy = region ? 0x0600a310 : 0x0600a3f4;
+            REG32(0x06007324) = body;
+            REG32(0x060044e0) = copy;
             overlay_handoff = __builtin_bswap32(route ? SD_OVERLAY_REPLACEMENT : 0);
             if (route == 2) disc_type = 4;
             if (route == 3) skip_patch = 1;
@@ -221,12 +223,12 @@ static void music_launches(void)
             read_1st(); finished();
             int fallback = route == 0 || route == 2;
             assert(REG32(0x06007324) == (fallback ?
-                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle1 : 0x0600a3b8));
+                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle1 : body));
             assert(REG32(0x060044e0) == (route == 4 ? 0x0600aa00 : fallback ?
-                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle2 : 0x0600a3f4));
+                   (u32)(uintptr_t)KAITEI_DAISENSOU_handle2 : copy));
             assert(kaitei_music_ready == (fallback ? 0 : 7));
             assert(!others && !cards && !jumps);
-            for (unsigned i = 0; i < 108; ++i) assert(high[0xa3b8+i] == 0xa5);
+            for (unsigned i = 0; i < 108; ++i) assert(high[body-0x06000000+i] == 0xa5);
         }
 }
 

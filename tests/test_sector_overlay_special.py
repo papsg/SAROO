@@ -137,6 +137,36 @@ class SpecialRecipeTests(unittest.TestCase):
             self.assertEqual(results[0][1][1], 0x060002cc)
             self.assertEqual(results[0][4], [])
 
+    def jp_source(self):
+        return json.loads((overlay.ROOT / 'recipes/kaitei-daisensou-jp-v1004-sector.json').read_text())
+
+    def test_jp_music_exact_source_and_region_literals(self):
+        source = self.jp_source()
+        self.assertEqual(source['disc_id'], 'T-15006G  V1.004')
+        self.assertTrue(source['replaces_callback'])
+        self.assertEqual([(w['fad'], w['offset']) for w in source['writes']], [(185, 740), (173, 1264)])
+        self.assertEqual((source['writes'][1]['before'], source['writes'][1]['after']),
+                         ('0600a374', '0600a310'))
+        us = bytes.fromhex(self.source()['writes'][0]['after'])
+        jp = bytes.fromhex(source['writes'][0]['after'])
+        expected = bytearray(us)
+        expected[40:44] = expected[88:92] = bytes.fromhex('2600a33c')
+        self.assertEqual(jp, expected)
+        recipe, raws = self.source_fixture(source, b'V1.004', {})
+        self.check_delivery(recipe, raws)
+
+    def test_jp_music_complete_short_failed_repeated_preload_and_copy_contract(self):
+        self.check_music(self.jp_source(), 0x0600a2d4, 0x2600a33c)
+
+    def test_jp_music_refuses_us_layout_even_with_matching_header(self):
+        recipe, _ = self.source_fixture(self.source(), b'V1.004', {})
+        jp = self.jp_source()
+        recipe['disc_id'] = (overlay.PRODUCT + b'V1.004').decode()
+        recipe['writes'] = jp['writes']
+        result, pack = self.compile(recipe)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(pack.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

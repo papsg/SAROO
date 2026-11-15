@@ -263,3 +263,45 @@ route/lifecycle design, full loader execution and actual device acceptance
 remain open. The original Fenrir callback stays available; no CD-block
 coexistence, physical Fenrir support or issue closure is claimed. The separately
 missing exact RMENU2 revision is not substituted by this loader.
+
+## Kaitei Daisensou Japan V1.004
+
+[Recipe](../recipes/kaitei-daisensou-jp-v1004-sector.json), adapted from paps-g
+`3fafb587` and the same
+[original upstream music workaround](https://github.com/tpunix/SAROO/commit/8928b7da7311edb65b7b2d0e9fd1989cc25c4202).
+It uses the [shared reviewed assembly](../recipes/assembly/in-the-hunt-us-preload.S)
+at Japanese addresses. The music/read ABI, instruction rules and exact primary
+citations are the same as [the US profile](#in-the-hunt-usa-v1000), with no new
+runtime helper, buffer or firmware resource growth. Original callbacks remain.
+
+`T-15006G  V1.004` loads `0;1`, LBA23, 606,172 bytes at `06004000`.
+Complete original SHA-256:
+`44055be8a187b5344a1e3d038a95b272ea860dffee98799c37485d2161689f56`;
+postimage `f3582a7762f2868b0fe8a0352c617ad55a9961483f5e6dfc1f884d2419fe367f`.
+The pinned original data track is
+`0dc03b26e011a2da87cba696b93103d7c5fe32a4c42caad6a5f4a557f212d575`.
+Full current-CUE compilation reproduces the archived four-record, 1,416-byte
+pack, SHA-256
+`8580e92e2245c573d9fdec6a42a72b496f143a7419ee2fd51ed2eec9c7193411`.
+
+The body is at `0600A2D4`, copy entry `0600A310`, P2 flag `2600A33C`.
+The original first pointer at `06007324` stays; the second at `060044E0`
+changes from `0600A374` to the copy entry. Both flag literals are independently
+checked. The preload still requests FAD2612 /`54F00` bytes into `22400000`;
+only an exact complete return permits the same copy to `002AA000`.
+The existing reader export is unchanged.
+
+Current Rust/C checks reproduce complete IP/first-file postimages over312
+sectors;36 generated unedited padding bytes remain explicit. Synthetic source
+checks refuse US layouts even with a matching header, and retain atomic
+fragments/refusal/retry controls. The actual recipe instructions preserve
+complete modeled RAM/stack and saved registers across absent/full/short/failed/
+oversized/repeated operations. Actual menu checks use each region's real body/
+copy addresses, preserve fallback/physical routes, skip and user priority.
+
+Historical regional38-operation checks and natural startup remain separate:
+all121 video checkpoints match,38 audio checkpoints match and complete PCM
+differs. The natural route does not call the copy entry. The intermittent
+SMPC startup freeze, audio/timing differences, later routes and physical
+qualification remain open. Current source/host verification does not close
+them. Run the same public tests as the US profile; profiles stay opt-in.
