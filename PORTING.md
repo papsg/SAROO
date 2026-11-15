@@ -2819,3 +2819,27 @@ remain public. Porting and offline verification are complete; music/audio
 differences, unresolved startup freezes, natural startup/return, cache/concurrency
 and physical/full-game qualification remain open. No Saturn or hardware
 acceptance is claimed.
+
+## Vandal Hearts native overlay conversion
+
+Active follow-up from public `8ee7dad`. Scope is the exact Chinese DLCT
+Vandal Hearts v20240517 source identifying as `T-1219G`, converting the
+original SAROO `VANDAL_HEARTS_CN` workaround. Preserve the upstream
+[original addition](https://github.com/tpunix/SAROO/commit/e6854bf651f55b1f413ea8fa700a10bff7562cae)
+and [yzb update](https://github.com/tpunix/SAROO/commit/f6a35a4d1d5a32af507f7d6d02edc8b7ab169fbc)
+attribution, with our later native-source rewrite identified separately.
+Unknown B1/modified `T-9526G` sources remain unsupported. The older copied
+48-byte compatibility stub is a control, not the selected public design.
+
+- [x] Starting public main and ledger are clean; private HEAD, branch, complete refs, stashes and worktree match the preserved fingerprint. The work is offline and the Saturn remains untouched.
+- [x] Current public compiler reproducibly rejects `expire_after_fad` in both the older helper recipe and native-expiry proposal. Its existing C&C completion contract does not admit the retained multi-sector lifetime proposal. This is an admission gap, not evidence of a game failure.
+- [x] Retained native-startup receipt recheck:225 matching, zero missing, five later-changed shared tool/checker inputs. Those changed inputs require reconciliation; the old result is not called current-build qualification. The final sound-review inventory rechecks all12 pins with zero mismatches. Historical failures and full-PCM differences remain preserved.
+- [ ] Reconcile native source, complete packed output, original callback effects and current public prerequisites, preserving both conditional branches and exact source identity.
+- [ ] Finish and verify lifetime, accepted delivery, later reads, retries, remount/unload and reset/return/relaunch without suppressing the later packed edit or losing launch ownership.
+- [ ] Complete meaningful public source/production-C/instruction/link and offline comparison checks; investigate audio/state limits without compensating delays or manufactured equality.
+- [ ] Publish the reviewed opt-in conversion and narrow prerequisites with exact primary citations, attribution, reproducible checks, target builds/resources, combined regression/privacy results and final preservation/ref checks.
+
+No implementation is published or claimed finished at this checkpoint. No PR,
+USB integration, runtime diagnostic, new CDON recipe, proprietary payload or
+device operation is authorized by this series. Physical and full-game
+qualification remain separate from offline verification.
