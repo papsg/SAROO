@@ -373,7 +373,7 @@ int main(int argc, char **argv) {
     end = "";
     if (*end) die("invalid track-one index offset");
     long frames = strtol(argv[5], &end, 10);
-    if (*end || frames < 1 || frames > 2400) die("invalid frame count");
+    if (*end || frames < 1 || frames > 13000) die("invalid frame count");
     total_frames = (unsigned)frames;
     const char *dump = getenv("AUDIO_DUMP_PATH");
     if (dump && !(audio_dump = fopen(dump, "wb"))) die("cannot open PCM dump");
@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
         video_snapshot_frame = (unsigned)requested;
     }
     long reset_frame = strtol(argv[7], &end, 10);
-    if (*end || reset_frame < 1 || reset_frame >= frames) die("invalid reset frame");
+    if (*end || reset_frame < 0 || reset_frame >= frames) die("invalid reset frame");
     load_pack(argv[6]);
     void *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!library) { fprintf(stderr, "%s\n", dlerror()); return 2; }
@@ -402,6 +402,8 @@ int main(int argc, char **argv) {
     GET(retro_set_input_poll); GET(retro_set_input_state);
     GET(retro_init); GET(retro_deinit); GET(retro_load_game);
     GET(retro_unload_game); GET(retro_run); GET(retro_reset); GET(retro_set_controller_port_device);
+    void (*warm_reset_fn)(bool) = NULL;
+    if (getenv("WARM_RESET_MODEL")) warm_reset_fn = symbol(library, "SS_Reset");
 #undef GET
     retro_set_environment_fn(environment);
     retro_set_video_refresh_fn(video);
@@ -420,9 +422,10 @@ int main(int argc, char **argv) {
             frames, overlay_count);
     fflush(stdout);
     for (current_frame = 0; current_frame < (unsigned)frames; ++current_frame) {
-        if (current_frame == (unsigned)reset_frame) {
+        if (reset_frame && current_frame == (unsigned)reset_frame) {
             fprintf(stderr,"LIFETIME_RESET,frame=%u,action=%u\n",current_frame,sector_overlay_action());
-            retro_reset_fn();
+            if (warm_reset_fn) warm_reset_fn(false);
+            else retro_reset_fn();
         }
         current_video = false;
         retro_run_fn();

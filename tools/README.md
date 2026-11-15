@@ -266,6 +266,22 @@ Those describe boot/reset/clock effects, not emulator or SAROO qualification.
 The host frontend is GPL-2.0-or-later under the fixture license above. This
 follow-up does not activate a recipe or change any firmware build.
 
+This research branch additionally permits `opening_progression: true` with
+exactly13,000 frames and reset_frame0, using the fixed Start/C schedule in
+the runner. It retains complete PCM and a final PPM in the new ignored output.
+`warm_reset_model: true` selects the retained core's direct `SS_Reset(false)`
+entry during a bounded2100-frame/reset1100 run; it is not the physical
+Reset button, game SYSRES or BIOS-return qualification. Opening runs cannot
+combine a reset or alternate sound core.
+
+The isolated `sound_state_research: true` option admits only passive-observer
+core SHA-256 `21092963b328519e47a8d9bec5244a798567eeea6349b3b8046fa621609d063f`.
+It requires independent output-neutrality comparison against each side's
+baseline; it is not a standard-core qualification. No instrumented core or
+proprietary media/BIOS is distributed here. Current model findings, exact
+source guards and remaining sound limits are documented in the native-source
+profile on public main. These extensions stay on this host-research branch.
+
 ### Original MCU App compile/link check
 
 The `mcu` command stages public MCU inputs unchanged and offline CMSIS/STM32/RTX

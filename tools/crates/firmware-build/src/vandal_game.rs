@@ -13,6 +13,8 @@ use std::{
 };
 
 const CORE: &str = "70e075ec857c65b7bf802e302f2a8dfdaf0468cb8d6ba28d3193340c43dcb96b";
+// Isolated host research variant, never a standard-model qualification.
+const SOUND_STATE_CORE: &str = "21092963b328519e47a8d9bec5244a798567eeea6349b3b8046fa621609d063f";
 const TRACK: &str = "0e9361f5b1d130af6b513a8a80ad9f4d872b14669655159e77ff7ee339a21178";
 const CUE: &str = "6b2ea2acc141bdb9bb08e6989886a0a10a4a0154e4d9de5d9d76d1546d5e1177";
 
@@ -57,11 +59,17 @@ fn bounds(value: &Value) -> Result<(u64, u64, &str)> {
         .ok_or("Missing lifetime frame bound")?;
     let reset = value["reset_frame"].as_u64().ok_or("Missing reset frame")?;
     let mode = value["control"].as_str().ok_or("Missing control")?;
-    if !(1900..=2400).contains(&frames)
-        || !(900..=1200).contains(&reset)
-        || reset + 900 > frames
-        || !["native", "inherited"].contains(&mode)
-    {
+    let opening = value
+        .get("opening_progression")
+        .map(|v| v.as_bool().ok_or("opening_progression must be Boolean"))
+        .transpose()?
+        .unwrap_or(false);
+    let timing = if opening {
+        frames == 13000 && reset == 0
+    } else {
+        (1900..=2400).contains(&frames) && (900..=1200).contains(&reset) && reset + 900 <= frames
+    };
+    if !timing || !["native", "inherited"].contains(&mode) {
         return fail("Require a bounded cold/reset observation in native or inherited mode");
     }
     Ok((frames, reset, mode))
@@ -70,11 +78,16 @@ fn bounds(value: &Value) -> Result<(u64, u64, &str)> {
 fn observations(stderr: &str, reset: u64, mode: &str) -> Result<Vec<Value>> {
     let action = if mode == "native" { 128 } else { 0 };
     let reset_line = format!("LIFETIME_RESET,frame={reset},action={action}");
+    let resets = if reset == 0 {
+        Vec::new()
+    } else {
+        vec![reset_line.as_str()]
+    };
     if stderr
         .lines()
         .filter(|s| s.starts_with("LIFETIME_RESET,"))
         .collect::<Vec<_>>()
-        != [reset_line.as_str()]
+        != resets
     {
         return fail("Missing/duplicate reset or lost launch ownership");
     }
@@ -82,7 +95,8 @@ fn observations(stderr: &str, reset: u64, mode: &str) -> Result<Vec<Value>> {
         .lines()
         .filter_map(|s| s.strip_prefix("LIFETIME_DELIVERY,"))
         .collect::<Vec<_>>();
-    if lines.len() != 6 {
+    let epochs = if reset == 0 { 1 } else { 2 };
+    if lines.len() != 3 * epochs {
         return fail("Both complete native-source delivery epochs are required");
     }
     let mut records = Vec::new();
@@ -113,8 +127,7 @@ fn observations(stderr: &str, reset: u64, mode: &str) -> Result<Vec<Value>> {
             || fields.get("after") != Some(&if edited { post } else { before })
             || number("action")? != action
             || frame < previous
-            || (i < 3 && frame >= reset)
-            || (i >= 3 && frame <= reset)
+            || (reset != 0 && ((i < 3 && frame >= reset) || (i >= 3 && frame <= reset)))
         {
             return fail("Source delivery/retirement differs from the one-time contract");
         }
@@ -144,7 +157,9 @@ fn observations(stderr: &str, reset: u64, mode: &str) -> Result<Vec<Value>> {
         .lines()
         .filter(|s| s.starts_with("VANDAL_AIP_TRACE,pc=060400c8,"))
         .collect::<Vec<_>>();
-    if opcodes.len() != 2 || !opcodes[0].contains(",op=0009,") || !opcodes[1].contains(",op=2202,")
+    if opcodes.len() != epochs
+        || !opcodes[0].contains(",op=0009,")
+        || (epochs == 2 && !opcodes[1].contains(",op=2202,"))
     {
         return fail("Require actual NOP execution followed by the original reset bootstrap");
     }
@@ -159,9 +174,27 @@ pub fn run(repo: &Path, output: &Path, config: &Path) -> Result<()> {
     let config_bytes = read(&config, 16384)?;
     let value: Value = serde_json::from_slice(&config_bytes)?;
     let (frames, reset, mode) = bounds(&value)?;
+    let sound_state = value
+        .get("sound_state_research")
+        .map(|v| v.as_bool().ok_or("sound_state_research must be Boolean"))
+        .transpose()?
+        .unwrap_or(false);
+    let opening = reset == 0;
+    let warm = value
+        .get("warm_reset_model")
+        .map(|v| v.as_bool().ok_or("warm_reset_model must be Boolean"))
+        .transpose()?
+        .unwrap_or(false);
+    if opening && (warm || sound_state) {
+        return fail("Opening comparison uses the unchanged baseline core without a reset");
+    }
     let mut inputs = BTreeMap::new();
     for (key, limit, expected) in [
-        ("core", 32 * 1024 * 1024, Some(CORE)),
+        (
+            "core",
+            32 * 1024 * 1024,
+            Some(if sound_state { SOUND_STATE_CORE } else { CORE }),
+        ),
         ("cue", 65536, Some(CUE)),
         ("track", 1024 * 1024 * 1024, Some(TRACK)),
         ("libretro_header", 1024 * 1024, None),
@@ -221,7 +254,7 @@ pub fn run(repo: &Path, output: &Path, config: &Path) -> Result<()> {
             return fail("Copied lifetime input differs");
         }
     }
-    let deadline = Instant::now() + Duration::from_secs(420);
+    let deadline = Instant::now() + Duration::from_secs(if opening { 1500 } else { 420 });
     let runner = out.join("check");
     if !execute(
         Command::new("cc")
@@ -258,15 +291,38 @@ pub fn run(repo: &Path, output: &Path, config: &Path) -> Result<()> {
         .env("SATURN_REGION", "jp")
         .env("SATURN_CART", "extram4")
         .env("SAROO_VANDAL_AIP_TRACE", "1");
+    // Only the reviewed input/config selects controls and output paths.
+    for key in [
+        "SAROO_VANDAL_AIP_CONTROL",
+        "AUDIO_DUMP_PATH",
+        "WARM_RESET_MODEL",
+        "PAD_SCRIPT",
+        "VIDEO_SNAPSHOT_PATH",
+        "VIDEO_SNAPSHOT_FRAME",
+    ] {
+        command.env_remove(key);
+    }
     if mode == "inherited" {
         command.env("SAROO_VANDAL_AIP_CONTROL", "1");
+    }
+    if sound_state {
+        command.env("AUDIO_DUMP_PATH", out.join("audio.pcm"));
+    }
+    if warm {
+        command.env("WARM_RESET_MODEL", "1");
+    }
+    if opening {
+        command.env("PAD_SCRIPT","start@7600:7620,start@9000:9020,c@9500:9520,c@10500:10520,c@11500:11520,c@12500:12520")
+            .env("AUDIO_DUMP_PATH",out.join("audio.pcm"))
+            .env("VIDEO_SNAPSHOT_PATH",out.join("video.ppm"))
+            .env("VIDEO_SNAPSHOT_FRAME",frames.to_string());
     }
     let (ok, stdout, stderr) = execute_bounded(
         &mut command,
         &out,
         "game",
         deadline,
-        Duration::from_secs(360),
+        Duration::from_secs(if opening { 1440 } else { 360 }),
     )?;
     if !ok {
         return fail("Lifetime model failed; see logs");
@@ -289,9 +345,16 @@ pub fn run(repo: &Path, output: &Path, config: &Path) -> Result<()> {
         .rev()
         .find(|r| r["event"] == "frame")
         .ok_or("Missing final frame")?;
-    let hits = if mode == "native" { 6 } else { 0 };
+    let hits = last["overlay_read_hits"]
+        .as_u64()
+        .ok_or("Missing delivery counter")?;
+    let hit_count = if mode == "native" {
+        hits >= if opening { 3 } else { 6 }
+    } else {
+        hits == 0
+    };
     if actual != expected
-        || last["overlay_read_hits"] != hits
+        || !hit_count
         || rows.last() != Some(&json!({"event":"unloaded","action":0}))
     {
         return fail("Incomplete/duplicate lifetime observations");
@@ -313,7 +376,17 @@ pub fn run(repo: &Path, output: &Path, config: &Path) -> Result<()> {
     {
         return fail("Lifetime config/source changed during execution");
     }
-    let receipt = json!({"complete":true,"frames":frames,"reset_frame":reset,"control":mode,"inputs":inputs,"seeds":seeded,"fixture_sha256":sha(&fixture),"production_editor_sha256":sha(&production),"production_header_sha256":sha(&header),"runner_sha256":hash(&runner,16*1024*1024)?,"observations":deliveries,"frame_rows":rows,"qualification":"Pinned retained emulator core; actual accepted game/BIOS delivery and production editor, but retro_reset powers on its modeled CPUs/RAM/CD. No hardware reset, live SAROO menu/mount, gameplay/audio or physical qualification."});
+    let pcm = if sound_state || opening {
+        Some(hash(&out.join("audio.pcm"), 64 * 1024 * 1024)?)
+    } else {
+        None
+    };
+    let video = if opening {
+        Some(hash(&out.join("video.ppm"), 2 * 1024 * 1024)?)
+    } else {
+        None
+    };
+    let receipt = json!({"complete":true,"frames":frames,"reset_frame":reset,"warm_reset_model":warm,"opening_progression":opening,"control":mode,"inputs":inputs,"seeds":seeded,"fixture_sha256":sha(&fixture),"production_editor_sha256":sha(&production),"production_header_sha256":sha(&header),"runner_sha256":hash(&runner,16*1024*1024)?,"observations":deliveries,"frame_rows":rows,"sound_state_research":sound_state,"pcm_sha256":pcm,"video_sha256":video,"qualification":"Pinned external emulator core and production editor. Reset variants use either the core's power-on path or its SS_Reset(false) entry; neither qualifies a physical reset button/BIOS return. Optional sound-state research needs independent output-neutrality checks. Opening progression uses the reviewed fixed Start/C schedule. No live SAROO menu/mount, tactical gameplay/audio or physical qualification."});
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(&receipt)?,
@@ -341,6 +414,30 @@ mod tests {
         }
         config["control"] = json!("inherited");
         assert!(bounds(&config).is_ok());
+    }
+
+    #[test]
+    fn opening_requires_the_complete_reviewed_schedule_without_a_reset() {
+        let valid =
+            json!({"frames":13000,"reset_frame":0,"control":"native","opening_progression":true});
+        assert!(bounds(&valid).is_ok());
+        for (key, value) in [
+            ("frames", json!(12999)),
+            ("reset_frame", json!(1100)),
+            ("opening_progression", json!(false)),
+            ("opening_progression", json!("true")),
+        ] {
+            let mut bad = valid.clone();
+            bad[key] = value;
+            assert!(bounds(&bad).is_err());
+        }
+        let first = include_str!("../../../fixtures/vandal-lifetime-native.log")
+            .split("LIFETIME_RESET,")
+            .next()
+            .unwrap();
+        assert_eq!(observations(first, 0, "native").unwrap().len(), 3);
+        assert!(observations(first, 1100, "native").is_err());
+        assert!(observations(&first.replace("op=0009", "op=2202"), 0, "native").is_err());
     }
 
     #[test]
