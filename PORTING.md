@@ -2905,5 +2905,7 @@ The source-range privacy review finds no local paths, secrets or PII, and no
 media binaries/private patch framework enter public source. Private
 HEAD/refs/stashes/worktree and all preserved research/evidence remain unchanged;
 the archived FPGA trial's pre-existing two edits retain their original full-file
-hash. Active main and ledger will be checked clean against their pushed refs;
-the archived evidence worktree is intentionally preserved with its earlier edits.
+hash and modification time. Active main and ledger are clean and match their
+pushed refs. Public main is `4c7f3aa`; public stashes retain their starting state.
+The archived evidence worktree is intentionally preserved with its earlier edits.
+All six required checkpoint dispositions are complete; no candidate work remains.
