@@ -29,6 +29,31 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(!valid);
+    if (!strcmp(argv[1], "guarded")) {
+        assert(argc == 6 && sector_overlay_count() == 2);
+        uint8_t original[RAW_BYTES], post[RAW_BYTES], marker[RAW_BYTES], sector[RAW_BYTES];
+        assert(load(argv[3], original, sizeof original) == sizeof original);
+        assert(load(argv[4], post, sizeof post) == sizeof post);
+        assert(load(argv[5], marker, sizeof marker) == sizeof marker);
+        sector_overlay_arm();
+        assert(sector_overlay_loaded_guard() && sector_overlay_action() == 0x80);
+        memcpy(sector,original,sizeof sector); sector[2064] ^= 1;
+        assert(sector_overlay_apply(sector_overlay_fad(0),sector) < 0);
+        memcpy(sector,original,sizeof sector);
+        assert(sector_overlay_apply(sector_overlay_fad(0),sector) == 1 && !memcmp(sector,post,sizeof sector));
+        memcpy(sector,marker,sizeof sector);sector[2351] ^= 1;
+        assert(sector_overlay_apply(sector_overlay_fad(1),sector) < 0 && sector_overlay_loaded_guard());
+        memcpy(sector,original,sizeof sector);
+        assert(sector_overlay_apply(sector_overlay_fad(0),sector) == 1);
+        memcpy(sector,marker,sizeof sector);
+        assert(!sector_overlay_apply(sector_overlay_fad(1),sector) && !memcmp(sector,marker,sizeof sector));
+        assert(!sector_overlay_loaded_guard() && !sector_overlay_action());
+        memcpy(sector,original,sizeof sector);
+        assert(!sector_overlay_apply(sector_overlay_fad(0),sector) && !memcmp(sector,original,sizeof sector));
+        sector_overlay_clear();
+        assert(!sector_overlay_loaded_guard() && !sector_overlay_count());
+        return 0;
+    }
     if (!strcmp(argv[1], "stream")) {
         assert(argc == 7 && !sector_overlay_alternatives());
         FILE *source = fopen(argv[3], "rb"), *post = fopen(argv[4], "rb");

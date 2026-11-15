@@ -7,7 +7,7 @@
 static u32 cache_first, cache_end;
 static unsigned invalidations, preflight_reads, pack_opens;
 static int clip_overlay_seek, missing_overlay_dir;
-static uint32_t overlay_sysinfo[16];
+static uint32_t overlay_sysinfo[24];
 #define SYSINFO_ADDR ((uintptr_t)overlay_sysinfo)
 #define REG(address) (*(volatile uint32_t *)(address))
 
@@ -97,6 +97,40 @@ int main(int argc, char **argv)
     create("/D/a.bin", original, original_bytes);
     create(cue_name, single, strlen(single));
     int which = atoi(argv[2]);
+    if (which >= 54) {
+        assert(which <= 60);
+        create(pack_name,pack,pack_bytes);
+        unsigned writes=disk_writes;
+        media_case=1;
+        if(which==58) inject_read=5;
+        if(which==59) fail_overlay_save=1;
+        int result=load_disc(which==55 ? SD_OVERLAY_REQUEST : 0,
+                             which==55 || which==56 ? 1 : 3);
+        int admitted=which==54 || which==60;
+        assert((result!=0)==(which==58 || which==59));
+        assert(overlay_sysinfo[0x38/4] == (admitted ? SD_OVERLAY_GUARDED : 0));
+        assert(sector_overlay_action()==(admitted ? 0x80 : 0));
+        assert(preflight_reads==(which==55 || which==56 ? 0 : 2));
+        if(admitted) {
+            assert(!memcmp((u8*)overlay_sysinfo+0x40,pack+48,24));
+            verify_overlay(1,1);
+            if(which==60) {
+                assert(!load_disc(0,0));
+                assert(!sector_overlay_action() && !overlay_sysinfo[0x38/4]);
+                for(unsigned i=0x40/4;i<0x58/4;++i) assert(!overlay_sysinfo[i]);
+                verify_overlay(1,0);
+            } else {
+                verify_overlay(2,0);
+                verify_overlay(1,0);
+            }
+        } else verify_overlay(1,0);
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth && disk_writes==writes);
+        assert(!overlay_sysinfo[0x38/4]);
+        for(unsigned i=0x40/4;i<0x58/4;++i) assert(!overlay_sysinfo[i]);
+        assert(!fclose(disk));
+        return 0;
+    }
     if (which >= 49) {
         assert(which <= 53);
         create(pack_name, pack, pack_bytes);

@@ -24,6 +24,7 @@ OBJ	=	obj/crt0.o  \
 		obj/ubr_debug.o  \
 		obj/cdblock.o  \
 		obj/game_load.o  \
+		obj/sector_overlay.o  \
 		obj/game_patch.o  \
 		obj/game_save.o  \
 		obj/language.o  \

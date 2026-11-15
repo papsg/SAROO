@@ -83,6 +83,27 @@ uses the normal compiler and original CUE. Each verifier process has a
 receipt. Existing outputs are refused. This is logical-source and host-decoder
 verification, with no complete-disc, bus/cache, timing or game qualification.
 
+### First-read guard and receipt audits
+
+Optional `first_read_guard` supplies a complete first-file SHA-256 and reason.
+`compile` derives one bounded ABI4 word edit and its completion marker from
+the original IP/ISO, including attributes and interleaved logical file mapping.
+See [loaded-file qualification and capability](../doc/SPECIAL-SERVICE-PROFILES.md).
+`verify-source` additionally requires the original IP and complete first file;
+its logical-file manifests remain contiguous extents. Include complete target
+sector payloads and distinguish supplied/reconstructed padding from original
+raw evidence. Full track identity remains a separate compiler check.
+
+`sector-overlay verify-receipt RECEIPT.json NEW-REPORT.json` replaces repeated
+one-off historical inventory hashing. It accepts `inputs[]` / `pins[]` or a `files{}`
+map with paths, byte counts and lowercase SHA-256. Relative paths resolve from
+the receipt. It streams bounded regular files, writes a new report and prints
+counts. Missing/changed/unreadable pins cause nonzero exit after preserving
+the report; malformed receipts or I/O errors refuse. Existing output is never
+overwritten. Keep reports with local paths in ignored evidence storage. A
+matching inventory proves current file hashes, not historical execution,
+source ownership, game correctness or hardware qualification.
+
 ## Isolated firmware qualification
 
 `firmware-build` runs the original public menu Makefile on a source copy under

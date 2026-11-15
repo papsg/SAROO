@@ -576,10 +576,14 @@ int load_disc(int index, int start_save)
 {
     static unsigned overlay_session;
     unsigned overlay_requested = overlay_session;
-    int open_disc = start_save;
+    int open_disc = start_save != 0;
+    int checked_load = (start_save & 2) != 0;
     if (start_save) {
-        overlay_requested = index & SD_OVERLAY_REQUEST;
-        index &= ~SD_OVERLAY_REQUEST;
+        if (checked_load) overlay_requested = SD_OVERLAY_REQUEST;
+        else {
+            overlay_requested = index & SD_OVERLAY_REQUEST;
+            index &= ~SD_OVERLAY_REQUEST;
+        }
     }
 	int retv;
 	char *fname;
@@ -644,7 +648,7 @@ int load_disc(int index, int start_save)
 
 		retv = parse_config("/SAROO/saroocfg.txt", gameid);
 		if (retv) { unload_disc(); goto _exit; }
-        if (overlay_requested && gameid[0] && sector_overlay_mount(gameid)) {
+        if (overlay_requested && gameid[0] && sector_overlay_mount_checked(gameid, checked_load)) {
             retv = -1;
             unload_disc();
             goto _exit;

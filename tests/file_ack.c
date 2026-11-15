@@ -75,13 +75,13 @@ static u32 normalize(u32 cmd)
 
 static unsigned expected_opcode(unsigned opcode)
 {
-    /* Independent oracle for the fourteen tagged menu opcodes. */
+    /* Independent oracle for the fifteen tagged menu opcodes. */
     switch(opcode) {
     case 0x21: return 1; case 0x22: return 2; case 0x23: return 3;
     case 0x24: return 4; case 0x25: return 5; case 0x26: return 6;
     case 0x27: return 7; case 0x28: return 8; case 0x29: return 9;
     case 0x2a: return 10; case 0x2b: return 11; case 0x2c: return 12;
-    case 0x2d: return 13; case 0x2e: return 14;
+    case 0x2d: return 13; case 0x2e: return 14; case 0x2f: return 15;
     default: return opcode;
     }
 }

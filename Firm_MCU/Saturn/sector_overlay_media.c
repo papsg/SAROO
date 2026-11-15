@@ -8,12 +8,15 @@ void sector_overlay_reset_handoff(void)
 {
     sector_overlay_clear();
     REG(SYSINFO_ADDR + 0x38) = 0;
+    memset((void *)(SYSINFO_ADDR + 0x40), 0, 24);
 }
 
 void sector_overlay_publish_handoff(void)
 {
     unsigned action = sector_overlay_action();
-    REG(SYSINFO_ADDR + 0x38) = action ? SD_OVERLAY_TAG | action : 0;
+    const uint8_t *guard = sector_overlay_loaded_guard();
+    if (guard) memcpy((void *)(SYSINFO_ADDR + 0x40), guard, 24);
+    REG(SYSINFO_ADDR + 0x38) = action ? (guard ? 0x534f5700u : SD_OVERLAY_TAG) | action : 0;
 }
 
 static void overlay_path(char path[28], const char *gameid, size_t id_bytes)
@@ -28,7 +31,7 @@ static void overlay_path(char path[28], const char *gameid, size_t id_bytes)
 
 /* The old reader is stopped. The lock also owns the shared sector workspace
  * across both f_read and its preimage check. */
-int sector_overlay_mount(const char gameid[16])
+int sector_overlay_mount_checked(const char gameid[16], int checked_load)
 {
     char path[28];
     overlay_path(path, gameid, 16);
@@ -59,6 +62,7 @@ int sector_overlay_mount(const char gameid[16])
         goto done;
     if (got != length) { result = -1; goto done; }
     if (sector_overlay_validate(length, gameid)) goto done;
+    if (pack[4] == 4 && !checked_load) goto rejected;
 
     uint8_t *scratch = (uint8_t *)0x24002000;
     unsigned track_index = 0;
@@ -101,4 +105,9 @@ rejected:
 done:
     fs_unlock();
     return result;
+}
+
+int sector_overlay_mount(const char gameid[16])
+{
+    return sector_overlay_mount_checked(gameid, 0);
 }

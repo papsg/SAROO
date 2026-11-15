@@ -91,6 +91,11 @@ unsigned sector_overlay_action(void)
     return armed ? pack[7] : 0;
 }
 
+const uint8_t *sector_overlay_loaded_guard(void)
+{
+    return armed && pack[4] == 4 ? record_at(0) + 24 : NULL;
+}
+
 int sector_overlay_validate(size_t size, const char product[10])
 {
     sector_overlay_clear();
@@ -98,9 +103,10 @@ int sector_overlay_validate(size_t size, const char product[10])
         memcmp(pack, "SSO1", 4) || !pack[5] ||
         pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] > 1 ||
         (pack[6] && pack[5] < 2) ||
-        pack[4] < 1 || pack[4] > 3 ||
+        pack[4] < 1 || pack[4] > 4 ||
         ((pack[7] & 0x7f) != 0 && (pack[7] & 0x7f) != 1 && (pack[7] & 0x7f) != 4) ||
-        (pack[7] & 0x80 && pack[4] != 3) ||
+        (pack[7] & 0x80 && pack[4] < 3) ||
+        (pack[4] == 4 && !(pack[7] & 0x80)) ||
         size != SECTOR_OVERLAY_HEADER_BYTES + pack[5] * SECTOR_OVERLAY_RECORD_BYTES ||
         be16(pack + 18) != size || memcmp(pack + 8, product, 10)) return -1;
 
@@ -111,13 +117,31 @@ int sector_overlay_validate(size_t size, const char product[10])
     memcpy(pack + 20, saved, sizeof(saved));
     if (checksum != be32(saved)) return -1;
 
+    if (pack[4] == 4) {
+        const uint8_t *r = record_at(0), *d = r + 24;
+        uint32_t load = be32(d), length = be32(d + 4), offset = be32(d + 12);
+        if (pack[5] != 2 || pack[6] || r[8] != 1 || r[14] != 2 ||
+            r[SECTOR_OVERLAY_RECORD_BYTES + 8] ||
+            r[SECTOR_OVERLAY_RECORD_BYTES + 9] != 1 ||
+            (load & 3) || length - 2u > 0xfdffeu ||
+            load - 0x06002000u > 0xfe000u - length ||
+            (offset & 1) || offset > length - 2 ||
+            be16(d + 16) != be16(r + 16) || be16(d + 18) != be16(r + 20) ||
+            sector_overlay_crc32(d, 20) != be32(d + 20) ||
+            be16(r + 12) != DATA_START + offset % 2048 ||
+            (length - 1) / 2048 <= offset / 2048 ||
+            be32(r + SECTOR_OVERLAY_RECORD_BYTES) <
+                be32(r) + (length - 1) / 2048 - offset / 2048) return -1;
+    }
+
     uint32_t previous = 149;
     for (unsigned i = 0; i < pack[5]; ++i) {
         const uint8_t *record = record_at(i);
         uint32_t fad = be32(record);
         unsigned edits = record[8];
         if (fad < 150 || fad < previous ||
-            fad >= 450000 || nonzero(record + 9, 3)) return -1;
+            fad >= 450000 || nonzero(record + 10, 2) ||
+            record[9] != (pack[4] == 4 && i == 1)) return -1;
         if (fad == previous) {
             const uint8_t *prior = record_at(i - 1);
             if (pack[6]) {
@@ -153,7 +177,7 @@ int sector_overlay_validate(size_t size, const char product[10])
         for (unsigned j = 0; j < 4; ++j) {
             const uint8_t *edit = record + 12 + j * 12;
             if (j >= edits) {
-                if (nonzero(edit, 12)) return -1;
+                if ((pack[4] != 4 || j == 3) && nonzero(edit, 12)) return -1;
                 continue;
             }
             unsigned offset = be16(edit), width = edit[2];
@@ -209,7 +233,10 @@ int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
         if (target != fad) continue;
         /* Authenticate the untouched sector before any same-FAD write. */
         if (!applied && sector_overlay_check(i, sector)) return -1;
-        if (!record[8]) return 0;
+        if (!record[8]) {
+            if (pack[4] == 4) armed = 0;
+            return 0;
+        }
         if (record[8] & 0x80) {
             memcpy(sector + be16(record + 12), record + 16, record[8] & 0x7f);
         } else {

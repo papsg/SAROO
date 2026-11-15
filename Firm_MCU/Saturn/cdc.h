@@ -136,10 +136,11 @@
 #define BIN_ROOT "/SAROO/BIN"
 #define ARCHIVE_IO_VERSION 0x534f5731u
 #define MENU_ACK_VERSION 1u
-#define SD_OVERLAY_VERSION 2u
+#define SD_OVERLAY_VERSION 3u
 #define SD_OVERLAY_REQUEST 0x8000u
 #define SSCMD_STARTUP  0x000d
 #define SSCMD_SELECT   0x000e
+#define SSCMD_FIRSTDISC 0x000f /* Full-width index; checked initial overlay load. */
 
 
 #define MSF_TO_FAD(m,s,f) ((m * 4500) + (s * 75) + f)

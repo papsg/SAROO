@@ -90,6 +90,7 @@ void gif_decode_exit(void);
 #undef __sync_val_compare_and_swap
 
 #define SSCMD_LOADDISC 3
+#define SSCMD_FIRSTDISC 15
 #define SSCMD_SAVE_ACK 0x20
 static unsigned SS_CMD, SS_ARG, handoff_calls;
 static int pause_disc(void)

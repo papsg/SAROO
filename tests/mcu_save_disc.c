@@ -75,6 +75,9 @@ static int buf_fad_start,buf_fad_end,require_quiescence,pause_active;
 static inline void invalidate_sector_cache(void) { buf_fad_start=buf_fad_end=0; }
 static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
 #define sector_overlay_mount ordinary_overlay_mount
+static inline int ordinary_overlay_mount_checked(const char *product, int checked)
+{ (void)checked; return ordinary_overlay_mount(product); }
+#define sector_overlay_mount_checked ordinary_overlay_mount_checked
 static inline void test_overlay_reset_handoff(void) { sector_overlay_clear(); }
 static inline void test_overlay_publish_handoff(void) { assert(0); }
 #define sector_overlay_reset_handoff test_overlay_reset_handoff
@@ -188,10 +191,11 @@ static void remove_card(void)
 /* Decoder ownership is exercised by the separate actual-GIF fixture. */
 static void gif_decode_exit(void) {}
 #define SSCMD_LOADDISC 3
+#define SSCMD_FIRSTDISC 15
 #define SSCMD_SAVE_ACK 0x20
 static int menu_step(int index)
 {
-    int retv=0;u32 cmd=SSCMD_LOADDISC;SS_ARG=index;
+    int retv=0;u32 cmd=SSCMD_LOADDISC,save_cmd=cmd;SS_ARG=index;
     switch (cmd) {
 #include "menu-load.inc"
     }

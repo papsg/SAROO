@@ -74,7 +74,7 @@ static int unload_disc(void)
     return operation_result;
 }
 static int load_disc(int index, int start_save)
-{ assert(start_save == 1); supplied = index; event(3); return operation_result; }
+{ assert(start_save == (((command_value & ~SSCMD_SAVE_ACK) == SSCMD_FIRSTDISC) ? 3 : 1)); supplied = index; event(3); return operation_result; }
 static int fpga_update(int check)
 { assert(check == ((command_value & ~SSCMD_SAVE_ACK) == SSCMD_CHECK)); event(24); return fpga_result; }
 static int flash_update(int check)
@@ -136,7 +136,7 @@ static unsigned normalized(unsigned opcode)
     case 0x24: return 4; case 0x25: return 5; case 0x26: return 6;
     case 0x27: return 7; case 0x28: return 8; case 0x29: return 9;
     case 0x2a: return 10; case 0x2b: return 11; case 0x2c: return 12;
-    case 0x2d: return 13; case 0x2e: return 14;
+    case 0x2d: return 13; case 0x2e: return 14; case 0x2f: return 15;
     default: return opcode;
     }
 }
@@ -147,7 +147,7 @@ static void dispatch(void)
     for (unsigned opcode = 0; opcode <= UINT16_MAX; opcode++) {
         unsigned base = normalized(opcode), tag = opcode & 32;
         call(opcode, 0x1234);
-        if ((base >= 1 && base <= 14) || opcode == 54 || opcode == 55 ||
+        if ((base >= 1 && base <= 15) || opcode == 54 || opcode == 55 ||
             (HAS_BIN_DIRECTORY && opcode == 56)) {
             if ((base == 13 || base == 14) && !tag) assert(command_value == opcode);
             else assert(!command_value);
@@ -159,7 +159,7 @@ static void dispatch(void)
             switch (base) {
             case 1: SEQUENCE(1); break;
             case 2: SEQUENCE(2); assert(supplied == 0x1234); break;
-            case 3: SEQUENCE(20, 3); assert(supplied == 0x1234); break;
+            case 3: case 15: SEQUENCE(20, 3); assert(supplied == 0x1234); break;
             case 4: case 5: SEQUENCE(24, 25); break;
             case 6: case 7: case 8: case 9: case 10: case 11: case 12:
             case 54: case 55: case 56: { unsigned e[] = {base}; sequence(e, 1); break; }
@@ -168,6 +168,16 @@ static void dispatch(void)
             }
         } else assert(!count && command_value == opcode && argument == 0x1234);
         checks++;
+    }
+}
+static void checked_indices(void)
+{
+    for(unsigned tag=0;tag<=32;tag+=32) for(unsigned index=0;index<=UINT16_MAX;++index) {
+        call(15|tag,index);
+        assert(!command_value && argument==tag);
+        if(index==UINT16_MAX) {SEQUENCE(20,22,23);}
+        else {SEQUENCE(20,3);assert(supplied==index);}
+        ++checks;
     }
 }
 static void startup(void)
@@ -449,6 +459,7 @@ int main(int argc, char **argv)
             if (i < 0x2c || i >= 0x30) assert(((u8 *)sysinfo)[i] == 0xa5);
         checks++;
     } else if (!strcmp(argv[1], "dispatch")) dispatch();
+    else if (!strcmp(argv[1], "checked-indices")) checked_indices();
     else if (!strcmp(argv[1], "startup")) startup();
     else if (!strcmp(argv[1], "startup-reader")) startup_reader();
     else if (!strcmp(argv[1], "selection")) selection();

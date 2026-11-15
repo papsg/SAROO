@@ -98,6 +98,9 @@ class MenuCommandCompletionTests(unittest.TestCase):
     def test_complete_opcode_space_and_legacy_behavior(self):
         self.invoke('dispatch')
 
+    def test_checked_launch_preserves_every_disc_index_and_acknowledgment(self):
+        self.invoke('checked-indices')
+
     def test_startup_finishes_all_services_and_reports_catalog_failure(self):
         self.invoke('startup')
 

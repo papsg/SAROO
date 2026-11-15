@@ -1108,9 +1108,14 @@ static int sel_handle(int ctrl)
 			menu_status(menu, TT("游戏启动中......"));
 
 			u8 overlay_version = REG8(SYSINFO_ADDR + 0x3c);
-			SS_ARG = index | (overlay_version >= 1 && overlay_version <= SD_OVERLAY_VERSION ?
-			                  SD_OVERLAY_REQUEST : 0u);
-			SS_CMD = SSCMD_LOADDISC;
+			if (!skip_patch && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
+				SS_ARG = index;
+				SS_CMD = SSCMD_FIRSTDISC;
+			} else {
+				SS_ARG = index | (!skip_patch && overlay_version >= 1 && overlay_version < 3 ?
+				                  SD_OVERLAY_REQUEST : 0u);
+				SS_CMD = SSCMD_LOADDISC;
+			}
 			while(SS_CMD);
 
 			retv = (signed short)SS_ARG;

@@ -22,6 +22,9 @@ static int jump_returns;
 static u32 mailbox;
 static u32 overlay_handoff;
 static u8 cs0_ready;
+static u8 guard_descriptor[24];
+static u16 cnc_instruction;
+static jmp_buf guard_failure;
 static unsigned cart_writes[8], cart_count;
 static jmp_buf takeover;
 
@@ -37,6 +40,7 @@ static void *memory_at(uintptr_t address)
     if (address == SYSINFO_ADDR + 0x38) return &overlay_handoff;
     address &= 0x1fffffff; /* Cached and uncached hardware aliases. */
     if(address == 0x025e7fff) return &cs0_ready;
+    if(address == 0x06076344) return &cnc_instruction;
     if(address >= 0x05c00000 && address < 0x05c80000) return vram + (address - 0x05c00000);
     if(address >= 0x06000000 && address < 0x06100000) return high + (address - 0x06000000);
     if(address >= 0x00200000 && address < 0x00300000) return low + (address - 0x00200000);
@@ -98,7 +102,6 @@ static void rom_target(int address)
  * the native-endian instruction word separately. */
 enum { CNC_IMAGE_BYTES=950320, CNC_INSTRUCTION_OFFSET=0x76344-0x3800 };
 static u8 cnc_image[CNC_IMAGE_BYTES];
-static u16 cnc_instruction;
 static unsigned cnc_reads, cnc_instruction_accesses;
 #define crc32 menu_crc32
 #include "crc32.inc"
@@ -113,8 +116,10 @@ static __attribute__((unused)) u32 crc32(u8 *data, int size, u32 seed)
     assert(!seed);
     if(data == cnc_image) {
         assert(size == CNC_IMAGE_BYTES);
+        assert(!cfg_reads);
         cnc_reads++;
-    } else assert(data == high + 0x10000 && (size == 179656 || size == 244484));
+    } else if(data == guard_descriptor) assert(size == 20);
+    else assert(data == high + 0x10000 && (size == 179656 || size == 244484));
     return menu_crc32(data,size,seed);
 }
 static __attribute__((unused)) u16 *cnc_instruction_at(u32 address)
@@ -123,6 +128,24 @@ static __attribute__((unused)) u16 *cnc_instruction_at(u32 address)
     cnc_instruction_accesses++;
     return &cnc_instruction;
 }
+static __attribute__((unused)) u8 *guard_pointer(uintptr_t address)
+{
+    if(address == SYSINFO_ADDR + 0x40) return guard_descriptor;
+    assert(address == 0x26003800);
+    return cnc_image;
+}
+static __attribute__((unused)) void guard_write(u32 address, u16 value)
+{
+    assert(address == 0x06076344);
+    cnc_instruction = value;
+    cnc_image[CNC_INSTRUCTION_OFFSET] = value >> 8;
+    cnc_image[CNC_INSTRUCTION_OFFSET+1] = value;
+}
+static __attribute__((unused)) void guard_refused(void) { longjmp(guard_failure,1); }
+#define SD_GUARD_POINTER(a) guard_pointer(a)
+#define SD_GUARD_READ16(a) (*cnc_instruction_at(a))
+#define SD_GUARD_WRITE16(a,v) guard_write(a,v)
+#define SD_GUARD_FIRST_LOAD() REG32(0x060020f0)
 
 #include "actual.inc"
 #ifndef SD_OVERLAY_TAG
@@ -222,6 +245,57 @@ static void cnc_reset(void)
     }
 }
 
+static void descriptor_word(unsigned at, u32 value)
+{
+    for(unsigned i=0;i<4;++i) guard_descriptor[at+i]=value>>(24-8*i);
+}
+
+static void cnc_overlay(void)
+{
+    const u8 suffix[]={0xc7,0x14,0x50,0xf2};
+    for(unsigned scenario=0;scenario<10;++scenario) {
+        memset(cnc_image,0,sizeof cnc_image);
+        cnc_image[CNC_INSTRUCTION_OFFSET]=0x22;cnc_image[CNC_INSTRUCTION_OFFSET+1]=0x12;
+        memcpy(cnc_image+sizeof cnc_image-sizeof suffix,suffix,sizeof suffix);
+        assert(menu_crc32(cnc_image,sizeof cnc_image,0)==0xd606ee5b);
+        reset("T-7028H   V1.000",71);
+        REG32(0x060020f0)=0x06003800;
+        cnc_instruction=0x0009;
+        cnc_image[CNC_INSTRUCTION_OFFSET]=0;cnc_image[CNC_INSTRUCTION_OFFSET+1]=9;
+        assert(menu_crc32(cnc_image,sizeof cnc_image,0)==0xa851cea7);
+        descriptor_word(0,0x06003800);descriptor_word(4,CNC_IMAGE_BYTES);
+        descriptor_word(8,0xa851cea7);descriptor_word(12,CNC_INSTRUCTION_OFFSET);
+        guard_descriptor[16]=0x22;guard_descriptor[17]=0x12;
+        guard_descriptor[18]=0;guard_descriptor[19]=9;
+        descriptor_word(20,menu_crc32(guard_descriptor,20,0));
+        overlay_handoff=__builtin_bswap32(0x534f5780);
+        if(scenario==1) cnc_image[0]^=1;
+        if(scenario==2) cnc_instruction=0x1234;
+        if(scenario==3 || scenario==4) {
+            cnc_instruction=0x2212;cnc_image[CNC_INSTRUCTION_OFFSET]=0x22;cnc_image[CNC_INSTRUCTION_OFFSET+1]=0x12;
+            if(scenario==3) overlay_handoff=0;
+            else disc_type=1;
+        }
+        if(scenario==5) {put32(0,0x26076344);put32(4,0x1234);}
+        if(scenario==6) {put32(0,0x26003810);put32(4,0x1234);}
+        if(scenario==7) skip_patch=1;
+        if(scenario==8) guard_descriptor[4]^=1;
+        if(scenario==9) REG32(0x060020f0)+=4;
+        cnc_reads=cnc_instruction_accesses=0;
+        if(scenario>=8) {
+            if(!setjmp(guard_failure)) {read_1st();assert(0);}
+            assert(loads==1 && !clears && !cfg_reads && !cnc_reads && !cnc_instruction_accesses);
+            assert(!memcmp(vram,untouched,sizeof vram));
+            continue;
+        }
+        read_1st();finished();
+        u16 expected=scenario==1 || scenario==7 ? 0x2212 : scenario==2 || scenario==5 ? 0x1234 : 9;
+        assert(cnc_instruction==expected && !others);
+        if(scenario==6) assert(REG16(0x06003810)==0x1234);
+        if(scenario==7) assert(!cfg_reads && !cnc_reads);
+    }
+}
+
 #include "shared-fixtures.inc"
 
 static void shared_id_callbacks(void)
@@ -279,7 +353,7 @@ static void cartridge_actions(void)
         SD_OVERLAY_REPLACEMENT | 1, SD_OVERLAY_REPLACEMENT | 4,
         0, SD_OVERLAY_TAG, SD_OVERLAY_TAG | 2, SD_OVERLAY_TAG | 5,
         SD_OVERLAY_REPLACEMENT | 2, SD_OVERLAY_REPLACEMENT | 5,
-        SD_OVERLAY_REPLACEMENT ^ 0x100, 0x81564f53, 0xffffffff
+        SD_OVERLAY_REPLACEMENT ^ 0x200, 0x81564f53, 0xffffffff
     };
     for(unsigned i = 0; i < sizeof(tags) / sizeof(tags[0]); ++i) {
         for(unsigned physical = 0; physical < 2; ++physical) {
@@ -954,6 +1028,8 @@ int main(int argc, char **argv)
         shared_id_callbacks();
     }else if(!strcmp(mode, "cnc")){
         cnc_reset();
+    }else if(!strcmp(mode, "cnc-overlay")){
+        cnc_overlay();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){

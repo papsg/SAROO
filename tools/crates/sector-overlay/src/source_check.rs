@@ -122,10 +122,24 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     }
     let (_, recipe_data) = pinned(base, &manifest.recipe, 64 * 1024)?;
     let recipe: Recipe = serde_json::from_slice(&recipe_data)?;
-    let edits = targets(&recipe)?;
+    let mut edits = targets(&recipe)?;
     let product = product_bytes(&recipe.product_id)?;
     disc_id_bytes(recipe.disc_id.as_deref(), &product)?;
     let (_, pack) = pinned(base, &manifest.pack, 24 + 12 * 348)?;
+    let guard = if recipe.first_read_guard.is_some() {
+        let (descriptor, completion) = crate::first_read::metadata(&pack)?;
+        if edits.len() != 1
+            || recipe.writes.len() != 1
+            || !recipe.guards.is_empty()
+            || !recipe.replaces_callback
+            || edits.insert(completion, Vec::new()).is_some()
+        {
+            return fail("Invalid guarded logical-source recipe");
+        }
+        Some(descriptor)
+    } else {
+        None
+    };
     if pack.len() != 24 + record_count(&edits) * 348 {
         return fail("Reference pack length differs from the recipe");
     }
@@ -133,8 +147,29 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let mut intervals = Vec::new();
     let mut originals = BTreeMap::new();
     let mut programs = Vec::new();
+    let mut guard_header = None;
+    let mut guard_file = None;
     for program in &manifest.programs {
         let (_, data) = pinned(base, &program.source, 0x100000)?;
+        if let Some(d) = &guard {
+            let length = u32::from_be_bytes(d[4..8].try_into().unwrap()) as usize;
+            if program.lba == 0 && data.len() >= 0xf4 && data.starts_with(b"SEGA SEGASATURN ") {
+                guard_header = Some((
+                    u32::from_be_bytes(data[0xe0..0xe4].try_into().unwrap()),
+                    u32::from_be_bytes(data[0xf0..0xf4].try_into().unwrap()),
+                ));
+            }
+            if length >= 2
+                && length <= data.len()
+                && hex(&Sha256::digest(&data[..length]))
+                    == recipe.first_read_guard.as_ref().unwrap().sha256
+            {
+                if guard_file.is_some() {
+                    return fail("Ambiguous complete guarded source");
+                }
+                guard_file = Some((program.lba, data[..length].to_vec()));
+            }
+        }
         let count = data.len().div_ceil(2048);
         if count == 0
             || !digest(&program.postimage_sha256)
@@ -194,6 +229,45 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
                 "edited_sectors":hits,"generated_padding_bytes":count*2048-data.len()}),
         });
     }
+    if let Some(d) = &guard {
+        let (ip_size, header_load) =
+            guard_header.ok_or("Supply the original IP for loaded-file qualification")?;
+        let (lba, mut data) = guard_file.ok_or("Complete first-read source SHA-256 differs")?;
+        let load = u32::from_be_bytes(d[..4].try_into().unwrap());
+        let offset = u32::from_be_bytes(d[12..16].try_into().unwrap()) as usize;
+        let write = &recipe.writes[0];
+        let computed = write
+            .fad
+            .checked_sub(150 + lba)
+            .ok_or("Edit precedes guarded source")? as usize
+            * 2048
+            + write.offset
+            - 16;
+        let completion = u32::from_be_bytes(pack[372..376].try_into().unwrap());
+        if !(0x1000..=0x8000).contains(&ip_size)
+            || ip_size & 3 != 0
+            || load & 3 != 0
+            || load != header_load
+            || load < 0x06002000 + ip_size
+            || load > 0x06100000
+            || data.len() > (0x06100000 - load) as usize
+            || offset & 1 != 0
+            || offset != computed
+            || offset.checked_add(2).is_none_or(|end| end > data.len())
+            || completion != 150 + lba + data.len().div_ceil(2048) as u32 - 1
+            || crate::decode_hex(&write.before)? != d[16..18]
+            || crate::decode_hex(&write.after)? != d[18..20]
+            || data[offset..offset + 2] != d[16..18]
+        {
+            return fail(
+                "Guarded logical source metadata differs; this mode requires contiguous extents",
+            );
+        }
+        data[offset..offset + 2].copy_from_slice(&d[18..20]);
+        if crc32(&data) != u32::from_be_bytes(d[8..12].try_into().unwrap()) {
+            return fail("Complete loaded postimage CRC differs");
+        }
+    }
     let mut unavailable_guards = Vec::new();
     for (&fad, changes) in &edits {
         if let std::collections::btree_map::Entry::Vacant(entry) = originals.entry(fad) {
@@ -205,6 +279,9 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
         }
     }
     let mut expected = encode(&recipe, product, &edits, originals)?;
+    if let Some(d) = &guard {
+        crate::first_read::attach(&mut expected, d)?;
+    }
     // Missing read-only guards are not fresh source checks. Retain their
     // reference CRC solely to compare the other metadata/available records.
     let mut index = 0;
@@ -236,12 +313,14 @@ pub fn run(manifest_path: &Path, output: &Path) -> Result<()> {
     let checksum = crc32(&for_decoder);
     for_decoder[20..24].copy_from_slice(&checksum.to_be_bytes());
     write_pack(&output.join("decoder.SOV"), &for_decoder)?;
-    const TOOL_INPUTS: [(&str, &[u8]); 7] = [
+    const TOOL_INPUTS: [(&str, &[u8]); 9] = [
         ("main.rs", include_bytes!("main.rs")),
         ("source_check.rs", include_bytes!("source_check.rs")),
         ("pca.rs", include_bytes!("pca.rs")),
         ("mode1.rs", include_bytes!("mode1.rs")),
         ("disc.rs", include_bytes!("disc.rs")),
+        ("first_read.rs", include_bytes!("first_read.rs")),
+        ("pins.rs", include_bytes!("pins.rs")),
         ("Cargo.toml", include_bytes!("../Cargo.toml")),
         ("Cargo.lock", include_bytes!("../../../Cargo.lock")),
     ];

@@ -84,6 +84,9 @@ static void invalidate_sector_cache(void);
 #ifndef MCU_OVERLAY_TEST
 static inline int ordinary_overlay_mount(const char *product) { (void)product; assert(0); return -1; }
 #define sector_overlay_mount ordinary_overlay_mount
+static inline int ordinary_overlay_mount_checked(const char *product, int checked)
+{ (void)checked; return ordinary_overlay_mount(product); }
+#define sector_overlay_mount_checked ordinary_overlay_mount_checked
 static inline void test_overlay_reset_handoff(void) { sector_overlay_clear(); }
 static inline void test_overlay_publish_handoff(void) { assert(0); }
 #define sector_overlay_reset_handoff test_overlay_reset_handoff
@@ -142,6 +145,9 @@ static int pause_disc(void) { assert(media_case);media_pauses++;return 0; }
 #include "load.inc"
 #ifdef sector_overlay_mount
 #undef sector_overlay_mount
+#endif
+#ifdef sector_overlay_mount_checked
+#undef sector_overlay_mount_checked
 #endif
 #define f_read cue_read
 #define f_close cue_close

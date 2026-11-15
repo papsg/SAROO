@@ -1,7 +1,9 @@
 //! Compile reviewed SD sector recipes against read-only game images.
 mod disc;
+mod first_read;
 mod mode1;
 mod pca;
+mod pins;
 mod source_check;
 
 use disc::{Disc, RAW_BYTES};
@@ -39,6 +41,14 @@ struct Recipe {
     replaces_callback: bool,
     #[serde(default)]
     cart_mode: u8,
+    first_read_guard: Option<ChecksumGuard>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChecksumGuard {
+    sha256: String,
+    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -147,6 +157,17 @@ fn check_text(fields: &[&str]) -> Result<()> {
 }
 
 fn targets(recipe: &Recipe) -> Result<Targets> {
+    if let Some(guard) = &recipe.first_read_guard {
+        check_text(&[&guard.reason])?;
+        if guard.sha256.len() != 64
+            || !guard
+                .sha256
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return fail("First-read guard requires a lowercase SHA-256");
+        }
+    }
     if recipe.abi != 2
         || recipe.writes.is_empty()
         || recipe.writes.len() > MAX_RECORDS * 4
@@ -221,10 +242,12 @@ fn read_targets(
     disc: &Disc,
     recipe: &Recipe,
     targets: &Targets,
+    witnesses: &BTreeMap<u32, [u8; RAW_BYTES]>,
 ) -> Result<BTreeMap<u32, [u8; RAW_BYTES]>> {
     let mut positions: BTreeMap<usize, Vec<(u32, u32)>> = BTreeMap::new();
     let mut used = BTreeSet::new();
-    for &fad in targets.keys() {
+    let fads: BTreeSet<_> = targets.keys().chain(witnesses.keys()).copied().collect();
+    for fad in fads {
         let (track, offset) = disc.raw_data(fad)?;
         used.insert(track + 1);
         positions
@@ -284,6 +307,12 @@ fn read_targets(
             return fail("Source track SHA-256 differs");
         }
     }
+    for (fad, original) in witnesses {
+        if sectors.get(fad) != Some(original) {
+            return fail("ISO metadata or first-file bytes changed during source verification");
+        }
+    }
+    sectors.retain(|fad, _| targets.contains_key(fad));
     Ok(sectors)
 }
 
@@ -308,7 +337,7 @@ fn compile(
     product: [u8; 10],
     disc_id: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
-    let targets = targets(recipe)?;
+    let mut targets = targets(recipe)?;
     let disc = Disc::read(cue)?;
     let ip = disc.read_ip()?;
     if ip[..10] != product {
@@ -317,8 +346,25 @@ fn compile(
     if disc_id.is_some_and(|id| ip != id) {
         return fail("Full disc ID disagrees with the original Saturn IP");
     }
-    let originals = read_targets(&disc, recipe, &targets)?;
-    encode(recipe, product, &targets, originals)
+    let plan = if recipe.first_read_guard.is_some() {
+        let plan = first_read::prepare(&disc, recipe, &targets)?;
+        targets.insert(plan.completion, Vec::new());
+        Some(plan)
+    } else {
+        None
+    };
+    let empty = BTreeMap::new();
+    let originals = read_targets(
+        &disc,
+        recipe,
+        &targets,
+        plan.as_ref().map_or(&empty, |p| &p.witnesses),
+    )?;
+    let mut pack = encode(recipe, product, &targets, originals)?;
+    if let Some(plan) = plan {
+        first_read::attach(&mut pack, &plan.descriptor)?;
+    }
+    Ok(pack)
 }
 
 fn encode(
@@ -484,13 +530,16 @@ fn write_pack(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let usage =
-        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
+        "sector-overlay name RECIPE.json\nsector-overlay compile RECIPE.json DISC.cue OUTPUT.SOV\nsector-overlay bundle OUTPUT.SOV RECIPE.json DISC.cue RECIPE.json DISC.cue [RECIPE.json DISC.cue ...]\nsector-overlay verify-source MANIFEST.json NEW-OUTPUT-DIRECTORY\nsector-overlay verify-receipt RECEIPT.json NEW-REPORT.json\nsector-overlay decode-pca INPUT.PCA NEW-OUTPUT.BIN";
     if let [op, manifest, out] = args.as_slice() {
         if op == "verify-source" {
             return source_check::run(Path::new(manifest), Path::new(out));
         }
         if op == "decode-pca" {
             return pca::run(Path::new(manifest), Path::new(out));
+        }
+        if op == "verify-receipt" {
+            return pins::run(Path::new(manifest), Path::new(out));
         }
     }
     if args.first().is_some_and(|arg| arg == "bundle") {

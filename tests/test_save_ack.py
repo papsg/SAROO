@@ -55,12 +55,12 @@ class SaveAcknowledgmentTests(unittest.TestCase):
                        (mcu / 'cdc.h', current_mcu / 'cdc.h'))
         for name in (b'SSCMD_SSAVE', b'SSCMD_LSAVE', b'SSCMD_LMEMS', b'SSCMD_SMEMS',
                      b'SSCMD_FILERD', b'SSCMD_FILEWR', b'SSCMD_PRINTF', b'SSCMD_SELECT',
-                     b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
+                     b'SSCMD_FIRSTDISC', b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
             values = []
             for selected, fallback in input_paths:
                 pattern = rb'^#define ' + name + rb'\s+(\S+)'
                 found = re.search(pattern, selected.read_bytes(), re.M)
-                if not found and name in (b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
+                if not found and name in (b'SSCMD_FIRSTDISC', b'SSCMD_SAVE_ACK', b'SAVE_ACK_VERSION'):
                     found = re.search(pattern, fallback.read_bytes(), re.M)
                 if not found:
                     raise AssertionError(f'Missing save command constant {name!r}')

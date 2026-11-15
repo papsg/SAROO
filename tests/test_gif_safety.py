@@ -104,7 +104,7 @@ class GifSafetyTests(unittest.TestCase):
         (cls.target / 'gif.inc').write_bytes(layout + b'\n' + source)
         main = inputs['saturn_main.c']
         (cls.target / 'handoff.inc').write_bytes(
-            b'static void dispatch_load(void) { int retv; unsigned cmd=SS_CMD; switch (cmd) {\n'
+            b'static void dispatch_load(void) { int retv; unsigned cmd=SS_CMD, save_cmd=cmd; switch (cmd) {\n'
             + load_case(main) + b'\n} }\n')
         cls.binary = cls.target / 'test-gif'
         flags = ['-O2'] if os.environ.get('SAROO_GIF_PROFILE') == 'release' else [

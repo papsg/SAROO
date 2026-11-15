@@ -24,7 +24,7 @@ class OverlayMountTests(support.MCUSaveTest):
             root = Path(folder)
             card = root / 'card.img'
             support.make_fat32(card)
-            count = 12 if value in (22, 23) else 1
+            count = 2 if value >= 54 else 12 if value in (22, 23) else 1
             first = sector(150, ip=True, version=b'V1.001' if value == 14 else b'V1.000')
             sources = [sector(fad) for fad in range(151, 151 + count)]
             last = sector(151 + count, 0x72)
@@ -44,6 +44,20 @@ class OverlayMountTests(support.MCUSaveTest):
                 pack[offset + 8] = 1
                 pack[offset + 12:offset + 24] = b'\0\x20\x01\0\x71\0\0\0\xab\0\0\0'
                 pack[offset + 60:offset + RECORD_BYTES] = edited[2064:]
+            if value >= 54:
+                import struct
+                pack[4],pack[7]=4,0x80
+                pack[36:48]=bytes.fromhex('0020020071710000ab710000')
+                edited=bytearray(sources[0]);edited[32]=0xab;edited=canonical(edited)
+                pack[84:HEADER_BYTES+RECORD_BYTES]=edited[2064:]
+                metadata=struct.pack('>IIIIHH',0x06004000,4096,
+                                     zlib.crc32(edited[16:2064]+sources[1][16:2064]),16,0x7171,0xab71)
+                pack[48:72]=metadata+struct.pack('>I',zlib.crc32(metadata))
+                marker=bytearray(RECORD_BYTES)
+                marker[:8]=(152).to_bytes(4,'big')+zlib.crc32(sources[1]).to_bytes(4,'big')
+                marker[9]=1
+                pack[HEADER_BYTES+RECORD_BYTES:]=marker
+                if value==57:sources[1]=sector(152,0x73)
             seal(pack)
             if value == 23:
                 sources[-1] = sector(162, 0x72)
@@ -65,6 +79,11 @@ class OverlayMountTests(support.MCUSaveTest):
 
     def test_mount_delivery_retry_and_disc_replacement(self):
         for value in (0, 10):
+            with self.subTest(value=value):
+                self.invoke(value)
+
+    def test_checked_load_guard_publication_requires_initial_capability_and_complete_preflight(self):
+        for value in range(54,61):
             with self.subTest(value=value):
                 self.invoke(value)
 

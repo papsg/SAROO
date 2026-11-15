@@ -23,6 +23,8 @@ class MenuLaunchErrorTests(unittest.TestCase):
                  b'BUTTON_DOWN')
         if b'SD_OVERLAY_REQUEST' in code:
             names += (b'SD_OVERLAY_REQUEST', b'SD_OVERLAY_VERSION')
+        if b'SSCMD_FIRSTDISC' in code:
+            names += (b'SSCMD_FIRSTDISC',)
         definitions = b''.join(
             re.search(rb'^#define ' + name + rb'\b[^\r\n]+', header, re.M).group() + b'\n'
             for name in names)

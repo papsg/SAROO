@@ -82,6 +82,10 @@ class MenuVDP1OrderTests(unittest.TestCase):
         first = load.index(b'static u16 code_06b8[')
         code += load[first:load.index(b'\n};', first) + 4]
         code += function(load, 'read_1st')
+        guard = source / 'sector_overlay.c'
+        if guard.exists():
+            code = guard.read_bytes().replace(b'#include "main.h"', b'') + code
+            code = code.replace(b'while (1);', b'guard_refused();')
         if b'SD_OVERLAY_REPLACEMENT' in code:
             header = (source / 'main.h').read_bytes()
             define = re.search(rb'^#define SD_OVERLAY_REPLACEMENT .+$', header, re.M)
@@ -169,6 +173,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_manx_europe_usa_and_unmatched_original_guards(self):
         self.scenario('manx-international')
+
+    def test_cnc_loaded_guard_fallback_configuration_skip_and_invalid_metadata_order(self):
+        self.scenario('cnc-overlay')
 
     def test_configuration_writes_survive_and_override_builtin(self):
         self.scenario('config')

@@ -1,0 +1,30 @@
+{
+  "abi": 2,
+  "product_id": "T-7028H",
+  "disc_id": "T-7028H   V1.000",
+  "origin": "Self-reported SATURN-MENU-CNC-001; doc/SPECIAL-SERVICE-PROFILES.md; Sega ST-210 item 14",
+  "title": "Command & Conquer (USA) (Disc 2) (NOD Disc)",
+  "summary": "Keep the reset sequence without the prohibited SCU DMA forced-stop write.",
+  "rationale": "Sega ST-210 item14 prohibits DSTP writes. Replace only mov.l r1,@r2 at 06076344; retain subsequent SCU enables, DMAOR clear and return trap. Validate the complete loaded first file before accepting this callback replacement; user configuration runs afterward.",
+  "replaces_callback": true,
+  "tracks": [
+    {
+      "number": 1,
+      "sha256": "45b260d02a01f6b76ec94f3299a3939b9e99569d9e3b3ef54e9b246697af4805"
+    }
+  ],
+  "writes": [
+    {
+      "fad": 406,
+      "offset": 852,
+      "before": "2212",
+      "after": "0009",
+      "effect": "NOP the prohibited DMA forced-stop store.",
+      "reason": "Match the existing whole-file-guarded reset fix at 06076344."
+    }
+  ],
+  "first_read_guard": {
+    "sha256": "ab4e7cc5f3b1b122e747fb5f5c6d10d279c28716887ae5f4285c5069303e7a23",
+    "reason": "Preserve the original 950320-byte loaded-file CRC and instruction guard before configuration. Retire the SD edit after the complete initial read, so later loads use original media."
+  }
+}

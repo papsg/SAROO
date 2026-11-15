@@ -885,7 +885,7 @@ void ss_cmd_handle(void)
 
     /* Menu v1 uses the existing tag for all fourteen legacy operations. */
     u32 save_cmd = cmd & ~SSCMD_SAVE_ACK;
-    if (save_cmd - SSCMD_PRINTF > SSCMD_SELECT - SSCMD_PRINTF)
+    if (save_cmd - SSCMD_PRINTF > SSCMD_FIRSTDISC - SSCMD_PRINTF)
         save_cmd = cmd;
     switch(save_cmd){
 	case SSCMD_PRINTF:
@@ -906,6 +906,7 @@ void ss_cmd_handle(void)
 		retv = list_disc(SS_ARG, 0);
         goto save_reply;
 	case SSCMD_LOADDISC:
+	case SSCMD_FIRSTDISC:
 		// 装载镜像
 		/* Stop the GIF reader before disc parsing reuses its workspace. */
 		gif_decode_exit();
@@ -915,7 +916,7 @@ void ss_cmd_handle(void)
                 retv = unload_disc();
                 disc_removed = 0;
             }
-        } else retv = load_disc(SS_ARG, 1);
+        } else retv = load_disc(SS_ARG, save_cmd == SSCMD_FIRSTDISC ? 3 : 1);
         goto save_reply;
 	case SSCMD_CHECK:
 	{

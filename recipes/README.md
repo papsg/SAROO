@@ -159,3 +159,9 @@ callbacks and remain opt-in with explicit audio/timing, route and physical
 limits. The linked notes provide original attribution, exact Sega/Hitachi
 sections, source identities and reproducible checks. Japanese Die Hard needs
 the already-public twelve-record engine; no new firmware runtime is added.
+
+Command & Conquer USA [GDI](command-conquer-us-gdi-sector.json) and
+[NOD](command-conquer-us-nod-sector.json) preserve the reset correction with a
+complete loaded-file guard. Both compile to the same pack. They require the
+checked-load MCU/menu capability; the original callback remains available.
+See [source, attribution, pairing and limits](../doc/SPECIAL-SERVICE-PROFILES.md).

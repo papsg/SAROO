@@ -486,6 +486,13 @@ static void read_1st(void)
 
 	/* SYSINFO is little-endian and shared with the MCU. */
 	u32 action = disc_type == 0 ? __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38)) : 0;
+	if ((action & 0xffffff80u) == 0x534f5780u) {
+		action = sd_overlay_checked_action(action);
+		if (action == 0xffffffffu) {
+			printk("Invalid overlay metadata; reset required.\n");
+			while (1);
+		}
+	}
 	switch(action) {
 	case SD_OVERLAY_REPLACEMENT:
 	case SD_OVERLAY_TAG | 1:

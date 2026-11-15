@@ -9,6 +9,7 @@ typedef uint8_t u8;
 typedef struct { int current, num; } MENU_DESC;
 static MENU_DESC sel_menu = {.current = 3, .num = MENU_ITEMS};
 static int page = 2, total_disc, total_page, sel_mode, use_sys_load, cover_top;
+static int skip_patch;
 static uint32_t catalog_count = 64;
 #define IMGINFO_ADDR (&catalog_count)
 #define LE32(p) (*(uint32_t *)(p))
@@ -16,6 +17,7 @@ static uint32_t catalog_count = 64;
 #ifdef SD_OVERLAY_REQUEST
 static uint8_t sysinfo[0x40];
 static unsigned expected_overlay_bit;
+static unsigned expected_load_command = SSCMD_LOADDISC;
 #define SYSINFO_ADDR ((uintptr_t)sysinfo)
 #define REG8(address) (*(uint8_t *)(address))
 #else
@@ -29,7 +31,7 @@ static int power_error, binary_calls, off_calls, on_calls;
 static volatile uint16_t *command_register(void)
 {
     if (command_word) {
-        assert(command_word == SSCMD_LOADDISC);
+        assert(command_word == expected_load_command);
         assert(reply_arg == ((page * MENU_ITEMS + sel_menu.current) | expected_overlay_bit));
         commands++;
         reply_arg = next_reply;
@@ -104,13 +106,19 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "power")) { check_power_gate();return 0; }
 #ifdef SD_OVERLAY_REQUEST
     if (!strcmp(argv[1], "overlay")) {
-        for (unsigned capability = 0; capability <= 3; ++capability) {
+        for (unsigned capability = 0; capability <= 4; ++capability) {
             sysinfo[0x3c] = capability;
-            expected_overlay_bit = capability >= 1 && capability <= SD_OVERLAY_VERSION ?
+            expected_overlay_bit = capability >= 1 && capability < 3 ?
                                    SD_OVERLAY_REQUEST : 0;
+            expected_load_command = capability >= 3 && capability <= SD_OVERLAY_VERSION ?
+                                    SSCMD_FIRSTDISC : SSCMD_LOADDISC;
             check(PAD_A, 0, 0);
             expected_overlay_bit = 0;
+            expected_load_command = SSCMD_LOADDISC;
             check(PAD_Z, 0, 0);
+            skip_patch = 1;
+            check(PAD_A, 0, 0);
+            skip_patch = 0;
         }
         return 0;
     }
