@@ -79,6 +79,7 @@ static void my_06b0(void) { assert(0); }
 static void kof95_handle(void) { assert(0); }
 static void kof95_yzb_hack_handle(void) { assert(0); }
 static void card_init(void) { ++cards; }
+static int bios_cd_cmd(int type) { (void)type; assert(0); return 0; }
 static void other_patch(void) { ++others; }
 static void set_break_pc(int pc, int mode) { assert(pc == game_break_pc && !mode); ++breaks; }
 static void install_ubr_isr(void) { ++installs; }
@@ -227,6 +228,29 @@ static void music_launches(void)
             assert(!others && !cards && !jumps);
             for (unsigned i = 0; i < 108; ++i) assert(high[0xa3b8+i] == 0xa5);
         }
+}
+
+static void fenrir_launches(void)
+{
+    for (unsigned route = 0; route < 5; ++route) {
+        reset("CD0000001 V1.000", 79);
+        REG16(0x0600dcca) = 0x6012;
+        REG16(0x0600dccc) = 0x400b;
+        REG32(0x0600dd18) = 0x02000f30;
+        overlay_handoff = __builtin_bswap32(route ? SD_OVERLAY_REPLACEMENT : 0);
+        if (route == 2) disc_type = 4;
+        if (route == 3) skip_patch = 1;
+        if (route == 4) { put32(0, 0x4600dd18); put32(4, 0x0600aa00); }
+        read_1st(); finished();
+        int fallback = route == 0 || route == 2;
+        assert(REG16(0x0600dcca) == (fallback ? 9 : 0x6012));
+        u16 expected_call = 0x400b;
+        if (fallback) *(u8 *)&expected_call = 0x41;
+        assert(REG16(0x0600dccc) == expected_call);
+        assert(REG32(0x0600dd18) == (route == 4 ? 0x0600aa00 : fallback ?
+               (u32)(uintptr_t)bios_cd_cmd : 0x02000f30));
+        assert(!others && !cards && !jumps);
+    }
 }
 
 static void cnc_reset(void)
@@ -1060,6 +1084,8 @@ int main(int argc, char **argv)
         cnc_overlay();
     }else if(!strcmp(mode, "music")){
         music_launches();
+    }else if(!strcmp(mode, "fenrir")){
+        fenrir_launches();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){
@@ -1086,7 +1112,8 @@ int main(int argc, char **argv)
                g->patch_func == Hissatsu_Pachinko_Collection_patch ||
                g->patch_func == Heart_of_Darkness_patch ||
                g->patch_func == Metal_Slug_A_patch ||
-               g->patch_func == KAITEI_DAISENSOU_patch) continue;
+               g->patch_func == KAITEI_DAISENSOU_patch ||
+               g->patch_func == Fenrir_patch) continue;
             if(!strcmp(g->id,"T-7028H   V1.000")) continue; /* Covered by cnc_reset. */
             reset(g->id, 73); game_break_pc = 0x6004320;
             read_1st(); finished(); assert(others == 1 && cfg_reads == 1 && !cards && !jumps);

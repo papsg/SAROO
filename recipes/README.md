@@ -170,3 +170,8 @@ See [source, attribution, pairing and limits](../doc/SPECIAL-SERVICE-PROFILES.md
 timed music preload/copy through an exact-source profile. Its checked-read
 guard and reader ABI are preserved; timing/audio and whole-game qualification
 remain open. See [service notes](../doc/SPECIAL-SERVICE-PROFILES.md#in-the-hunt-usa-v1000).
+
+[Fenrir 2020-07-22](fenrir-loader-20200722-sector.json) adapts one loader call
+only for the pinned raw conversion of that official ISO delivered by SAROO.
+It preserves the original callback and does not qualify physical Fenrir reads.
+See [exact scope and checks](../doc/SPECIAL-SERVICE-PROFILES.md#fenrir-loader-2020-07-22).

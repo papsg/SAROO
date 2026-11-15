@@ -105,6 +105,38 @@ class SpecialRecipeTests(unittest.TestCase):
     def test_us_music_complete_short_failed_repeated_preload_and_copy_contract(self):
         self.check_music(self.source(), 0x0600a3b8, 0x2600a420)
 
+    def test_fenrir_exact_virtual_disc_changes_one_pointer_literal(self):
+        source = json.loads((overlay.ROOT / 'recipes/fenrir-loader-20200722-sector.json').read_text())
+        self.assertEqual(source['disc_id'], 'CD0000001 V1.000')
+        self.assertEqual([(w['fad'], w['offset'], w['before'], w['after']) for w in source['writes']],
+                         [(193, 1320, '0600029c', '02000f30')])
+        self.assertTrue(source['replaces_callback'])
+        recipe, raws = self.source_fixture(source, b'V1.000', {})
+        self.check_delivery(recipe, raws)
+
+    def test_fenrir_indirect_call_matches_retained_adapter_at_next_bios_call(self):
+        base, stop, callee = 0x0600dcc6, 0x0600dcd4, 0x06090000
+        # Authored isolated call/literal window from the reviewed disassembly.
+        # No loader executable is included; the external launch call is modeled.
+        for seed in (0, 127, 255):
+            results = []
+            for legacy in (False, True):
+                code = bytearray(94)
+                code[:14] = bytes.fromhex('d114d8146012400b0009d1136012')
+                code[82:86] = (callee if legacy else 0x02000f30).to_bytes(4, 'big')
+                code[86:90] = (0x06000288).to_bytes(4, 'big')
+                code[90:94] = (0x060002cc).to_bytes(4, 'big')
+                if legacy:
+                    code[4:6] = bytes.fromhex('0009')
+                    code[6] = 0x41
+                ram = region(0x02000f30, 4) | region(0x060002cc, 4)
+                ram.update(enumerate(callee.to_bytes(4, 'big'), 0x02000f30))
+                results.append(execute(code, base, stop, ram, external=callee, seed=seed))
+            self.assertEqual(results[0], results[1])
+            self.assertEqual(results[0][1][0], int.from_bytes(bytes(ram[0x060002cc+i] for i in range(4)), 'big'))
+            self.assertEqual(results[0][1][1], 0x060002cc)
+            self.assertEqual(results[0][4], [])
+
 
 if __name__ == '__main__':
     unittest.main()

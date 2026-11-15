@@ -221,3 +221,45 @@ Missing evidence is preserved as a limit, never rewritten into a passing result.
 python3 -B -m unittest discover -s tests -p test_sector_overlay_special.py -v
 python3 -B -m unittest discover -s tests -p test_menu_vdp1_order.py -v
 ```
+
+## Fenrir loader 2020-07-22
+
+[Recipe](../recipes/fenrir-loader-20200722-sector.json), adapted from paps-g
+`e2029f04` and the
+[original upstream Fenrir adapter](https://github.com/tpunix/SAROO/blob/c31bf6192eff59533d7268dfdf6c791f11a1f7c9/Firm_Saturn/game_patch.c).
+The [official ISO](https://www.fenrir-ode.fr/release/dev/20200722/Fenrir.iso)
+is 1,548,288 bytes, SHA-256
+`0b30d1475c080c31cf2e4396ae37c33291daf50df6ce17ae3e6620c5cba6c66f`.
+Its pinned Mode1/2352 conversion is
+`5418143f104428ca8231194c906ef8a01f0f64501f5013c6726b7c4dd0ad6532`.
+Every original 2,048-byte payload remains unchanged. This recipe applies to
+that exact geometry and source, not all ISO layouts sharing its product ID.
+
+`CD0000001 V1.000` loads `FENRIR.BIN;1`, LBA24, 141,376 bytes at `06004000`.
+Change only the `0600DD18` literal, `0600029C→02000F30`. The original
+`MOV.L @R1,R0; JSR @R0; NOP` uses the existing published launch-service slot.
+The retained adapter instead omits the dereference and changes the call
+register. After return, native code replaces R1/R0 with the next BIOS pointer.
+Bounded execution checks match both complete modeled states there, including
+saved registers, PR, call arguments and untouched RAM. External launch and
+cartridge accesses remain models. The relevant instruction rules are
+[Hitachi SH7604 §2.4, Table2.12 pp.33–34 and §4.5](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=49);
+file/IP mapping follows [Sega ST-040 §4.3, pp.28–29 and §4.7](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf).
+
+The one-record372-byte `20F1AA4B.SOV` has SHA-256
+`83df58154d878fb693d218b1a5d2f115fc0d51c62fcae3b5d850f37d57051238`.
+Current full-CUE compilation reproduces the archived pack; original ISO/raw
+payload equality and complete logical original/postimages revalidate.
+The logical stream covers86 sectors, with1,984 unedited final padding bytes
+generated independently; complete raw-track authentication is provided by
+the separate compiler run. Native
+C/synthetic-sector checks retain malformed-sector refusal/retry. Actual menu
+dispatch preserves the original adapter on missing/rejected/physical routes,
+explicit skip and later user configuration. No firmware runtime/resource change
+is needed. Tests use the same commands as the music profile above.
+
+Physical Fenrir-owned reads do not pass through this sector overlay. Their
+route/lifecycle design, full loader execution and actual device acceptance
+remain open. The original Fenrir callback stays available; no CD-block
+coexistence, physical Fenrir support or issue closure is claimed. The separately
+missing exact RMENU2 revision is not substituted by this loader.

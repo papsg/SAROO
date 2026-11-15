@@ -58,7 +58,8 @@ class MenuVDP1OrderTests(unittest.TestCase):
                   b'Metal_Slug_patch', b'MANX_TT_SUPER_BIKE_patch', b'WHIZZ_patch',
                   b'Ultimate_Mortal_Kombat_3_patch', b'Hebereke_Popoitto_patch',
                   b'srmp7_patch', b'Hissatsu_Pachinko_Collection_patch',
-                  b'Heart_of_Darkness_patch', b'Metal_Slug_A_patch', b'KAITEI_DAISENSOU_patch'}
+                  b'Heart_of_Darkness_patch', b'Metal_Slug_A_patch', b'KAITEI_DAISENSOU_patch',
+                  b'Fenrir_patch'}
         assert actual <= names, 'Required game callbacks missing from actual table'
         if b'CNC_reset_patch' in names:
             actual.add(b'CNC_reset_patch')
@@ -117,7 +118,7 @@ class MenuVDP1OrderTests(unittest.TestCase):
                      b'VAMPIRE_SAVIOR_handle', b'Batman_Forever_The_Arcade_Game_handle1',
                      b'MARVEL_SUPER_handle', b'Pia_Carrot_e_Youkoso_2_handle1',
                      b'xmvsf_handle1', b'xmvsf_handle2', b'KAITEI_DAISENSOU_handle1',
-                     b'KAITEI_DAISENSOU_handle2'):
+                     b'KAITEI_DAISENSOU_handle2', b'bios_cd_cmd'):
             code = code.replace(b'(u32)' + name, b'(u32)(uintptr_t)' + name)
 
         build = ROOT / 'tests/build/menu-vdp1-order'
@@ -251,6 +252,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
 
     def test_music_source_delivery_retains_fallback_skip_and_user_configuration(self):
         self.scenario('music')
+
+    def test_fenrir_virtual_source_retains_physical_and_missing_profile_callbacks(self):
+        self.scenario('fenrir')
 
 
 if __name__ == '__main__':
