@@ -156,6 +156,70 @@ The host builder reuses the workspace's pinned dependencies; it
 adds no Rust code to either processor's firmware. Tests are available with
 `cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build`.
 
+### Vandal Hearts native startup comparison
+
+`firmware-build vandal` builds a headless interpreter and the public
+[`tests/vandal_native.c`](../tests/vandal_native.c) comparison. It uses a clean,
+caller-supplied local [Yabause source checkout](https://github.com/Yabause/yabause/tree/7e38821dbac265490f115e163c523a939acda759)
+at that exact revision. It never downloads, installs firmware, opens a device
+or changes that checkout. This command currently supports macOS with local
+CMake, Ninja and Apple's C compiler/frameworks.
+
+```sh
+tools/target/debug/firmware-build vandal --repo "$PWD" \
+  --out tests/build/vandal-native-check \
+  --upstream /path/to/local/yabause-checkout --inputs /path/to/inputs.json
+```
+
+The input JSON contains exactly five objects named `bios`, `ip_original`,
+`ip_postimage`, `packed_original` and `packed_postimage`. Each has a `path`
+(relative to that JSON or absolute) and a complete lowercase `sha256`.
+Inputs are bounded regular files of524,288 /6,144 /6,144 /4,608 /4,608 bytes.
+Supply your own BIOS and exact DLCT v20240517 media; neither is distributed.
+Required original SHA-256 identities are:
+
+| Input | SHA-256 |
+| --- | --- |
+| BIOS | `96e106f740ab448cf89f0dd49dfbac7fe5391cb6bd6e14ad5e3061c13330266f` |
+| Complete IP | `15c5342a7fdfdbded2d3bb6f7ec3eb688fc5a401e47310d3a25aa71bc5288697` |
+| Packed bootstrap tail | `e328e1f325f073d8a5843c15bf869bbe31b76de38d994aed9b6532b5d542c0d5` |
+
+Only IP offsets`f00h–f79h` and packed offsets`d6h–d7h` may differ in the
+postimages. The native comparison executes the original AIP with the retained
+tpunix/yzb48-byte control and the replacement native AIP, original CD callees,
+supplied BIOS unpacker and original VDP routines. It covers ten cases: cache
+off/on with five legal entry-state/stack seeds. It compares complete2MiB work
+RAM after accounting only for intended input/code differences, including the
+156-byte maximum observed private stack,288 VDP register bytes,512KiB VDP2
+VRAM and4KiB CRAM. R0/R1/PR differ at handoff; their actual first definitions
+execute before comparing the complete live register state. Four broken-code
+controls must fail for their runtime effects: bad packed instruction, source
+pointer, reader argument and delayed literal load.
+
+Only two build adaptations apply to the staged dependency: omit its unused
+obsolete macOS optical-drive driver and raise Musashi's old CMake minimum.
+No emulator instruction/cache/device code changes. Network/frontends are
+disabled. Original dependency files/notices, copied fixture/inputs, exact
+commands, compiler/tool versions, logs and hash receipt stay in the fresh
+ignored output. The workflow bounds source/output sizes, each subprocess to60
+seconds and the complete build/check to300 seconds; an interrupted/failed run
+has no successful receipt and preserves its logs.
+
+This host fixture is GPL-2.0-or-later; see
+[`tests/LICENSE-vandal-native`](../tests/LICENSE-vandal-native). Yabause retains
+its own copyright and GPL notices. The Rust orchestrator keeps its existing
+license and is not linked into firmware. Original workaround attribution:
+[tpunix addition](https://github.com/tpunix/SAROO/commit/e6854bf651f55b1f413ea8fa700a10bff7562cae),
+[yzb revision](https://github.com/tpunix/SAROO/commit/f6a35a4d1d5a32af507f7d6d02edc8b7ab169fbc);
+the native rewrite and comparison are papsg's adaptation.
+
+CD replies/FIFO prefix, BIOS clock effects and one SMPC read are explicit
+models. Scheduling-call counts are execution bounds, not physical timing.
+This does not qualify complete BIOS/game boot, repeated reads, reset lifetime,
+PCM/audio, gameplay or a Saturn. It does not publish or activate a recipe.
+The standard Cargo test command above also tests refusal of incomplete native
+results, collateral edits and malformed extents without proprietary assets.
+
 ### Original MCU App compile/link check
 
 The `mcu` command stages public MCU inputs unchanged and offline CMSIS/STM32/RTX

@@ -13,6 +13,8 @@ use std::{
 mod fpga;
 #[cfg(unix)]
 mod mcu;
+#[cfg(unix)]
+mod vandal;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const IMAGE: &str =
@@ -422,7 +424,25 @@ fn run() -> Result<()> {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
+        println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
         return Ok(());
+    }
+    if args.len() == 9
+        && args[0] == "vandal"
+        && args[1] == "--repo"
+        && args[3] == "--out"
+        && args[5] == "--upstream"
+        && args[7] == "--inputs"
+    {
+        #[cfg(unix)]
+        return vandal::run(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+            Path::new(&args[8]),
+        );
+        #[cfg(not(unix))]
+        return fail("The native comparison requires a Unix host");
     }
     if args.len() == 7
         && args[0] == "fpga"
@@ -462,7 +482,7 @@ fn run() -> Result<()> {
         return fail("The MCU compile/link check requires a Unix host");
     }
     if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
-        return fail("Expected menu, mcu or fpga arguments; use --help");
+        return fail("Expected menu, mcu, fpga or vandal arguments; use --help");
     }
     build(Path::new(&args[2]), Path::new(&args[4]))
 }
