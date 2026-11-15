@@ -68,6 +68,60 @@ Run `make -C tests check-sector-overlay` for the compiler and actual C
 decoder checks. The fixtures generate synthetic raw sectors, derive
 parity independently, and compare all 2,352 bytes after delivery.
 
+## Finite native-source edits
+
+Optional `expire_after_fad` supplies a final source-verified completion sector
+strictly after every edit and read-only guard. It requires callback replacement
+and cannot combine with `first_read_guard`, `rom_cart` or alternative bundles.
+ABI6 retains the existing header, record sizes and twelve-record allocation;
+it uses ABI3 fragment encoding and marks only the final zero-edit record with
+byte9=1. All other record flags remain zero. Earlier decoders reject ABI6.
+
+The MCU admits this format only on a checked initial launch, using the existing
+`FIRSTDISC`/`ROMDISC` request. Ordinary legacy and automatic disc-change loads
+cannot arm it. All target sectors, including completion, must pass preflight;
+save-selection or I/O failure cannot publish callback replacement. Missing or
+rejected profiles retain normal callback handling.
+
+Preflight does not count as delivery. A bounded two-byte pending mask tracks
+edited records, including all fragments; read-only guards do not require a
+playback read. An early valid completion returns its original bytes without
+retiring outstanding edits. A corrupt edit or completion refuses and preserves
+retry state. Once every edit has been delivered, the valid completion stops
+editing. Later reads return original bytes. The admitted launch action remains
+owned by the selected pack until unload/replacement clears it; explicit rearming
+or a fresh checked launch resets pending delivery. Existing ABI4 C&C completion
+keeps its separate loaded-file descriptor and retirement behavior.
+
+This adapts paps-g's `e42fd872` boot-lifetime work, with explicit ABI6 pairing,
+pending-delivery admission and unchanged legacy controls. The format is a SAROO
+contract, not a Sega requirement. Frame/raw-sector interpretation follows the
+primary specifications cited above. This prerequisite does not publish or
+qualify a Vandal Hearts recipe or replace its retained firmware callback.
+
+Six synthetic lifetime/source methods and14 real-FatFs admission methods cover
+split source edits, independent complete raw postimages, an early completion,
+corruption/retry, both edit orders, cartridge modes0/1/4, rearming, twelve/thirteen-record
+bounds, unsupported service combinations, older-decoder refusal, load/save faults,
+fresh checked launch and automatic-change exclusion. Full-source verification
+also rereads original sectors after retirement. These are host/model checks.
+
+GNU App load is59,428 bytes with LTO /63,696 without, leaving6,108 /1,840.
+Compared with the preceding ROM-capable build, this adds208 /276 load bytes.
+Static DTCM span remains50,896; the pending mask occupies two bytes within the
+linked layout. Non-LTO direct validation/apply/arm frames are72/48/20 bytes;
+these do not establish full task-stack headroom. Menu and FPGA sources are
+unchanged. Physical timing, actual game read/reset lifetime and audio/gameplay
+qualification remain separate gates.
+
+The combined `make -j6 -C tests check` run passes1,167 Python test-case
+executions with one Windows-only skip, plus all25 Rust tests, formatting and
+strict Clippy. The linked-menu and Arm RTX checks are enabled. All124 overlay
+methods pass; the six finite-source and14 FatFs methods also pass optimized
+builds. Both MCU links match144 current source/SDK inputs and their ELF hashes;
+the unchanged menu matches38 inputs, ELF, image and font. These records qualify
+this generic prerequisite, not the unfinished native game conversion.
+
 ## Disc mount and sector delivery
 
 An overlay-capable menu requests the feature when loading a game. The MCU

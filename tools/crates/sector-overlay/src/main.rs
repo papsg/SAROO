@@ -44,6 +44,7 @@ struct Recipe {
     cart_mode: u8,
     first_read_guard: Option<ChecksumGuard>,
     rom_cart: Option<rom::RomCart>,
+    expire_after_fad: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +210,19 @@ fn targets(recipe: &Recipe) -> Result<Targets> {
         if !(150..450000).contains(&guard.fad) || by_fad.insert(guard.fad, Vec::new()).is_some() {
             return fail("Invalid, duplicated or edited guard sector");
         }
+    }
+    if let Some(completion) = recipe.expire_after_fad {
+        if !recipe.replaces_callback
+            || recipe.first_read_guard.is_some()
+            || recipe.rom_cart.is_some()
+            || !(150..450000).contains(&completion)
+            || by_fad
+                .last_key_value()
+                .is_none_or(|(&fad, _)| completion <= fad)
+        {
+            return fail("Finite source edits require a separate final completion sector");
+        }
+        by_fad.insert(completion, Vec::new());
     }
     if by_fad.len() > MAX_RECORDS {
         return fail("Too many target sectors");
@@ -385,7 +399,9 @@ fn encode(
     let mut pack = vec![0; size];
     pack[..4].copy_from_slice(b"SSO1");
     let long_edit = targets.values().flatten().any(|edit| edit.before.len() > 4);
-    pack[4] = if recipe.rom_cart.is_some() {
+    pack[4] = if recipe.expire_after_fad.is_some() {
+        6
+    } else if recipe.rom_cart.is_some() {
         5
     } else if recipe.replaces_callback || long_edit {
         3
@@ -434,6 +450,7 @@ fn encode(
         record[..4].copy_from_slice(&fad.to_be_bytes());
         record[4..8].copy_from_slice(&checksum.to_be_bytes());
         if edits.is_empty() {
+            record[9] = u8::from(recipe.expire_after_fad == Some(fad));
             continue;
         }
         record[8] = edits.len() as u8;

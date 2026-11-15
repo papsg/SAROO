@@ -29,6 +29,56 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(!valid);
+    if (!strcmp(argv[1], "finite")) {
+        assert(argc == 8 && !sector_overlay_alternatives());
+        uint8_t source[2][RAW_BYTES], post[2][RAW_BYTES], marker[RAW_BYTES], buffer[RAW_BYTES];
+        assert(load(argv[3], source[0], RAW_BYTES) == RAW_BYTES);
+        assert(load(argv[4], post[0], RAW_BYTES) == RAW_BYTES);
+        assert(load(argv[5], source[1], RAW_BYTES) == RAW_BYTES);
+        assert(load(argv[6], post[1], RAW_BYTES) == RAW_BYTES);
+        assert(load(argv[7], marker, RAW_BYTES) == RAW_BYTES);
+        const uint32_t fads[] = {151, 154};
+        const unsigned action = pack[7];
+        assert(action == 0x80 || action == 0x81 || action == 0x84);
+        assert(!sector_overlay_action());
+        for (unsigned order = 0; order < 2; ++order) {
+            sector_overlay_arm();
+            assert(sector_overlay_action() == action);
+            /* Preflight and an early marker cannot stand in for delivery. */
+            for (unsigned i = 0; i < sector_overlay_count(); ++i) {
+                uint32_t fad = sector_overlay_fad(i);
+                if (fad == 151 || fad == 154)
+                    assert(!sector_overlay_check(i, source[fad == 154]));
+            }
+            memcpy(buffer, marker, RAW_BYTES);
+            assert(!sector_overlay_apply(155, buffer) && !memcmp(buffer, marker, RAW_BYTES));
+            unsigned first = order, second = order ^ 1;
+            memcpy(buffer, source[first], RAW_BYTES); buffer[2064] ^= 1;
+            assert(sector_overlay_apply(fads[first], buffer) < 0);
+            assert(buffer[2064] == (source[first][2064] ^ 1));
+            memcpy(buffer, source[second], RAW_BYTES);
+            assert(sector_overlay_apply(fads[second], buffer) == 1 && !memcmp(buffer, post[second], RAW_BYTES));
+            memcpy(buffer, marker, RAW_BYTES);
+            assert(!sector_overlay_apply(155, buffer));
+            memcpy(buffer, source[first], RAW_BYTES);
+            assert(sector_overlay_apply(fads[first], buffer) == 1 && !memcmp(buffer, post[first], RAW_BYTES));
+            memcpy(buffer, marker, RAW_BYTES); buffer[2351] ^= 1;
+            assert(sector_overlay_apply(155, buffer) < 0);
+            memcpy(buffer, source[second], RAW_BYTES);
+            assert(sector_overlay_apply(fads[second], buffer) == 1 && !memcmp(buffer, post[second], RAW_BYTES));
+            memcpy(buffer, marker, RAW_BYTES);
+            assert(!sector_overlay_apply(155, buffer) && !memcmp(buffer, marker, RAW_BYTES));
+            assert(sector_overlay_action() == action && sector_overlay_replaces_callback());
+            assert(sector_overlay_select(0) < 0);
+            for (unsigned i = 0; i < 2; ++i) {
+                memcpy(buffer, source[i], RAW_BYTES);
+                assert(!sector_overlay_apply(fads[i], buffer) && !memcmp(buffer, source[i], RAW_BYTES));
+            }
+        }
+        sector_overlay_clear();
+        assert(!sector_overlay_action() && !sector_overlay_count());
+        return 0;
+    }
     if (!strcmp(argv[1], "guarded")) {
         assert(argc == 6 && sector_overlay_count() == 2);
         uint8_t original[RAW_BYTES], post[RAW_BYTES], marker[RAW_BYTES], sector[RAW_BYTES];
@@ -59,6 +109,7 @@ int main(int argc, char **argv)
         FILE *source = fopen(argv[3], "rb"), *post = fopen(argv[4], "rb");
         assert(source && post);
         unsigned fad = (unsigned)strtoul(argv[5], NULL, 10);
+        const unsigned first_fad = fad;
         unsigned expected_hits = (unsigned)strtoul(argv[6], NULL, 10);
         assert(fad >= 150 && fad < 450000);
         uint8_t original[RAW_BYTES], expected[RAW_BYTES];
@@ -75,6 +126,16 @@ int main(int argc, char **argv)
         }
         assert(count && hits == expected_hits && !ferror(source));
         assert(fgetc(post) == EOF && !ferror(post));
+        if (pack[4] == 6 && sector_overlay_fad(0) >= first_fad &&
+            sector_overlay_fad(sector_overlay_count() - 1) < fad) {
+            assert(sector_overlay_action() == pack[7]);
+            rewind(source);
+            for (unsigned at = first_fad; at < fad; ++at) {
+                assert(fread(original, 1, RAW_BYTES, source) == RAW_BYTES);
+                memcpy(expected, original, RAW_BYTES);
+                assert(!sector_overlay_apply(at, original) && !memcmp(original, expected, RAW_BYTES));
+            }
+        }
         assert(!fclose(source) && !fclose(post));
         printf("%u streamed sectors, %u edits: complete raw output passed\n", count, hits);
         return 0;

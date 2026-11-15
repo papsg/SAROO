@@ -5,8 +5,9 @@
 enum { RAW_BYTES = 2352, DATA_START = 16, TAIL_START = 2064, RECORD_TAIL = 60 };
 
 static uint8_t pack[SECTOR_OVERLAY_MAX_BYTES];
+/* armed=1 edits sectors; armed=2 retains an admitted finite launch only. */
 static uint8_t record_count, armed;
-static uint16_t selected;
+static uint16_t selected, pending;
 
 #if SECTOR_OVERLAY_MAX_RECORDS > 16
 #error Overlay selection exceeds its mask
@@ -38,7 +39,7 @@ uint32_t sector_overlay_crc32(const void *data, size_t size)
 void sector_overlay_clear(void)
 {
     armed = record_count = 0;
-    selected = 0;
+    selected = pending = 0;
 }
 
 uint8_t *sector_overlay_staging(void)
@@ -108,11 +109,12 @@ int sector_overlay_validate(size_t size, const char product[10])
         memcmp(pack, "SSO1", 4) || !pack[5] ||
         pack[5] > SECTOR_OVERLAY_MAX_RECORDS || pack[6] > 1 ||
         (pack[6] && pack[5] < 2) ||
-        pack[4] < 1 || pack[4] > 5 ||
+        pack[4] < 1 || pack[4] > 6 ||
         ((pack[7] & 0x7f) != 0 && (pack[7] & 0x7f) != 1 && (pack[7] & 0x7f) != 4) ||
         (pack[7] & 0x80 && pack[4] < 3) ||
         (pack[4] == 4 && !(pack[7] & 0x80)) ||
         (pack[4] == 5 && (pack[6] || pack[7] != 0x80)) ||
+        (pack[4] == 6 && (pack[5] < 2 || pack[6] || !(pack[7] & 0x80))) ||
         size != SECTOR_OVERLAY_HEADER_BYTES + pack[5] * SECTOR_OVERLAY_RECORD_BYTES ||
         be16(pack + 18) != size || memcmp(pack + 8, product, 10)) return -1;
 
@@ -140,7 +142,10 @@ int sector_overlay_validate(size_t size, const char product[10])
                 be32(r) + (length - 1) / 2048 - offset / 2048) return -1;
     }
 
-    unsigned format = pack[4] == 5 ? 3 : pack[4];
+    if (pack[4] == 6 && (record_at(pack[5] - 1)[8] ||
+        be32(record_at(pack[5] - 1)) <= be32(record_at(pack[5] - 2)))) return -1;
+    unsigned format = pack[4] >= 5 ? 3 : pack[4];
+    unsigned has_edits = 0;
     uint32_t previous = 149;
     for (unsigned i = 0; i < pack[5]; ++i) {
         const uint8_t *record = record_at(i);
@@ -148,7 +153,8 @@ int sector_overlay_validate(size_t size, const char product[10])
         unsigned edits = record[8];
         if (fad < 150 || fad < previous ||
             fad >= 450000 || nonzero(record + 10, 2) ||
-            record[9] != (pack[4] == 4 && i == 1)) return -1;
+            record[9] != ((pack[4] == 4 && i == 1) ||
+                          (pack[4] == 6 && i + 1 == pack[5]))) return -1;
         if (fad == previous) {
             const uint8_t *prior = record_at(i - 1);
             if (pack[6]) {
@@ -170,6 +176,7 @@ int sector_overlay_validate(size_t size, const char product[10])
             if (pack[4] == 1 || pack[6] || nonzero(record + 12, 336)) return -1;
             continue;
         }
+        has_edits = 1;
         if (nonzero(record + RECORD_TAIL + 4, 8)) return -1;
         if (edits & 0x80) {
             unsigned width = edits & 0x7f, offset = be16(record + 12);
@@ -196,6 +203,7 @@ int sector_overlay_validate(size_t size, const char product[10])
             end = offset + width;
         }
     }
+    if (pack[4] == 6 && !has_edits) return -1;
     record_count = pack[5];
     selected = pack[6] ? 0 : (uint16_t)((1u << record_count) - 1);
     return 0;
@@ -225,12 +233,16 @@ int sector_overlay_check(unsigned index, const uint8_t sector[RAW_BYTES])
 
 void sector_overlay_arm(void)
 {
+    pending = 0;
+    if (pack[4] == 6)
+        for (unsigned i = 0; i < record_count; ++i)
+            if (record_at(i)[8]) pending |= (uint16_t)(1u << i);
     armed = selected != 0;
 }
 
 int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
 {
-    if (!armed) return 0;
+    if (!(armed & 1)) return 0;
     unsigned applied = 0;
     for (unsigned i = 0; i < record_count; ++i) {
         if (!(selected & (1u << i))) continue;
@@ -242,6 +254,7 @@ int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
         if (!applied && sector_overlay_check(i, sector)) return -1;
         if (!record[8]) {
             if (pack[4] == 4) armed = 0;
+            else if (record[9] && !pending) armed = 2;
             return 0;
         }
         if (record[8] & 0x80) {
@@ -252,6 +265,7 @@ int sector_overlay_apply(uint32_t fad, uint8_t sector[RAW_BYTES])
                 memcpy(sector + be16(edit), edit + 8, edit[2]);
             }
         }
+        if (pack[4] == 6) pending &= (uint16_t)~(1u << i);
         applied = 1;
         if (i + 1 < record_count && (selected & (1u << (i + 1))) &&
             sector_overlay_fad(i + 1) == fad) continue;

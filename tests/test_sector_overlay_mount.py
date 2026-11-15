@@ -24,7 +24,7 @@ class OverlayMountTests(support.MCUSaveTest):
             root = Path(folder)
             card = root / 'card.img'
             support.make_fat32(card)
-            count = 2 if 54 <= value <= 60 else 12 if value in (22, 23) else 1
+            count = 3 if 69 <= value <= 75 else 2 if 54 <= value <= 60 else 12 if value in (22, 23) else 1
             first = sector(150, ip=True, version=b'V1.001' if value == 14 else b'V1.000')
             sources = [sector(fad) for fad in range(151, 151 + count)]
             last = sector(151 + count, 0x72)
@@ -44,7 +44,7 @@ class OverlayMountTests(support.MCUSaveTest):
                 pack[offset + 8] = 1
                 pack[offset + 12:offset + 24] = b'\0\x20\x01\0\x71\0\0\0\xab\0\0\0'
                 pack[offset + 60:offset + RECORD_BYTES] = edited[2064:]
-            if value >= 61:
+            if 61 <= value <= 68:
                 pack[4],pack[7]=5,0x80
                 if value==65: sources[0]=sector(151,0x73)
             if 54 <= value <= 60:
@@ -61,6 +61,17 @@ class OverlayMountTests(support.MCUSaveTest):
                 marker[9]=1
                 pack[HEADER_BYTES+RECORD_BYTES:]=marker
                 if value==57:sources[1]=sector(152,0x73)
+            if 69 <= value <= 75:
+                pack[4], pack[7] = 6, 0x80
+                marker = bytearray(RECORD_BYTES)
+                marker[:8] = (153).to_bytes(4, 'big') + zlib.crc32(sources[2]).to_bytes(4, 'big')
+                marker[9] = 1
+                pack[HEADER_BYTES + 2 * RECORD_BYTES:] = marker
+                edited = bytearray(sources[0])
+                edited[32] = 0xab
+                edited = canonical(edited)
+                if value == 71:
+                    sources[2] = sector(153, 0x73)
             seal(pack)
             if value == 23:
                 sources[-1] = sector(162, 0x72)
@@ -88,6 +99,11 @@ class OverlayMountTests(support.MCUSaveTest):
     def test_rom_profiles_require_the_explicit_capability_and_retire_on_disc_change(self):
         for value in range(61,69):
             with self.subTest(value=value): self.invoke(value)
+
+    def test_finite_sources_require_checked_admission_and_keep_action_until_unload(self):
+        for value in range(69, 76):
+            with self.subTest(value=value):
+                self.invoke(value)
 
     def test_checked_load_guard_publication_requires_initial_capability_and_complete_preflight(self):
         for value in range(54,61):

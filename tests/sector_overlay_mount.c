@@ -97,6 +97,57 @@ int main(int argc, char **argv)
     create("/D/a.bin", original, original_bytes);
     create(cue_name, single, strlen(single));
     int which = atoi(argv[2]);
+    if (which >= 69) {
+        assert(which <= 75);
+        create(pack_name, pack, pack_bytes);
+        unsigned writes = disk_writes;
+        media_case = 1;
+        if (which == 72) inject_read = 5;
+        if (which == 73) fail_overlay_save = 1;
+        int result = load_disc(which == 70 ? SD_OVERLAY_REQUEST : 0, which == 70 ? 1 : 3);
+        int admitted = which == 69 || which == 74 || which == 75;
+        assert((result != 0) == (which == 72 || which == 73));
+        assert(preflight_reads == (which == 70 ? 0 : which == 72 ? 2 : 3));
+        assert(overlay_sysinfo[0x38/4] == (admitted ? SD_OVERLAY_REPLACEMENT : 0));
+        uint8_t buffer[2352], expected[2352];
+        if (admitted) {
+            memcpy(buffer, original[3], sizeof(buffer));
+            assert(!sector_overlay_apply(153, buffer));
+            verify_overlay(1, 1);
+            memcpy(buffer, original[3], sizeof(buffer));
+            assert(!sector_overlay_apply(153, buffer));
+            verify_overlay(1, 1); /* The later source is still pending. */
+            memcpy(buffer, original[2], sizeof(buffer));
+            memcpy(expected, original[2], sizeof(expected));
+            expected[32] = 0xab;
+            assert(sector_overlay_apply(152, buffer) == 1 && !memcmp(buffer, expected, 2064));
+            memcpy(buffer, original[3], sizeof(buffer)); buffer[2351] ^= 1;
+            assert(sector_overlay_apply(153, buffer) < 0);
+            verify_overlay(1, 1);
+            memcpy(buffer, original[3], sizeof(buffer));
+            assert(!sector_overlay_apply(153, buffer));
+            verify_overlay(1, 0);
+            assert(sector_overlay_action() == 0x80);
+            sector_overlay_publish_handoff();
+            assert(overlay_sysinfo[0x38/4] == SD_OVERLAY_REPLACEMENT);
+            if (which == 74) {
+                assert(!load_disc(0, 3));
+                memcpy(buffer, original[3], sizeof(buffer));
+                assert(!sector_overlay_apply(153, buffer));
+                verify_overlay(1, 1); /* Fresh launch resets pending delivery. */
+            } else if (which == 75) {
+                assert(!load_disc(0, 0));
+                assert(!sector_overlay_action() && !overlay_sysinfo[0x38/4]);
+                verify_overlay(1, 0); /* Automatic changes cannot rearm boot-only edits. */
+            }
+        } else verify_overlay(1, 0);
+        verify_image();
+        assert(!unload_disc() && !handles_count && !lock_depth && disk_writes == writes);
+        assert(!sector_overlay_action() && !overlay_sysinfo[0x38/4]);
+        for (unsigned i = 0x40/4; i < 0x58/4; ++i) assert(!overlay_sysinfo[i]);
+        assert(!fclose(disk));
+        return 0;
+    }
     if (which >= 61) {
         assert(which<=68);
         create(pack_name,pack,pack_bytes);unsigned writes=disk_writes;media_case=1;

@@ -115,6 +115,15 @@ reproduces the descriptor rather than trusting reference metadata. The tool
 does not bundle or distribute companion ROMs. See
 [ROM startup, pairing and limits](../doc/SPECIAL-SERVICE-PROFILES.md#checked-generic-rom-startup).
 
+Optional `expire_after_fad` compiles a callback-replacing ABI6 profile with a
+separate completion sector after every edit/guard. It cannot combine with the
+loaded-file guard, ROM service or alternative bundles. The compiler authenticates
+that sector from the same complete source FILE; the MCU preserves retries and
+waits for all edited records before retiring delivery. Launch ownership survives
+until unload. Older firmware refuses the format. Full Git history is required by
+the previous-decoder control, which compiles public `8ee7dad` directly.
+See [finite-source admission, tests, costs and limits](../doc/SD-SECTOR-OVERLAYS.md#finite-native-source-edits).
+
 ## Isolated firmware qualification
 
 `firmware-build` runs the original public menu Makefile on a source copy under

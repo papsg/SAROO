@@ -34,7 +34,7 @@ void sector_overlay_arm(void);
 int sector_overlay_apply(uint32_t fad, uint8_t sector[2352]);
 /* Runs after the new CUE/ISO tracks are open and before disc publication. */
 int sector_overlay_mount(const char gameid[16]);
-/* checked_load bit0: complete-file guard; bit1: ROM-cart service. */
+/* checked_load bit0: complete-file guard or finite source edits; bit1: ROM. */
 int sector_overlay_mount_checked(const char gameid[16], int checked_load);
 void sector_overlay_reset_handoff(void);
 void sector_overlay_publish_handoff(void);
