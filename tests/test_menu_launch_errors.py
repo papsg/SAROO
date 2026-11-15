@@ -16,6 +16,11 @@ class MenuLaunchErrorTests(unittest.TestCase):
         source = Path(os.environ.get('SAROO_MENU_LAUNCH_SOURCE', ROOT / 'Firm_Saturn'))
         main = (source / 'main.c').read_bytes()
         code = function(main, 'menu_cd_power') if b'int menu_cd_power(' in main else b''
+        choice = b'launch_choice_poll(' in main
+        if choice:
+            code += (b'#include "launch_choice.c"\n'
+                     b'static struct launch_choice sel_launch_choice;\n')
+            code += function(main, 'menu_launch_choice_idle')
         code += function(main, 'sel_handle')
         header = (source / 'main.h').read_bytes()
         names = (b'MENU_ITEMS', b'MENU_EXIT', b'SSCMD_LOADDISC', b'PAD_UP', b'PAD_DOWN',
@@ -30,10 +35,15 @@ class MenuLaunchErrorTests(unittest.TestCase):
         definitions = b''.join(
             re.search(rb'^#define ' + name + rb'\b[^\r\n]+', header, re.M).group() + b'\n'
             for name in names)
+        if choice:
+            definitions += b'#define HAS_LAUNCH_CHOICE 1\n'
 
         build = ROOT / 'tests/build/menu-launch-errors'
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
+        if choice:
+            for name in ('launch_choice.c', 'launch_choice.h'):
+                (cls.target / name).write_bytes((source / name).read_bytes())
         (cls.target / 'selector.inc').write_bytes(code)
         (cls.target / 'constants.inc').write_bytes(definitions)
         cls.binary = cls.target / 'menu-launch-errors'
@@ -66,6 +76,12 @@ class MenuLaunchErrorTests(unittest.TestCase):
 
     def test_overlay_flag_requires_capable_firmware_and_game_launch(self):
         self.check_button('overlay')
+
+    def test_hold_choice_requires_fresh_confirmation_and_preserves_next_normal_launch(self):
+        self.check_button('choice')
+
+    def test_hold_boundary_clock_wrap_idle_poll_and_repeat_controls(self):
+        self.check_button('timing')
 
 
 if __name__ == '__main__':

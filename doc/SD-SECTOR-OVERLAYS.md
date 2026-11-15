@@ -1,5 +1,9 @@
 # SD sector overlays
 
+The game list also offers a per-session [launch without game patches](LAUNCH-CHOICE.md).
+It bypasses overlays, callbacks and configured game-memory writes while
+retaining normal CD/save service and explicit user cartridge configuration.
+
 The SSO1 format stores small edits for exact raw Mode 1/2352 data sectors.
 The offline compiler checks the Saturn IP product number, the SHA-256 of
 each edited CUE FILE, the target's raw sector address, the original bytes

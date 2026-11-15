@@ -224,7 +224,7 @@ static enum rom_kind rom_ready;
 int prepare_game_rom(const char *id)
 {
     rom_ready = ROM_NONE;
-    if (skip_patch)
+    if (skip_patch || no_game_patches)
         return 0;
 
     /* Use the same stock IP predicates as the late game callbacks. */
@@ -267,7 +267,7 @@ int overlay_prepare_rom(int virtual_disc)
 {
     overlay_rom_entry = overlay_rom_phase = 0;
     rom_ready = ROM_NONE;
-    if (skip_patch || !virtual_disc) return 0;
+    if (skip_patch || no_game_patches || !virtual_disc) return 0;
     u32 action = __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38));
     if ((action & 0xffffff80u) != SD_OVERLAY_ROM) return 0;
     if (action != SD_OVERLAY_ROM) return -1;
@@ -299,7 +299,7 @@ int overlay_prepare_rom(int virtual_disc)
 
 void overlay_rom_launch(void)
 {
-    if (!overlay_rom_phase || skip_patch) return;
+    if (!overlay_rom_phase || skip_patch || no_game_patches) return;
     u32 entry = overlay_rom_entry;
     card_init();
     ((void (*)(int))0x00200000)((int)entry);
@@ -307,7 +307,7 @@ void overlay_rom_launch(void)
 
 int overlay_rom_after_read(void)
 {
-    if (!overlay_rom_phase || skip_patch) return 0;
+    if (!overlay_rom_phase || skip_patch || no_game_patches) return 0;
     need_bup = 0;
     if (overlay_rom_phase == 2) overlay_rom_launch();
     return 1;
@@ -1296,6 +1296,7 @@ void Croc_LOG_patch(void)
 /**********************************************************/
 
 int skip_patch = 0;
+int no_game_patches = 0;
 int need_bup = 1;
 
 static void CNC_reset_patch(void)
@@ -1425,13 +1426,13 @@ void patch_game(char *id, int replace_callback, unsigned cart_mode, int rom_prof
 
 	CHEAT_ADDRES = 0;
 	need_bup = 1;
-	if (rom_profile && !overlay_rom_after_read()) {
+	if (rom_profile && !no_game_patches && !overlay_rom_after_read()) {
 		printk("Invalid ROM profile state; reset required.\n");
 		while (1);
 	}
 
 
-	if(!skip_patch && !replace_callback){
+	if(!skip_patch && !no_game_patches && !replace_callback){
 		for(GAME_DB *gdb = game_dbs; gdb->id; ++gdb){
 			int slen = strlen(gdb->id);
 			if(strncmp(gdb->id, id, slen)==0){
@@ -1460,9 +1461,9 @@ void patch_game(char *id, int replace_callback, unsigned cart_mode, int rom_prof
 		patch_func();
 
 	/* The admitted recipe runs before explicit user cartridge overrides. */
-	if(cart_mode == 1)
+	if(!no_game_patches && cart_mode == 1)
 		ssctrl_set(MASK_EXMEM, CS0_RAM1M);
-	else if(cart_mode == 4)
+	else if(!no_game_patches && cart_mode == 4)
 		ssctrl_set(MASK_EXMEM, CS0_RAM4M);
 
 	u32 *cfgword = (u32*)(SYSINFO_ADDR+0x0100);
@@ -1487,6 +1488,7 @@ void patch_game(char *id, int replace_callback, unsigned cart_mode, int rom_prof
 			val1 = LE32(cfgword);
 			cfgword += 1;
 			printk("Cfg val: %08x\n", val1);
+            if (no_game_patches) continue;
 			if(key==1)
 				*(u8 *)(val0) = val1;
 			else if(key==2)

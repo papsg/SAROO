@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from test_menu_cdplayer import function
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,15 +19,15 @@ class MenuBinaryBoundsTests(unittest.TestCase):
         build = ROOT / 'tests/build/menu-binary'; build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build)); cls.results = []
         data = source.read_bytes()
-        begin = data.index(b'int run_binary('); end = data.index(b'static int sel_handle(',begin)
-        if b'static int load_binary_file(' in data:
-            begin = data.index(b'static int load_binary_file(')
         start=data.index(b'u32 BE32(')
         helpers=data[start:data.index(b'/**********************************************************/',start)]
         if b'static u32 file_capacity(' in data:
             start=data.index(b'static u32 file_capacity(')
             helpers+=data[start:data.index(b'\n}',start)+2]+b'\n'
-        code=helpers+data[begin:end]
+        code=helpers
+        if b'static int load_binary_file(' in data:
+            code+=function(data,'load_binary_file')
+        code+=function(data,'run_binary')
         code=code.replace(b'(void*)load_addr',b'binary_buffer(load_addr)')
         code=code.replace(b'(char*)load_addr',b'(char*)binary_buffer(load_addr)')
         code=code.replace(b'(u32*)load_addr',b'(u32*)binary_buffer(load_addr)')

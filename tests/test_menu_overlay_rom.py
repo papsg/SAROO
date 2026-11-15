@@ -67,7 +67,7 @@ class OverlayROMTests(unittest.TestCase):
         elf=Path(os.environ['SAROO_OVERLAY_MENU_ELF'])
         names=('_overlay_rom_launch','_card_init','_overlay_rom_after_read','_memcpy',
                '_overlay_rom_phase','_overlay_rom_entry','_skip_patch','_need_bup',
-               '_jump_06b0','_rom_reset_issue','_jump_copy_code','__ip_end')
+               '_jump_06b0','_rom_reset_issue','_jump_copy_code','__ip_end','_no_game_patches')
         symbols=dict(zip(names,linked_symbol_records(elf,names)))
         base=0x02000000;body_size=symbols['__ip_end'][0]-base
         body=elf.with_name('ssfirm.bin').read_bytes()[:body_size]
@@ -97,7 +97,7 @@ class OverlayROMTests(unittest.TestCase):
                 memory=NativeMemory()
                 memory.store(base,body);memory.store(staging,payload)
                 for name,value,width in [('_overlay_rom_phase',phase,1),('_overlay_rom_entry',resume,4),
-                                         ('_skip_patch',0,4),('_need_bup',phase-1,4)]:
+                                         ('_skip_patch',0,4),('_no_game_patches',0,4),('_need_bup',phase-1,4)]:
                     memory.store(symbols[name][0],value.to_bytes(width,'big'))
                 expected=memory.copy();copied=[]
                 sp=0x060ff000;caller=0x06012340
@@ -140,6 +140,28 @@ class OverlayROMTests(unittest.TestCase):
                                  (0xffffffff,staging+0x200000,0x221ffffc,int.from_bytes(payload[-4:],'big')))
                 self.assertEqual(len(calls),3)
                 self.assertEqual(sum(a==0x06000320 for a,_,_ in writes),1)
+
+        # Bypass cannot consume stale ownership or overwrite the menu. Check
+        # the exact private call frame, rather than forbidding ABI stack saves.
+        for name in ('_overlay_rom_launch', '_overlay_rom_after_read'):
+            memory=NativeMemory();memory.store(base,body)
+            for key,value,width in [('_overlay_rom_phase',2,1),('_overlay_rom_entry',0x06002222,4),
+                                    ('_skip_patch',0,4),('_no_game_patches',1,4),('_need_bup',1,4)]:
+                memory.store(symbols[key][0],value.to_bytes(width,'big'))
+            expected=memory.copy();caller,seed,sp=0x06012340,51,0x060ff000
+            frame=[(sp-4,4,0x13570000+8*0x100+seed),(sp-8,4,caller)] if name=='_overlay_rom_launch' else [(sp-4,4,caller)]
+            for address,width,value in frame:
+                expected.store(address,value.to_bytes(width,'big'))
+            _,regs,pr,after,writes,calls=execute(body,base,caller,memory,
+                entry_pc=symbols[name][0],mapped_code=True,return_address=caller,seed=seed)
+            for region in expected.buffers:
+                self.assertTrue(after.buffers[region]==expected.buffers[region],
+                                f'complete bypass memory region {region:08x}')
+            self.assertEqual(writes,frame)
+            self.assertFalse(calls)
+            self.assertEqual(regs[8:15],[0x13570000+i*0x100+seed for i in range(8,15)])
+            self.assertEqual(pr,caller)
+            self.assertEqual(regs[15],sp)
 
 
 class NativeMemory:

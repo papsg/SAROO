@@ -10,6 +10,7 @@ typedef uint32_t u32;
 #include "constants.inc"
 static _Alignas(4) u8 cart[0x400000], high[0x100000], low[0x100000];
 static u8 original_cart[sizeof cart];
+static int no_game_patches;
 static int skip_patch, need_bup, reads, cards, starts, count, metadata_crcs, payload_crcs;
 static int expected_virtual = 1;
 static u32 resume;
@@ -146,13 +147,15 @@ int main(int argc,char **argv)
         reset(1);expected_virtual=0;assert(!prepare()&&!reads);assert_no_owner();
     } else {
         assert(mode==5);
-        for(unsigned next=0;next<4;next++) {
+        for(unsigned next=0;next<5;next++) {
             reset(1);assert(prepare()==1);reads=metadata_crcs=payload_crcs=0;
             if(next==0)wire_action=0;
             if(next==1)expected_virtual=0;
             if(next==2)count=-4;
             if(next==3)skip_patch=1;
+            no_game_patches = next==4;
             assert(prepare()==(next==2?-4:0));assert_no_owner();
+            no_game_patches = 0;
         }
     }
     puts("checked ROM ownership, complete payload and forward copy passed");

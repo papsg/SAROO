@@ -859,6 +859,7 @@ _restart:
 		ctrl = conio_getc();
 		if(ctrl==0){
 			menu_timer(menu);
+			menu_launch_choice_idle(menu);
 			gif_timer();
 			continue;
 		}

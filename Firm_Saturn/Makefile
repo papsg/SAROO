@@ -18,6 +18,7 @@ EXE	=	ssfirm.elf
 
 OBJ	=	obj/crt0.o  \
 		obj/main.o  \
+		obj/launch_choice.o  \
 		obj/sysid.o \
 		obj/conio.o \
 		obj/sci_shell.o  \
@@ -56,6 +57,7 @@ $(EXE)	: $(OBJ)
 
 $(OBJ): main.h smpc.h vdp2.h font_latin.h
 obj/conio.o: vdp2_display.h
+obj/main.o obj/launch_choice.o: launch_choice.h
 
 # This custom formatter has different capacity/return semantics from libc.
 obj/printk.o: FLAGS += -fno-builtin

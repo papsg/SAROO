@@ -405,6 +405,20 @@ int main(int argc, char **argv)
         verify_overlay(1, 0);
         if (last != 1) verify_overlay(last, 0);
         assert(mounted_disc == (result ? -1 : 0));
+        if (which == 3) {
+            /* Ordinary unflagged load is a session opt-out: even automatic
+             * disc changes must not discover or reopen a pack. */
+            assert(!load_disc(0, 0) && !pack_opens && !preflight_reads);
+            verify_overlay(1, 0);
+            /* The next normal requested launch replaces the session policy. */
+            assert(!load_disc(SD_OVERLAY_REQUEST, 1));
+            assert(pack_opens == 2 && preflight_reads == 1);
+            verify_overlay(1, 1);
+            assert(!load_disc(0, 1));
+            assert(!load_disc(0, 0));
+            assert(pack_opens == 2 && preflight_reads == 1);
+            verify_overlay(1, 0);
+        }
     }
     assert(!unload_disc() && !handles_count && !lock_depth);
     assert(mounted_disc == -1 && disk_writes == writes && !overlay_sysinfo[0x38 / 4]);

@@ -10,6 +10,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 #define TMPBUFF_ADDR 0x220c7000u
 _Alignas(4) static u8 cart[0x800000], ip[0x8000];
+static int no_game_patches;
 static int skip_patch, need_bup, file_result, reads, installs, boots, target_pc;
 static const char *expected_file;
 static void *bus(u32 address, unsigned size)

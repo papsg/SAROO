@@ -166,6 +166,9 @@ class MenuVDP1OrderTests(unittest.TestCase):
     def test_builtin_croc_workaround_survives_launch(self):
         self.scenario('croc')
 
+    def test_one_session_bypass_preserves_initialization_user_cart_and_next_normal_launch(self):
+        self.scenario('unpatched')
+
     def test_diehard_replacement_and_retained_physical_and_rejected_callbacks(self):
         self.scenario('diehard')
 

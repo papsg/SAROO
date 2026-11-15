@@ -485,7 +485,7 @@ static void read_1st(void)
 	go();
 
 	/* SYSINFO is little-endian and shared with the MCU. */
-	u32 action = disc_type == 0 ? __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38)) : 0;
+	u32 action = disc_type == 0 && !no_game_patches ? __builtin_bswap32(REG32(SYSINFO_ADDR + 0x38)) : 0;
 	int rom_profile = (action & 0xffffff80u) == SD_OVERLAY_ROM;
 	if (rom_profile) {
 		if (action != SD_OVERLAY_ROM) {

@@ -1050,6 +1050,15 @@ int run_binary(int index, int run)
 }
 
 
+#include "launch_choice.h"
+static struct launch_choice sel_launch_choice;
+void menu_launch_choice_idle(MENU_DESC *menu)
+{
+    if (menu == &sel_menu && sel_launch_choice.phase == 1 &&
+        launch_choice_poll(&sel_launch_choice, 0, get_timer()) == LAUNCH_OFFER)
+        menu_status(menu, "A: Without game patches  B: Cancel");
+}
+
 static int sel_handle(int ctrl)
 {
 	MENU_DESC *menu = &sel_menu;
@@ -1057,6 +1066,16 @@ static int sel_handle(int ctrl)
 	total_disc = LE32((u8*)(IMGINFO_ADDR));
 	total_page = (total_disc+MENU_ITEMS-1)/MENU_ITEMS;
 
+    if (sel_mode == 0 && total_page > 0) {
+        int choice = launch_choice_poll(&sel_launch_choice, ctrl, get_timer());
+        if (choice == LAUNCH_OFFER)
+            menu_status(menu, "A: Without game patches  B: Cancel");
+        if (choice == LAUNCH_CANCEL) menu_status(menu, NULL);
+        if (choice == LAUNCH_NORMAL || choice == LAUNCH_UNPATCHED) {
+            no_game_patches = choice == LAUNCH_UNPATCHED;
+            ctrl = PAD_A | (PAD_A << 16);
+        } else if (choice != LAUNCH_PASS) return 0;
+    }
 	if(BUTTON_DOWN(ctrl, PAD_UP)){
 		if(menu->current>0){
 			select_notify(menu->current-1);
@@ -1108,11 +1127,11 @@ static int sel_handle(int ctrl)
 			menu_status(menu, TT("游戏启动中......"));
 
 			u8 overlay_version = REG8(SYSINFO_ADDR + 0x3c);
-			if (!skip_patch && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
+			if (!skip_patch && !no_game_patches && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
 				SS_ARG = index;
 				SS_CMD = overlay_version >= 4 ? SSCMD_ROMDISC : SSCMD_FIRSTDISC;
 			} else {
-				SS_ARG = index | (!skip_patch && overlay_version >= 1 && overlay_version < 3 ?
+				SS_ARG = index | (!skip_patch && !no_game_patches && overlay_version >= 1 && overlay_version < 3 ?
 				                  SD_OVERLAY_REQUEST : 0u);
 				SS_CMD = SSCMD_LOADDISC;
 			}
@@ -1134,6 +1153,7 @@ static int sel_handle(int ctrl)
 			}
 		}
 	}else if(BUTTON_DOWN(ctrl, PAD_Z)){
+        no_game_patches = 0;
 		int index = page*MENU_ITEMS + menu->current;
 		int retv;
         if (menu_cd_power(menu, sel_mode != 0, 0)) return 0;
@@ -1177,6 +1197,8 @@ static int sel_handle(int ctrl)
 
 void select_game(void)
 {
+    sel_launch_choice = (struct launch_choice){0};
+    no_game_patches = 0;
 	total_disc = LE32((u8*)(IMGINFO_ADDR));
 	total_page = (total_disc+MENU_ITEMS-1)/MENU_ITEMS;
 	page = 0;

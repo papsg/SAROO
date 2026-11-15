@@ -14,7 +14,7 @@ static _Alignas(4) u8 expected[sizeof vram], untouched[sizeof vram];
 enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
 static enum rom_kind rom_ready;
 static u8 kaitei_music_ready;
-static int CHEAT_ADDRES, need_bup, skip_patch;
+static int CHEAT_ADDRES, need_bup, skip_patch, no_game_patches;
 static int game_break_pc, to_stm32, gets_from_stm32;
 static int disc_type __attribute__((unused));
 static int loads, cards, jumps, others, cfg_reads, breaks, installs;
@@ -185,7 +185,7 @@ static void reset(const char *id, unsigned seed)
     REG32(0x06000284) = 0x6001234;
     REG32(0x06002fb4) = REG32(0x06002e28) = 0;
     loads = cards = jumps = others = cfg_reads = breaks = installs = clears = 0;
-    CHEAT_ADDRES = 13; need_bup = 17; skip_patch = jump_returns = 0;
+    CHEAT_ADDRES = 13; need_bup = 17; skip_patch = no_game_patches = jump_returns = 0;
     rom_ready = ROM_NONE;
     rom_profile_phase = 0;
     game_break_pc = 0; to_stm32 = gets_from_stm32 = 0; mailbox = 0x76543210;
@@ -211,6 +211,32 @@ static void finished(void)
     assert(breaks == !!game_break_pc && installs == !!game_break_pc);
     assert(to_stm32 == !!game_break_pc && gets_from_stm32 == !!game_break_pc);
     assert(mailbox == (game_break_pc ? 0 : 0x76543210));
+}
+
+static void unpatched_launches(void)
+{
+    const u32 tags[] = {0, SD_OVERLAY_REPLACEMENT | 4, SD_OVERLAY_ROM, 0xffffffffu};
+    for (unsigned tag = 0; tag < sizeof tags / sizeof *tags; ++tag) {
+        reset("T-7102G", 51);
+        no_game_patches = 1;
+        overlay_handoff = __builtin_bswap32(tags[tag]);
+        put32(0, 0x16008000); put32(4, 0x30000001);
+        put32(8, 0x26008002); put32(12, 0x1234);
+        put32(16, 0x46008004); put32(20, 0x2468abcd);
+        put32(24, 0x30000004);
+        read_1st(); finished();
+        assert(!others && !cards && !jumps && need_bup == 1);
+        assert(cart_count == 1 && cart_writes[0] == CS0_RAM4M);
+        for (unsigned i=0; i<8; ++i) assert(high[0x8000+i] == 0xa5);
+    }
+    reset("T-7102G",51);
+    put32(0, 0x16008000); put32(4, 0x30000001);
+    put32(8, 0x26008002); put32(12, 0x1234);
+    put32(16, 0x46008004); put32(20, 0x2468abcd);
+    put32(24, 0x30000004);
+    read_1st(); finished();
+    assert(others == 1 && cart_count == 1 && cart_writes[0] == CS0_RAM4M);
+    assert(high[0x8000] == 1 && REG16(0x06008002) == 0x1234 && REG32(0x06008004) == 0x2468abcd);
 }
 
 static void music_launches(void)
@@ -1125,6 +1151,8 @@ int main(int argc, char **argv)
         fenrir_launches();
     }else if(!strcmp(mode, "rom-profile")){
         rom_profile_launches();
+    }else if(!strcmp(mode, "unpatched")){
+        unpatched_launches();
     }else{
         assert(!strcmp(mode, "table"));
         for(GAME_DB *g=game_dbs;g->id;++g){

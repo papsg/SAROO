@@ -466,6 +466,8 @@ char *TT(char *str);
 // game patch
 
 extern int skip_patch;
+extern int no_game_patches;
+void menu_launch_choice_idle(MENU_DESC *menu);
 extern int need_bup;
 
 int prepare_game_rom(const char *id);
