@@ -392,8 +392,16 @@ frames are24/8/4 bytes, not full interrupt-stack qualification. The native copy
 stays36 bytes within its existing96-byte installed reservation; clock/reset
 fragments stay96/36. FPGA source remains unchanged.
 
+Use a checkout with full public Git history: the compatibility test compiles
+the earlier decoder directly from public commit `be3423d`. The linked test
+requires a freshly built menu and the locally cached build dependencies
+described in [isolated firmware qualification](../tools/README.md#isolated-firmware-qualification).
+Without `SAROO_OVERLAY_MENU_ELF`, that linked test is explicitly skipped.
+
 ```sh
 make -C tests check-sector-overlay check-menu-safety check-file-transfer
+cargo build --offline --locked --manifest-path tools/Cargo.toml -p firmware-build
+tools/target/debug/firmware-build menu --repo "$PWD" --out tests/build/rom-menu
 SAROO_OVERLAY_MENU_ELF="$PWD/tests/build/rom-menu/source/ssfirm.elf" \
   python3 -B -m unittest discover -s tests -p test_menu_overlay_rom.py -v
 ```
@@ -506,3 +514,48 @@ changed shared pins; no historical frame contract is claimed for a different
 menu build. Natural BIOS entry, actual bus/interrupt timing, later gameplay,
 audio/input/return and physical acceptance remain open. No issue is closed.
 Use the public ROM/overlay/menu tests above; profiles remain opt-in.
+
+## Combined verification
+
+All six contribution groups are ported, with ten provenance recipes producing
+seven distinct packs. The [public porting ledger](https://github.com/papsg/SAROO/blob/codex/pr-progress/PORTING.md#october-2-special-service-overlays)
+records each ordered commit, attribution, dependencies, validation and limits.
+Original callbacks and supported older packs remain controls.
+
+The final full `make -j6 -C tests check` run passes: 1,160 Python test-case
+executions include one Windows-only skip, and all25 Rust tests, formatting and
+strict Clippy checks pass. The run includes117 overlay cases,33 actual menu
+launch cases,11 CD-player cases and all seven generic ROM cases with the
+linked-menu test enabled. Existing FPGA simulations and the Arm RTX pool
+check also pass. Separate linked clock checks pass all48 cases. Sanitizer and
+optimized focused profile checks pass. These are host, instruction-model,
+simulator and target-link results, separate from device or game acceptance.
+
+All ten preserved logical sources replay through the final Rust verifier and
+production C decoder: 2,573 streamed sectors and5,262,124 supplied logical
+bytes, with every target source and guard verified. That byte count includes
+the separately reconstructed2,000 padding bytes for each C&C disc. It does not
+turn those bytes into authenticated original raw padding. Separate whole-CUE
+compilations authenticate Fenrir, Kaitei and the three Japanese KOF95 source
+aliases; unavailable complete raw sources retain their stated limits.
+
+The final menu's38 source inputs and each MCU build's144 source/SDK inputs,
+three ELF hashes and menu-image hash match the preserved build receipts.
+The final resources are those stated under checked generic ROM startup;
+Ultraman and this verification record add no firmware runtime. Historical
+receipt mismatches, unavailable inputs, failed fixtures and comparisons remain
+preserved. Music/audio differences, unresolved startup freezes, physical
+timing and full-game qualification remain open.
+
+For the full matrix, first prepare the menu and GNU MCU builds using the
+linked instructions above and the
+[MCU/RTX qualification instructions](../tools/README.md#original-mcu-app-compilelink-check).
+Set the paths to those completed builds and their matching compiler:
+
+```sh
+CARGO_NET_OFFLINE=true \
+SAROO_OVERLAY_MENU_ELF="$PWD/tests/build/rom-menu/source/ssfirm.elf" \
+SAROO_RTX_BUILD="$PWD/tests/build/mcu-link-check" \
+SAROO_ARM_CC=/path/to/arm-gnu-toolchain-14.3.rel1/bin/arm-none-eabi-gcc \
+  make -j6 -C tests check
+```
