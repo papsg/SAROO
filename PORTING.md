@@ -2853,3 +2853,27 @@ closure was created; the private repository and Saturn were untouched.
 Actual physical boot/reset/BIOS-return/relaunch, audible equivalence and full
 tactical play remain explicit separate acceptance limits. Unknown alternate
 sources remain unsupported and use the unchanged conditional fallback.
+
+## Launch choice and October 18 correctness follow-up
+
+Active ordered follow-up from public `1adcbff`. Revalidate each checkpoint
+against this public implementation before porting it. No PRs, USB integration,
+custom runtime diagnostics, new CDON recipes or device operations. The private
+repository and earlier archived trials remain unchanged. SSR-010 is deferred:
+public FatFs has reentrancy disabled, and this series will not enable it merely
+to import that separate private-provider correction.
+
+- [ ] paps-g `cda33cfa`: hold-A choice to launch one session without game patches.
+- [ ] paps-g `18dd95d7`, SSR-006: preserve legacy UART timeout arithmetic.
+- [ ] paps-g `692f9716`, SSR-007: return errors for refused RTOS waits.
+- [ ] paps-g `b5760f73`, SSR-008: reject overflowing message-queue payload extents.
+- [ ] paps-g `f5da5ea0`, SSR-009: update periodic reload on a running timer restart.
+- [ ] paps-g `ba3938b0`, SSR-012: constrain mounted volumes to their MBR partitions.
+
+The initial public menu launches immediately on A press and has no per-session
+choice. The current MCU already defines an unflagged ordinary LOADDISC request
+as overlay opt-out, retaining that policy through automatic disc changes.
+The hold-A adaptation will test that existing path before adding protocol bits
+or MCU runtime. Retained RTOS providers and UART/MBR source still contain the
+later corrected expressions. Conditional APIs, source reachability and fresh
+public-parent controls must be distinguished from demonstrated game failures.
