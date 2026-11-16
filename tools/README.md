@@ -558,6 +558,21 @@ refusal mutation instead of the stock frontend. The required support headers
 are pinned: `rtx_lib.h` permits only its declared postprocess prototype
 addition; all other bytes and the original SDK hashes must match.
 
+### Pinned STM32 device-header contracts, offline
+
+`firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
+--toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
+--case version --provider selected|original --mode contract|control|alias`
+compiles the public fixture against the exact DFP 2.3.1 headers with the App's
+include order. It checks compiler dependencies, the original/owned header
+hashes and both project targets before compiling. `original contract` exposes
+the undeclared version identifiers, while `original control` still compiles;
+`alias` demonstrates that unrelated supplied identifiers cannot repair the
+aggregate. Later field cases use the same command as their fixtures are added.
+Each run needs a fresh ignored output directory; receipts and compiler errors
+stay there. This tests header expressions, not executed firmware or hardware.
+See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).
+
 ### Compile the existing conditional BOOT body
 
 `firmware-build mcu` accepts `--boot-object` alongside optional `--no-lto`.

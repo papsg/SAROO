@@ -1,0 +1,9 @@
+{
+  "source_pack": "Keil.STM32H7xx_DFP.2.3.1",
+  "source_path": "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h7xx.h",
+  "source_sha256": "71fa0474c33bb7a63b0f2222a65d7ecaa618140e8a15131c12c8eda158d77ed5",
+  "owned_sha256": "a26f9b5a4ca9b3e910c0abeae128130b05b446e1333b54b0f5902d8d39680140",
+  "license": "BSD-3-Clause; see source notice and LICENSE-ST-CMSIS",
+  "adaptation": "papsg port of paps-g SSR-138 / 10a51a75: aggregate the four declared CMSIS device-version components. No other source bytes changed.",
+  "selection": "App and BootLoader list Firm_MCU/inc as a user include. The GNU App compile and dependency check confirm this owner precedes the pinned DFP include directory; MDK compilation was not available. The included stm32h750xx.h remains supplied by the exact pinned DFP until separately owned."
+}
