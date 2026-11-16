@@ -26,7 +26,8 @@
 #include "rtx_lib.h"
 
 /* SAROO/papsg: SSR-008 extent admission; SSR-068 after paps-g 8b5cbe9b
- * and 03fa6494, completed-read retirement and backed-slot availability. */
+ * and 03fa6494, completed-read retirement and backed-slot availability.
+ * SSR-134 after paps-g b1cd920c admits ISR Get sender wakeups before detach. */
 #if osRtxVersionKernel != 50050001
 #error "This RTX override requires the selected 5.5.1 kernel"
 #endif
@@ -44,6 +45,8 @@ __attribute__((section(".data.os.msgqueue.obj"))) =
 
 /* A detaching IRQ invalidates saved list pointers without growing the object. */
 #define MSGQUEUE_CHANGED 0x80U
+/* A blocking SVC Put whose failed allocation has not reached the wait list. */
+#define MSGQUEUE_PUT_PENDING 0x40U
 
 static void MessageQueueRemove (os_message_queue_t *mq, const os_message_t *msg) {
   if (msg->prev != NULL) {
@@ -392,7 +395,20 @@ static osStatus_t svcRtxMessageQueuePut (osMessageQueueId_t mq_id, const void *m
   } else {
     // Try to allocate memory
     //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
+    /* Publish a possible in-flight sender atomically with allocation failure.
+     * ISR Get may otherwise free a slot before the sender reaches the list. */
+    uint32_t primask = 0U;
+    if (timeout != 0U) {
+      primask = __get_PRIMASK();
+      __disable_irq();
+    }
     msg = osRtxMemoryPoolAlloc(&mq->mp_info);
+    if (timeout != 0U) {
+      if (msg == NULL) {
+        mq->flags |= MSGQUEUE_PUT_PENDING;
+      }
+      __set_PRIMASK(primask);
+    }
     if (msg != NULL) {
       // Copy Message
       memcpy(&msg[1], msg_ptr, mq->msg_size);
@@ -420,6 +436,12 @@ static osStatus_t svcRtxMessageQueuePut (osMessageQueueId_t mq_id, const void *m
         } else {
           EvrRtxMessageQueuePutTimeout(mq);
         }
+        /* The waiter is published, or waiting was refused. Preserve the
+         * independent message-list invalidation bit. */
+        primask = __get_PRIMASK();
+        __disable_irq();
+        mq->flags &= (uint8_t)~MSGQUEUE_PUT_PENDING;
+        __set_PRIMASK(primask);
         status = osErrorTimeout;
       } else {
         EvrRtxMessageQueueNotInserted(mq, msg_ptr);
@@ -758,6 +780,7 @@ osStatus_t isrRtxMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8
   os_message_queue_t *mq = osRtxMessageQueueId(mq_id);
   os_message_t       *msg;
   osStatus_t          status;
+  uint32_t            primask;
 
   // Check parameters
   if ((mq == NULL) || (mq->id != osRtxIdMessageQueue) || (msg_ptr == NULL) || (timeout != 0U)) {
@@ -766,8 +789,20 @@ osStatus_t isrRtxMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8
     return osErrorParameter;
   }
 
-  // Get Message from Queue
+  /* Admission and detach are one IRQ-visible transition. Reserve only when
+   * a real message and an existing or in-flight sender both need progress. */
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if ((mq->msg_first != NULL) &&
+      (((mq->flags & MSGQUEUE_PUT_PENDING) != 0U) ||
+       ((mq->thread_list != NULL) && (mq->thread_list->state == osRtxThreadWaitingMessagePut))) &&
+      (osRtxPostProcessTry(osRtxObject(mq)) == 0U)) {
+    __set_PRIMASK(primask);
+    EvrRtxMessageQueueNotRetrieved(mq, msg_ptr);
+    return osErrorResource;
+  }
   msg = MessageQueueGet(mq);
+  __set_PRIMASK(primask);
   if (msg != NULL) {
     // Copy Message
     memcpy(msg_ptr, &msg[1], mq->msg_size);
@@ -777,9 +812,6 @@ osStatus_t isrRtxMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8
     /* Return storage before another ISR Put; callbacks retain only mq. */
     msg->id = osRtxIdInvalid;
     (void)osRtxMemoryPoolFree(&mq->mp_info, msg);
-    if ((mq->thread_list != NULL) && (mq->thread_list->state == osRtxThreadWaitingMessagePut)) {
-      osRtxPostProcess(osRtxObject(mq));
-    }
     EvrRtxMessageQueueRetrieved(mq, msg_ptr);
     status = osOK;
   } else {

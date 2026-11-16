@@ -712,3 +712,62 @@ standard linked images; the selected postprocess callback is present. These
 builds do not prove a complete stack bound or interrupt latency, and do not
 qualify MDK, physical timing, Saturn hardware, audio or games. No device was
 touched.
+
+## SSR-134: preserve sender progress across ISR Get
+
+The pinned [CMSIS-RTOS2 API 2.1.3 message declarations](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L703-L721)
+permit zero-timeout ISR Get and blocking Put. The [status definitions](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L197-L205)
+include `osErrorResource` for unavailable resources. The version-matched RTX
+5.5.1 ISR Get removed a queued message, released its backing block, and only
+then attempted unchecked deferred publication for a waiting sender. A full
+16-entry ring let Get report success while the sender remained blocked. A
+second race needed no ring overflow: SVC Put could fail allocation, an IRQ
+could free a slot before the sender joined the wait list, and Get would see no
+waiter to notify. [Cortex-M7 DUI0646C §§2.1.3 and 2.3.5–2.3.7, printed
+pp.2-8 and 2-23–2-24](https://developer.arm.com/documentation/dui0646/c)
+defines the exception and masking model used here. No Sega manual specifies
+this MCU kernel policy.
+
+This ports paps-g `b1cd920c` / SSR-134 onto the existing public RTX queue
+owner, with SSR-069's checked deferred-publication helper as a prerequisite.
+SVC Put now marks a failed allocation as an in-flight sender before unmasking
+interrupts. It clears that marker once its wait-list state or refusal is
+published. ISR Get reserves needed notification and removes the message in
+one masked transition. A full ring returns `osErrorResource` without changing
+the message, pool, output buffer or priority; an empty queue or a queue with
+no sender reserves no notification. Successful Get still releases its backing
+block before another ISR Put. The private flag reuses an existing byte and
+adds no queue or message allocation. The Arm file notice and its original
+source hash remain in the selected provider and `provenance.json`; no original
+tpunix issue or PR was identified.
+
+Six exact-public-parent Cortex-M7/QEMU variants (full ring, three-sender
+partial batch, and the in-flight SVC/IRQ gap in both atomic modes) complete
+792 cases with 792 stranded-sender observations. The gap alone has 144 losses
+and zero overflow-hook calls. The corrected source passes the same 792 cases
+with zero losses, 480 explicit refusals, 528 immediate sender completions,
+696 successful retries, 1,224 no-sender full-ring Gets and 792 empty-queue
+controls. The fixture checks payload and priority, queue count and free space,
+pool block ownership, waiter state, masks, invalid parameters, message sizes
+1/4/12/64, queue capacities 1/3/16, ring offsets and three ordered senders.
+Replaying the pinned public parent reproduces the defect. A waiter-only partial
+fix and removal of the allocation exclusion each retain all 72 gap losses in
+the atomic-1 control. Only the copied gap test source pends a normal IRQ after
+failed allocation; the production owner contains no scheduling hook.
+
+Use `firmware-build rtos-check` with the explicit local toolchain/CMSIS/STM32/RTX
+arguments in [the build instructions](../tools/README.md#actual-rtx-api-contracts-offline),
+`--case message-get --atomic=0|1 --scenario=full|batch|gap`, and a fresh output
+directory per run. `--get-variant=parent` selects the exact public `38908c3`
+queue source from Git history, checked against its hash; `waiter-only` and
+`no-window-guard` are test-copy partial fixes. Selected LTO and stock-archive
+QEMU checks pass, as do adjacent message Put, event, thread-flag and pool-Free
+contracts. Receipts retain compiler commands, selected/copy hashes and logs.
+
+Fresh standard GNU App LTO/non-LTO builds retain all 166 vectors and match
+the public parent byte-for-byte at 59,632/63,960 loaded bytes, 5,904/1,576
+free ITCM and 50,904 static DTCM bytes. Queue Put/Get APIs are absent from
+these standard linked images. In the atomic-1 QEMU fixture, the direct SVC
+Put frame grows 24→32 bytes; this is not a complete stack or timing bound.
+No ordinary shipping caller, game failure, MDK link, physical interrupt
+timing or Saturn behavior is established. No device was touched.

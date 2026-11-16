@@ -15,7 +15,14 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             continue;
         }
-        if ["message", "event", "pool-free", "thread-flags"].contains(&case)
+        if [
+            "message",
+            "message-get",
+            "event",
+            "pool-free",
+            "thread-flags",
+        ]
+        .contains(&case)
             && flag.starts_with("--scenario=")
         {
             continue;
@@ -29,6 +36,9 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if case == "pool-free" && flag == "--old-free" {
             continue;
         }
+        if case == "message-get" && flag.starts_with("--get-variant=") {
+            continue;
+        }
         if case == "message"
             && ["--old-space", "--omit-walk-invalidation", "--old-put"].contains(&flag.as_str())
         {
@@ -38,6 +48,7 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
             "pool",
             "pool-free",
             "message",
+            "message-get",
             "event",
             "retire",
             "thread-flags",
@@ -89,6 +100,9 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
                 ("message", "admission") => 4,
                 ("message", "last-slot") => 5,
                 ("message", "receiver") => 6,
+                ("message-get", "full") => 6,
+                ("message-get", "batch") => 7,
+                ("message-get", "gap") => 8,
                 ("pool-free", "admission") => 0,
                 ("pool-free", "last-slot") => 1,
                 ("pool-free", "no-waiter") => 2,
@@ -109,7 +123,7 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
             omit_invalidation = true;
         }
     }
-    let scenario = scenario.unwrap_or(0);
+    let scenario = scenario.unwrap_or(if case == "message-get" { 6 } else { 0 });
     if (old_space && scenario != 3) || (omit_invalidation && scenario != 2) {
         return fail("Message negative control does not match its scenario");
     }
@@ -366,6 +380,101 @@ fn instrument_message(
     ))
 }
 
+/// Pend a normal test IRQ after failed SVC allocation in the copied provider.
+/// Production source and the pinned SDK are never instrumented.
+fn instrument_message_get_gap(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let start = original
+        .find("static osStatus_t svcRtxMessageQueuePut (")
+        .ok_or("Missing SVC Put boundary")?;
+    let end = original[start..]
+        .find("static osStatus_t svcRtxMessageQueueGet (")
+        .ok_or("Missing SVC Get boundary")?
+        + start;
+    let marker = "    msg = osRtxMemoryPoolAlloc(&mq->mp_info);\n";
+    let body = &original[start..end];
+    if body.matches(marker).count() != 1 {
+        return fail("Missing unique failed-allocation scheduling boundary");
+    }
+    let body = body.replace(
+        marker,
+        &format!("{marker}    if (msg == NULL) {{ queue_get_gap_probe(mq); }}\n"),
+    );
+    let mut text = original.clone();
+    text.replace_range(start..end, &body);
+    text.insert_str(
+        start,
+        "extern void queue_get_gap_probe(os_message_queue_t *mq);\n",
+    );
+    let path = output.join("message-get-gap-provider.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"pending_irq_after_failed_alloc":true}),
+    ))
+}
+
+/// Public-history and partial-fix controls are copied only into the QEMU
+/// output. The pinned parent is the preceding public main, not raw Arm RTX.
+fn message_get_variant(
+    repo: &Path,
+    source: &Path,
+    output: &Path,
+    variant: &str,
+) -> Result<(PathBuf, Value)> {
+    let selected = fs::read_to_string(source)?;
+    let text = match variant {
+        "parent" => {
+            let out = Command::new("git")
+                .args([
+                    "show",
+                    "38908c3fa19016ce052c059f136c8eb814b9c9d5:Firm_MCU/RTE/CMSIS/RTX/rtx_msgqueue.c",
+                ])
+                .current_dir(repo)
+                .output()?;
+            if !out.status.success()
+                || sha(&out.stdout)
+                    != "842e196627e7383edbc4ab0accb9bcf78080ceb448ed4039a78c907b5cb8de92"
+            {
+                return fail("Missing exact SSR-134 public parent source");
+            }
+            String::from_utf8(out.stdout)?
+        }
+        "waiter-only" => {
+            let marker = "((mq->flags & MSGQUEUE_PUT_PENDING) != 0U) ||\n       ";
+            if selected.matches(marker).count() != 1 {
+                return fail("Missing in-flight sender admission for partial control");
+            }
+            selected.replace(marker, "")
+        }
+        "no-window-guard" => {
+            let start = selected
+                .find("static osStatus_t svcRtxMessageQueuePut (")
+                .ok_or("Missing SVC Put for partial control")?;
+            let end = selected[start..]
+                .find("static osStatus_t svcRtxMessageQueueGet (")
+                .ok_or("Missing SVC Get for partial control")?
+                + start;
+            let marker = "      __disable_irq();\n    }\n    msg = osRtxMemoryPoolAlloc";
+            let body = &selected[start..end];
+            if body.matches(marker).count() != 1 {
+                return fail("Missing allocation exclusion for partial control");
+            }
+            let body = body.replace(marker, "      /* Test-only omission of allocation exclusion. */\n    }\n    msg = osRtxMemoryPoolAlloc");
+            let mut text = selected.clone();
+            text.replace_range(start..end, &body);
+            text
+        }
+        _ => return fail("Unknown Message Get control variant"),
+    };
+    let path = output.join(format!("message-get-{variant}-provider.c"));
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"variant":variant,"selected_sha256":sha(selected.as_bytes()),"test_source_sha256":sha(text.as_bytes())}),
+    ))
+}
+
 fn instrument_old_pool_free(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
     let original = fs::read_to_string(source)?;
     let selected = "  /* Invalid blocks retain the existing parameter-error path below. For a\n   * valid block, admit any waiting allocator's callback before releasing\n   * caller ownership. PendSV cannot run in this ISR/masked context. */\n  if (((uintptr_t)block >= (uintptr_t)mp->mp_info.block_base) &&\n      ((uintptr_t)block <  (uintptr_t)mp->mp_info.block_lim) &&\n      (mp->thread_list != NULL) &&\n      (osRtxPostProcessTry(osRtxObject(mp)) == 0U)) {\n    EvrRtxMemoryPoolFreeFailed(mp, block);\n    return osErrorResource;\n  }\n\n  // Free memory; no callback is needed when there is no waiting allocator.\n  status = osRtxMemoryPoolFree(&mp->mp_info, block);\n  if (status == osOK) {\n    EvrRtxMemoryPoolDeallocated(mp, block);";
@@ -513,6 +622,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "pool" => "rtx_mempool.c",
         "pool-free" => "rtx_mempool.c",
         "message" => "rtx_msgqueue.c",
+        "message-get" => "rtx_msgqueue.c",
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
@@ -538,9 +648,25 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     if old_free > 1 || (old_free == 1 && case != "pool-free") {
         return fail("Old Free control requires one pool-free scenario");
     }
+    let get_variants = args[15..]
+        .iter()
+        .filter_map(|v| v.strip_prefix("--get-variant="))
+        .collect::<Vec<_>>();
+    if get_variants.len() > 1
+        || (!get_variants.is_empty() && case != "message-get")
+        || get_variants
+            .first()
+            .is_some_and(|v| !["parent", "waiter-only", "no-window-guard"].contains(v))
+    {
+        return fail("Specify one valid Message Get test variant");
+    }
+    let get_variant = get_variants.first().copied().unwrap_or("selected");
     let baseline = args[15..].iter().any(|v| v == "--baseline");
     if case == "syscounter" && baseline {
         return fail("Use the preceding public worktree for a complete syscounter baseline");
+    }
+    if case == "message-get" && baseline {
+        return fail("Use the exact public parent for the message Get baseline");
     }
     if baseline && (old_put == 1 || old_free == 1) {
         return fail("A single-source inverse cannot be combined with --baseline");
@@ -609,6 +735,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             match case {
                 "syscounter" => "rtos_syscounter.c",
                 "thread-flags" => "rtos_thread_admission.c",
+                "message-get" => "rtos_message_get_admission.c",
                 _ => name,
             }
         } else {
@@ -703,6 +830,36 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 return fail("Message provider selection is not unique");
             }
             instrumentation = record;
+        }
+        if case == "message-get" && (scenario == 8 || get_variant != "selected") {
+            let selected = if owned.join(provider).is_file() {
+                owned.join(provider)
+            } else {
+                kernel.join(provider)
+            };
+            let mut test_source = selected.clone();
+            let mut records = Vec::new();
+            if get_variant != "selected" {
+                let (path, record) = message_get_variant(&repo, &test_source, &out, get_variant)?;
+                test_source = path;
+                records.push(record);
+            }
+            if scenario == 8 {
+                let (path, record) = instrument_message_get_gap(&test_source, &out)?;
+                test_source = path;
+                records.push(record);
+            }
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = test_source.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Message Get provider selection is not unique");
+            }
+            instrumentation = json!(records);
         }
         if case == "pool-free" && old_free == 1 {
             let selected = owned.join(provider);
@@ -857,6 +1014,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                 ]);
             }
+            if case == "message-get" {
+                command.args([
+                    format!("-DTEST_SCENARIO={scenario}"),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                ]);
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -942,7 +1105,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"thread_scenario":scenario,"syscounter_mode":counter_mode,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"message_get_scenario":scenario,"message_get_variant":get_variant,"event_scenario":scenario,"thread_scenario":scenario,"syscounter_mode":counter_mode,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;
@@ -1016,6 +1179,27 @@ mod tests {
             .unwrap(),
             (3, true, false)
         );
+    }
+
+    #[test]
+    fn message_get_scenarios_and_variants_stay_isolated() {
+        assert_eq!(scenario_options("message-get", &[]).unwrap().0, 6);
+        for (name, expected) in [("full", 6), ("batch", 7), ("gap", 8)] {
+            assert_eq!(
+                scenario_options("message-get", &[format!("--scenario={name}")])
+                    .unwrap()
+                    .0,
+                expected
+            );
+        }
+        assert!(scenario_options("message-get", &["--scenario=receiver".into()]).is_err());
+        assert!(scenario_options("message", &["--scenario=gap".into()]).is_err());
+        assert!(pool_options(
+            "message-get",
+            &["--atomic=0".into(), "--get-variant=parent".into()]
+        )
+        .is_ok());
+        assert!(pool_options("message", &["--get-variant=parent".into()]).is_err());
     }
 
     #[test]

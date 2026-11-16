@@ -448,10 +448,11 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|event|retire|syscounter|thread-flags`.
+arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|message-get|event|retire|syscounter|thread-flags`.
 Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
-and intentionally fails the contract after displaying its false-success results;
+and intentionally fails the contract after displaying its false-success results,
+except `message-get`, which uses `--get-variant=parent` for the exact public parent;
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
 a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 `mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
@@ -525,6 +526,18 @@ refusal, retry, payloads and a blocked receiver. `--old-put` reverses only the
 selected Put admission/rollback in a copied provider; admission and receiver
 must reproduce false success and a retained backing block. It never changes
 the production provider. These are API contracts, not physical timing tests.
+
+For ISR Get and blocked senders, use `--case message-get --atomic=0|1`
+with `--scenario=full|batch|gap` (default full). The fixture checks real
+SVC/IRQ/PendSV traffic, queue and pool ownership, priority/payload, no-sender
+and empty controls, refusal and retry. Gap pends a normal IRQ only in a
+copied provider after SVC allocation fails. `--get-variant=parent` selects
+the pinned preceding public source; `waiter-only` and `no-window-guard` each
+omit one part of the correction in copied test input. These are expected
+negative controls. All test-source hashes and commands remain in each fresh
+output; no hook enters production firmware. See
+[SSR-134](../doc/RTOS-CORRECTNESS.md#ssr-134-preserve-sender-progress-across-isr-get)
+for results, attribution, citations and limits.
 
 Event checks accept `--atomic=0|1` and
 `--scenario=single|waiters|nested|legacy` (default single). Single checks full
