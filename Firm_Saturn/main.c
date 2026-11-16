@@ -924,9 +924,9 @@ static char *bin_catalog_name(int index, int *directory)
     u32 offset = entry & ~BIN_DIRECTORY_ENTRY;
     if (offset < 0x2800 || offset >= 0x23000) return NULL;
     unsigned length = 0;
-    while (length < 256 && length < 0x23000u - offset && catalog[offset + length])
+    while (length < CATALOG_NAME_CAPACITY && length < 0x23000u - offset && catalog[offset + length])
         ++length;
-    if (!length || length == 256 || length == 0x23000u - offset) return NULL;
+    if (!length || length == CATALOG_NAME_CAPACITY || length == 0x23000u - offset) return NULL;
     *directory = !!(entry & BIN_DIRECTORY_ENTRY);
     return catalog + offset;
 }

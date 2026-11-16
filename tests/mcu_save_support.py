@@ -313,8 +313,9 @@ class MCUSaveTest(unittest.TestCase):
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
         fatfs = cls.target / 'FatFS'; fatfs.mkdir()
+        fatfs_source = Path(os.environ.get('SAROO_FATFS_DIR', ROOT / 'Firm_MCU/FatFS'))
         for name in ('ff.c', 'ff.h', 'ffconf.h', 'ffunicode.c', 'diskio.h'):
-            data = (ROOT / 'Firm_MCU/FatFS' / name).read_bytes()
+            data = (fatfs_source / name).read_bytes()
             if name == 'ffconf.h' and cls.fixture in ('extents', 'reopen', 'owner'):
                 inputs['FatFS-production/ffconf.h'] = data
                 before = b'#define FF_USE_MKFS\t\t0'

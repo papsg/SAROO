@@ -361,6 +361,166 @@ static void sort_controls(void)
     }
 }
 
+/* SSR-097 tests adapted from paps-g b6b04d6d. */
+static void create_sfn_only(const char *name)
+{
+    /* Author one valid CP437 8.3 record, with no adjacent LFN. The file and
+     * allocation are produced by FatFs; only the eight OEM name bytes change. */
+    FIL fp;
+    assert(f_open(&fp, "/SAROO/ISO/ABCDEFGH.ISO", FA_CREATE_NEW | FA_WRITE) == FR_OK);
+    FATFS *fs = fp.obj.fs;
+    LBA_t sector = fp.dir_sect;
+    size_t offset = fp.dir_ptr - fs->win;
+    assert(offset <= 512 - 32);
+    UINT written; BYTE marker = 0x5a, data[512];
+    assert(f_write(&fp, &marker, 1, &written) == FR_OK && written == 1);
+    assert(f_close(&fp) == FR_OK);
+    assert(disk_read(0, data, sector, 1) == RES_OK);
+    assert(!memcmp(data + offset, "ABCDEFGHISO", 11));
+    assert(offset < 32 || data[offset - 32 + 11] != 0x0f);
+    memset(data + offset, 0x90, 8);
+    assert(disk_write(0, data, sector, 1) == RES_OK);
+    assert(disk_ioctl(0, CTRL_SYNC, NULL) == RES_OK);
+    assert(f_mount(NULL, "0:", 0) == FR_OK && f_mount(fs, "0:", 1) == FR_OK);
+    char path[64];
+    assert(snprintf(path, sizeof(path), "/SAROO/ISO/%s", name) < (int)sizeof(path));
+    assert(f_open(&fp, path, FA_READ) == FR_OK);
+    data[0] = 0; written = 0;
+    assert(f_read(&fp, data, 1, &written) == FR_OK && written == 1 && data[0] == marker);
+    assert(f_close(&fp) == FR_OK);
+}
+static void utf8_name(int kind)
+{
+    char name[1024], dir_name[1024], expected[1024], out[256], actual_alt[64] = {0};
+    size_t used = 0;
+    if (kind == 0 || kind == 1) {
+        int count = kind == 0 ? 100 : 130;
+        for (int i = 0; i < count; ++i) { name[used++] = (char)0xc3; name[used++] = (char)0xa9; }
+        memcpy(name + used, ".iso", 5); used += 4;
+    } else if (kind == 2) {
+        for (int i = 0; i < 251; ++i) { name[used++] = (char)0xe0; name[used++] = (char)0xa0; name[used++] = (char)0x80; }
+        memcpy(name + used, ".iso", 5); used += 4;
+    } else if (kind == 4) {
+        for (int i = 0; i < 255; ++i) { name[used++] = (char)0xe0; name[used++] = (char)0xa0; name[used++] = (char)0x80; }
+    } else {
+        for (int i = 0; i < 8; ++i) { name[used++] = (char)0xc3; name[used++] = (char)0x89; }
+        memcpy(name + used, ".ISO", 5); used += 4;
+    }
+    name[used] = 0;
+    if (kind == 3) create_sfn_only(name);
+    else create(kind == 4 ? "/SAROO/BIN" : "/SAROO/ISO", name, 0);
+    strcpy(dir_name, name);
+    if (kind < 3) dir_name[strlen(dir_name) - 4] = 0;
+    if (kind != 3) create("/SAROO/ISO", dir_name, 1);
+    DIR dir; FILINFO info;
+    const char *parent = kind == 4 ? "/SAROO/BIN" : "/SAROO/ISO";
+    assert(f_opendir(&dir, parent) == FR_OK);
+    int found = 0;
+    while (f_readdir(&dir, &info) == FR_OK && info.fname[0])
+        if (!strcmp(info.fname, name)) { found = 1; strcpy(actual_alt, info.altname); }
+    fprintf(stderr, "utf8 kind=%d expected_bytes=%zu found=%d FILINFO=%zu LFN=%zu SFN=%zu\n",
+            kind, used, found, sizeof(info), sizeof(info.fname), sizeof(info.altname));
+    assert(found);
+    assert(f_closedir(&dir) == FR_OK);
+    if (kind == 3) assert(!actual_alt[0]); /* No LFN or case-only alternate. */
+    assert(snprintf(expected, sizeof(expected), "%s/%s", parent, name) < (int)sizeof(expected));
+    memset(out, 0xcc, sizeof(out));
+    int result = find_cue_iso((char *)parent, out);
+    if (kind == 0 || kind == 3) assert(result == 2 && !strcmp(out, expected));
+    else if (kind == 4) assert(result == 0 && !out[0]);
+    else assert(result == -FR_INVALID_NAME && !out[0]);
+    if (kind != 3) {
+        reset_scan();
+        assert(list_disc(0, 0) == FR_OK && total_disc == 1);
+        assert(!strcmp(path_str + disc_path[0], dir_name));
+        if (kind > 0) assert(build_path(0, out) < 0);
+    }
+    guards();
+}
+/* Independent boundary corpus: bytes and UTF-16 units are different budgets. */
+static void utf8_identity(int kind)
+{
+    char name[766], path[1024];
+    unsigned used = 0;
+    if (!kind) {
+        memcpy(name, "Mixed-ascii.bin", 16); used = 15;
+    } else if (kind == 1) {
+        name[used++] = 'A';
+        for (unsigned i = 0; i < 127; ++i) { name[used++] = (char)0xc3; name[used++] = (char)0xa9; }
+    } else if (kind == 2) {
+        for (unsigned i = 0; i < 125; ++i) {
+            name[used++] = (char)0xf0; name[used++] = (char)0x90;
+            name[used++] = (char)0x80; name[used++] = (char)0x80;
+        }
+        memcpy(name + used, "abcde", 5); used += 5;
+    } else {
+        assert(kind == 3);
+        for (unsigned i = 0; i < 11; ++i) {
+            if (i == 8) name[used++] = '.';
+            name[used++] = (char)0xe2; name[used++] = (char)0x94; name[used++] = (char)0x82;
+        }
+    }
+    name[used] = 0;
+    assert(snprintf(path, sizeof(path), "/SAROO/BIN/%s", kind == 3 ? "ABCDEFGH.XYZ" : name) < (int)sizeof(path));
+    FIL fp; UINT count; BYTE payload = 0x5a, sector[512];
+    assert(!f_open(&fp, path, FA_CREATE_NEW | FA_WRITE));
+    FATFS *fs = fp.obj.fs;
+    LBA_t where = fp.dir_sect;
+    unsigned offset = (unsigned)(fp.dir_ptr - fs->win);
+    assert(!f_write(&fp, &payload, 1, &count) && count == 1 && !f_close(&fp));
+    if (kind == 3) {
+        assert(offset <= 480 && disk_read(0, sector, where, 1) == RES_OK);
+        assert(!memcmp(sector + offset, "ABCDEFGHXYZ", 11));
+        assert(offset < 32 || sector[offset - 32 + 11] != 0x0f);
+        memset(sector + offset, 0xb3, 11);
+        assert(disk_write(0, sector, where, 1) == RES_OK && disk_ioctl(0, CTRL_SYNC, NULL) == RES_OK);
+    }
+    assert(!f_mount(NULL, "0:", 0) && !f_mount(fs, "0:", 1));
+    assert(snprintf(path, sizeof(path), "/SAROO/BIN/%s", name) < (int)sizeof(path));
+    assert(!f_open(&fp, path, FA_READ) && !f_read(&fp, sector, 1, &count));
+    assert(count == 1 && sector[0] == payload && !f_close(&fp));
+    reset_scan();
+    assert(!list_bins(0) && total_disc == 1);
+    fprintf(stderr, "identity kind=%d bytes=%u FILINFO=%zu LFN=%zu SFN=%zu\n",
+            kind, used, sizeof(FILINFO), sizeof(((FILINFO *)0)->fname), sizeof(((FILINFO *)0)->altname));
+    assert(!strcmp(path_str + disc_path[0], name));
+    assert(allocs == 1 && frees == 1); guards();
+}
+
+static void maximum_leaf(char *name, unsigned index)
+{
+    for (unsigned i = 0; i < 255; ++i) {
+        name[3*i] = (char)0xe0; name[3*i+1] = (char)0xa0; name[3*i+2] = (char)0x80;
+    }
+    name[763] = (char)(0xa0 + index / 64);
+    name[764] = (char)(0x80 + index % 64);
+    name[765] = 0;
+}
+
+static void utf8_capacity(void)
+{
+    char name[766], path[1024];
+    for (unsigned i = 0; i < 174; ++i) {
+        maximum_leaf(name, i); create("/SAROO/BIN", name, 0);
+        if (i != 172 && i != 173) continue;
+        reset_scan();
+        int result = list_bins(0);
+        if (i == 172) {
+            assert(!result && total_disc == 173 && 0x23000u - pbptr == 602);
+            for (unsigned j = 0; j < 173; ++j) {
+                maximum_leaf(name, j);
+                assert(!strcmp(path_str + disc_path[j], name));
+            }
+        } else assert(result == -FR_NOT_ENOUGH_CORE && !total_disc && !*(u32 *)memory.image);
+        assert(allocs == 1 && frees == 1); guards();
+    }
+    maximum_leaf(name, 173);
+    assert(snprintf(path, sizeof(path), "/SAROO/BIN/%s", name) < (int)sizeof(path));
+    assert(!f_unlink(path)); reset_scan();
+    assert(!list_bins(0) && total_disc == 173 && allocs == 1 && frees == 1);
+    guards();
+}
+
 #ifndef MCU_DISCOVERY_TEST_ENTRY
 #define MCU_DISCOVERY_TEST_ENTRY main
 #endif
@@ -370,7 +530,10 @@ int MCU_DISCOVERY_TEST_ENTRY(int argc,char **argv)
     disk=fopen(argv[1],"r+b");assert(disk);FATFS fs;assert(f_mount(&fs,"0:",1)==0);
     assert(f_mkdir("/SAROO")==0 && f_mkdir("/SAROO/ISO")==0 && f_mkdir("/SAROO/BIN")==0);
     memset(&memory,0xa5,sizeof(memory));fault="none";
-    if(!strcmp(mode,"discover"))discover(value);
+    if(!strcmp(mode,"utf8"))utf8_name(value);
+    else if(!strcmp(mode,"identity"))utf8_identity(value);
+    else if(!strcmp(mode,"utf8-capacity"))utf8_capacity();
+    else if(!strcmp(mode,"discover"))discover(value);
     else if(!strcmp(mode,"folders"))folders();
     else if(!strcmp(mode,"folder-paths"))folder_paths();
     else if(!strcmp(mode,"folder-io"))folder_io(value);

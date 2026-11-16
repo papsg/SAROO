@@ -61,6 +61,8 @@ typedef unsigned long long u64;
 #define SSCMD_BINDIR   0x0038
 #define BIN_DIRECTORY_VERSION 1u
 #define BIN_DIRECTORY_ENTRY 0x80000000u
+/* Complete UTF-8 leaf including NUL; full request paths stay independently bounded. */
+#define CATALOG_NAME_CAPACITY 766u
 #define BIN_PATH_CAPACITY 0xf0u
 #define BIN_ROOT "/SAROO/BIN"
 #define MENU_ACK_VERSION 1u

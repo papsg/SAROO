@@ -100,7 +100,9 @@ void Reset_Handler(void)
         dirs[depth][0] = name;
         dirs[depth++][1] = info;
     }
-    CHECK(depth > 32 && depth < sizeof(dirs) / sizeof(dirs[0]));
+    /* Complete UTF-8 FILINFO output is larger; retain admission equality and
+     * a bounded nesting control without promising the former short-name depth. */
+    CHECK(depth >= 16 && depth < sizeof(dirs) / sizeof(dirs[0]));
 
     /* Fill holes out of order, then unwind and prove the large extent returns. */
     for (unsigned i = 0; i < depth; i += 2) release(dirs[i][1]);
@@ -115,6 +117,11 @@ void Reset_Handler(void)
     pair large = allocate(24000, 0U);
     CHECK(large.after && !allocate(1024, 0U).after);
     release(large);
+    char observed[] = "00\n";
+    observed[0] = "0123456789abcdef"[depth >> 4];
+    observed[1] = "0123456789abcdef"[depth & 15];
+    host_call(4, (uintptr_t)"directory depth (hex): ");
+    host_call(4, (uintptr_t)observed);
     finish("PASS: startup, directory depth, hole reuse and exhaustion match the parent\n", 0);
 }
 

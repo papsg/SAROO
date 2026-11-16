@@ -269,6 +269,45 @@ static void bounds(void)
     set32(catalog_bytes, 2560);
     assert(!bin_catalog_name(0, &directory));
 }
+
+/* Adapted from paps-g b6b04d6d: full identities, independent launch limits. */
+static void utf8(void)
+{
+    char name[766];
+    for (unsigned i = 0; i < 255; ++i) {
+        name[3*i] = (char)0xe0; name[3*i+1] = (char)0xa0; name[3*i+2] = (char)0x80;
+    }
+    name[765] = 0;
+    list(name, 1);
+    set32(catalog_bytes, 2);
+    set32(catalog_bytes + 8, 0x2b00);
+    strcpy((char *)catalog_bytes + 0x2b00, leaf);
+    strcpy(bin_path, child);
+    sel_mode = BIN_FOLDER_MODE;
+    bin_draw(2);
+    assert(total_disc == 2 && sel_menu.num == 2 && strstr(sel_menu.items[1], "Run"));
+    assert(strlen(sel_menu.items[0]) < sizeof(sel_menu.items[0]));
+    int directory;
+    assert(!strcmp(bin_catalog_name(0, &directory), name) && directory);
+    assert(bin_prepare_path(0) < 0 && !strcmp(bin_current_path(), child));
+
+    set32(catalog_bytes + 4, 0x2800);
+    bin_draw(2);
+    BIN_BROWSER browser = {0};
+    bin_input(&browser, button(PAD_A));
+    assert(last_error == -1 && !file_reads);
+    sel_menu.current = 1;
+    bin_input(&browser, button(PAD_A));
+    assert(file_reads == 1 && last_error == -7 && !strcmp(bin_current_path(), child));
+
+    sel_mode = 0;
+    bin_draw(2);
+    assert(total_disc == 2 && sel_menu.num == 2 && strstr(sel_menu.items[1], "Run"));
+    /* A leaf with no terminator in the full supported capacity still refuses. */
+    memset(catalog_bytes + 0x2800, 'x', 766);
+    catalog_bytes[0x2800 + 766] = 0;
+    assert(!bin_catalog_name(0, &directory));
+}
 #endif
 
 int main(int argc, char **argv)
@@ -281,6 +320,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "invalid-reply")) invalid_reply();
     else if (!strcmp(argv[1], "retry")) retry();
     else if (!strcmp(argv[1], "bounds")) bounds();
+    else if (!strcmp(argv[1], "utf8")) utf8();
 #endif
     else abort();
     printf("PASS %s\n", argv[1]);

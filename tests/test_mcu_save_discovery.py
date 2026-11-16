@@ -10,6 +10,17 @@ class DiscDiscoveryTests(MCUSaveTest):
     def invoke(self, mode, value=0):
         return self.run_case([mode, value])
 
+    def test_utf8_lfn_and_sfn_outputs_preserve_full_names(self):
+        for kind in range(5):
+            with self.subTest(kind=kind): self.invoke('utf8', kind)
+
+    def test_mixed_utf8_and_maximum_short_name_retain_identity_and_payload(self):
+        for kind in range(4):
+            with self.subTest(kind=kind): self.invoke('identity', kind)
+
+    def test_maximum_utf8_leaves_bound_the_unchanged_string_pool(self):
+        self.invoke('utf8-capacity')
+
     def test_discovery_handles_dotless_files_preference_and_path_limits(self):
         for value in range(7):
             with self.subTest(value=value):self.invoke('discover',value)
@@ -59,5 +70,13 @@ class DiscDiscoveryTests(MCUSaveTest):
         for value in range(1, 5):
             with self.subTest(value=value):
                 self.invoke('folder-io', value)
+
+class GenericUtf8DiscoveryTests(MCUSaveTest):
+    fixture = 'discovery'
+    generic_formats = True
+    invoke = DiscDiscoveryTests.invoke
+    test_utf8_lfn_and_sfn_outputs_preserve_full_names = DiscDiscoveryTests.test_utf8_lfn_and_sfn_outputs_preserve_full_names
+    test_mixed_utf8_and_maximum_short_name_retain_identity_and_payload = DiscDiscoveryTests.test_mixed_utf8_and_maximum_short_name_retain_identity_and_payload
+
 
 if __name__ == '__main__': unittest.main()

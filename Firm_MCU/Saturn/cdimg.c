@@ -5,6 +5,8 @@
 #include "cdc.h"
 #include "sector_overlay.h"
 
+_Static_assert(sizeof(((FILINFO *)0)->fname) == CATALOG_NAME_CAPACITY,
+               "FatFs and the paired menu must agree on UTF-8 leaf capacity");
 
 /******************************************************************************/
 
