@@ -177,3 +177,70 @@ Fresh target code/data grows16 bytes to87,912, leaving17,268 margin. BSS9,508,
 are unchanged. The individual TT direct frame grows8→20 bytes, excluding callees
 and interrupt/full-stack peaks. Matching-hash candidates now incur an exact
 string comparison; no timing claim is made. MCU/FPGA are unchanged.
+
+
+## SSR-066: callable unsigned button-release helper
+
+Port of paps-g `fac81eb1`, independently adapted/verified by papsg against the
+public header and current unsigned event producer. This is our source finding;
+no original upstream issue/PR or observed normal-menu/game failure is asserted.
+
+The old `#define BUTTON_UP  (stat, bt)` puts whitespace before the parenthesis,
+so it defines an object-like macro. [C11 N1570 §6.10 lparen grammar, printed
+p.160/PDF p.178](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=178)
+and [§6.10.3p9–10, printed pp.166–167/PDF pp.184–185](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=185)
+distinguish these forms. An ordinary two-argument release call cannot compile.
+Removing only the whitespace also leaves an inverted predicate: the independent
+PAD_A control reports release0/held1 instead of release1/held0.
+
+Keep the public spelling `BUTTON_UP(event, buttons)` and call an unsigned inline
+predicate. SAROO's own producer puts changed buttons in the high16 bits and
+current presses in the low16. Every selected button must have changed and none
+may remain pressed. Each argument evaluates once; RIGHT's bit31 event uses
+logical unsigned extraction. Empty selection is vacuously true; selections
+outside the16-bit button field are false. This is the local helper contract,
+not a Sega-defined event-word API. The active press helper is unchanged.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_button_up.py -v
+SAROO_MENU_SAFETY_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_button_up.py -v
+make -C tests check-menu-safety
+# Compile future generic/RIGHT callers using an existing SH-2 cross compiler:
+sh2eb-elf-gcc -m2 -mb -Os -std=c99 -ffreestanding -fno-builtin -Wall -Wextra -Werror -I Firm_Saturn -c tests/menu_button_up_native.c -o /tmp/menu_button_up_native.o
+```
+
+The complete parent header passes four existing-press/independent-reference
+controls but fails translation of the release interface. A separately retained
+whitespace-only header compiles under strict freestanding sanitizer flags and
+returns semantic42 for release0/held1. The earlier probe's host-builtin warnings
+are preserved separately; they do not qualify the wider legacy header ABI.
+
+Corrected sanitizer/O2 profiles pass393,224 release checks: all65,536 selections
+at six event patterns, signed/unsigned RIGHT boundaries, unsupported bits and
+single-evaluation side effects. The oracle visits individual bits independently
+of the helper's aggregate expression; some masks are deliberately synthetic.
+The four existing controls also pass. Header/fixture/driver hashes, compile logs,
+binaries, results, parent and competing-implementation failures remain archived.
+
+Forced generic and RIGHT callers compile strictly to big-endian ELF32 SuperH
+using the same local pinned/network-disabled compiler as the normal menu.
+Objects/disassembly and the exact matching header are preserved. An initial
+container-image admission check expected a bare digest rather than the pinned
+name@digest form and refused before compilation; the corrected check retains
+immutable digest and local-only endpoint requirements. No code is executed on
+an SH-2 and neither test caller is linked into production.
+
+The source census finds only the helper definitions, with no ordinary caller.
+A fresh full menu build retains the complete ELF/image hashes, symbols/font,
+resources and every direct-frame record. Code/data remain87,912, BSS9,508,
+reserved stack16,384, margin17,268 and image488,770 bytes. All40 current menu
+source pins and the forced-call header match; zero standard-program cost is
+measured. The complete menu safety target passes181 methods after supplying the
+current paired ELF for its one optional linked-ROM check. That initial skip and
+the passing actual-linked replay remain separately recorded. MCU/FPGA sources
+and feature selections are unchanged.
+
+C translation, scripted predicates, static target compilation and current-build
+parity do not qualify physical controller transactions, target execution, input
+latency, feasible physical masks or games. No new caller, press-helper redesign,
+runtime diagnostic, USB feature, overlay recipe or device operation is added.

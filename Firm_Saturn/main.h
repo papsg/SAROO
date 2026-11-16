@@ -296,7 +296,13 @@ void conio_putc(int ch);
 u32 conio_getc(void);
 
 #define BUTTON_DOWN(stat, bt)  ( (stat & ((bt<<16)|bt)) ==  ((bt<<16)|bt) )
-#define BUTTON_UP  (stat, bt)  ( ((stat^(~bt)) & ((bt<<16)|bt)) == ((bt<<16)|bt) )
+/* Changed buttons occupy the high half; current presses occupy the low half.
+ * All selected buttons must change to released. Evaluate each argument once. */
+static inline int button_released(u32 event, u32 buttons)
+{
+    return ((event >> 16) & buttons) == buttons && !(event & buttons);
+}
+#define BUTTON_UP(stat, bt) button_released((u32)(stat), (u32)(bt))
 
 
 extern int fbw, fbh;
