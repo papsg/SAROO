@@ -673,6 +673,41 @@ static int extent_image(unsigned value)
 }
 
 
+#if FF_USE_EXPAND
+/* papsg adaptation of paps-g SSR-013; optional API in host copies only. */
+static int expand_image(unsigned clusters,unsigned opt)
+{
+    FATFS fs={0};FIL file;UINT count;
+    assert(clusters<=8 && opt<=1);
+    assert(f_mount(&fs,"0:",1)==FR_OK && fs.csize==1);
+    /* The raw postcondition below checks exact count bookkeeping. Establish
+     * a current mounted count explicitly; persisted FSInfo is only a hint. */
+    DWORD available; FATFS *mounted;
+    assert(f_getfree("0:",&available,&mounted)==FR_OK && mounted==&fs);
+    assert(f_open(&file,"PROBE.BIN",FA_CREATE_NEW|FA_WRITE)==FR_OK);
+    DWORD hint=fs.last_clst;
+    FSIZE_t requested=(FSIZE_t)(clusters ? clusters : fs.n_fatent-1)*512;
+    FRESULT result=f_expand(&file,requested,opt);
+    printf("expand result=%u owned=%lu size=%lu hint_before=%lu hint_after=%lu\n",
+           result,(unsigned long)file.obj.sclust,(unsigned long)file.obj.objsize,
+           (unsigned long)hint,(unsigned long)fs.last_clst);
+    if(result==FR_OK) {
+        assert(clusters);
+        BYTE data[4096],actual[4096];
+        for(unsigned i=0;i<clusters*512;++i) data[i]=(BYTE)(i*43u+7u);
+        assert(f_write(&file,data,clusters*512,&count)==FR_OK && count==clusters*512);
+        assert(f_lseek(&file,0)==FR_OK);
+        /* Reopen with read access after committing the allocation. */
+        assert(f_close(&file)==FR_OK);
+        assert(f_open(&file,"PROBE.BIN",FA_READ)==FR_OK);
+        assert(f_read(&file,actual,clusters*512,&count)==FR_OK && count==clusters*512);
+        assert(!memcmp(data,actual,clusters*512));
+    }
+    assert(f_close(&file)==FR_OK && f_mount(NULL,"0:",0)==FR_OK);
+    return result;
+}
+#endif
+
 /* Format with the generic fixture and mount with the App fixture. */
 static void format_profile_card(int type, int partitioned)
 {
@@ -1172,7 +1207,14 @@ int main(int argc,char **argv)
     if(!strcmp(argv[2],"math")){comparison();return 0;}
     disk=fopen(argv[1],"r+b");assert(disk && !fseeko(disk,0,SEEK_END));sectors=ftello(disk)/512;
     int value = atoi(argv[3]);
-    if (!strcmp(argv[2], "partition-extent")) {
+    if (!strcmp(argv[2], "format-expand")) {
+        format_volume(FM_FAT32,1,512);
+#if FF_USE_EXPAND
+    } else if (!strcmp(argv[2], "expand")) {
+        int result=expand_image((unsigned)value & 15, (unsigned)value >> 4);
+        assert(!fclose(disk)); return result;
+#endif
+    } else if (!strcmp(argv[2], "partition-extent")) {
         int result=extent_image((unsigned)value);
         assert(!fclose(disk)); return result;
     } else if (!strcmp(argv[2], "format-profile")) {

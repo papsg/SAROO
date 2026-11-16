@@ -120,6 +120,7 @@ check-mcu-diskio:
 .PHONY: check-fatfs
 check-fatfs:
 	$(PYTHON) -B -m unittest discover -s . -p test_fat32_app.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_expand.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_seek.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_directory.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_growth.py -v

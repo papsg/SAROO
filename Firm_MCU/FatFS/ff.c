@@ -1307,9 +1307,12 @@ static DWORD find_bitmap (	/* 0:Not found, 2..:Cluster block found, 0xFFFFFFFF:D
 {
 	BYTE bm, bv;
 	UINT i;
-	DWORD val, scl, ctr;
+	DWORD val, scl, ctr, remaining;
 
 
+	if (!ncl || ncl > fs->n_fatent - 2) return 0;
+	/* Admitted exFAT heaps are <= MAX_EXFAT; this budget fits DWORD. */
+	remaining = fs->n_fatent - 2 + ncl - 1;
 	clst -= 2;	/* The first bit in the bitmap corresponds to cluster #2 */
 	if (clst >= fs->n_fatent - 2) clst = 0;
 	scl = val = clst; ctr = 0;
@@ -1327,7 +1330,8 @@ static DWORD find_bitmap (	/* 0:Not found, 2..:Cluster block found, 0xFFFFFFFF:D
 				} else {
 					scl = val; ctr = 0;		/* Encountered a cluster in-use, restart to scan */
 				}
-				if (val == clst) return 0;	/* All cluster scanned? */
+				if (val == 0) { scl = 0; ctr = 0; } /* Never join opposite heap ends. */
+				if (--remaining == 0) return 0; /* Include runs crossing the search origin. */
 			} while (bm != 0);
 			bm = 1;
 		} while (++i < SS(fs));
@@ -5977,7 +5981,7 @@ FRESULT f_expand (
 {
 	FRESULT res;
 	FATFS *fs;
-	DWORD n, clst, stcl, scl, ncl, tcl, lclst;
+	DWORD n, clst, stcl, scl, ncl, tcl, lclst, remaining;
 
 
 	res = validate(&fp->obj, &fs);		/* Check validity of the file object */
@@ -5987,7 +5991,9 @@ FRESULT f_expand (
 	if (fs->fs_type != FS_EXFAT && fsz >= 0x100000000) LEAVE_FF(fs, FR_DENIED);	/* Check if in size limit */
 #endif
 	n = (DWORD)fs->csize * SS(fs);	/* Cluster size */
-	tcl = (DWORD)(fsz / n) + ((fsz & (n - 1)) ? 1 : 0);	/* Number of clusters required */
+	QWORD required = (QWORD)(fsz / n) + ((fsz & (n - 1)) ? 1 : 0);
+	if (required > fs->n_fatent - 2) LEAVE_FF(fs, FR_DENIED);
+	tcl = (DWORD)required; /* Fits the admitted heap before narrowing. */
 	stcl = fs->last_clst; lclst = 0;
 	if (stcl < 2 || stcl >= fs->n_fatent) stcl = 2;
 
@@ -5996,6 +6002,7 @@ FRESULT f_expand (
 		scl = find_bitmap(fs, stcl, tcl);			/* Find a contiguous cluster block */
 		if (scl == 0) res = FR_DENIED;				/* No contiguous cluster block was found */
 		if (scl == 0xFFFFFFFF) res = FR_DISK_ERR;
+		if (res == FR_OK && (scl < 2 || scl >= fs->n_fatent || tcl > fs->n_fatent - scl)) res = FR_DENIED;
 		if (res == FR_OK) {	/* A contiguous free area is found */
 			if (opt) {		/* Allocate it now */
 				res = change_bitmap(fs, scl, tcl, 1);	/* Mark the cluster block 'in use' */
@@ -6008,6 +6015,7 @@ FRESULT f_expand (
 #endif
 	{
 		scl = clst = stcl; ncl = 0;
+		remaining = fs->n_fatent - 2 + tcl - 1; /* At most two linear passes. */
 		for (;;) {	/* Find a contiguous cluster block */
 			n = get_fat(&fp->obj, clst);
 			if (++clst >= fs->n_fatent) clst = 2;
@@ -6022,10 +6030,12 @@ FRESULT f_expand (
 			} else {
 				scl = clst; ncl = 0;		/* Not a free cluster */
 			}
-			if (clst == stcl) {		/* No contiguous cluster? */
+			if (clst == 2) { scl = 2; ncl = 0; } /* Preserve linear adjacency. */
+			if (--remaining == 0) {		/* No contiguous cluster? */
 				res = FR_DENIED; break;
 			}
 		}
+		if (res == FR_OK && (scl < 2 || scl >= fs->n_fatent || tcl > fs->n_fatent - scl)) res = FR_DENIED;
 		if (res == FR_OK) {	/* A contiguous free area is found */
 			if (opt) {		/* Allocate it now */
 				for (clst = scl, n = tcl; n; clst++, n--) {	/* Create a cluster chain on the FAT */
