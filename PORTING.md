@@ -2909,3 +2909,22 @@ hash and modification time. Active main and ledger are clean and match their
 pushed refs. Public main is `4c7f3aa`; public stashes retain their starting state.
 The archived evidence worktree is intentionally preserved with its earlier edits.
 All six required checkpoint dispositions are complete; no candidate work remains.
+
+## Optional allocation and menu correctness follow-up
+
+Active ordered follow-up from public `4c7f3aa`. Independently revalidate each
+checkpoint before direct main publication, preserving original attribution
+and exact local primary citations. No PRs, USB integration, runtime diagnostics,
+new loaders/CDON recipes or device operations. Private sources/evidence remain
+read-only. Existing optional feature selections stay unchanged.
+
+- [ ] paps-g `491f8b63`, SSR-013: linear optional contiguous allocation.
+- [ ] paps-g `67f025a6`, SSR-015: representable SH-2 serial receive budgets.
+- [ ] paps-g `342fc309`, SSR-016: defined unsigned controller-event packing.
+- [ ] paps-g `77173c38`, SSR-017: defined negative fixed-point line slopes.
+- [ ] paps-g `f7634ce3`, SSR-021: exact translation keys after hash matching.
+- [ ] paps-g `52632dd7`, SSR-027: bounded complete retained SD BOOT admission.
+
+SSR-026 logical-sector mapping already exists in the public Rust overlay
+compiler; no duplicate port or recipe addition is planned. Preserve prior
+research branches, source/failure evidence and archived trial edits.
