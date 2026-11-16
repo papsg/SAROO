@@ -668,6 +668,7 @@ int init_cdblock(void)
 	cdb.fad_search_position = 0;
 	cdb.subrw_rp = 0;
 	cdb.subrw_wp = 0;
+	cdb.subrw_flags = 0;
 
 	// disable fifo irq
 	ST_CTRL &= ~(STIRQ_DAT | 0x0200);
@@ -730,6 +731,7 @@ void publish_open_tray(void)
     invalidate_directory();
     cdb.root_lba = cdb.root_size = cdb.cdir_lba = cdb.cdir_size = 0;
     cdb.subrw_wp = cdb.subrw_rp;
+    cdb.subrw_flags = 0;
     clear_drive_position();
     HIRQ = HIRQ_DCHG | HIRQ_EFLS;
     cdb.status = STAT_OPEN;
@@ -1029,7 +1031,11 @@ int get_subcode(void)
         out[8] = fad >> 8;
         out[9] = fad;
     }
-    command_reply(0x4000 | (cdb.status << 8), type ? 12 : 5, reply_pair(0, 0));
+    /* The command task snapshots this loss burst before starting the FIFO.
+     * Q/WAIT/rejected commands leave it pending; later loss is a new burst. */
+    u8 flags = type ? cdb.subrw_flags : 0;
+    if (type) cdb.subrw_flags = 0;
+    command_reply(0x4000 | (cdb.status << 8), type ? 12 : 5, reply_pair(0, flags));
     cdb.trans_type = type ? TRANS_SUBRW : TRANS_SUBQ;
     trans_start();
     return HIRQ_DRDY;

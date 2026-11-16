@@ -204,6 +204,7 @@ int get_sector(int fad, BLOCK *wblk)
         }
         int key = disable_irq();
         cdb.subrw_wp = cdb.subrw_rp;
+        cdb.subrw_flags = 0;
         restore_irq(key);
     }
     TRACK_INFO *tk = cdb.play_track;
@@ -302,7 +303,10 @@ static void publish_subrw(u32 fad)
         /* The spare slot stays invisible until both cursors are committed. */
         memcpy(cdb.subrw_buf + slot*24, pack, 24);
         int key = disable_irq();
-        if (next == cdb.subrw_rp) cdb.subrw_rp = (next + 1) % 64;
+        if (next == cdb.subrw_rp) {
+            cdb.subrw_rp = (next + 1) % 64;
+            cdb.subrw_flags = 0x02; /* CDC_SCD_OVER: unread pack overwritten. */
+        }
         cdb.subrw_wp = next;
         restore_irq(key);
     }
@@ -466,7 +470,10 @@ static int scan_sector(BLOCK *block, u32 start, u32 end)
     }
     TRACK_INFO *previous = cdb.play_track;
     set_drive_position(next);
-    if (previous != cdb.play_track) cdb.subrw_wp = cdb.subrw_rp;
+    if (previous != cdb.play_track) {
+        cdb.subrw_wp = cdb.subrw_rp;
+        cdb.subrw_flags = 0;
+    }
     restore_irq(key);
     return ending;
 }
