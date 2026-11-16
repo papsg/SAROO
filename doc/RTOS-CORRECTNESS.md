@@ -157,3 +157,79 @@ load bytes,6,092/1,816 ITCM margin and unchanged data/BSS/static span. Neither
 `osTimerNew`, `osTimerStart` nor `osMessageQueueNew` is linked. These are
 standard-image costs; the optional virtual application's allocations and
 periods are separate. Menu and FPGA sources are unchanged.
+
+## SSR-067: publish pool ownership and occupancy together
+
+The original exclusive-access pool implementation publishes a free-list change
+and updates its used-block count in separate operations. A higher-priority IRQ
+can allocate a just-returned block between those operations. The real public
+API then reports33 used blocks in a32-block pool and `0xffffffff` available
+blocks. Allocation has the inverse gap: the last block is owned while the
+used count still reports one available. These examples use valid live objects,
+owned blocks and timeout-zero ISR calls; no double free supplies the trigger.
+
+Both primitives now use the provider's existing PRIMASK policy: save the incoming
+mask, update links and count inside a bounded exclusion, and restore IRQs only
+when enabled on entry. Validation and event callbacks remain outside it. There
+is no loop, wait, allocation or callback in the exclusion; pool capacity, public
+dispatch, statistics getters and deferred-processing policy stay unchanged.
+Other RTX atomics retain their configured policy.
+
+This adapts paps-g `093a51b6` with papsg's public integration and test adaptation.
+The complete selected5.5.1 source and Apache-2.0 notice are retained; its pinned
+original SHA-256 is `1a9f4af3ca4ffbd2cdf8e34b137a9bdb04ae294d8413daa004bc92203b8d4bf8`.
+App and BootLoader explicitly compile the override, while GNU excludes the
+stock duplicate. No later pool-constructor or admission correction is imported.
+No original tpunix issue/PR is identified for this independent finding.
+
+Primary requirements, read from locally preserved references:
+
+- [Arm CMSIS-RTOS2 API2.1.3, Memory Pool](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__PoolMgmt.html),
+  the **Note** on ISR-callable functions and `osMemoryPoolAlloc` timeout,
+  `osMemoryPoolGetCount` and `osMemoryPoolGetSpace` descriptions. Counts describe
+  used and available blocks. Separate getter calls are not one atomic snapshot
+  across intervening operations.
+- [Cortex-M7 Generic User Guide, ARM DUI0646C](https://developer.arm.com/documentation/dui0646/c),
+  **§2.1.3, Priority Mask Register**, printed p.2-8, and **§§2.3.5–2.3.6**,
+  printed p.2-23: configurable-priority preemption, grouping and PRIMASK.
+  These concern the MCU's kernel; no Sega-specific pool API rule is inferred.
+
+Use the existing `rtos-check` command above with `--case pool`. Run each of
+`--phase=release`, `--phase=allocate`, `--phase=masked` and `--phase=after`
+under both `--atomic=0` and `--atomic=1`, with a fresh output each time.
+Default mode1/release can also run with `--lto` and `--archive`.
+`--baseline` selects only the pinned original pool provider, retaining the
+previous wait/queue/timer corrections.
+
+The public parent reproduces256 release and256 allocation observations with
+wrong statistics. Its already-masked, after-return and mode0 release controls
+pass768 histories. Each fixture varies capacities1/2/7/32 and block sizes
+4/8/12/64 over16 cycles. It checks unique ownership, the other owned blocks'
+payload words, nonzero ISR timeout refusal, mask restoration, exact interrupt
+delivery and recovery of every pool. All ten selected images pass2,560
+histories across both atomic modes, four phases, LTO and archive selection.
+The existing real-kernel delay, queue-constructor and timer checks pass, as does
+the common-allocator startup/directory-depth/hole-reuse test. Rust14 unit and
+two RTL tests, formatting and strict Clippy pass.
+
+Only a copied test provider receives pending-IRQ hooks; the normal source has
+none. Receipts preserve original and instrumented hashes. The after-return
+variants compile uninstrumented providers. M7 disassembly places both stores
+between CPSID and conditional CPSIE, with callbacks outside; isolated selected
+allocation/free functions are52/62 bytes with direct frames16/8, versus72/94
+and16/24 in the original exclusive-mode fixture. These are static compiler
+observations, not physical cycles or maximum interrupt-stack use.
+
+Both fresh standard166-vector App builds pass. LTO load changes59,536→59,492
+bytes (6,044 free); non-LTO changes63,792→63,748 (1,788 free). Data/BSS are
+200/50,696 and204/50,688; static DTCM span stays50,896. All68 public MCU input
+pins match their staged build cohort. Unlike the historical private profile,
+the public links retain the internal pool primitives, so whole-image parity
+is not claimed. No ordinary public pool-API caller is found; retained optional
+and internal code is not evidence of a shipping-game failure.
+
+Actual RTX APIs, SVC, external IRQ and PendSV execute in a one-core QEMU M7.
+Startup, memory map, IRQ source, clock and semihosting are test infrastructure.
+No STM32/Saturn timing, cache/bus/IRQ latency, arbitrary priorities/schedules,
+NMI/fault caller, stale/deleted object, whole stack or game qualification is
+claimed. Menu, FPGA, feature selections and device state remain unchanged.

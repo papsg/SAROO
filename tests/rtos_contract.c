@@ -88,7 +88,9 @@ static void queue_constructor_contract(void) {
     CHECK(queue && osMessageQueueDelete(queue)==osOK);
 }
 #endif
-#ifdef TEST_RTX_TIMERS
+#if defined(TEST_RTX_POOL)
+#include "rtos_pool_contract.inc"
+#elif defined(TEST_RTX_TIMERS)
 #include "rtos_timer_contract.inc"
 #else
 static void main_task(void *argument) {
@@ -147,7 +149,10 @@ void Reset_Handler(void) {
 }
 extern void SVC_Handler(void),PendSV_Handler(void),SysTick_Handler(void);
 __attribute__((section(".vectors"),used))
-void (* const vectors[16])(void)={
+void (* const vectors[])(void)={
     (void (*)(void))(boot_stack+512),Reset_Handler,fault,fault,fault,fault,fault,
     0,0,0,0,SVC_Handler,fault,0,PendSV_Handler,SysTick_Handler
+#ifdef TEST_RTX_POOL
+    , pool_irq
+#endif
 };

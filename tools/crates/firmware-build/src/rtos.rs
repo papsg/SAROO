@@ -3,10 +3,87 @@ use super::{capture, fail, mcu, new_build_output, sha, Result};
 use serde_json::{json, Value};
 use std::{
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
 };
+
+fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
+    let mut atomic = None;
+    let mut phase = None;
+    for flag in flags {
+        if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
+            continue;
+        }
+        if case != "pool" {
+            return fail("Pool options require --case pool");
+        }
+        if let Some(value) = flag.strip_prefix("--atomic=") {
+            if atomic.is_some() || !["0", "1"].contains(&value) {
+                return fail("Specify --atomic=0 or --atomic=1 once");
+            }
+            atomic = Some(value.parse::<u8>()?);
+        } else if let Some(value) = flag.strip_prefix("--phase=") {
+            if phase.is_some() {
+                return fail("Specify one pool phase");
+            }
+            phase = Some(match value {
+                "release" => (0, true),
+                "allocate" => (1, true),
+                "masked" => (2, true),
+                "after" => (0, false),
+                _ => return fail("Unknown pool phase"),
+            });
+        } else {
+            return fail("Unknown RTOS contract option");
+        }
+    }
+    let (phase, inside) = phase.unwrap_or((0, true));
+    Ok((atomic.unwrap_or(1), phase, inside))
+}
+
+/// Inject only a pending test IRQ into a copied provider. Keep the pinned
+/// production input unchanged and record the complete instrumented input.
+fn instrument_pool(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let mut text = original.clone();
+    let mut sites = 0;
+    for (allocating, pattern) in [
+        (1, "    mp_info->block_free = *((void **)block);\n"),
+        (1, "  block = atomic_link_get(&mp_info->block_free);\n"),
+        (0, "  mp_info->block_free = block;\n"),
+        (0, "  atomic_link_put(&mp_info->block_free, block);\n"),
+    ] {
+        let count = text.matches(pattern).count();
+        if count > 1 {
+            return fail("Ambiguous pool publication hook");
+        }
+        if count == 1 {
+            text = text.replace(
+                pattern,
+                &format!("{pattern}  pool_publication_probe(mp_info, {allocating});\n"),
+            );
+            sites += 1;
+        }
+    }
+    if ![2, 4].contains(&sites) {
+        return fail("Missing pool publication boundaries");
+    }
+    let marker = "//  ==== Library functions ====";
+    if text.matches(marker).count() != 1 {
+        return fail("Missing pool declaration boundary");
+    }
+    text = text.replace(
+        marker,
+        &format!("extern void pool_publication_probe(os_mp_info_t *, unsigned);\n{marker}"),
+    );
+    let path = output.join("pool-instrumented.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"hook_sites":sites}),
+    ))
+}
 
 pub(super) fn validate(app: &Path, rtx: &Path) -> Result<()> {
     let owned = app.join("RTE/CMSIS/RTX");
@@ -43,13 +120,10 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "delay" => "rtx_delay.c",
         "queue" => "rtx_msgqueue.c",
         "timer" => "rtx_timer.c",
+        "pool" => "rtx_mempool.c",
         _ => return fail("Unknown RTOS contract case"),
     };
-    for flag in &args[15..] {
-        if !["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
-            return fail("Unknown RTOS contract option");
-        }
-    }
+    let (atomic, phase, inside) = pool_options(case, &args[15..])?;
     let baseline = args[15..].iter().any(|v| v == "--baseline");
     let archive = args[15..].iter().any(|v| v == "--archive");
     let lto = args[15..].iter().any(|v| v == "--lto");
@@ -93,6 +167,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_contract.c",
         "rtos_contract.ld",
         "rtos_timer_contract.inc",
+        "rtos_pool_contract.inc",
     ] {
         mcu::copy_file(
             &repo.join("tests").join(name),
@@ -103,6 +178,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let deadline = Instant::now() + Duration::from_secs(180);
     let mut commands = Vec::new();
+    let mut instrumentation = Value::Null;
     let result = (|| -> Result<()> {
         let kernel = out.join("rtos/RTX/Source");
         let owned = out.join("config/RTX");
@@ -131,6 +207,25 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             direct.retain(|s| s.parent() != Some(owned.as_path()));
             direct.extend(sources.iter().cloned());
             sources.clear();
+        }
+        if case == "pool" && inside {
+            let selected = if !baseline && owned.join(provider).is_file() {
+                owned.join(provider)
+            } else {
+                kernel.join(provider)
+            };
+            let (instrumented, record) = instrument_pool(&selected, &out)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Pool provider selection is not unique");
+            }
+            instrumentation = record;
         }
         let mut objects = Vec::new();
         for (index, source) in sources.iter().chain(&direct).enumerate() {
@@ -162,6 +257,14 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             if case == "queue" {
                 command.arg("-DTEST_RTX_QUEUE=1");
+            }
+            if case == "pool" {
+                command.args([
+                    "-DTEST_RTX_POOL=1".to_owned(),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                    format!("-DTEST_POOL_PHASE={phase}"),
+                    format!("-DTEST_POOL_INSIDE={}", u8::from(inside)),
+                ]);
             }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
@@ -248,7 +351,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;
@@ -259,6 +362,25 @@ pub(super) fn run(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pool_case_refuses_ambiguous_or_misapplied_configuration() {
+        for flags in [
+            vec!["--atomic=0", "--atomic=1"],
+            vec!["--atomic=2"],
+            vec!["--phase=masked", "--phase=after"],
+            vec!["--phase=unknown"],
+        ] {
+            let flags = flags.into_iter().map(String::from).collect::<Vec<_>>();
+            assert!(pool_options("pool", &flags).is_err());
+        }
+        assert!(pool_options("delay", &["--atomic=0".into()]).is_err());
+        assert_eq!(pool_options("pool", &[]).unwrap(), (1, 0, true));
+        assert_eq!(
+            pool_options("pool", &["--phase=after".into(), "--atomic=0".into()]).unwrap(),
+            (0, 0, false)
+        );
+    }
 
     #[test]
     fn provider_admission_refuses_changed_headers_and_sdk_versions() {

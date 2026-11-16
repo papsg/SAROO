@@ -448,7 +448,8 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay`, `--case queue` or `--case timer`. Choose a fresh `--out tests/build/...`
+arguments as `mcu`, plus `--case delay`, `--case queue`, `--case timer` or
+`--case pool`. Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results;
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
@@ -456,6 +457,16 @@ a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 `mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
 No download, device access or test firmware installation occurs. See
 [RTOS correctness](../doc/RTOS-CORRECTNESS.md) for controls, licenses and limits.
+
+For pool publication use `--atomic=0` or `--atomic=1` and one of
+`--phase=release`, `--phase=allocate`, `--phase=masked`, `--phase=after`.
+Defaults are atomic mode1 and release. Release/allocation pend a test IRQ at
+the copied provider's link/count boundary; masked preserves an already-masked
+caller; after uses the uninstrumented provider and pends the IRQ after return.
+Only the copied test input receives hooks; both its original and instrumented
+hashes are recorded. Repeated or misplaced pool options refuse. The original
+mode1 release/allocation runs intentionally fail with256 wrong observations
+each, while mode0, masked and after controls pass. Existing results are retained.
 
 ### Compile the existing conditional BOOT body
 

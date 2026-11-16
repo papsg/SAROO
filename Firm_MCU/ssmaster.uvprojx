@@ -674,6 +674,11 @@
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_timer.c</FilePath>
             </File>
+            <File>
+              <FileName>rtx_mempool.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_mempool.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
@@ -1404,6 +1409,11 @@
               <FileName>rtx_timer.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_timer.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtx_mempool.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_mempool.c</FilePath>
             </File>
           </Files>
         </Group>
