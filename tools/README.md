@@ -448,7 +448,7 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay|queue|timer|pool|message|event|retire`.
+arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|event|retire|syscounter|thread-flags`.
 Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results;
@@ -473,6 +473,19 @@ Modes 3/4/5/7 insert hooks only into staged QEMU test copies. Mode 0 with
 `--lto` or `--archive` checks alternate link selection. See
 [SSR-132](../doc/RTOS-CORRECTNESS.md#ssr-132-retain-an-observed-rollover-until-tick-retirement)
 for the mode meanings, parent replay and hardware limits.
+
+For ISR thread-flag admission, use `--case thread-flags --atomic=0|1`
+with `--scenario=normal|paired` (default normal). The actual Cortex-M7/QEMU
+fixture fills the deferred ring with public event calls, sets flags from an
+IRQ, drains it through PendSV, and checks waiter, flag and ring state plus
+retry. It covers wait-any/all, clear/no-clear, masks, invalid/terminated
+targets and repeated calls without a waiter. `--baseline` selects the
+unmodified, version-matched RTX thread provider and is expected to report
+lost wakeups; use a fresh output directory per run. `--lto` and `--archive`
+also check the selected owner. See
+[SSR-133](../doc/RTOS-CORRECTNESS.md#ssr-133-admit-isr-thread-flag-wakeups-before-mutation)
+for replay, attribution, citations and limits. The QEMU fixture and its
+SysTick stop are test-only and are not linked into standard firmware.
 
 For pool publication use `--atomic=0` or `--atomic=1` and one of
 `--phase=release`, `--phase=allocate`, `--phase=masked`, `--phase=after`.

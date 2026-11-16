@@ -15,7 +15,9 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             continue;
         }
-        if ["message", "event", "pool-free"].contains(&case) && flag.starts_with("--scenario=") {
+        if ["message", "event", "pool-free", "thread-flags"].contains(&case)
+            && flag.starts_with("--scenario=")
+        {
             continue;
         }
         if case == "syscounter" && flag.starts_with("--mode=") {
@@ -32,8 +34,19 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         {
             continue;
         }
-        if !["pool", "pool-free", "message", "event", "retire"].contains(&case) {
-            return fail("Atomic options require --case pool, message, event or retire");
+        if ![
+            "pool",
+            "pool-free",
+            "message",
+            "event",
+            "retire",
+            "thread-flags",
+        ]
+        .contains(&case)
+        {
+            return fail(
+                "Atomic options require a supported pool/message/event/retire/thread-flags case",
+            );
         }
         if let Some(value) = flag.strip_prefix("--atomic=") {
             if atomic.is_some() || !["0", "1"].contains(&value) {
@@ -80,7 +93,9 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
                 ("pool-free", "last-slot") => 1,
                 ("pool-free", "no-waiter") => 2,
                 ("pool-free", "waiters") => 3,
-                _ => return fail("Unknown message/event scenario"),
+                ("thread-flags", "normal") => 0,
+                ("thread-flags", "paired") => 1,
+                _ => return fail("Unknown RTOS contract scenario"),
             });
         } else if flag == "--old-space" {
             if old_space {
@@ -501,6 +516,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
+        "thread-flags" => "rtx_thread.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     let (atomic, phase, inside) = pool_options(case, &args[15..])?;
@@ -589,8 +605,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_event_nested.inc",
         "rtos_retire_contract.inc",
     ] {
-        let input = if case == "syscounter" && name == "rtos_contract.c" {
-            "rtos_syscounter.c"
+        let input = if name == "rtos_contract.c" {
+            match case {
+                "syscounter" => "rtos_syscounter.c",
+                "thread-flags" => "rtos_thread_admission.c",
+                _ => name,
+            }
         } else {
             name
         };
@@ -831,6 +851,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             if case == "syscounter" {
                 command.arg(format!("-DTEST_SYSCOUNTER_MODE={counter_mode}"));
             }
+            if case == "thread-flags" {
+                command.args([
+                    format!("-DTEST_SCENARIO={scenario}"),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                ]);
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -916,7 +942,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"syscounter_mode":counter_mode,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"thread_scenario":scenario,"syscounter_mode":counter_mode,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;

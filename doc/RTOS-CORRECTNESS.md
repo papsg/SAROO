@@ -648,3 +648,67 @@ bytes in both profiles. These observations do not bound complete stack or IRQ
 latency. The cache covers one unretired natural rollover, not multiple lost
 periods, NMI/fault preemption, concurrent external SysTick reconfiguration,
 physical timing, MDK linking or Saturn/game behavior. No device was touched.
+
+## SSR-133: admit ISR thread-flag wakeups before mutation
+
+The pinned [CMSIS-RTOS2 API 2.1.3 thread-flag declaration](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L451-L457)
+permits `osThreadFlagsSet` from an ISR. Its [flag error definitions](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L181-L186)
+include `osFlagsErrorUnknown`; this is the generic failure returned when this
+implementation cannot admit deferred wakeup. [Arm's Thread Flags reference](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__ThreadFlagsMgmt.html)
+defines the caller-facing wait-any/all and clear/no-clear options. The selected
+RTX 5.5.1 ISR path originally changed a target's flags and then called the
+unchecked deferred postprocessor. If its 16-entry ISR ring was full, the call
+could return success while a blocked waiter never ran. A later unrelated
+wakeup could make the flags visible, so the failure is conditional, not a
+demonstrated game failure. The Cortex-M7 exception and interrupt-mask rules
+are in [DUI0646C §§2.1.3 and 2.3.5–2.3.7, printed pp.2-8, 2-23–2-24](https://developer.arm.com/documentation/dui0646/c).
+This MCU kernel policy is not specified by a Sega manual.
+
+This ports paps-g `6a244892` / SSR-133 onto the public checked-publication
+prerequisite from SSR-069. The full version-matched Arm `rtx_thread.c` retains
+its copyright and Apache-2.0 notice; its raw source hash is recorded in
+`Firm_MCU/RTE/CMSIS/RTX/provenance.json`. The public adaptation registers the
+thread postprocess callback before admission, then calls
+`osRtxPostProcessTry` before `ThreadFlagsSet`. The compiler barrier preserves
+callback publication order. On a full ring, the API returns
+`osFlagsErrorUnknown` without changing target flags or waiter state; an
+ordinary retry after PendSV can succeed. The selected ISR helper alone
+changes; ordinary thread calls use their existing path. MDK App and BootLoader
+each select the owner once, and the GNU/QEMU builders enforce that selection.
+No original tpunix issue or PR was identified.
+
+On the exact preceding public parent, four actual Cortex-M7/QEMU variants
+(`--atomic=0|1`, `--scenario=normal|paired`) complete 192 cases with 96 lost
+wakeups, 96 successful last-slot controls, 96 eventual retries, 192 repeated
+or no-waiter controls and 128 overflow notifications from the returning test
+hook. The selected owner completes the same 192 cases with zero lost wakeups,
+96 explicit full-ring refusals, all 96 last-slot controls and retries, 192
+repeated/no-waiter controls, and zero overflow notifications. Each variant
+checks complete flag, waiter and ring state, public wait-any/all and
+clear/no-clear modes, masks, invalid flags and target, terminated-state
+refusal, and post-drain recovery. The fixture stops SysTick to isolate
+ownership; it is not a timing, scheduler-load or physical qualification.
+Selected archive and LTO QEMU controls pass, as do adjacent syscounter,
+delay, event, message, pool Free and both ring-retirement contracts.
+
+For a public rerun, use `firmware-build rtos-check` with the explicit local
+toolchain/CMSIS/STM32/RTX arguments in [the build instructions](../tools/README.md#actual-rtx-api-contracts-offline),
+`--case thread-flags`, `--atomic=0` or `--atomic=1`, and
+`--scenario=normal` or `--scenario=paired`, giving every run a new output
+directory. Repeat each with `--baseline` to select the raw SDK provider; its
+contract failure is expected, while its completed log records the lost
+wakeup. The raw/selected inputs, exact compiler commands and QEMU logs are
+hashed in each receipt. The source reproduction can be inspected directly
+against the pinned [RTX 5.5.1 thread provider](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_thread.c).
+
+Fresh standard GNU App builds pass all 166 vector and resource checks. LTO
+load is 59,636→59,632 bytes with 5,904 free ITCM; non-LTO remains 63,960
+with 1,576 free. Both retain 50,904 static DTCM bytes. The standard flat
+images differ from SSR-132 because the previously SDK-selected thread file
+is now a selected owned provider. A control build selecting the raw Arm file
+through the same owner paths produces byte-identical flat images in both
+profiles to the corrected build. The thread-flags API is absent from the
+standard linked images; the selected postprocess callback is present. These
+builds do not prove a complete stack bound or interrupt latency, and do not
+qualify MDK, physical timing, Saturn hardware, audio or games. No device was
+touched.
