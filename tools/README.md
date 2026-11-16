@@ -456,3 +456,14 @@ a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 `mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
 No download, device access or test firmware installation occurs. See
 [RTOS correctness](../doc/RTOS-CORRECTNESS.md) for controls, licenses and limits.
+
+### Compile the existing conditional BOOT body
+
+`firmware-build mcu` accepts `--boot-object` alongside optional `--no-lto`.
+The normal App is still compiled, linked and verified with its original flags.
+A separate complete `Main/main.c` object additionally defines `BOOT=1` and
+omits LTO for inspection. It is never passed to the App linker or installed.
+The receipt separates its source/object hashes, `load_app` bytes and compiler
+frames from normal App resources; `boot-object.asm` and symbols are retained.
+Repeated/unknown options refuse before output staging. This is a source/compiler
+check, without a complete BOOT image, proprietary Keil linkage or device access.

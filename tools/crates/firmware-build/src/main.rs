@@ -424,7 +424,7 @@ fn run() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
-        println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
+        println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto] [--boot-object]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build rtos-check --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 --case delay|queue|timer [--baseline] [--lto] [--archive]\nActual RTX API/SVC/kernel contracts in local QEMU; never accesses SAROO.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
@@ -493,7 +493,7 @@ fn run() -> Result<()> {
         #[cfg(not(unix))]
         return fail("The RTOS contract check requires a Unix host");
     }
-    if (args.len() == 13 || (args.len() == 14 && args[13] == "--no-lto"))
+    if args.len() >= 13
         && args[0] == "mcu"
         && args[1] == "--repo"
         && args[3] == "--out"
@@ -510,7 +510,7 @@ fn run() -> Result<()> {
             Path::new(&args[8]),
             Path::new(&args[10]),
             Path::new(&args[12]),
-            args.len() == 13,
+            &args[13..],
         );
         #[cfg(not(unix))]
         return fail("The MCU compile/link check requires a Unix host");

@@ -64,6 +64,7 @@ check-sector-overlay:
 .PHONY: check-mcu-startup
 check-mcu-startup:
 	$(PYTHON) -B -m unittest discover -s . -p test_mcu_startup_registers.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_retained_boot_loader.py -v
 
 .PHONY: check-file-transfer
 check-file-transfer:

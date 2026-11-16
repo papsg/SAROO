@@ -335,17 +335,43 @@ void load_app(void)
 		return;
 	}
 	printk("Found MCU app file.\n");
-	printk("    Size %08x\n", f_size(&fp));
+	/* SSR-027: admit the original extent before narrowing the read request. */
+	FSIZE_t image_size = f_size(&fp);
+	if(image_size < 10 || image_size > 0x10000){
+		f_close(&fp);
+		printk("Unsupported MCU app size\n");
+		led_event(LEDEV_NOFIRM);
+		return;
+	}
+	printk("    Size %08x\n", (u32)image_size);
 
 	rv = 0;
-	retv = f_read(&fp, (void*)0, f_size(&fp), &rv);
+	retv = f_read(&fp, (void*)0, (UINT)image_size, &rv);
 	printk("    f_read: retv=%d rv=%08x\n", retv, rv);
-	f_close(&fp);
+	FRESULT closed = f_close(&fp);
+	if(retv != FR_OK || closed != FR_OK || rv != image_size){
+		led_event(LEDEV_NOFIRM);
+		return;
+	}
+
+	volatile u32 app_addr = 0;
+	u32 reset = *(u32*)(app_addr+4);
+	u32 stack = *(u32*)(app_addr+0);
+	u32 target = reset & ~1U;
+	int stack_valid = !(stack & 7U) &&
+		((stack > 0x20000000U && stack <= 0x20020000U) ||
+		 (stack > 0x24000000U && stack <= 0x24080000U) ||
+		 (stack > 0x30000000U && stack <= 0x30048000U) ||
+		 (stack > 0x38000000U && stack <= 0x38010000U));
+	/* Only first-halfword/vector admission, not complete handoff validation. */
+	if(!stack_valid || !(reset & 1U) || target < 8 || target > image_size - 2){
+		led_event(LEDEV_NOFIRM);
+		return;
+	}
 
 	printk("Start app ...        \n\n\n\n\n\n\n\n");
-	volatile u32 app_addr = 0;
-	void (*entry)(void) = (void*)(*(u32*)(app_addr+4));
-	__set_MSP(*(u32*)(app_addr+0));
+	void (*entry)(void) = (void*)reset;
+	__set_MSP(stack);
 	__set_CONTROL(0);
 	entry();
 }

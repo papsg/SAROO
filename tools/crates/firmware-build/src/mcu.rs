@@ -244,6 +244,18 @@ pub(super) fn execute(
     Ok(())
 }
 
+fn profile(options: &[String]) -> Result<(bool, bool)> {
+    let (mut lto, mut boot_object) = (true, false);
+    for option in options {
+        match option.as_str() {
+            "--no-lto" if lto => lto = false,
+            "--boot-object" if !boot_object => boot_object = true,
+            _ => return fail("Unknown or repeated MCU build option"),
+        }
+    }
+    Ok((lto, boot_object))
+}
+
 pub fn build(
     repo: &Path,
     output: &Path,
@@ -251,8 +263,9 @@ pub fn build(
     cmsis: &Path,
     stm32: &Path,
     rtx: &Path,
-    lto: bool,
+    options: &[String],
 ) -> Result<()> {
+    let (lto, boot_object) = profile(options)?;
     let repo = repo.canonicalize()?;
     let out = new_build_output(&repo, output)?;
     let app = out.join("Firm_MCU");
@@ -389,32 +402,71 @@ pub fn build(
     ];
     let mut rows = Vec::new();
     let mut objects = Vec::new();
+    let mut boot_record = Value::Null;
     let deadline = Instant::now() + Duration::from_secs(300);
     let result = (|| -> Result<Value> {
         for (index, source) in sources.iter().enumerate() {
-            let obj = out.join(format!(
-                "{index}-{}.o",
-                source.file_stem().unwrap().to_string_lossy()
-            ));
-            let mut command = Command::new(&cc);
-            command.args(flags).env("SOURCE_DATE_EPOCH", "1765029659");
-            command
-                .arg(format!("-ffile-prefix-map={}=.", out.display()))
-                .arg(format!("-fdebug-prefix-map={}=.", out.display()));
-            if source.extension().is_some_and(|s| s == "c") {
-                if lto {
-                    command.args(LTO_FLAGS);
+            for conditional_boot in [false, true] {
+                if conditional_boot && (!boot_object || source != &app.join("Main/main.c")) {
+                    continue;
                 }
+                let suffix = if conditional_boot { "-boot" } else { "" };
+                let obj = out.join(format!(
+                    "{index}-{}{suffix}.o",
+                    source.file_stem().unwrap().to_string_lossy()
+                ));
+                let mut command = Command::new(&cc);
+                command.args(flags).env("SOURCE_DATE_EPOCH", "1765029659");
                 command
-                    .args(["-std=gnu11", "-include"])
-                    .arg(out.join("mdk-irq.h"));
+                    .arg(format!("-ffile-prefix-map={}=.", out.display()))
+                    .arg(format!("-fdebug-prefix-map={}=.", out.display()));
+                if source.extension().is_some_and(|s| s == "c") {
+                    if lto && !conditional_boot {
+                        command.args(LTO_FLAGS);
+                    }
+                    if conditional_boot {
+                        command.arg("-DBOOT=1");
+                    }
+                    command
+                        .args(["-std=gnu11", "-include"])
+                        .arg(out.join("mdk-irq.h"));
+                }
+                for include in &includes {
+                    command.arg("-I").arg(include);
+                }
+                command.arg("-c").arg(source).arg("-o").arg(&obj);
+                execute(&mut command, &out, &mut rows, deadline)?;
+                if !conditional_boot {
+                    objects.push(obj);
+                } else {
+                    let symbols = capture(
+                        Command::new(bin.join("arm-none-eabi-nm"))
+                            .arg("-S")
+                            .arg("--defined-only")
+                            .arg(&obj),
+                    )?;
+                    fs::write(out.join("boot-object-symbols.txt"), &symbols)?;
+                    let size = symbols
+                        .lines()
+                        .find_map(|line| {
+                            let parts: Vec<_> = line.split_whitespace().collect();
+                            (parts.len() == 4 && parts[3] == "load_app")
+                                .then(|| u32::from_str_radix(parts[1], 16).ok())
+                                .flatten()
+                        })
+                        .ok_or("BOOT object has no load_app definition")?;
+                    let assembly = capture(
+                        Command::new(bin.join("arm-none-eabi-objdump"))
+                            .arg("-d")
+                            .arg(&obj),
+                    )?;
+                    fs::write(out.join("boot-object.asm"), assembly)?;
+                    boot_record = json!({"scope":"Complete Main/main.c with BOOT=1; object only, never linked into App or installed",
+                        "object_sha256":sha(&fs::read(&obj)?),"load_app_bytes":size,
+                        "source_sha256":sha(&fs::read(source)?),
+                        "compiler_direct_stack":parse_stack_usage(&fs::read_to_string(obj.with_extension("su"))?)?});
+                }
             }
-            for include in &includes {
-                command.arg("-I").arg(include);
-            }
-            command.arg("-c").arg(source).arg("-o").arg(&obj);
-            execute(&mut command, &out, &mut rows, deadline)?;
-            objects.push(obj);
         }
         let elf = out.join("qualification.elf");
         let mut command = Command::new(&cc);
@@ -467,6 +519,9 @@ pub fn build(
                 .ok_or_else(|| format!("Missing MCU symbol {n}"))
         };
         verify_vectors(&raw, &names, &symbols)?;
+        if symbols.contains_key("load_app") {
+            return fail("Conditional BOOT loader entered the standard App link");
+        }
         if u32::from_le_bytes(raw[24..28].try_into()?) != (get("Reset_Handler")? | 1) {
             return fail("MCU ELF entry does not match the Thumb reset vector");
         }
@@ -489,6 +544,13 @@ pub fn build(
         for entry in fs::read_dir(&out)? {
             let p = entry?.path();
             if p.extension().is_some_and(|x| x == "su") {
+                if p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .ends_with("-boot.su")
+                {
+                    continue;
+                }
                 if p.metadata()?.len() > 131072 || frames.len() >= 80 {
                     return fail("MCU compiler stack report exceeds bounds");
                 }
@@ -537,6 +599,9 @@ pub fn build(
     let builder_sha = sha(&fs::read(std::env::current_exe()?)?);
     let mut receipt = json!({"qualification":"GNU App compile/link accounting; not installed or MDK/hardware qualification","head":head.trim(),"success":false,"builder_sha256":builder_sha,"compiler_version":version,"compiler_sha256":compiler_sha,"verification_glue_sha256":glue,"source_sha256":hashes.hashes,"source_total_bytes":hashes.bytes,"commands":rows,"c_units_from_original_project":app_sources(&project)?.len(),"configured_rte_units":1});
     receipt["lto_partition"] = json!(lto.then_some("one"));
+    if boot_object {
+        receipt["conditional_boot_object"] = boot_record;
+    }
     match result {
         Ok(value) => {
             receipt["success"] = json!(true);
@@ -558,6 +623,26 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_boot_object_is_explicit_and_repeated_options_refuse() {
+        let parse =
+            |values: &[&str]| profile(&values.iter().map(|v| v.to_string()).collect::<Vec<_>>());
+        assert_eq!(parse(&[]).unwrap(), (true, false));
+        assert_eq!(parse(&["--no-lto"]).unwrap(), (false, false));
+        assert_eq!(parse(&["--boot-object"]).unwrap(), (true, true));
+        assert_eq!(
+            parse(&["--boot-object", "--no-lto"]).unwrap(),
+            (false, true)
+        );
+        for values in [
+            vec!["--boot-object", "--boot-object"],
+            vec!["--no-lto", "--no-lto"],
+            vec!["--install"],
+        ] {
+            assert!(parse(&values).is_err());
+        }
+    }
     #[test]
     fn validates_the_original_app_paths_and_vector_identity() {
         let p="<Target><TargetName>App</TargetName><Device>STM32H750VBTx</Device><FilePath>.\\Saturn\\saturn_utils.c</FilePath></Target>";
