@@ -681,3 +681,87 @@ link checks, not physical storage, MCU/Saturn execution or game qualification.
 Arbitrary I/O faults, every path/encoding, supplementary Unicode, other active
 volume IDs and full task/interrupt stack peaks remain unqualified. Optional
 API enablement still requires appropriate caller storage and stack.
+
+## SSR-116: bound optional numeric output and reject finite exponent overflow
+
+The retained floating formatter has two related defects. Its public owner is
+`f_printf`'s 32-byte numeric array. Zero bypasses the old exponent/precision
+admission and can overrun it. Separately, rounding `DBL_MAX` in exponent
+notation can create infinity before exponent admission; `ilog10` then stops
+converging and eventually overflows its loop counter. Standard
+`FF_USE_STRFUNC=0` excludes this code. No shipping game failure is established.
+
+Port of paps-g `1326a62c` plus final `31151513`, with papsg's independent public
+fixtures, containment and source/native joins. Count actual integer/suffix,
+separator and minus-sign characters, reserving NUL before zero/nonzero output.
+Recheck extra integer digits after fixed rounding. Determine a finite exponent
+before rounding and reject values above +99 immediately; retain the check
+after rounding for carries across that boundary. Reuse existing digit scratch;
+no array, state, task or disk call is added. All bytes outside `ftoa` stay exact.
+Rounding, special-value spellings, padding and feature selections are retained.
+
+The locally checked [FatFs R0.15 archive](https://elm-chan.org/fsw/ff/arc/ff15.zip)
+(identity above), `documents/doc/printf.html`, **Description** (format-control directives),
+defines precisions 0–99, default 6, e/E/f numeric strings through 31 characters,
+signed overflow markers beyond that size or exponent +99, and NaN/infinity
+spellings. `config.html`, **FF_USE_STRFUNC** and **FF_PRINT_FLOAT**, defines
+plain/CRLF and dot/comma options. The parent's complete `ftoa` body matches
+that versioned archive. No Sega rule or original tpunix issue/PR is asserted;
+these are optional library contracts checked without online research.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_float
+SAROO_FIRMWARE_SAVE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_float
+# Also compile the optional native functions with an existing local toolchain:
+SAROO_ARM_CC=/path/to/arm-none-eabi-gcc PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_float
+```
+
+Eight public-source profiles cover selected FAT32/generic providers, dot/comma
+and plain/CRLF output. Both sanitizer and O2 modes pass all 64 fresh API/helper
+processes and 34,776 checks with empty stderr. Each profile sweeps 2,100 exact
+small-integer cases across e/E/f and all precisions, observes the actual helper
+with independent 32-byte guards, and closes/reopens/reads actual `f_printf`
+files. Exact 31-character sign/notation fits, ordinary rounding, padding,
+defaults, negative zero, NaN/infinities, newline conversion, largest finite
+values, +99 admission and rounding across it are checked. Exact small-integer
+strings are authored independently; controlled rounding examples also compare
+with host libc. Complete actual FatFs executes over host disk/mutex endpoints.
+
+Per parent profile, the direct sweep reports 148 guard violations and 158 content
+mismatches; these sets overlap. Ten of 21 valid exact fits are falsely rejected.
+All 106 ordinary controls pass. Across the full parent cohort, 32 public cases
+hit ASan stack-buffer overflow. Six extreme-value processes reach UBSan loop-
+counter overflow and two reach the two-second containment deadline. Entry
+markers identify the helper; the runner kills/reaps each exact expired process
+group, and subsequent PID checks confirm no timed-out child remains. These
+are host observations, not firmware deadlines or physical CPU timing.
+
+Reproduce with the five pre-correction FatFs inputs from `0b725cc` selected by
+`SAROO_FATFS_DIR`. The bounded runner intentionally reports these failures.
+A separate capacity-only copy passes all 2,100 guard/content checks and 21 exact
+fits but still reaches the contained finite-value failure. A deliberately
+stricter plus-sign reservation keeps guards intact and 106 ordinary controls
+valid, yet rejects eight exact fits. Neither intermediate is published as the
+fix. `SAROO_FLOAT_VARIANTS` selects known profile names for focused controls;
+unknown/duplicate names refuse. Repeated defaults create separate evidence
+folders. All sources/configs, commands, logs, images and containment records
+remain under `tests/build/fatfs-float`.
+
+Sixteen standalone M7 before/after objects retain 172-byte direct `f_printf`
+frames in all eight profiles; `ftoa` is inlined there and emitted math helpers
+have zero direct frames. This is non-LTO compile accounting, not execution or
+complete callee/interrupt stack fit. Two adjacent UTF-8 current-directory
+profiles pass 11 API processes/70 buffer checks. Both fresh 166-vector standard
+App links retain exact flat bytes, data/BSS symbols and resources: 59,616 LTO
+and 63,904 non-LTO loads. `ftoa`/`f_printf` remain absent. All 70 MCU input pins
+join with only `ff.c` changed; all 40 preceding-menu pins remain current.
+Standard emitted code/storage has no cost from this disabled API. Enabled
+output still uses the original buffered writer; device I/O timing/costs were
+not measured. Source/privacy/whitespace and private preservation checks pass.
+
+This does not certify arbitrary-value rounding, every parser/encoding/fenv
+case, I/O failures, enabled task-stack fit, physical CPU/SD/Saturn execution
+or games. No diagnostic provider, USB integration, installed firmware change
+or device operation is included. ChaN notices and earlier evidence remain.

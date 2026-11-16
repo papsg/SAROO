@@ -7294,16 +7294,26 @@ static void ftoa (
 		if (isinf(val)) {		/* Infinite? */
 			er = "INF";
 		} else {
-			if (fmt == 'f') {	/* Decimal notation? */
+			/* paps-g 1326a62c/31151513 (SSR-116): count the actual fixed
+			 * characters and reserve NUL for zero and nonzero alike. */
+			d = (fmt == 'f' ? 1 : 5) + (prec > 0) + (sign == '-');
+			if (prec >= SZ_NUM_BUF - d) {
+				er = "OV";
+			} else if (fmt == 'f') {	/* Decimal notation? */
 				val += i10x(0 - prec) / 2;	/* Round (nearest) */
 				m = ilog10(val);
 				if (m < 0) m = 0;
-				if (m + prec + 3 >= SZ_NUM_BUF) er = "OV";	/* Buffer overflow? */
+				if (m >= SZ_NUM_BUF - prec - d) er = "OV";	/* Buffer overflow? */
 			} else {			/* E notation */
 				if (val != 0) {		/* Not a true zero? */
-					val += i10x(ilog10(val) - prec) / 2;	/* Round (nearest) */
 					e = ilog10(val);
-					if (e > 99 || prec + 7 >= SZ_NUM_BUF) {	/* Buffer overflow or E > +99? */
+					/* Reject before rounding a finite value to infinity. Keep
+					 * the second check for rounding across the +99 boundary. */
+					if (e <= 99) {
+						val += i10x(e - prec) / 2;	/* Round (nearest) */
+						e = ilog10(val);
+					}
+					if (e > 99) {	/* Exponent exceeds two digits? */
 						er = "OV";
 					} else {
 						if (e < -99) e = -99;
