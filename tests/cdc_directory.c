@@ -9,7 +9,7 @@ static inline void invalidate_sector_cache(void);
 #define pause_drive pause_disc
 #include "directory.inc"
 #undef pause_drive
-static inline void publish_subrw(u32 fad) { (void)fad; }
+static inline __attribute__((unused)) void publish_subrw(u32 fad) { (void)fad; }
 #include "dispatch.inc"
 static int failed_sector(int fad,BLOCK *blk) { (void)fad;cdb.status=STAT_ERROR;return blk?-2:-1; }
 static __attribute__((unused)) void set_peri_report(void)

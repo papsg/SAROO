@@ -23,4 +23,7 @@ class CueSubcodeTests(MCUSaveTest):
         for n in (1,2):
             with self.subTest(n=n):self.run_case(['payload-fault',n])
 
+    def test_data_track_does_not_read_or_publish_sidecodes_and_keeps_old_packets(self):
+        self.run_case(['data-no-decode',0])
+
 if __name__=='__main__':unittest.main()

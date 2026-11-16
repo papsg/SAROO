@@ -14,6 +14,7 @@ static int current_index;
 #define MAX_BLOCKS 200
 #define STAT_NODISC 7
 #define STAT_PAUSE 1
+#define STAT_SCAN 5
 #define MSF_TO_FAD(m,s,f) ((m)*4500+(s)*75+(f))
 #define SSLOG(...) ((void)0)
 static inline int disable_irq(void) { return 0; }
@@ -25,6 +26,7 @@ _Alignas(8) static struct { u8 before[32],dir[512],between[32],full[512],after[3
 #define TEST_FULL_PATH ((uintptr_t)paths.full)
 static struct {
     int status,track_num,has_subrw,track,index,ctrladdr,play_type,iflag,subrw_wp,subrw_rp;
+    u8 subrw_flags,subrw_active;
     int rdir_state,cdir_pfnum,cdir_drend;
     u32 root_lba,root_size,cdir_lba,cdir_size;
     u8 *subcode_buf,*subrw_buf;

@@ -1623,6 +1623,18 @@ static void unsupported_commands(void)
     }
 }
 
+static void subrw_session_lifetimes(void)
+{
+    ready();cdb.play_type=PLAYTYPE_SECTOR;cdb.pause_request=-PLAYTYPE_SECTOR;cdb.subrw_active=1;
+    assert(acknowledge_drive_request() && cdb.subrw_active);
+    cdb.pause_request=1;assert(!acknowledge_drive_request() && !cdb.subrw_active);
+    ready();cdb.play_type=0;cdb.subrw_active=1;cdb.subrw_rp=7;cdb.subrw_wp=11;cdb.subrw_flags=2;cdb.cr1=0x402;
+    assert(!init_cdblock() && !cdb.subrw_active && cdb.subrw_rp==7 && cdb.subrw_wp==11 && cdb.subrw_flags==2);
+    ready();cdb.play_type=PLAYTYPE_SECTOR;cdb.status=STAT_PLAY;cdb.subrw_active=1;
+    cdb.subrw_rp=7;cdb.subrw_wp=11;cdb.subrw_flags=2;cdb.cr1=0x1200;
+    cdc_cmd_process();assert(cdb.status==STAT_SCAN && !cdb.subrw_active);
+    assert(cdb.subrw_rp==7 && cdb.subrw_wp==11 && cdb.subrw_flags==2);
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -1670,6 +1682,7 @@ int main(int argc,char **argv)
     case 54:fad_search_commands();break;
     case 55:command_names();break;
     case 56:unsupported_commands();break;
+    case 57:subrw_session_lifetimes();break;
     }
     free(media);puts("pass: actual drive commands, helpers and worker fragments");return 0;
 }

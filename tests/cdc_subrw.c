@@ -2,6 +2,7 @@
  * consumer at producer cursor loads; all slot and worker updates are real. */
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "ff.h"
@@ -29,8 +30,9 @@ static int fad_to_track(u32 fad) { assert(fad == 150); return 1; }
 static TRACK_INFO *get_track_info(int n) { assert(n == 0x100); return &track; }
 static int track_subindex(const TRACK_INFO *t, int fad) { assert(t == &track && fad == 150); return 1; }
 static void subcode_convert(void) { abort(); }
+static int (*read_hook)(FIL *,u32,u32);
 static int read_disc_bytes(FIL *file, u32 position, u32 length)
-{ (void)file; (void)position; (void)length; abort(); }
+{ if(read_hook)return read_hook(file,position,length); abort(); }
 static unsigned count(void) { return (cdb.subrw_wp + 64u - cdb.subrw_rp) % 64; }
 
 static void consume(unsigned limit)
@@ -63,7 +65,8 @@ static u8 read_cursor(u8 value)
     return value;
 }
 
-static void signal_irq(unsigned bits) { assert(!mask); hirq |= bits; }
+/* A register write is valid while an outer caller already masks interrupts. */
+static void signal_irq(unsigned bits) { hirq |= bits; }
 static void led_event(int event) { assert(event == LEDEV_CSCT); }
 static void set_peri_report(void)
 {
@@ -94,6 +97,10 @@ static void ready(unsigned rp, unsigned packs, unsigned decode, int audio)
     cdb.play_type = PLAYTYPE_SECTOR;
     cdb.iflag = decode ? 2 : 0; cdb.has_subrw = decode;
     cdb.subrw_rp = rp; cdb.subrw_wp = (rp + packs) % 64;
+#ifdef HAS_SUBRW_SESSION
+    cdb.subrw_active = audio && decode && packs;
+#endif
+    read_hook = NULL;
     cdb.subcode_buf = sidecar; cdb.subrw_buf = (u8 *)&ring;
     memset(ring, 0x55, sizeof ring);
     for (unsigned i = 0; i < packs; i++)
@@ -101,7 +108,7 @@ static void ready(unsigned rp, unsigned packs, unsigned decode, int audio)
     for (unsigned i = 0; i < 4; i++)
         for (unsigned j = 0; j < 24; j++) sidecar[i*24 + j] = 0xa0 + i + j;
     buf_fad_start = 150; buf_fad_end = 151;
-    buf_fad_size = track.sector_size; buf_fad_offset = 0; buf_subcode_mode = decode;
+    buf_fad_size = track.sector_size; buf_fad_offset = 0; buf_subcode_mode = audio ? decode : 0;
     mask = armed = pending = consumed = first_pack = hirq = early_polls = flush_count = 0;
     directory_count = 99;
     filter_result = 0; audio_depth = 1;
@@ -131,8 +138,8 @@ static void retry(void)
         }
         cdb.play_wait = 0; filter_result = 0; audio_depth = 1;
         assert(worker_step() == 1 && cdb.fad == 151 && !mask);
-        assert(count() == (packs + 4 > 63 ? 63 : packs + 4));
-        check_new_packs();
+        assert(count() == (audio ? (packs + 4 > 63 ? 63 : packs + 4) : packs));
+        if(audio)check_new_packs();
     }
 }
 
@@ -142,17 +149,17 @@ static void reset(void)
     for (unsigned packs = 1; packs <= 63; packs += 31)
     for (unsigned outer = 0; outer <= 1; outer++) {
         ready(rp, packs, 2, 0);
-        cdb.play_track = NULL; armed = 1; mask = outer;
-        assert(!get_sector(150, NULL) && !armed && mask == outer);
+        cdb.play_track = NULL; armed = 1; mask = outer;cdb.subrw_flags=2;
+        assert(!get_sector(150, NULL) && armed && mask == outer);
         if (outer) restore_irq(0);
-        assert(!count() && cdb.subrw_rp == rp && !pending && !consumed);
+        assert(count()==packs && cdb.subrw_rp == rp && !pending && !consumed && cdb.subrw_flags==2);
     }
 }
 
 static void full(void)
 {
     for (unsigned rp = 0; rp < 64; rp++) {
-        ready(rp, 63, 2, 0); armed = 1;
+        ready(rp, 63, 2, 1); armed = 1;
         assert(worker_step() == 1 && !armed && !mask && !pending);
         assert(consumed == 2 && first_pack == 1 && count() == 63);
         for (unsigned i = 0; i < 59; i++) assert(ring[(cdb.subrw_rp + i) % 64][0] == i + 4);
@@ -165,22 +172,21 @@ static void terminal(void)
     for (int audio = 0; audio <= 1; audio++) {
         ready(62, 0, 2, audio); early_polls = 1;
         assert(worker_step() == 1 && cdb.fad == cdb.play_fad_end && !consumed);
-        assert(hirq & HIRQ_SCDQ);
+        if(audio)assert(hirq & HIRQ_SCDQ);
         assert(flush_count == (unsigned)audio);
-        consume(64); assert(consumed == 4 && first_pack == 0xa0 && !count());
+        consume(64); assert(consumed == (audio?4u:0u) && !count());
+        if(audio)assert(first_pack==0xa0);
     }
 }
 
 static void directory(void)
 {
     ready(62, 0, 2, 0); cdb.play_type = PLAYTYPE_DIR;
-    assert(worker_step() == 2 && directory_count == 4);
-    check_new_packs();
+    assert(worker_step() == 2 && directory_count == 0 && !count());
     ready(62, 0, 2, 0); cdb.play_type = PLAYTYPE_DIR; filter_result = 1;
     assert(worker_step() == 0 && directory_count == 0 && !count());
     ready(62, 0, 2, 0); filter_result = 1;
-    assert(worker_step() == 1 && cdb.fad == 151 && count() == 4);
-    check_new_packs();
+    assert(worker_step() == 1 && cdb.fad == 151 && !count());
 }
 
 static void controls(void)
@@ -188,11 +194,51 @@ static void controls(void)
     for (int audio = 0; audio <= 1; audio++)
     for (unsigned decode = 0; decode <= 2; decode++) {
         ready(63, 0, decode, audio);
-        assert(worker_step() == 1 && cdb.fad == 151 && count() == (decode ? 4u : 0u));
-        if (decode) check_new_packs();
+        assert(worker_step() == 1 && cdb.fad == 151 && count() == (audio && decode ? 4u : 0u));
+        if (audio && decode) check_new_packs();
     }
 }
 
+static unsigned semantic_checks,semantic_failures;
+static void semantic(int ok)
+{semantic_checks++;semantic_failures+=!ok;}
+static int payload_read(FIL *file,u32 position,u32 length)
+{
+    assert(file==track.fp && !position && length<=sizeof payload);
+    memset(payload,0,length);return length;
+}
+static int eligibility(void)
+{
+    const int owners[]={PLAYTYPE_SECTOR,PLAYTYPE_FILE,PLAYTYPE_DIR,0,PLAYTYPE_SCAN};
+    const int states[]={STAT_PLAY,STAT_SEEK,STAT_SCAN};
+    for(unsigned audio=0;audio<2;audio++)for(unsigned mode=0;mode<3;mode++)
+    for(unsigned o=0;o<5;o++)for(unsigned st=0;st<3;st++)for(unsigned enabled=0;enabled<2;enabled++) {
+        ready(61,0,mode,audio);cdb.play_type=owners[o];cdb.status=states[st];
+        buf_subcode_mode=mode; /* Deliberately warm a prior decode-mode cache. */
+        cdb.iflag=enabled?2:0;read_hook=payload_read;
+        BLOCK block={0};semantic(!get_sector(150,&block));
+        unsigned want=audio && owners[o]==PLAYTYPE_SECTOR && states[st]!=STAT_SCAN && enabled?mode:0;
+        semantic(buf_subcode_mode==want);semantic(!count() && !mask && block.data==payload);
+    }
+    printf("decode eligibility: %u checks, %u failures\n",semantic_checks,semantic_failures);
+    return semantic_failures?42:0;
+}
+static int session_start(void)
+{
+    for(unsigned rp=0;rp<64;rp++)for(unsigned packs=1;packs<=63;packs+=31)for(unsigned outer=0;outer<2;outer++) {
+        ready(rp,packs,2,1);cdb.subrw_flags=2;
+#ifdef HAS_SUBRW_SESSION
+        cdb.subrw_active=0;
+#endif
+        mask=outer;armed=1;publish_subrw(150);semantic(mask==outer);
+        if(outer)restore_irq(0);
+        semantic(!pending && !mask && !armed);
+        semantic(count()==(outer?2u:4u));semantic(consumed==(outer?2u:0u));
+        semantic(!cdb.subrw_flags);
+    }
+    printf("decode start: %u checks, %u failures\n",semantic_checks,semantic_failures);
+    return semantic_failures?42:0;
+}
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -201,6 +247,8 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "full")) full();
     else if (!strcmp(argv[1], "terminal")) terminal();
     else if (!strcmp(argv[1], "directory")) directory();
+    else if(!strcmp(argv[1],"eligibility"))return eligibility();
+    else if(!strcmp(argv[1],"session-start"))return session_start();
     else { assert(!strcmp(argv[1], "controls")); controls(); }
     return 0;
 }

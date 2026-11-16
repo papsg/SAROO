@@ -13,6 +13,7 @@ static int HIRQ;
 static FIL track_fp[100];
 static struct {
     int status, track_num, has_subrw, play_type, play_wait, pause_request;
+    u8 subrw_active;
     int rdir_state, cdir_pfnum, cdir_drend;
     u32 root_lba, root_size, cdir_lba, cdir_size;
     u32 fad, play_fad_start, play_fad_end;

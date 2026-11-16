@@ -640,6 +640,7 @@ int init_cdblock(void)
     /* The reader still owns its policy and buffers until it acknowledges.
      * Keep its request pending if the bounded handoff cannot complete. */
     if (pause_drive()) { set_status(STAT_WAIT|cdb.status); return 0; }
+    cdb.subrw_active = 0; /* End decode; retain packets unless resetting. */
     if (cdb.status == STAT_OPEN && !(iflag & 1)) {
         TRACK_INFO *first = cdb.track_num ? cdb.tracks : NULL;
         cdb.status = STAT_NODISC;
@@ -733,6 +734,7 @@ void publish_open_tray(void)
     cdb.subrw_wp = cdb.subrw_rp;
     cdb.subrw_flags = 0;
     clear_drive_position();
+    cdb.subrw_active = 0;
     HIRQ = HIRQ_DCHG | HIRQ_EFLS;
     cdb.status = STAT_OPEN;
 }

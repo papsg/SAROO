@@ -202,10 +202,6 @@ int get_sector(int fad, BLOCK *wblk)
             cdb.status = STAT_ERROR;
             return -1;
         }
-        int key = disable_irq();
-        cdb.subrw_wp = cdb.subrw_rp;
-        cdb.subrw_flags = 0;
-        restore_irq(key);
     }
     TRACK_INFO *tk = cdb.play_track;
     cdb.ctrladdr = TRACK_CTRL(tk);
@@ -213,7 +209,10 @@ int get_sector(int fad, BLOCK *wblk)
     if (!wblk) return 0;
     /* Complete one operation with a single mode across all reader stages.
      * Initialization waits for this reader before changing its policy. */
-    u8 subcode_mode = (cdb.iflag & 2) ? cdb.has_subrw : 0;
+    /* Decode only ordinary CDDA; lazy startup can still report SEEK here. */
+    u8 subcode_mode = tk->mode == 3 && cdb.play_type == PLAYTYPE_SECTOR &&
+                      cdb.status != STAT_SCAN && (cdb.iflag & 2) ? cdb.has_subrw : 0;
+    if (!subcode_mode) cdb.subrw_active = 0;
     if ((u32)fad >= buf_fad_start && (u32)fad < buf_fad_end &&
         buf_subcode_mode == subcode_mode) {
         //SSLOG(_DTASK, " fad_%08x found at buffer!\n", fad);
@@ -286,6 +285,7 @@ int get_sector(int fad, BLOCK *wblk)
     return 0;
 read_error:
     SSLOG(_DTASK, "f_read error!\n");
+    cdb.subrw_active = 0;
     cdb.status = STAT_ERROR;
     buf_fad_end = 0;
     return -2;
@@ -296,6 +296,14 @@ read_error:
 static void publish_subrw(u32 fad)
 {
     if (!buf_subcode_mode) return;
+    if (!cdb.subrw_active) {
+        /* Retire old packets at actual decode start, never metadata lookup. */
+        int key = disable_irq();
+        cdb.subrw_wp = cdb.subrw_rp;
+        cdb.subrw_flags = 0;
+        cdb.subrw_active = 1;
+        restore_irq(key);
+    }
     const u8 *pack = cdb.subcode_buf + (fad - buf_fad_start)*96;
     for (int i = 0; i < 4; i++, pack += 24) {
         u8 slot = cdb.subrw_wp;
@@ -373,6 +381,7 @@ static int acknowledge_drive_request(void)
     int keep_reader = cdb.pause_request == -PLAYTYPE_SECTOR &&
                       cdb.play_type == PLAYTYPE_SECTOR;
     if (!keep_reader) {
+        cdb.subrw_active = 0;
         cdb.status = STAT_PAUSE;
         if (cdb.play_type == PLAYTYPE_DIR) invalidate_directory();
         cdb.play_type = 0;
@@ -430,6 +439,7 @@ static int service_tray(void)
 /* Scan uses the pickup and audio ring without delivering CD-ROM sectors. */
 static int scan_sector(BLOCK *block, u32 start, u32 end)
 {
+    cdb.subrw_active = 0;
     u32 fad = cdb.fad;
     if (fad < start || fad >= end) return 1;
     if (!cdb.play_track) {
@@ -444,7 +454,6 @@ static int scan_sector(BLOCK *block, u32 start, u32 end)
             return 0;
         }
         cdda_reader_audio = 1;
-        publish_subrw(fad);
     } else {
         retire_cdda();
     }
@@ -468,12 +477,7 @@ static int scan_sector(BLOCK *block, u32 start, u32 end)
         restore_irq(key);
         return 0;
     }
-    TRACK_INFO *previous = cdb.play_track;
     set_drive_position(next);
-    if (previous != cdb.play_track) {
-        cdb.subrw_wp = cdb.subrw_rp;
-        cdb.subrw_flags = 0;
-    }
     restore_irq(key);
     return ending;
 }
@@ -612,10 +616,6 @@ _play_checkpoint:
 					cdb.play_wait = 1;
 					goto _restart_wait;
 				}
-                /* A deliberate data discard advances playback; a failed
-                 * directory delivery retires without accepting the sector. */
-                if (retv == 0 || cdb.play_type != PLAYTYPE_DIR)
-                    publish_subrw(wblk.fad);
                 if (cdb.play_type == PLAYTYPE_DIR) {
                     if (retv != 0) {
                         finish_read(0);
@@ -636,6 +636,7 @@ _play_end:
 
         /* A pending range update may extend the old endpoint. */
         if (cdb.pause_request) goto _play_checkpoint;
+        cdb.subrw_active = 0;
         if (cdb.play_type && outside_play_range()) {
 			{
 				if(cdb.repcnt>=cdb.max_repeat || cdb.play_fad_start>=cdb.play_fad_end){
@@ -703,6 +704,7 @@ _scan_reader: {
     }
 
 _read_error:
+        cdb.subrw_active = 0;
         retire_cdda();
         log_play_end();
         set_peri_report();

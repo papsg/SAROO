@@ -239,5 +239,7 @@ class CDDriveTests(unittest.TestCase):
     def test_command_trace_labels_at_lookup_boundaries(self): self.run_case(55)
     def test_unsupported_emulated_commands_reject_before_completion(self): self.run_case(56)
 
+    def test_decode_session_ends_on_pause_init_scan_and_keeps_retained_play(self): self.run_case(57)
+
 
 if __name__=='__main__':unittest.main()

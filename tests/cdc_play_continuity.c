@@ -581,6 +581,8 @@ static void prepare_scan(u32 fad, unsigned mode)
 {
     prepare(fad, 0, STAT_SCAN);
     cdb.play_type = PLAYTYPE_SCAN;
+    cdb.subrw_active = 1;
+    cdb.subrw_rp = 7; cdb.subrw_wp = 11; cdb.subrw_flags = 2;
     cdb.scan_mode = mode;
     cdb.options = 0;
     finish_after = play_delay = 0;
@@ -600,7 +602,8 @@ static void scan_motion(void)
             run_worker(NULL);
             assert(scan_reports == 6 && !scan_bad_report && !filtered && !queued);
             assert(scan_microseconds == 6 * (audible ? 13333u : 6667u));
-            assert(scan_reads == 6 * audible && scan_rw == scan_reads);
+            assert(scan_reads == 6 * audible && !scan_rw && !cdb.subrw_active);
+            assert(cdb.subrw_rp==7 && cdb.subrw_wp==11 && cdb.subrw_flags==2);
             for (unsigned i = 0; i < 6; ++i)
                 assert(scan_observed[i] == (reverse ? first - i : first + i));
             assert(cdb.status == STAT_PAUSE && !cdb.play_type && !cdb.scan_count);
@@ -626,7 +629,7 @@ static void scan_motion(void)
     assert(scan_observed[0] == 298 && scan_observed[1] == 299);
     assert(scan_observed[2] == 300 && scan_observed[3] == 301);
     assert(scan_microseconds == 2 * (6667u + 13333u));
-    assert(scan_reads == 2 && scan_rw == 2 && !filtered && !scan_bad_report);
+    assert(scan_reads == 2 && !scan_rw && !filtered && !scan_bad_report && !cdb.subrw_active);
 
     prepare_scan(301, SCAN_AUDIBLE | SCAN_REVERSE);
     cdb.play_fad_start = 298;
@@ -634,7 +637,7 @@ static void scan_motion(void)
     assert(scan_observed[0] == 301 && scan_observed[1] == 300);
     assert(scan_observed[2] == 299 && scan_observed[3] == 298);
     assert(scan_microseconds == 2 * (6667u + 13333u));
-    assert(scan_reads == 2 && scan_rw == 2 && !filtered && scan_cancels == 1);
+    assert(scan_reads == 2 && !scan_rw && !filtered && scan_cancels == 1 && !cdb.subrw_active);
 
     /* An empty initial PLAY range defaults to the disc for this scan only. */
     prepare_scan(698, 0);
@@ -651,7 +654,8 @@ static void scan_worker_errors(void)
     cdb.play_fad_end = 362;
     run_worker(NULL);
     assert(scan_reads == 3 && scan_reports == 2 && scan_retry_count == 1);
-    assert(scan_observed[0] == 360 && scan_observed[1] == 361 && scan_rw == 2);
+    assert(scan_observed[0] == 360 && scan_observed[1] == 361 && !scan_rw && !cdb.subrw_active);
+    assert(cdb.subrw_rp==7 && cdb.subrw_wp==11 && cdb.subrw_flags==2);
     assert(cdb.status == STAT_PAUSE && !cdb.play_type);
 
     for (int read = 0; read <= 1; ++read) {

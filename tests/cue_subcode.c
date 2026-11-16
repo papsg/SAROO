@@ -58,10 +58,10 @@ static void expect(unsigned fad,unsigned size,int tag,unsigned track,unsigned in
     unsigned old=reads;assert(!get_sector(fad,&b));assert(old==reads);
 }
 static void subcodes(int kind,int fault) {
-    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2048,18,1);assert(!f_close(&fp));
+    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2352,18,1);assert(!f_close(&fp));
     u8 input[18*96];for(unsigned i=0;i<sizeof input;i++)input[i]=(i*17+(i/96)*11)&63;create("/D/a.sub",input,sizeof input);
-    load("FILE \"a.bin\" BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n");
-    if(fault==-2)expect(150,2048,1,1,1);
+    load("FILE \"a.bin\" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n");
+    if(fault==-2)expect(150,2352,1,1,1);
     assert(!cue_open(&cdb.subcode_fp,"/D/a.sub",FA_READ));cdb.has_subrw=kind;cdb.iflag=2;
     memset(subcode,0xa5,sizeof subcode);memset(subring,0x5a,sizeof subring);
     if(fault>=0) {
@@ -74,8 +74,8 @@ static void subcodes(int kind,int fault) {
         for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
     } else {
         for(unsigned f=0;f<18;f++) {
-            expect(150+f,2048,f+1,1,1);
-            if(!f)assert(buf_fad_end==(unsigned)(kind==1?164:166));
+            expect(150+f,2352,f+1,1,1);
+            if(!f)assert(buf_fad_end==(unsigned)(163));
             /* Independent planar-to-RW conversion, then packet permutation. */
             static const unsigned perm[24]={0,66,125,191,100,50,150,175,8,33,58,83,108,133,158,183,16,41,25,91,116,141,166,75};
             for(unsigned j=0;j<96;j++) {
@@ -92,21 +92,21 @@ static void subcodes(int kind,int fault) {
 }
 static void subcode_mode_change(int value) {
     int kind=value/3+1,point=value%3;
-    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2048,18,1);assert(!f_close(&fp));
+    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2352,18,1);assert(!f_close(&fp));
     u8 input[18*96];for(unsigned i=0;i<sizeof input;i++)input[i]=(i*17+(i/96)*11)&63;create("/D/a.sub",input,sizeof input);
-    load("FILE \"a.bin\" BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n");
+    load("FILE \"a.bin\" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n");
     assert(!cue_open(&cdb.subcode_fp,"/D/a.sub",FA_READ));cdb.has_subrw=kind;cdb.iflag=point?2:0;
     memset(subcode,0xa5,sizeof subcode);memset(subring,0x5a,sizeof subring);
     unsigned before=reads;mode_change_read=point==2?2:1;mode_after_read=point?0:2;
-    BLOCK sector={0};assert(!get_sector(150,&sector) && sector.size==2048 && cdb.index==1);
+    BLOCK sector={0};assert(!get_sector(150,&sector) && sector.size==2352 && cdb.index==1);
     accept_sector(&sector);
-    for(unsigned i=0;i<2048;i++)assert(sector.data[i]==byte_at(1,i));
+    for(unsigned i=0;i<2352;i++)assert(sector.data[i]==byte_at(1,i));
     assert(!mode_change_read && cdb.iflag==mode_after_read);
     assert(reads==before+(point?2:1) && cdb.subrw_wp==(point?4:0));
     if(!point)for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
-    assert(!get_sector(151,&sector) && sector.size==2048 && cdb.index==1);
+    assert(!get_sector(151,&sector) && sector.size==2352 && cdb.index==1);
     accept_sector(&sector);
-    for(unsigned i=0;i<2048;i++)assert(sector.data[i]==byte_at(2,i));
+    for(unsigned i=0;i<2352;i++)assert(sector.data[i]==byte_at(2,i));
     assert(reads==before+3 && cdb.subrw_wp==4);
     unsigned frame=point?0:1;
     static const unsigned perm[24]={0,66,125,191,100,50,150,175,8,33,58,83,108,133,158,183,16,41,25,91,116,141,166,75};
@@ -123,10 +123,10 @@ static void subcode_mode_change(int value) {
 
 
 static void payload_failure_control(int kind) {
-    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2048,18,1);assert(!f_close(&fp));
+    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2352,18,1);assert(!f_close(&fp));
     u8 input[18*96];for(unsigned i=0;i<sizeof input;i++)input[i]=(i*17+(i/96)*11)&63;
     create("/D/a.sub",input,sizeof input);
-    load("FILE \"a.bin\" BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n");
+    load("FILE \"a.bin\" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n");
     assert(!cue_open(&cdb.subcode_fp,"/D/a.sub",FA_READ));cdb.has_subrw=kind;cdb.iflag=2;
     memset(subring,0x5a,sizeof subring);memset(subcode,0xa5,sizeof subcode);
     inject_read=reads+2;BLOCK block,before;memset(&block,0xa5,sizeof block);memcpy(&before,&block,sizeof block);
@@ -134,10 +134,25 @@ static void payload_failure_control(int kind) {
     assert(!buf_fad_end && !cdb.subrw_wp && cdb.status==STAT_ERROR);
     for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
     inject_read=0;cdb.play_type=PLAYTYPE_SECTOR;
-    assert(!get_sector(150,&block) && block.fad==150 && block.size==2048);
+    assert(!get_sector(150,&block) && block.fad==150 && block.size==2352);
     accept_sector(&block);
     assert(cdb.subrw_wp==4);
+    for(unsigned i=0;i<2352;i++)assert(block.data[i]==byte_at(1,i));
+    assert(!unload_disc() && !handles_count);
+}
+static void data_no_decode(void) {
+    FIL fp;start_file(&fp,"/D/a.bin");append_frames(&fp,2048,18,1);assert(!f_close(&fp));
+    u8 input[18*96];memset(input,0x35,sizeof input);create("/D/a.sub",input,sizeof input);
+    load("FILE \"a.bin\" BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n");
+    assert(!cue_open(&cdb.subcode_fp,"/D/a.sub",FA_READ));cdb.has_subrw=2;cdb.iflag=2;
+    memset(subring,0x5a,sizeof subring);memset(subcode,0xa5,sizeof subcode);
+    cdb.subrw_rp=5;cdb.subrw_wp=10;cdb.subrw_flags=2;cdb.subrw_active=1;
+    unsigned before=reads;BLOCK block={0};assert(!get_sector(150,&block));accept_sector(&block);
+    assert(block.size==2048 && reads==before+1 && !cdb.subcode_fp.fptr);
     for(unsigned i=0;i<2048;i++)assert(block.data[i]==byte_at(1,i));
+    for(unsigned i=0;i<sizeof subring;i++)assert(subring[i]==0x5a);
+    for(unsigned i=0;i<sizeof subcode;i++)assert(subcode[i]==0xa5);
+    assert(cdb.subrw_rp==5 && cdb.subrw_wp==10 && cdb.subrw_flags==2 && !cdb.subrw_active);
     assert(!unload_disc() && !handles_count);
 }
 int main(int argc,char **argv) {
@@ -145,6 +160,7 @@ int main(int argc,char **argv) {
     memset(&text_space,0xa5,sizeof text_space);memset(&paths,0xa5,sizeof paths);
     const char *test=argv[2];int value=atoi(argv[3]);
     if(!strcmp(test,"subcode"))subcodes(value,-1);else if(!strcmp(test,"toggle"))subcodes(1,-2);
-    else if(!strcmp(test,"mode-change"))subcode_mode_change(value);else if(!strcmp(test,"payload-fault"))payload_failure_control(value);else {assert(!strcmp(test,"fault"));subcodes(1,value);}
+    else if(!strcmp(test,"mode-change"))subcode_mode_change(value);else if(!strcmp(test,"payload-fault"))payload_failure_control(value);
+    else if(!strcmp(test,"data-no-decode"))data_no_decode();else {assert(!strcmp(test,"fault"));subcodes(1,value);}
     guards();assert(!lock_depth && !fclose(disk));puts("pass: actual optional subcode I/O, mode snapshot and ring bytes");return 0;
 }

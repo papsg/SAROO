@@ -325,6 +325,7 @@ typedef struct
 	u8 max_repeat;
 	u8 scan_mode;
 	u8 subrw_flags; /* Pending CR4-low R-W loss flag; uses existing padding. */
+	u8 subrw_active; /* Worker-owned decode session, separate from queued packs. */
 	TRACK_INFO *play_track;
 
 	/* Keep frequently used controls within short load/store offsets. */
