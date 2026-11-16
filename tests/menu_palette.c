@@ -404,6 +404,26 @@ static void refuse_display(void)
 #endif
 }
 
+static int vertical_mode(unsigned which)
+{
+    /* ST-058-R2 section 2.4, page 17: VRESO 00/01/10. The 256-line
+     * selection applies to PAL; 11 is prohibited, with no NTSC fallback. */
+    const unsigned actual[]={VRES224,VRES240,VRES256};
+    const unsigned required[]={0x00,0x10,0x20};
+    const unsigned horizontal[]={HRES320,HRES352,HRES640,HRES704};
+    const unsigned interlace[]={NOINTERLACE,SINGLEINTERLACE,DOUBLEINTERLACE};
+    unsigned total=0,bad=0;
+    assert(which<3);
+    for(unsigned h=0;h<4;h++)for(unsigned i=0;i<3;i++)for(unsigned flags=0;flags<4;flags++) {
+        unsigned other=horizontal[h]|interlace[i]|(flags&1?DISP:0)|(flags&2?BDCLMD:0);
+        unsigned mode=other|actual[which];
+        total++;bad+=(mode&0x30)!=required[which] || (mode&~0x30u)!=other;
+    }
+    printf("vertical mode=%u actual=%02x required=%02x combinations=%u mismatches=%u\n",
+        which,actual[which],required[which],total,bad);
+    return bad?42:0;
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -420,6 +440,10 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "pal")) pal_display();
     else if (!strcmp(argv[1], "retry")) retry_display();
     else if (!strcmp(argv[1], "refuse")) refuse_display();
+    else if (!strncmp(argv[1], "resolution", 10)) {
+        unsigned which=!strcmp(argv[1],"resolution224")?0:!strcmp(argv[1],"resolution240")?1:2;
+        int result=vertical_mode(which);if(result)return result;
+    }
     else return 2;
     printf("%s: pass\n", argv[1]);
     return 0;

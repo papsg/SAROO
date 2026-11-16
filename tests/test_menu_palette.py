@@ -73,5 +73,9 @@ class MenuPaletteTests(unittest.TestCase):
     def test_ntsc_stalled_counter_can_retry_after_progress_returns(self): self.invoke('retry')
     def test_ntsc_invalid_phase_or_owner_refuses_enable_and_restores_sr(self): self.invoke('refuse')
 
+    def test_vertical_mode_constants_use_only_allowed_encodings(self):
+        for case in ('resolution224', 'resolution240', 'resolution256'):
+            with self.subTest(case=case): self.invoke(case)
+
 
 if __name__ == '__main__': unittest.main()

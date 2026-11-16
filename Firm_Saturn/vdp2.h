@@ -31,8 +31,8 @@
 #define DOUBLEINTERLACE (LSMD1|LSMD0)
 #define VRES224         (0)
 #define VRES240         (VRESO0)
-/* 256 lines in PAL, 240 lines in NTSC */
-#define VRES256         (VRESO1|VRESO0)
+/* 256 lines on PAL only; NTSC requires a supported mode selected explicitly. */
+#define VRES256         (VRESO1)
 #define HRES320         (0)
 #define HRES352         (HRESO0)
 #define HRES640         (HRESO1)

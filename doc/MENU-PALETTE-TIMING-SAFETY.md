@@ -180,3 +180,40 @@ Publication review covers full new/changed files, commit text and approved
 public Git identities. A secret scan and private-PII checks find no leaks;
 raw host paths/logs and private provenance snapshots remain local and ignored.
 These are verification records, not additional firmware instrumentation.
+
+
+## SSR-041: dormant PAL 256-line encoding
+
+Port of paps-g `49fe3d2e`, independently verified/adapted by papsg. The original
+constant is from tpunix/SAROO; this finding has no asserted upstream issue/PR.
+Sega [VDP2 User's Manual ST-058-R2-060194 §2.4, printed p.17/PDF p.35](https://antime.kapsi.fi/sega/files/ST-058-R2-060194.pdf#page=35)
+assigns TVMD bits5–4:00=224 lines,01=240 lines,10=PAL256,11 prohibited. The
+old `VRES256` selected11 (`0x30`) and claimed an unsupported NTSC fallback.
+Change it to `VRESO1` (`0x20`) and describe the PAL-only selection.
+
+Only the definition appears in the normal firmware source census. This does
+not enable256-line display, change the240-line menu, add region selection or
+settle physical PAL display-enable timing. The existing display owner continues
+to reject unsupported256-line admission before register access.
+
+The complete actual header is included by the palette fixture. One added
+method covers144 scalar compositions: three resolutions, four horizontal modes,
+three permitted interlace modes and four display/background combinations.
+The parent fails exactly48 PAL256 compositions with exit42; both224/240 and
+all13 existing integration methods pass. Corrected sanitizer and optimized runs
+pass all14 methods, preserving palette/logo/cover/startup/VDP1/NTSC-counter and
+legacy-PAL controls. Register/VRAM/raster callbacks remain explicit host models.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_menu_palette.py -v
+SAROO_MENU_SAFETY_PROFILE=release python3 -B -m unittest discover -s tests -p test_menu_palette.py -v
+```
+
+A fresh pinned SH-2 target build retains the complete ELF/image hashes,
+loaded addresses/bytes, font, symbol/resource records and direct stack reports.
+Code/data remain87,912 bytes, BSS9,508, reserved stack16,384 and body margin17,268;
+the image remains488,770 bytes with357,698 font bytes. This dormant correction
+has zero measured standard-program cost. Source pins match the tested header.
+Historical counterfactuals, local primary page text/identity and current failed
+parent/selected cohorts remain preserved in ignored build evidence. No runtime
+probe, region policy, USB integration or device operation is introduced.
