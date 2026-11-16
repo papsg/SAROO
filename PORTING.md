@@ -3058,3 +3058,24 @@ uses public noreply attribution. Private HEAD, complete refs, stashes, index,
 status, worktrees and all 3,272 tracked-file bytes remain unchanged. Source,
 evidence, research branches, other paused work and the Saturn remain preserved.
 No Saturn/USB/SSH/power/capture/installation access or subagents were used.
+
+## Menu input/startup and retained FatFs safety
+
+Active ordered follow-up from public `91bd560`. Independently revalidate each
+lead and its amendments, reproduce applicable defects and valid controls, then
+port verified changes directly to main with attribution and primary citations.
+Keep optional feature selections unchanged. No PRs, USB integration, custom
+diagnostics, diagnostic-only providers, new CDON recipes or device operations.
+The private repository, evidence, research branches and Saturn stay untouched.
+
+- [ ] SSR-107, paps-g `99d0b565` with retained-format qualification: preserve failed child-directory cleanup until synchronized; revalidate its project-policy and mount/unmount/lifetime boundaries.
+- [ ] SSR-110, `3ed0238f`: unsigned, once-evaluated button-press mask arithmetic, preserving selection semantics and existing interfaces.
+- [ ] SSR-111, `6491b42b`: initialize translations before the existing stock console can enter the menu; reorder existing startup only, without adding diagnostic features.
+- [ ] SSR-115, `097ad56b` plus amendments: optional current-directory TCHAR capacity, final terminator, tiny/exact-fit buffers and volume prefixes.
+- [ ] SSR-116, `1326a62c` plus final `31151513`: final optional floating-format capacity and finite-exponent corrections together, preserving valid exact fits and ordinary rounding/output.
+- [ ] SSR-117, `d063f6db`: optional exFAT volume-label count admission before decoding, retaining valid labels, serial-only requests and repair.
+
+All six remain pending independent public verification. Initial private
+preservation checks match all 3,272 tracked files and complete Git state.
+Baseline filesystem and reference evidence copies are retained outside private.
+Historical private tests do not qualify the public port or physical games.
