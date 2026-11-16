@@ -540,3 +540,10 @@ objects never enter the normal link. Source, modified-Makefile, object and
 disassembly hashes are recorded separately. Both objects must be big-endian
 ELF32 SuperH; original source pins and normal menu resources stay independently
 verified. This is compile-only interface coverage, not target execution.
+
+The MCU builder retains `qualification.bin` from the qualified ELF through the
+same pinned local GNU `objcopy`, verifies its length against `_image_end` and
+records `flat_image_sha256`. Compare the actual flat bytes and resource/layout
+records when checking that a disabled API has no standard load cost. ELF hashes
+may differ in nonloaded debug metadata. These are host build artifacts; the
+builder never transfers or installs them.

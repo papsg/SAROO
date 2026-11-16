@@ -127,6 +127,7 @@ check-mcu-diskio:
 
 .PHONY: check-fatfs
 check-fatfs:
+	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_getcwd.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_mkdir_rollback.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_fsinfo.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fat32_app.py -v

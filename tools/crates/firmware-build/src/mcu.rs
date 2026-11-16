@@ -540,6 +540,20 @@ pub fn build(
         if image > 65536 || gap < 1536 || get("__Vectors")? != 0 || get("__Vectors_End")? != 664 {
             return fail("MCU App/vector/resource limits failed");
         }
+        let flat = out.join("qualification.bin");
+        execute(
+            Command::new(bin.join("arm-none-eabi-objcopy"))
+                .args(["-O", "binary"])
+                .arg(&elf)
+                .arg(&flat),
+            &out,
+            &mut rows,
+            deadline,
+        )?;
+        if flat.metadata()?.len() != u64::from(image) {
+            return fail("MCU flat image disagrees with the qualified load extent");
+        }
+        let flat_sha = sha(&fs::read(flat)?);
         let mut frames = BTreeMap::new();
         for entry in fs::read_dir(&out)? {
             let p = entry?.path();
@@ -583,7 +597,7 @@ pub fn build(
             })
             .collect();
         Ok(
-            json!({"image_load_bytes":image,"itcm_free_bytes":65536-image,"dtcm_data_bss_span":get("_ebss")?-0x20000000,"bss_bytes":bss,"data_bytes":get("_edata")?-get("_sdata")?,"main_stack_heap_address_gap":gap,"vector_entries":166,"elf_sha256":sha(&raw),"save_symbols":saves,"compiler_direct_stack":frames}),
+            json!({"image_load_bytes":image,"flat_image_sha256":flat_sha,"itcm_free_bytes":65536-image,"dtcm_data_bss_span":get("_ebss")?-0x20000000,"bss_bytes":bss,"data_bytes":get("_edata")?-get("_sdata")?,"main_stack_heap_address_gap":gap,"vector_entries":166,"elf_sha256":sha(&raw),"save_symbols":saves,"compiler_direct_stack":frames}),
         )
     })();
     let mut glue = BTreeMap::new();

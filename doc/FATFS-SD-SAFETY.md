@@ -591,3 +591,93 @@ These tests use actual filesystem C over synchronous host block/status/mutex
 adapters. They do not establish real-media durability, power-loss recovery,
 card replacement, complete directory transactions after entry publication,
 concurrent scheduling, repair of existing damage or Saturn/game acceptance.
+
+## SSR-115: account for the current-directory terminator in TCHAR units
+
+The retained R0.15 `f_getcwd` can use the complete supplied capacity for its
+path and then write the final NUL past it. A zero-capacity root also underflows
+the unsigned reverse-stack index. This needs no damaged media. It is an
+optional library defect: standard `FF_FS_RPATH=1` excludes this API, which
+requires 2. No normal game/save failure is established or new caller enabled.
+
+Adapted from paps-g `097ad56b` and strengthened guard follow-up `6e9c9e63`, with
+papsg's public fixtures and provider/native joins. Reject capacities below 2;
+zero remains untouched and a one-unit buffer receives an empty string. Reserve
+one TCHAR for NUL before path construction. Numeric and string-prefix admission
+must use the remaining budget: two units for a numeric prefix, name length + 1
+for either string style. Keeping the old gates after reservation would reject
+valid exact fits. No bytes outside `f_getcwd` change. Standard configuration,
+ChaN notices, allocation, filename decoding and other recovery stay intact.
+
+The versioned [FatFs R0.15 archive](https://elm-chan.org/fsw/ff/arc/ff15.zip)
+(identity recorded above) contains `documents/doc/getcwd.html`, **Arguments**,
+**Return Values**, **Description**, and **QuickInfo**: length is in TCHARs,
+prefixes depend on volume configuration, and this revision returns root for
+exFAT. `rc.html`, **FR_NOT_ENOUGH_CORE**, identifies insufficient supplied
+capacity; `config.html`, **FF_FS_RPATH**, **FF_LFN_UNICODE**, and
+**FF_STR_VOLUME_ID**, define these retained profiles. Its function body exactly
+matches the public parent. These primary files were checked locally, with no
+online research or invented Sega buffer rule. No original tpunix issue/PR is
+identified for this independent finding.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_getcwd
+SAROO_FIRMWARE_SAVE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_getcwd
+# Optional standalone native objects (requires an existing local Arm toolchain):
+SAROO_ARM_CC=/path/to/arm-none-eabi-gcc PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_getcwd
+```
+
+Each mode compiles 33 public-source profiles: selected FAT32 and retained generic
+providers, four API encodings, single/numeric/DOS-string/Unix-string prefixes,
+plus selected UTF-8 with its original static LFN storage. The other 32 profiles
+use per-call LFN storage. Only copied configurations enable RPATH=2/formatting;
+no diagnostic provider or private preparation framework is used. Host
+file-backed disk/mutex endpoints support actual format, mkdir, chdir and getcwd
+calls. Only volume 0 is mounted; declaring two volumes tests prefix construction,
+not multi-device arbitration.
+
+All 181 API processes and 1,150 buffer checks pass with ASan/UBSan and O2. Cases
+cover root, short/nested/long ASCII paths and a non-ASCII BMP name in Unicode
+profiles, larger/exact/path-only capacities, zero/one capacity, independent
+canaries and actual short heap allocations. OEM uses supported ASCII names.
+Guard changes are counted even when the return result is already wrong.
+Sixteen generic exFAT cases preserve its documented root result below root.
+Commands, sources, hashes, images and logs remain under `tests/build/fatfs-getcwd`;
+default repeats use separate output directories.
+
+The parent full matrix passes 130 controls and fails 51 cases: 33 zero-capacity
+faults, nine ASan heap overflows and nine guarded wrong-success processes
+with 45 explicit one-TCHAR guard overwrites. These are manifestations of one
+capacity cause. Reproduce using the five FatFs inputs from `fa90658` in a
+separate directory selected by `SAROO_FATFS_DIR`. A separate copied provider
+that reserves NUL but retains the old prefix gates fails numeric/DOS/Unix exact
+fits while all three larger-buffer controls pass. `SAROO_GETCWD_VARIANTS` can
+select those three known profile names as a JSON array; unknown/duplicate
+selections refuse.
+
+Twelve standalone Cortex-M7 object builds compare before/after in six optional
+profiles. Inspected instructions branch around zero/one-capacity writes and
+filesystem admission correctly. Direct frames remain 920 bytes for selected
+static-LFN UTF-8; per-call LFN OEM/UTF-8/UTF-16/UTF-32 frames remain
+1,432/1,432/2,232/3,840, and generic UTF-8 remains 2,072. These are non-LTO direct
+compiler frames, including the prologue reservation before the early guard,
+not complete callee/IRQ peaks or proof a firmware thread can enable this API.
+Host-tested and native providers/configurations match exactly.
+
+Both fresh 166-vector standard GNU App links pass and their entire flat images
+are byte-identical to matched parents: 59,616 LTO and 63,904 non-LTO. Resources,
+loaded extent and BSS layout stay unchanged. Complete stripped ELFs and defined
+symbol tables also match; unstripped source-checksum/DWARF metadata differs. All 70 public MCU inputs join with
+only `ff.c` changed; all 40 inputs of the preceding menu build remain current.
+The maintained builder now retains `qualification.bin`, checks its length
+against the qualified load extent and records its hash, replacing repeated
+manual image extraction. Rust unit/RTL tests, format, strict Clippy,
+source/privacy/whitespace and private-preservation checks pass.
+
+These are actual optional filesystem C, host block fixtures and target compile/
+link checks, not physical storage, MCU/Saturn execution or game qualification.
+Arbitrary I/O faults, every path/encoding, supplementary Unicode, other active
+volume IDs and full task/interrupt stack peaks remain unqualified. Optional
+API enablement still requires appropriate caller storage and stack.

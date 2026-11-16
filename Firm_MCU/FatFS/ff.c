@@ -4745,6 +4745,14 @@ FRESULT f_getcwd (
 	DEF_NAMBUF
 
 
+	/* paps-g 097ad56b / SSR-115: reserve the final TCHAR before
+	 * building the path. Even root requires slash and terminator. */
+	if (len < 2) {
+		if (len) buff[0] = 0;
+		return FR_NOT_ENOUGH_CORE;
+	}
+	len--;
+
 	/* Get logical drive */
 	buff[0] = 0;	/* Set null string to get current volume */
 	res = mount_volume((const TCHAR**)&buff, &fs, 0);	/* Get current volume */
@@ -4787,14 +4795,14 @@ FRESULT f_getcwd (
 			vl = 0;
 #if FF_STR_VOLUME_ID >= 1	/* String volume ID */
 			for (n = 0, vp = (const char*)VolumeStr[CurrVol]; vp[n]; n++) ;
-			if (i >= n + 2) {
+			if (i >= n + 1) {
 				if (FF_STR_VOLUME_ID == 2) *tp++ = (TCHAR)'/';
 				for (vl = 0; vl < n; *tp++ = (TCHAR)vp[vl], vl++) ;
 				if (FF_STR_VOLUME_ID == 1) *tp++ = (TCHAR)':';
 				vl++;
 			}
 #else						/* Numeric volume ID */
-			if (i >= 3) {
+			if (i >= 2) {
 				*tp++ = (TCHAR)'0' + CurrVol;
 				*tp++ = (TCHAR)':';
 				vl = 2;
