@@ -2912,7 +2912,7 @@ All six required checkpoint dispositions are complete; no candidate work remains
 
 ## Optional allocation and menu correctness follow-up
 
-Active ordered follow-up from public `4c7f3aa`. Independently revalidate each
+Completed ordered follow-up from public `4c7f3aa`. Independently revalidated each
 checkpoint before direct main publication, preserving original attribution
 and exact local primary citations. No PRs, USB integration, runtime diagnostics,
 new loaders/CDON recipes or device operations. Private sources/evidence remain
@@ -2923,8 +2923,45 @@ read-only. Existing optional feature selections stay unchanged.
 - [x] paps-g `342fc309`, SSR-016 → [`dd9c48d`](https://github.com/papsg/SAROO/commit/dd9c48d). Cast the change mask before shifting, retaining every control-flow/sample operation. Actual producer tests pass11 methods under sanitizer/optimization, with all8,192 defined-bit masks through press/held/missing/release and mixed Right/Up transitions at five clock origins. The parent has nine Right-bearing signed-shift failures while its original eight controls pass. Fresh complete target menu image/hash, symbols, font and resource records match SSR-015 exactly:87,896 code/data,9,508 BSS,16KiB stack,17,284 margin. The compiler already emitted the intended shift; no earlier target/physical event failure is claimed. [C11 §6.5.7p4 printed95/PDF113, Sega ST-169-R1 Table3.18 printed82/PDF92, attribution, reproduction and physical limits](https://github.com/papsg/SAROO/blob/main/doc/SH2-MENU-CORRECTNESS.md#ssr-016-pack-controller-events-as-unsigned-fields). Original extraction refusal is preserved separately; no MCU/FPGA/new runtime feature or device operation.
 - [x] paps-g `77173c38`, SSR-017 → [`1b931bc`](https://github.com/papsg/SAROO/commit/1b931bc). Two representable slope multiplications replace negative signed shifts, preserving original endpoint order, orientation and16.16 quantization within the512×256 domain. Actual C/pixel-oracle methods pass sanitizers/optimization for15 explicit cases and65,536 grid endpoint pairs/553,504 pixels. Parent reproduces eight precise negative-shift failures while eight controls pass; the initial signature-extractor refusal is archived separately. Complete target menu image/hash, symbols, font/resources retain exact SSR-016 identity, including87,896 code/data,9,508 BSS,16KiB reservation,17,284 margin and24-byte direct line frame. No ordinary current caller is found; source correctness is not an earlier observed target-pixel failure. [C11 §6.5.7p4 printed95/PDF113, attribution, commands, domain and physical limits](https://github.com/papsg/SAROO/blob/main/doc/SH2-MENU-CORRECTNESS.md#ssr-017-define-negative-line-slopes). No MCU/FPGA or device operation.
 - [x] paps-g `f7634ce3`, SSR-021 → [`97c1ed9`](https://github.com/papsg/SAROO/commit/97c1ed9). Public labels differ from the private formatted-label witness. An independent bounded search finds`probe_uCuB4ef`/`选择游戏`, both actual hash0x95eb3646; the public parent returns`Select Game` for the unknown string (42, no sanitizer failure). Exact key equality fixes the API while preserving hashes/buckets/languages/fallbacks. Both actual-module methods pass sanitizer/optimization, all19 collision identities and380 copied-key translations; original19-language/2,280 lookup and65,540 signed startup-ID controls pass. Fresh menu adds16 code/data bytes to87,912 with17,268 margin; BSS9,508,16KiB reservation and font unchanged. Direct TT frame8→20, excluding callees/interrupt peaks; matching hashes add a string comparison, with no timing claim. Seven actual/linked ROM-service methods,48 linked clock cases and ordinary tail pass. [Original source contract, C11 §7.24.4.2 printed365/PDF383, attribution, adaptation and physical limits](https://github.com/papsg/SAROO/blob/main/doc/SH2-MENU-CORRECTNESS.md#ssr-021-compare-the-actual-translation-key). No unrelated early-console initialization or new diagnostic work; source/privacy checks pass.
-- [x] paps-g `52632dd7`, SSR-027 → [`6295fb4`](https://github.com/papsg/SAROO/commit/6295fb4): bounded complete retained SD BOOT admission. Actual C/file/vector/CPU seams reproduce17 parent child failures; corrected four methods/22 children observe48 passing decisions under sanitizers/optimization. Size is checked before narrowing; read/close/count must succeed before vectors/CPU effects; initial RAM stack/Thumb first-halfword bounds are admitted. Existing BOOT scope/refusal indication/feature selection stay intact. Both normal App/166-vector links retain all loaded bytes and59,488/63,760 load,6,048/1,776 free ITCM, unchanged data/BSS/static span. A maintained explicit Rust --boot-object check compiles complete Main with BOOT=1 and no LTO into an unlinked object; it cannot enter App linking/frame accounting. Conditional load_app text140→276, its strings121→147 and direct frame88→104, without a whole-BOOT/peak-stack claim. Rust13+2 tests, format/strict clippy and source/privacy pins pass. [FatFs f_read, ST RM0433 Rev8 §2.4p136/§2.3.2 Table7pp130–131, Arm AAPCS32 §5.1/§6.2.1.2, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/RETAINED-BOOT-ADMISSION.md). No actual file/processor handoff, installed-loader identity, whole safe-loader or game qualification; no loader installation, new runtime diagnostic, USB or device operation. Combined regression is still running.
+- [x] paps-g `52632dd7`, SSR-027 → [`6295fb4`](https://github.com/papsg/SAROO/commit/6295fb4): bounded complete retained SD BOOT admission. Actual C/file/vector/CPU seams reproduce17 parent child failures; corrected four methods/22 children observe48 passing decisions under sanitizers/optimization. Size is checked before narrowing; read/close/count must succeed before vectors/CPU effects; initial RAM stack/Thumb first-halfword bounds are admitted. Existing BOOT scope/refusal indication/feature selection stay intact. Both normal App/166-vector links retain all loaded bytes and59,488/63,760 load,6,048/1,776 free ITCM, unchanged data/BSS/static span. A maintained explicit Rust --boot-object check compiles complete Main with BOOT=1 and no LTO into an unlinked object; it cannot enter App linking/frame accounting. Conditional load_app text140→276, its strings121→147 and direct frame88→104, without a whole-BOOT/peak-stack claim. Rust13+2 tests, format/strict clippy and source/privacy pins pass. [FatFs f_read, ST RM0433 Rev8 §2.4p136/§2.3.2 Table7pp130–131, Arm AAPCS32 §5.1/§6.2.1.2, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/RETAINED-BOOT-ADMISSION.md). No actual file/processor handoff, installed-loader identity, whole safe-loader or game qualification; no loader installation, new runtime diagnostic, USB or device operation. Combined regressions pass; final scope follows below.
 
 SSR-026 logical-sector mapping already exists in the public Rust overlay
 compiler; no duplicate port or recipe addition is planned. Preserve prior
 research branches, source/failure evidence and archived trial edits.
+
+All six ordered checkpoint implementations are on public main, ending with
+[`6295fb4`](https://github.com/papsg/SAROO/commit/6295fb4), followed only by
+[`74ae03b`](https://github.com/papsg/SAROO/commit/74ae03b)'s removal of an unrelated
+renderer sentence from allocation documentation. No outstanding candidate
+implementation remains.
+
+Final combined regression covers921 accepted Python case executions:48 real
+FatFs/allocation methods,180 MCU-save/SD/startup/retained-BOOT methods,440
+overlay/CD/transfer methods and253 menu/UART/audio/RTX/language methods. All
+four combined commands finish successfully with no errors or skips; individual
+C matrices/negative controls are recorded separately above. The default C
+language fixture also preserves19-language/2,280 lookups,65,540 startup IDs and
+380 copied-key/19 collision checks. Focused sanitizer/optimized runs,13 Rust
+unit+2 RTL tests, formatting and strict clippy pass. Seven actual/linked ROM
+methods and48 linked clock cases plus ordinary tail pass against the final
+menu. Unrelated test targets are not claimed rerun.
+
+The final40 menu source pins match the accepted target link. Both final native
+App/conditional-BOOT cohorts retain every staged firmware/SDK input pin and
+generated-glue hash; conditional object/source hashes agree. Standard MCU
+loaded bytes and feature selections remain unchanged; menu adds32 code/data
+bytes across this series, with unchanged BSS/font/stack reservation. Initial
+refusals and genuine defect witnesses remain distinct and preserved; receipts
+were not rewritten to make old providers appear current. Models, target links
+and conditional object compilation are not physical/game or full-loader
+qualification.
+
+Public main and ledger are clean and match their pushed refs after final
+publication checks. Private HEAD/complete refs/stashes/status/worktrees match
+the initial fingerprint; public stashes and the pre-existing archived FPGA
+trial's full bytes/modification time are unchanged. Source/privacy review
+passes across26 changed files, with no local paths, secrets, PII, proprietary
+payloads, new recipes or patch framework. No PRs, issue closures, USB
+integration, runtime diagnostics, installed loader, new task, device operation
+or resumption of other work occurred. The private repository, Saturn and
+read-only audit snapshot remain untouched.
