@@ -418,3 +418,64 @@ Startup, memory map, clock, IRQ scheduling hooks and semihosting are synthetic.
 No STM32/Saturn IRQ/cache/bus timing, arbitrary schedules, NMI/fault behavior,
 stale/deleted lifetime, other APIs' overflow behavior or game qualification is
 claimed. Menu, FPGA, feature selections and device state remain unchanged.
+
+## SSR-123: refuse an unpublished ISR message
+
+The public parent `f10ddea` allocates and fills a private queue block for an
+interrupt-side `osMessageQueuePut`, then calls the void post-processing wrapper.
+If all 16 deferred slots are occupied and the overflow hook returns, the
+wrapper does not publish the block. Put still reports `osOK`; no consumer can
+deliver or free that message. The actual parent reproduces `osOK`, one used
+backing block, 16 pending callbacks and one overflow notification in both
+atomic modes. The 15-slot valid control passes in both modes.
+
+The selected provider now calls the already present `osRtxPostProcessTry`.
+Successful admission transfers ownership to PendSV. On refusal, Put invalidates
+and frees its still-private block, records NotInserted and returns
+`osErrorResource`. It neither loops nor adds ring capacity. The existing void
+wrapper's overflow policy remains for other callers. This follows paps-g's
+`8d211442`/SSR-123, adapted directly to the public source layout by papsg; Arm
+Limited's original source notice and Apache-2.0 license remain in place. No
+original tpunix issue or PR was identified for this independent finding.
+
+The locally pinned [CMSIS-RTOS2 API 2.1.3 Message Queue header](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L705-L711)
+defines Put and its zero-timeout form; the [status definitions](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L197-L205)
+distinguish completed operations from unavailable resources. The locally
+preserved [Arm CMSIS-RTOS2 Message Queue reference](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__Message.html)
+permits zero-timeout Put from an ISR. [Cortex-M7 Generic User Guide DUI0646C](https://developer.arm.com/documentation/dui0646/c),
+§2.1.3 printed p.2-8 and §§2.3.5–2.3.7 printed pp.2-23–2-24, describes the
+interrupt masking and exception return used in the ownership argument. The
+resource-refusal policy is this implementation's remedy; no Sega document
+defines this MCU-internal queue behavior.
+
+Run `firmware-build rtos-check` with the same explicit local toolchain/CMSIS/
+STM32/RTX arguments documented above and `--case message --atomic=0|1`.
+`--scenario=admission|last-slot|receiver` selects respectively full-ring
+refusal/retry, last available slot, and a blocked receiver. The checked-in
+test uses real public event and queue operations to reach each of 16 ring
+offsets, ordinary IRQ, masked IRQ and masked-thread contexts, one/four-slot
+queues and 1/4/12/64-byte payloads. It checks invalid inputs, repeated
+refusals, backing-pool exhaustion, payload/priority, queue and waiter state,
+drain and retry. All six selected images pass **1,920 cases**. A further
+LTO admission image and original-kernel-archive receiver image pass. Queue
+reuse in both atomic modes and adjacent event/pool contracts pass.
+
+`--old-put --scenario=admission` reverses only this Put change in a copied
+provider. Its SHA-256 exactly matches the public parent's `rtx_msgqueue.c`,
+and it reproduces the false success/leak. The two pre-fix 15-slot controls
+pass. Every test stages and records original and selected provider hashes,
+compiler commands and complete QEMU output under its chosen `tests/build`
+directory. No test hook or diagnostic enters standard firmware.
+
+Both standard 166-vector GNU App builds pass, with loads 59,616 bytes (LTO,
+5,920 ITCM bytes free) and 63,904 bytes (non-LTO, 1,632 free). Static data/BSS
+and DTCM spans remain 200/50,696/50,896 and 204/50,696/50,904 respectively.
+Both complete flat images and all reported resources are byte-for-byte equal
+to fresh parent builds; only the owned queue provider differs among the staged
+production source inputs.
+No application message-queue caller or linked Put symbol was found; this is a
+conditional API repair, with no established game defect. The direct Put frame
+in the QEMU test build grows 24→32 bytes, not a measured whole-stack or IRQ
+peak. QEMU executes actual RTX/SVC/IRQ/PendSV code with synthetic startup,
+clock and memory. It does not qualify physical ISR timing, STM32/Saturn
+behavior, audio, arbitrary schedules or games.

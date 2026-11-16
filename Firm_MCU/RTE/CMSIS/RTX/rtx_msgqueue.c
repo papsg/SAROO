@@ -732,9 +732,16 @@ osStatus_t isrRtxMessageQueuePut (osMessageQueueId_t mq_id, const void *msg_ptr,
     *((const void **)(void *)&msg->prev) = msg_ptr;
     //lint -e{9079} -e{9087} "cast between pointers to different object types"
     *(      (void **)        &msg->next) = mq;
-    osRtxPostProcess(osRtxObject(msg));
-    EvrRtxMessageQueueInsertPending(mq, msg_ptr);
-    status = osOK;
+    if (osRtxPostProcessTry(osRtxObject(msg)) != 0U) {
+      EvrRtxMessageQueueInsertPending(mq, msg_ptr);
+      status = osOK;
+    } else {
+      // The message is still private: no PendSV consumer can release it.
+      msg->id = osRtxIdInvalid;
+      (void)osRtxMemoryPoolFree(&mq->mp_info, msg);
+      EvrRtxMessageQueueNotInserted(mq, msg_ptr);
+      status = osErrorResource;
+    }
   } else {
     // No memory available
     EvrRtxMessageQueueNotInserted(mq, msg_ptr);

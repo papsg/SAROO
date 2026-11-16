@@ -21,7 +21,8 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if case == "event" && flag == "--ignore-event-refusal" {
             continue;
         }
-        if case == "message" && ["--old-space", "--omit-walk-invalidation"].contains(&flag.as_str())
+        if case == "message"
+            && ["--old-space", "--omit-walk-invalidation", "--old-put"].contains(&flag.as_str())
         {
             continue;
         }
@@ -66,6 +67,9 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
                 ("message" | "event", "waiters") => 1,
                 ("message", "walk") | ("event", "nested") => 2,
                 ("message", "space") | ("event", "legacy") => 3,
+                ("message", "admission") => 4,
+                ("message", "last-slot") => 5,
+                ("message", "receiver") => 6,
                 _ => return fail("Unknown message/event scenario"),
             });
         } else if flag == "--old-space" {
@@ -201,6 +205,7 @@ fn instrument_message(
     scenario: u8,
     old_space: bool,
     omit_invalidation: bool,
+    old_put: bool,
 ) -> Result<(PathBuf, Value)> {
     let original = fs::read_to_string(source)?;
     let mut text = original.clone();
@@ -244,11 +249,19 @@ fn instrument_message(
         }
         text = text.replace(store, "    /* Test-only omission of walk invalidation. */");
     }
+    if old_put {
+        let selected = "    if (osRtxPostProcessTry(osRtxObject(msg)) != 0U) {\n      EvrRtxMessageQueueInsertPending(mq, msg_ptr);\n      status = osOK;\n    } else {\n      // The message is still private: no PendSV consumer can release it.\n      msg->id = osRtxIdInvalid;\n      (void)osRtxMemoryPoolFree(&mq->mp_info, msg);\n      EvrRtxMessageQueueNotInserted(mq, msg_ptr);\n      status = osErrorResource;\n    }";
+        if text.matches(selected).count() != 1 {
+            return fail("Missing corrected ISR Put admission for the negative control");
+        }
+        text = text.replace(selected,
+            "    osRtxPostProcess(osRtxObject(msg));\n    EvrRtxMessageQueueInsertPending(mq, msg_ptr);\n    status = osOK;");
+    }
     let path = output.join("message-test-provider.c");
     fs::write(&path, &text)?;
     Ok((
         path,
-        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"walk_irq_hook":scenario==2,"old_space":old_space,"omitted_invalidation":omit_invalidation}),
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"walk_irq_hook":scenario==2,"old_space":old_space,"omitted_invalidation":omit_invalidation,"old_put":old_put}),
     ))
 }
 
@@ -349,7 +362,16 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     {
         return fail("Event refusal control requires one --case event --scenario=nested");
     }
+    let old_put = args[15..].iter().filter(|v| *v == "--old-put").count();
+    if old_put > 1 || (old_put == 1 && (case != "message" || !(4..=6).contains(&scenario))) {
+        return fail("Old Put control requires one message admission scenario");
+    }
     let baseline = args[15..].iter().any(|v| v == "--baseline");
+    if baseline && old_put == 1 {
+        return fail(
+            "Old Put control reverses only the selected provider; do not combine with --baseline",
+        );
+    }
     let archive = args[15..].iter().any(|v| v == "--archive");
     let lto = args[15..].iter().any(|v| v == "--lto");
     let repo = Path::new(&args[2]).canonicalize()?;
@@ -395,6 +417,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_pool_contract.inc",
         "rtos_message_contract.inc",
         "rtos_message_space.inc",
+        "rtos_message_admission.inc",
         "rtos_event_contract.inc",
         "rtos_event_nested.inc",
         "rtos_retire_contract.inc",
@@ -457,14 +480,20 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             instrumentation = record;
         }
-        if case == "message" && (scenario == 2 || old_space) {
+        if case == "message" && (scenario == 2 || old_space || old_put == 1) {
             let selected = if !baseline && owned.join(provider).is_file() {
                 owned.join(provider)
             } else {
                 kernel.join(provider)
             };
-            let (instrumented, record) =
-                instrument_message(&selected, &out, scenario, old_space, omit_invalidation)?;
+            let (instrumented, record) = instrument_message(
+                &selected,
+                &out,
+                scenario,
+                old_space,
+                omit_invalidation,
+                old_put == 1,
+            )?;
             let mut replaced = 0;
             for source in sources.iter_mut().chain(direct.iter_mut()) {
                 if *source == selected {
@@ -660,7 +689,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"old_put":old_put==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;

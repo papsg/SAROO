@@ -4,7 +4,7 @@
   "api_version": "2.1.3",
   "license": "Apache-2.0",
   "copyright": "Arm Limited; see original file headers",
-  "adaptation": "papsg after paps-g SSR-007 (692f9716) and SSR-008 (b5760f73); wait result and queue extent corrections only. Support headers retain the selected base; rtx_lib.h adds only osRtxPostProcessTry. SSR-009 restart reload follows paps-g f5da5ea0. SSR-067 pool publication follows paps-g 093a51b6; other pool policy is unchanged. SSR-068 read-slot retirement and final backing-space accounting follow paps-g 8b5cbe9b/03fa6494; rtx_system adds queue-object dispatch only. SSR-069 follows paps-g d3b1f4d5 with necessary ISR-ring retirement 6e96f528; existing PostProcess overflow policy is retained.",
+  "adaptation": "papsg after paps-g SSR-007 (692f9716) and SSR-008 (b5760f73); wait result and queue extent corrections only. Support headers retain the selected base; rtx_lib.h adds only osRtxPostProcessTry. SSR-009 restart reload follows paps-g f5da5ea0. SSR-067 pool publication follows paps-g 093a51b6; other pool policy is unchanged. SSR-068 read-slot retirement and final backing-space accounting follow paps-g 8b5cbe9b/03fa6494; rtx_system adds queue-object dispatch only. SSR-069 follows paps-g d3b1f4d5 with necessary ISR-ring retirement 6e96f528; existing PostProcess overflow policy is retained. SSR-123 follows paps-g 8d211442: ISR message Put refuses failed deferred publication and frees its private block.",
   "headers": {
     "rtx_lib.h": "4d30b22420eb6ade4ecff64d82fff1bed19b12d90ff75f888a9f29949c1b1660",
     "rtx_core_c.h": "60b116453652bd663223ffc2d69176c8367c22fb94d11ace948c74ed9523ead7",

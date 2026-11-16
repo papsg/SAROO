@@ -469,7 +469,8 @@ mode1 release/allocation runs intentionally fail with256 wrong observations
 each, while mode0, masked and after controls pass. Existing results are retained.
 
 Message checks accept `--atomic=0|1` and
-`--scenario=reuse|waiters|walk|space` (default reuse). Walk injects only a
+`--scenario=reuse|waiters|walk|space|admission|last-slot|receiver` (default
+reuse). Walk injects only a
 pending IRQ into a copied inserter; other scenarios use uninstrumented code.
 `--old-space` with space reverts only the available-slot expression and must
 fail with816 wrong observations. `--omit-walk-invalidation` with walk must
@@ -477,6 +478,15 @@ fail a payload check. These controls never modify the production provider.
 The original `--baseline --scenario=reuse` must report432 rejected replacement
 puts, retaining thread/after-IRQ/reset controls. `--lto` and `--archive` remain
 available. Test sources, mutations, input hashes, commands and logs are preserved.
+
+Admission, last-slot and receiver exercise ISR Put at the deferred-ring
+boundary using real event publications, actual PendSV drains and public queue
+APIs. They test both atomic modes, sixteen ring offsets, ordinary/masked IRQ
+and masked-thread contexts, four message sizes, one/four-slot queues, repeated
+refusal, retry, payloads and a blocked receiver. `--old-put` reverses only the
+selected Put admission/rollback in a copied provider; admission and receiver
+must reproduce false success and a retained backing block. It never changes
+the production provider. These are API contracts, not physical timing tests.
 
 Event checks accept `--atomic=0|1` and
 `--scenario=single|waiters|nested|legacy` (default single). Single checks full

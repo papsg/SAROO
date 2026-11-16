@@ -9,7 +9,7 @@
 uint32_t SystemCoreClock = 25000000;
 static uint64_t boot_stack[512];
 static unsigned assertions;
-#ifdef TEST_RTX_EVENTS
+#if defined(TEST_RTX_EVENTS) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
 static volatile unsigned notifications;
 #endif
 static unsigned idle_delay_checked;
@@ -38,7 +38,7 @@ static void require(int valid, unsigned line) {
 }
 #define CHECK(x) require(!!(x),__LINE__)
 uint32_t osRtxErrorNotify(uint32_t code, void *object) {
-#ifdef TEST_RTX_EVENTS
+#if defined(TEST_RTX_EVENTS) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
     if (code == osRtxErrorISRQueueOverflow) { notifications++; return 0; }
 #endif
     (void)object; output("RTX error="); number(code); output("\n"); finish(3);
@@ -105,6 +105,8 @@ static void queue_constructor_contract(void) {
 #elif defined(TEST_RTX_MESSAGE)
 #if TEST_MESSAGE_SCENARIO == 3
 #include "rtos_message_space.inc"
+#elif TEST_MESSAGE_SCENARIO >= 4
+#include "rtos_message_admission.inc"
 #else
 #include "rtos_message_contract.inc"
 #endif
@@ -177,7 +179,7 @@ void (* const vectors[])(void)={
 #endif
 #ifdef TEST_RTX_MESSAGE
     , queue_irq
-#if TEST_MESSAGE_SCENARIO == 3
+#if TEST_MESSAGE_SCENARIO >= 3
     , fault
 #else
     , walk_irq
