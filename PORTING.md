@@ -2975,7 +2975,7 @@ citations, original authorship, failure evidence and qualification limits. No
 PRs, USB integration, custom runtime diagnostics, new loaders/CDON recipes or
 device operations. Private sources/history/evidence remain read-only.
 
-- [ ] paps-g `acf616d6`, SSR-037: native file-unit/gap reply order.
+- [x] paps-g `acf616d6`, SSR-037 → [`e4dcf58`](https://github.com/papsg/SAROO/commit/e4dcf58): native file-unit/gap reply order. Public parent reproduces four precise wire failures while equal-field controls pass. Five actual producer/native-transfer methods pass sanitizers/optimization, including65,281 pairs/five paths,254 batch lengths/32,385 records and independent literal bytes; all17 directory+13 XA methods pass. Current RTL/native types and individually hashed cached Sega header/library support the correction; no vendor code executes. Both166-vector MCU builds save4 bytes to59,484/63,756 load with6,052/1,780 free ITCM; data/BSS/static span and20-byte direct producer frame stay unchanged. All67 public MCU input pins match. [Exact Sega/ECMA citations, attribution, commands, retained failures, costs and physical limits](https://github.com/papsg/SAROO/blob/main/doc/CD-FILE-INFO-WIRE.md). A zero-test discovery and initial argument-order refusals are excluded from accepted runs. No menu/FPGA runtime changes, device operation or new diagnostic/recipe.
 - [ ] paps-g `49fe3d2e`, SSR-041: dormant PAL 256-line constant.
 - [ ] paps-g `bda37c83`, SSR-044: explicit native save/slot selector admission.
 - [ ] paps-g `329466e4`, SSR-064: unread R–W queue overrun notification.
