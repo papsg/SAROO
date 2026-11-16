@@ -532,3 +532,11 @@ not an atomic snapshot with concurrent writers. Ignored/untracked contents
 and filesystem metadata are not hashed. Receipts can contain local paths,
 branch names and commit metadata; retain them privately under ignored build
 or evidence storage. No firmware or device operation is involved.
+
+`firmware-build menu ... --button-objects` additionally compiles the maintained
+press/release caller fixtures with strict C99 warnings using that same staged
+header/compiler. Only the copied Makefile receives companion targets; their
+objects never enter the normal link. Source, modified-Makefile, object and
+disassembly hashes are recorded separately. Both objects must be big-endian
+ELF32 SuperH; original source pins and normal menu resources stay independently
+verified. This is compile-only interface coverage, not target execution.

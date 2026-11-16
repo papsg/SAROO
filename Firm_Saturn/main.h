@@ -297,7 +297,14 @@ int conio_put_char(int x, int y, int color, int ch);
 void conio_putc(int ch);
 u32 conio_getc(void);
 
-#define BUTTON_DOWN(stat, bt)  ( (stat & ((bt<<16)|bt)) ==  ((bt<<16)|bt) )
+/* paps-g 3ed0238f / SSR-110. Selections occupy 16 bits. Construct unsigned
+ * event fields and evaluate each argument once, including signed PAD masks. */
+static inline int button_pressed(u32 event, u32 buttons)
+{
+    u32 fields = (buttons << 16) | buttons;
+    return (event & fields) == fields;
+}
+#define BUTTON_DOWN(stat, bt) button_pressed((u32)(stat), (u32)(bt))
 /* Changed buttons occupy the high half; current presses occupy the low half.
  * All selected buttons must change to released. Evaluate each argument once. */
 static inline int button_released(u32 event, u32 buttons)

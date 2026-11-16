@@ -15,16 +15,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MenuButtonUpTests(unittest.TestCase):
+    fixture_name = 'menu-button-up'
+    fixture_source = 'menu_button_up.c'
+    driver_source = 'test_menu_button_up.py'
+
     @classmethod
     def setUpClass(cls):
-        build = ROOT/'tests/build/menu-button-up'
+        build = ROOT/'tests/build'/cls.fixture_name
         build.mkdir(parents=True, exist_ok=True)
         cls.target = Path(tempfile.mkdtemp(prefix='case-', dir=build))
         cls.results = []
         header = Path(os.environ.get('SAROO_MENU_BUTTON_HEADER', ROOT/'Firm_Saturn/main.h'))
         inputs = {'main.h': header.read_bytes(),
-                  'fixture.c': (ROOT/'tests/menu_button_up.c').read_bytes(),
-                  'driver.py': Path(__file__).read_bytes()}
+                  'fixture.c': (ROOT/'tests'/cls.fixture_source).read_bytes(),
+                  'driver.py': (ROOT/'tests'/cls.driver_source).read_bytes()}
         for name, raw in inputs.items():
             (cls.target/name).write_bytes(raw)
         (cls.target/'inputs.json').write_text(json.dumps({n: hashlib.sha256(v).hexdigest()

@@ -253,7 +253,7 @@ fn new_build_output(repo: &Path, out: &Path) -> Result<PathBuf> {
     Ok(out)
 }
 
-fn build(repo: &Path, out: &Path) -> Result<()> {
+fn build(repo: &Path, out: &Path, button_objects: bool) -> Result<()> {
     let repo = repo.canonicalize()?;
     if !repo.join("Firm_Saturn/Makefile").is_file() {
         return fail("Repository has no original Firm_Saturn Makefile");
@@ -309,6 +309,25 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
         fs::write(destination, &bytes)?;
         sources.insert(path, sha(&bytes));
     }
+    let mut companions = BTreeMap::new();
+    if button_objects {
+        for name in ["menu_button_down_native.c", "menu_button_up_native.c"] {
+            let path = repo.join("tests").join(name);
+            if !path.symlink_metadata()?.file_type().is_file() || path.metadata()?.len() > 4096 {
+                return fail("Button compile companion must be a bounded regular file");
+            }
+            let bytes = fs::read(path)?;
+            companions.insert(format!("tests/{name}"), sha(&bytes));
+            fs::write(staged.join(name), bytes)?;
+        }
+        let makefile = staged.join("Makefile");
+        let mut bytes = fs::read(&makefile)?;
+        // Compile strict future callers with the same compiler/header. The
+        // companions are deliberately absent from OBJ and the production link.
+        bytes.extend_from_slice(b"\nall: obj/menu_button_down_native.o obj/menu_button_up_native.o menu_button_down_native.dump menu_button_up_native.dump\nobj/menu_button_down_native.o obj/menu_button_up_native.o: FLAGS += -ffreestanding -fno-builtin -Wextra -Werror\nmenu_button_%.dump: obj/menu_button_%.o\n\t$(OBJDUMP) -dr $< >$@\n");
+        companions.insert("staged-Makefile".into(), sha(&bytes));
+        fs::write(makefile, bytes)?;
+    }
     let head = capture(
         Command::new("git")
             .arg("-C")
@@ -344,6 +363,7 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
         "LDFLAGS=-m2 -mb -nostartfiles -nostdlib -T ldscript -Wl,--oformat=elf32-sh,--build-id=none,-Map,ssfirm.map".into(),
         "LIBS=-lyaul -lgcc".into()];
     let mut receipt = json!({"head": head, "source_sha256": sources, "docker_endpoint": endpoint,
+        "button_compile_companions_sha256": companions,
         "docker_image": IMAGE, "command_arguments": flags, "success": false,
         "qualification": "Target compile/link and body/font/resource bounds only; no device execution"});
     fs::write(
@@ -399,6 +419,27 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
                 &fs::read(staged.join("font_cjk.bin"))?,
             )?;
             receipt["compiler_direct_stack"] = json!(stack_usage(&staged.join("obj"))?);
+            if button_objects {
+                for name in ["menu_button_down_native", "menu_button_up_native"] {
+                    let object = staged.join(format!("obj/{name}.o"));
+                    let dump = staged.join(format!("{name}.dump"));
+                    if object.metadata()?.len() > 1024 * 1024
+                        || dump.metadata()?.len() > 1024 * 1024
+                    {
+                        return fail("Button compile output exceeds its size bound");
+                    }
+                    let bytes = fs::read(object)?;
+                    if bytes.get(..6) != Some(b"\x7fELF\x01\x02")
+                        || word(&bytes, 16, 2)? != 1
+                        || word(&bytes, 18, 2)? != 42
+                    {
+                        return fail("Expected a big-endian SuperH relocatable button object");
+                    }
+                    receipt["button_compile_objects_sha256"][name] = json!(sha(&bytes));
+                    receipt["button_compile_disassembly_sha256"][name] =
+                        json!(sha(&fs::read(dump)?));
+                }
+            }
             Ok(bounds)
         })()
     } else {
@@ -425,7 +466,7 @@ fn build(repo: &Path, out: &Path) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] {
-        println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
+        println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY [--button-objects]\nUses the cached pinned Yaul image and original Makefile; no network or devices. Optional strict press/release objects are never linked into the menu.");
         println!("firmware-build preservation --repo REFERENCE --against SNAPSHOT.json --out UNUSED-DIRECTORY\nRead-only tracked-byte/Git-state comparison. Output must be outside the reference and its Git directories; never changes or locks the reference.");
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto] [--boot-object]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build rtos-check --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 --case delay|queue|timer|pool|message|event|retire [--baseline] [--lto] [--archive]\nPool/message/event/retire: [--atomic=0|1]\nPool: [--phase=release|allocate|masked|after]\nMessage: [--scenario=reuse|waiters|walk|space] [--old-space] [--omit-walk-invalidation]\nEvent: [--scenario=single|waiters|nested|legacy] [--ignore-event-refusal]\nRetire: real event callback/blocked-waiter checks at slot release\nActual RTX API/SVC/kernel contracts in local QEMU; never accesses SAROO.");
@@ -533,10 +574,15 @@ fn run() -> Result<()> {
         #[cfg(not(unix))]
         return fail("The MCU compile/link check requires a Unix host");
     }
-    if args.len() != 5 || args[0] != "menu" || args[1] != "--repo" || args[3] != "--out" {
+    if !matches!(args.len(), 5 | 6)
+        || args[0] != "menu"
+        || args[1] != "--repo"
+        || args[3] != "--out"
+        || (args.len() == 6 && args[5] != "--button-objects")
+    {
         return fail("Expected menu, mcu, fpga, vandal or vandal-source arguments; use --help");
     }
-    build(Path::new(&args[2]), Path::new(&args[4]))
+    build(Path::new(&args[2]), Path::new(&args[4]), args.len() == 6)
 }
 
 fn main() {

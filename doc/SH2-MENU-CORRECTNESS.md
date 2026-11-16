@@ -244,3 +244,73 @@ C translation, scripted predicates, static target compilation and current-build
 parity do not qualify physical controller transactions, target execution, input
 latency, feasible physical masks or games. No new caller, press-helper redesign,
 runtime diagnostic, USB feature, overlay recipe or device operation is added.
+
+## SSR-110: unsigned, single-evaluation button presses
+
+Port of paps-g `3ed0238f`, with papsg's direct public-layout adaptation and
+independent tests. This is a conditional retained-API defect; no normal menu
+or game input failure is established. Current production call sites use lower
+masks. No new RIGHT caller or release caller is enabled.
+
+`PAD_RIGHT` is an `int` containing bit15. The old `BUTTON_DOWN` macro shifts
+that signed mask by16 before the event's unsigned comparison can affect its
+type. With 32-bit `int`, the result is not representable. [WG14 N1570
+§6.5.7 paragraphs3–4, printed pp.94–95/PDF pp.112–113](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=112)
+defines promotions and the signed/unsigned shift domains. The selected menu is
+C99; the relevant rule is the same. [Sega ST-169-R1-072694 §3.3, Table3.18,
+printed p.82/PDF p.92](https://antime.kapsi.fi/sega/files/ST-169-R1-072694.pdf#page=92)
+places active-low Right in bit7 of the first pad byte. SAROO maps that byte to
+the high byte of its selection. Changed/current event halves are SAROO's
+software convention, not Sega's event-word format. Both primary documents
+were read from preserved local copies; no online research was used.
+
+Keep `BUTTON_DOWN(event, buttons)` and use an unsigned-32-bit inline predicate.
+All selected changed bits and current pressed bits must be present. Each
+argument is evaluated once. Selections occupy16 bits; empty selection remains
+true. The independent release helper and event producer remain unchanged.
+No original tpunix issue/PR is identified for this source finding.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_menu_button_down test_menu_button_up test_menu_timer test_menu_repeat_transport
+SAROO_MENU_SAFETY_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_menu_button_down test_menu_button_up test_menu_timer test_menu_repeat_transport
+# With the already cached pinned compiler image; never downloads or installs:
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/button-contract --button-objects
+```
+
+The full parent header passes229,376 lower-mask comparisons. RIGHT, RIGHT+UP,
+all thirteen buttons and the full16-bit sweep separately reach nonrecovering
+UBSan signed-shift failures. The once-evaluated-argument control also fails.
+These are five failed methods for related expressions, not five findings.
+All15 other host controls pass. To reproduce, set `SAROO_MENU_BUTTON_HEADER`
+to `git show 8d8ec6e:Firm_Saturn/main.h` saved outside the source tree. The
+native parent's generic/RIGHT press callers additionally fail strict C99
+signedness warnings; that translation refusal is separate from the runtime
+UBSan witnesses. Failed logs, source hashes and setups are retained.
+
+Both corrected profiles pass all20 methods. The press oracle visits buttons
+individually and covers every65,536 selection at seven event patterns
+(458,752 comparisons), plus the separate lower range, RIGHT combinations and
+argument counters. Release retains393,224 comparisons. Existing producer,
+repeat, wrap and actual controller-transport controls remain valid. Synthetic
+masks exceed what a physical standard pad can simultaneously produce.
+
+The maintained `--button-objects` option reuses the pinned, network-disabled
+menu compiler and records strict compile-only press/release companions.
+It extends only the staged Makefile's build targets; neither object enters
+OBJ or the production link. Both are big-endian ELF32 SuperH with verified
+32-bit integer widths. Preserved disassembly shows unsigned field construction
+and RIGHT's `0x80008000` constant; all four forced functions have zero direct
+compiler stack bytes. They are not executed on an SH-2.
+
+Fresh complete before/after builds preserve the exact entire ELF and
+488,770-byte image, SHA-256
+`e66b16396ab22614c8e33552852be24eb24027bc933d43c9f01883e83c1dbf46`.
+Code/data87,928, BSS9,508, reserved stack16,384 and body margin17,252 stay equal,
+as do production direct frames. Only `main.h` changes among40 menu source
+pins. Both preceding standard MCU builds retain all70 input pins; no fresh
+MCU build or physical test is claimed. Rust unit/RTL tests, strict Clippy,
+formatting, repeated-option refusal and private preservation checks pass.
+These checks do not qualify physical pad sampling, SMPC timing, latency,
+Saturn execution, games or every optional build.
