@@ -3068,14 +3068,15 @@ Keep optional feature selections unchanged. No PRs, USB integration, custom
 diagnostics, diagnostic-only providers, new CDON recipes or device operations.
 The private repository, evidence, research branches and Saturn stay untouched.
 
-- [ ] SSR-107, paps-g `99d0b565` with retained-format qualification: preserve failed child-directory cleanup until synchronized; revalidate its project-policy and mount/unmount/lifetime boundaries.
+- [x] SSR-107, paps-g `99d0b565` plus `4842feaa` → [`8d8ec6e`](https://github.com/papsg/SAROO/commit/8d8ec6e): retain failed-child rollback independently of parent growth through existing recovery gates. The actual public parent fails60 fault cases and retains12 healthy/lookup controls; both ASan/UBSan and O2 pass all72 corrected cases across selected FAT32 and generic FAT12/16/32. Independent raw walks identify60 parent orphans and none in corrected volumes, checking both tables, packed neighbors, unique chains and payloads. Known/unknown counts, partial clears, FAT read/first-/second-copy/sync/status failures, existing file owners, replacement refusal and simultaneous child/parent obligations are covered. All37 focused existing methods pass, including actual native common-pool/QEMU;19 Rust unit/two RTL tests, format and strict Clippy pass. Both166-vector standard MCU links pass: LTO59,616/free5,920; non-LTO63,904/free1,632. Native FATFS grows4 bytes; alignment leaves LTO static span50,896 and changes non-LTO50,896→50,904. Recovery direct frame8→16, new non-LTO child helper16; complete stack/IRQ peaks are unmeasured. All70 public MCU and40 preceding-menu pins join. The reusable read-only preservation tool matches3,272 private tracked paths and complete Git state. [R0.15 mount/sync/critical-section/reentrancy citations, attribution, reproduction, costs and caller-lifetime limits](https://github.com/papsg/SAROO/blob/main/doc/FATFS-SD-SAFETY.md#ssr-107-retain-a-failed-child-directory-until-cleanup-is-synchronized). This extends project cleanup policy beyond upstream opt0 semantics; no linked standard mkdir caller or normal game bug is claimed. No firmware feature/configuration, menu/FPGA source or device change; failed setups and evidence remain preserved. Source/privacy/staged-whitespace checks pass; published directly without a PR.
 - [ ] SSR-110, `3ed0238f`: unsigned, once-evaluated button-press mask arithmetic, preserving selection semantics and existing interfaces.
 - [ ] SSR-111, `6491b42b`: initialize translations before the existing stock console can enter the menu; reorder existing startup only, without adding diagnostic features.
 - [ ] SSR-115, `097ad56b` plus amendments: optional current-directory TCHAR capacity, final terminator, tiny/exact-fit buffers and volume prefixes.
 - [ ] SSR-116, `1326a62c` plus final `31151513`: final optional floating-format capacity and finite-exponent corrections together, preserving valid exact fits and ordinary rounding/output.
 - [ ] SSR-117, `d063f6db`: optional exFAT volume-label count admission before decoding, retaining valid labels, serial-only requests and repair.
 
-All six remain pending independent public verification. Initial private
-preservation checks match all 3,272 tracked files and complete Git state.
+Five entries remain pending independent public verification. SSR-107 is
+verified and published. Private preservation matches all 3,272 tracked files
+and complete Git state.
 Baseline filesystem and reference evidence copies are retained outside private.
 Historical private tests do not qualify the public port or physical games.
