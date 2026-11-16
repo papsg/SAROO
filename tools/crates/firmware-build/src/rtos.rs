@@ -333,10 +333,41 @@ fn instrument_pool(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
 
 pub(super) fn validate(app: &Path, rtx: &Path) -> Result<()> {
     let owned = app.join("RTE/CMSIS/RTX");
-    if !owned.is_dir() {
+    if owned.is_dir() {
+        validate_owned(&owned, rtx)?;
+    }
+    validate_tick(&app.join("RTE/CMSIS/OS_Tick"), rtx)
+}
+
+fn validate_tick(owned: &Path, rtx: &Path) -> Result<()> {
+    if !owned.exists() {
         return Ok(());
     }
-    validate_owned(&owned, rtx)
+    let pins: Value = serde_json::from_slice(&fs::read(owned.join("provenance.json"))?)?;
+    for (field, path) in [
+        (
+            "original_os_systick_sha256",
+            rtx.join("Source/os_systick.c"),
+        ),
+        (
+            "original_os_tick_header_sha256",
+            rtx.join("Include/os_tick.h"),
+        ),
+        ("selected_os_systick_sha256", owned.join("os_systick.c")),
+    ] {
+        let expected = pins[field].as_str().ok_or("Missing OS Tick source pin")?;
+        if sha(&fs::read(path)?) != expected {
+            return fail("OS Tick source does not match the selected CMSIS pack");
+        }
+    }
+    let original = fs::read_to_string(rtx.join("Source/os_systick.c"))?;
+    let selected = fs::read_to_string(owned.join("os_systick.c"))?;
+    let old = "  if (load > 0x00FFFFFFU) {";
+    let replacement = "  /* papsg: reject reload zero before changing timer or saved tick state.\n   * Adapted from paps-g a90f6e3c (SSR-130). */\n  if ((load == 0U) || (load > 0x00FFFFFFU)) {";
+    if original.matches(old).count() != 1 || original.replace(old, replacement) != selected {
+        return fail("OS Tick owner must contain only the admitted reload guard");
+    }
+    Ok(())
 }
 
 fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
@@ -431,8 +462,17 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "Firm_MCU/RTE/CMSIS/RTX/provenance.json".into(),
         &mut pins,
     )?;
+    if repo.join("Firm_MCU/RTE/CMSIS/OS_Tick").is_dir() {
+        mcu::copy_file(
+            &repo.join("Firm_MCU/RTE/CMSIS/OS_Tick/provenance.json"),
+            &out.join("config/OS_Tick/provenance.json"),
+            "Firm_MCU/RTE/CMSIS/OS_Tick/provenance.json".into(),
+            &mut pins,
+        )?;
+    }
     // Validate the staged owner, not a later read of the working tree.
     validate_owned(&out.join("config/RTX"), &out.join("rtos"))?;
+    validate_tick(&out.join("config/OS_Tick"), &out.join("rtos"))?;
     let compiler_version = capture(Command::new(&cc).arg("--version"))?;
     let compiler_sha256 = sha(&fs::read(&cc)?);
     let builder_sha256 = sha(&fs::read(std::env::current_exe()?)?);
@@ -467,11 +507,17 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             .collect::<std::io::Result<Vec<_>>>()?;
         sources.retain(|s| s.extension().is_some_and(|v| v == "c"));
         sources.sort();
+        let tick_owner = out.join("config/OS_Tick/os_systick.c");
+        let tick = if tick_owner.is_file() {
+            tick_owner
+        } else {
+            out.join("rtos/Source/os_systick.c")
+        };
         let mut direct = vec![
             out.join("rtos_contract.c"),
             out.join("config/RTX_Config.c"),
             kernel.join("GCC/irq_cm4f.S"),
-            out.join("rtos/Source/os_systick.c"),
+            tick,
         ];
         let mut kernel_objects = Vec::new();
         for source in &mut sources {

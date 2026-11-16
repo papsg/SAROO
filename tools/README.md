@@ -458,6 +458,15 @@ a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 No download, device access or test firmware installation occurs. See
 [RTOS correctness](../doc/RTOS-CORRECTNESS.md) for controls, licenses and limits.
 
+The selected OS Tick V1.0.1 provider is pinned in
+`Firm_MCU/RTE/CMSIS/OS_Tick/provenance.json`. The original MDK targets and both
+offline GNU/QEMU builds select that provider; the builders reject a mismatched
+SDK source or header. To run its register-admission regression with the exact
+CMSIS 5.6.0 RTOS2 SDK, set `SAROO_TICK_SDK=/path/to/CMSIS/RTOS2` and run
+`python3 -B -m unittest tests.test_systick_setup -v`. See
+[SSR-130](../doc/RTOS-CORRECTNESS.md#ssr-130-refuse-a-zero-systick-reload)
+for baseline replay, attribution, citations and limits.
+
 For pool publication use `--atomic=0` or `--atomic=1` and one of
 `--phase=release`, `--phase=allocate`, `--phase=masked`, `--phase=after`.
 Defaults are atomic mode1 and release. Release/allocation pend a test IRQ at

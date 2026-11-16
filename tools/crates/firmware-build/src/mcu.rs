@@ -308,6 +308,15 @@ pub fn build(
         .into_iter()
         .map(|x| app.join(x))
         .collect();
+    let selected_tick = app.join("RTE/CMSIS/OS_Tick/os_systick.c");
+    if selected_tick.is_file()
+        && project
+            .matches("<FilePath>.\\RTE\\CMSIS\\OS_Tick\\os_systick.c</FilePath>")
+            .count()
+            != 2
+    {
+        return fail("OS Tick owner must be selected once in App and BootLoader");
+    }
     // MDK selects this configured component through RTE rather than FilePath.
     let config = app.join("RTE/CMSIS/RTX_Config.c");
     if !sources.contains(&config) {
@@ -338,7 +347,18 @@ pub fn build(
             }),
     );
     sources.push(sdk.join("rtos/RTX/Source/GCC/irq_cm4f.S"));
-    sources.push(sdk.join("rtos/Source/os_systick.c"));
+    if selected_tick.is_file() {
+        if sources
+            .iter()
+            .filter(|source| source.as_path() == selected_tick.as_path())
+            .count()
+            != 1
+        {
+            return fail("OS Tick owner is not uniquely selected by the App");
+        }
+    } else {
+        sources.push(sdk.join("rtos/Source/os_systick.c"));
+    }
     if sources.len() > 80 {
         return fail("Unexpected MCU/RTX translation-unit count");
     }

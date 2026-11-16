@@ -689,6 +689,11 @@
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_evflags.c</FilePath>
             </File>
+            <File>
+              <FileName>os_systick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\OS_Tick\os_systick.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
@@ -1434,6 +1439,11 @@
               <FileName>rtx_evflags.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_evflags.c</FilePath>
+            </File>
+            <File>
+              <FileName>os_systick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\OS_Tick\os_systick.c</FilePath>
             </File>
           </Files>
         </Group>

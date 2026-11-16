@@ -536,3 +536,54 @@ unmeasured. Both 166-vector standard build profiles retain the prior 59,616/
 flat images and allocated resources match fresh parent builds exactly. The
 unstripped ELF hashes differ in nonallocated metadata. These host/QEMU/build
 observations do not qualify a physical MCU, Saturn, audio, save or game.
+
+## SSR-130: refuse a zero SysTick reload
+
+The public parent `19fd3d9` uses Arm CMSIS OS Tick V1.0.1. Its setup function
+computes `(SystemCoreClock / freq) - 1U` and refuses zero frequency and a reload
+above `0xFFFFFF`, but accepts reload zero. At the normal 400 MHz / 100 Hz setting
+the reload is 3,999,999 and this defect is not reached. A different caller or
+configuration can reach it; no Saturn or game failure is established.
+
+The independent public test compiles the actual selected C provider and its
+version-matched `os_tick.h` with observable SysTick/SCB register objects. It
+checks 208 explicit and 10,000 deterministic clock/frequency pairs against a
+wide-integer period oracle. The original admits 2,543 zero-reload cases. A
+separate invalid reconfiguration clears a previously saved pending tick, while
+the original valid, frequency-zero, overflow, getter and acknowledgment
+controls pass. On the corrected provider all five test methods pass. The sole
+functional source change adds `load == 0U` to the existing guard, before any
+register access or saved-state change. The complete Arm file header, Apache
+license and an explicit adaptation notice are retained.
+
+This ports paps-g `a90f6e3c` / SSR-130. No original tpunix issue or PR was
+identified. [Cortex-M7 Generic User Guide DUI0646C §4.4.2, printed p.4-34](https://developer.arm.com/documentation/dui0646/c)
+specifies a SysTick reload range of 1 through `0xFFFFFF`; zero cannot produce
+the specified countdown. The locally pinned [CMSIS OS Tick V1.0.1 provider](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Source/os_systick.c)
+and [API header](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/os_tick.h)
+give the concrete selected contract. This is Arm/RTOS behavior; no Sega manual
+defines the MCU SysTick boundary.
+
+For a public rerun, supply the exact CMSIS 5.6.0 RTOS2 SDK and run
+`SAROO_TICK_SDK=/path/to/CMSIS/RTOS2 python3 -B -m unittest tests.test_systick_setup -v`.
+Set `SAROO_TICK_SOURCE` to its original `Source/os_systick.c` to reproduce the
+two expected failures. `SAROO_TICK_OUTPUT` can retain the compiler command,
+input hashes and per-case output in a chosen ignored `tests/build` directory.
+The C model observes admission and register writes, but its plain objects do
+not model COUNTFLAG read-clear or physical tick delivery; SSR-132 addresses
+the former separately.
+
+The selected provider lives at `Firm_MCU/RTE/CMSIS/OS_Tick/os_systick.c`, with
+the original/selected/header hashes and vendor attribution in `provenance.json`.
+Both original MDK project targets name it once. The offline GNU App and QEMU
+builds stage that owner instead of the SDK provider and refuse a mismatched
+pack/source. A selected QEMU delay contract passes with the new owner. Fresh
+standard 166-vector GNU App builds link the correct owner and pass LTO and
+non-LTO resource/vector checks. LTO's flat image and allocations are byte
+identical to the public parent at 59,616 load bytes and 50,896 DTCM bytes;
+the constant normal setup makes the added guard unobservable there. Non-LTO
+retains the 63,904-byte load and 1,632-byte ITCM margin, while DTCM drops
+50,904→50,896 bytes; its flat image differs. The linked weak Setup function
+is 64→68 bytes in non-LTO, and both images retain a strong SysTick handler.
+Neither GNU link nor host/QEMU checks qualify an MDK build, physical clock,
+interrupt rate, audio or game behavior.

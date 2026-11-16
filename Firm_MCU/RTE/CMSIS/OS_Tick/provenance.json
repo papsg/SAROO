@@ -1,0 +1,9 @@
+{
+  "upstream": "https://github.com/ARM-software/CMSIS_5/tree/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Source",
+  "selected_pack": "ARM CMSIS 5.6.0, CMSIS OS Tick V1.0.1",
+  "license": "Apache-2.0; preserve the Arm Limited file header and adjacent LICENSE.txt",
+  "original_os_systick_sha256": "1091eff4be3984a7c708f1234001b2b2650d48b79620831d50c95da669e7af0c",
+  "original_os_tick_header_sha256": "f76bcfd977c1fce91c1368986ce2582c4d2c15b767c2014a8cfbc796225e6af3",
+  "selected_os_systick_sha256": "262ecf3038ddb75a069af205ddda166da089bf33a309da304f9e5565d936b9ed",
+  "adaptation": "papsg after paps-g a90f6e3c, SSR-130: reject reload zero before changing registers or the saved pending tick"
+}
