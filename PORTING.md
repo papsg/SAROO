@@ -2969,7 +2969,7 @@ read-only audit snapshot remain untouched.
 
 ## CD metadata, PAL constants, save selectors and R–W correctness
 
-Active ordered follow-up from public `74ae03b`. Revalidate each contribution
+Completed ordered follow-up from public `74ae03b`. Revalidate each contribution
 against current public main before direct publication, retaining local primary
 citations, original authorship, failure evidence and qualification limits. No
 PRs, USB integration, custom runtime diagnostics, new loaders/CDON recipes or
@@ -2980,10 +2980,44 @@ device operations. Private sources/history/evidence remain read-only.
 - [x] paps-g `bda37c83`, SSR-044 → [`06fd62c`](https://github.com/papsg/SAROO/commit/06fd62c): complete explicit decimal selector admission before loading/dispatch. Public legacy-geometry parent reproduces59 wrong successes; sanitizer/optimized four-method runs pass88 real CLI commands,70 malformed refusals and18 valid/missing/default controls with exact archive/output/neighbor/export checks. All54 native regression methods pass. The original Makefile and separateO2 builds pass; native text+76/strings+29 bytes, unchanged BSS/common and main direct frame128→96 (other frames equal). Full source/binary/driver/original/generated-output evidence is retained; initial fixture-mode and supplied-binary-path errors are excluded. [C11 §7.22.1.2p2 printed341/PDF359, cached official Apple atoi contract, attribution, reproduction/costs/limits](https://github.com/papsg/SAROO/blob/main/doc/SAVETOOL-SAFETY.md#ssr-044-complete-decimal-save-and-slot-selectors). Existing omitted defaults, valid IDs, archive formats and firmware sources stay intact; no actual user-data loss, other-platform or physical-media qualification.
 - [x] paps-g `329466e4`, SSR-064 → [`e09f3bc`](https://github.com/papsg/SAROO/commit/e09f3bc): unread R–W loss notification. Actual publisher/command/FIFO/DataEnd/reset parent has128+192 missing-flag assertions across51,520 checks; corrected sanitizer/O2 methods pass, plus six publication/preemption and57 drive methods. SDK flag/response-byte evidence and exact Sega sections support CR4-low0x02; software capacity/physical error-clear timing remain distinct. Adaptation covers public cache/track/tray resets and places the byte in existing padding, retaining5,056-byte CDB/static storage. Both166-vector builds add44 load bytes to59,528/63,800 (6,008/1,736 free); publisher124→136 text/direct20 unchanged, data/BSS/static span unchanged. All67 public MCU pins match. [Attribution, exact ST-162 §4.3p40/§8.2.3 No3.2p85 citations, commands, setup refusals and physical/CRC/scheduling limits](https://github.com/papsg/SAROO/blob/main/doc/CD-RW-SUBCODE.md#ssr-064-unread-packet-overrun-notification). No device, runtime diagnostic or recipe addition.
 - [x] paps-g `e50ec388`, SSR-065 → [`88b8021`](https://github.com/papsg/SAROO/commit/88b8021): ordinary-CDDA decoding and separate session/packet lifetimes. Final actual-parent main/header with corrected fixture reproduces56/960 semantic eligibility/start failures; current eight methods pass sanitizer/O2,540+1,920 dedicated checks. Six actual-FatFs sidecar methods preserve audio/planar/EOF/fault/mode snapshots and prove cooked data does not read/publish sidecars or discard retained packets. Fifty-eight drive methods and both full-worker scan cases preserve audio/Q/pacing/backpressure with zero scan R–W publication; overrun controls pass. Complete resumed CD verification covers261 distinct passing methods and MCU-save103+15=118; setup errors/old scan expectations remain preserved and all failures have corrected replays. Strict unused seams/facade fields are updated without weakening assertions. Both166-vector builds/current67-source pins retain5,056-byte CDB/static RAM: LTO+8 to59,536/free6,000, non-LTO−8 to63,792/free1,744; publication inlines, disk direct96/88→80 and reader80/48 frames. [Exact ST-162 §4.3p40/No2.3p84 citations, attribution, detailed failure history, commands/costs and timing/capacity/CRC/physical limits](https://github.com/papsg/SAROO/blob/main/doc/CD-RW-SUBCODE.md#ssr-065-decode-eligibility-and-session-lifetime). No new recipe, runtime diagnostic, USB or device access.
-- [ ] paps-g `fac81eb1`, SSR-066: callable unsigned release-event helper.
+- [x] paps-g `fac81eb1`, SSR-066 → [`3c7bb19`](https://github.com/papsg/SAROO/commit/3c7bb19): callable unsigned release-event helper. Parent full header passes four independent controls but release use cannot compile; strict whitespace-only probe compiles and returns42 for release0/held1. Corrected sanitizer/O2 methods pass393,224 per-bit-oracle comparisons/boundary/single-evaluation checks. Strict generic/RIGHT callers compile to big-endian ELF32 SH-2 with the current exact header; no target execution. Fresh normal menu retains complete ELF/image/resources/symbols/font and all direct-frame records (87,912 code/data,9,508 BSS,16KiB reserved stack,17,268 margin); all40 source pins match. Menu181 methods pass after the optional linked check's initial skip is resolved against that paired ELF. [C11 §6.10 grammar printed160/PDF178 and §6.10.3p9–10 printed166–167/PDF184–185, attribution, commands, preserved warnings/admission refusal and limits](https://github.com/papsg/SAROO/blob/main/doc/SH2-MENU-CORRECTNESS.md#ssr-066-callable-unsigned-button-release-helper). No ordinary caller is enabled; press helper and MCU/FPGA remain unchanged.
 
 Intervening startup/browser/XML corrections already represented in the public
 implementation are not duplicate ports. Console/debugger and optional backup
 checksum diagnostic work remain excluded. Existing public save geometry and
 feature selections stay intact; no native-save format migration or PAL-mode
 enablement is planned. Host/target builds do not establish hardware/game timing.
+
+
+All six checkpoints are implemented, independently verified and published on
+public main in the requested order, ending at
+[`3c7bb19`](https://github.com/papsg/SAROO/commit/3c7bb19). Verified topic refs
+remain available; no PR or merge commit, issue closure or later-upstream import
+was introduced.
+
+Combined scoped regression covers614 distinct passing methods:261 CD commands/
+reader/worker/subcode,118 MCU-save,54 native-save and181 menu methods. Original
+setup refusals, incorrect prior scan expectations and the optional linked-check
+skip remain archived separately; their corrected targeted replays complete every
+required method. Successful completed groups were retained rather than rerun to
+replace their logs. Additional focused sanitizer/O2, C matrices, forced native
+callers, original native Makefile and fresh MCU/menu links are recorded above.
+Unrelated test targets, physical bus/IRQ timing, media/game/CRC/pre-roll/PAL
+qualification are not claimed.
+
+Final standard MCU LTO/non-LTO loads are59,536/63,792, with6,000/1,744 ITCM free;
+data/BSS/static spans and5,056-byte CDB storage stay unchanged. Final menu has
+zero measured ELF/image/resource/direct-frame cost across these dormant-header
+changes. Every current67-file MCU cohort, all staged SDK/glue pins and40 menu
+inputs remain verified against their actual preserved build cohort. Inputs and
+old evidence receipts were not rewritten to appear current.
+
+The public main/ledger worktrees are clean and their remote refs match after
+final publication checks. Private HEAD/complete refs/stashes/status/worktree
+fingerprints and public stashes remain unchanged; the pre-existing archived
+FPGA trial's complete bytes/modification time remain unchanged. All33 changed
+public files pass source/privacy/scope review, with public noreply attribution,
+no private paths, secrets, PII, proprietary payload, .patch framework, new recipe,
+USB integration or custom runtime diagnostic. No Saturn/USB/SSH/power/capture/
+installation operation or subagent/other-goal work occurred. Original source,
+failures, evidence, research branches and paused work remain preserved.
