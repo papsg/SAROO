@@ -274,7 +274,8 @@ against another producer or exhaustion of the separate deferred ring.
 This ports paps-g `8b5cbe9b` and the final `03fa6494` amendment together.
 Papsg's public adaptation preserves the previous SSR-008 constructor guard,
 original Arm Limited notices and Apache-2.0 license. The new owned system source
-is the pinned5.5.1 original plus the version guard and queue-dispatch case;
+is the pinned5.5.1 original plus the version guard and queue-dispatch case
+(with one inherited whitespace-only line normalized);
 its original hash is `f2abcf9eb25ab57f680ee01d8c1e7dc0dbbb20f4a69b9ec99c9f3c6923361569`.
 App/BootLoader explicitly select it and GNU excludes its stock duplicate.
 Later private ring-admission changes are outside this contribution. No original
