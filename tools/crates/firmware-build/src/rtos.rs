@@ -15,10 +15,13 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             continue;
         }
-        if ["message", "event"].contains(&case) && flag.starts_with("--scenario=") {
+        if ["message", "event", "pool-free"].contains(&case) && flag.starts_with("--scenario=") {
             continue;
         }
         if case == "event" && flag == "--ignore-event-refusal" {
+            continue;
+        }
+        if case == "pool-free" && flag == "--old-free" {
             continue;
         }
         if case == "message"
@@ -26,7 +29,7 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         {
             continue;
         }
-        if !["pool", "message", "event", "retire"].contains(&case) {
+        if !["pool", "pool-free", "message", "event", "retire"].contains(&case) {
             return fail("Atomic options require --case pool, message, event or retire");
         }
         if let Some(value) = flag.strip_prefix("--atomic=") {
@@ -70,6 +73,10 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
                 ("message", "admission") => 4,
                 ("message", "last-slot") => 5,
                 ("message", "receiver") => 6,
+                ("pool-free", "admission") => 0,
+                ("pool-free", "last-slot") => 1,
+                ("pool-free", "no-waiter") => 2,
+                ("pool-free", "waiters") => 3,
                 _ => return fail("Unknown message/event scenario"),
             });
         } else if flag == "--old-space" {
@@ -265,6 +272,22 @@ fn instrument_message(
     ))
 }
 
+fn instrument_old_pool_free(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let selected = "  /* Invalid blocks retain the existing parameter-error path below. For a\n   * valid block, admit any waiting allocator's callback before releasing\n   * caller ownership. PendSV cannot run in this ISR/masked context. */\n  if (((uintptr_t)block >= (uintptr_t)mp->mp_info.block_base) &&\n      ((uintptr_t)block <  (uintptr_t)mp->mp_info.block_lim) &&\n      (mp->thread_list != NULL) &&\n      (osRtxPostProcessTry(osRtxObject(mp)) == 0U)) {\n    EvrRtxMemoryPoolFreeFailed(mp, block);\n    return osErrorResource;\n  }\n\n  // Free memory; no callback is needed when there is no waiting allocator.\n  status = osRtxMemoryPoolFree(&mp->mp_info, block);\n  if (status == osOK) {\n    EvrRtxMemoryPoolDeallocated(mp, block);";
+    if original.matches(selected).count() != 1 {
+        return fail("Missing corrected ISR Free admission for the negative control");
+    }
+    let text = original.replace(selected,
+        "  // Free memory\n  status = osRtxMemoryPoolFree(&mp->mp_info, block);\n  if (status == osOK) {\n    // Register post ISR processing\n    osRtxPostProcess(osRtxObject(mp));\n    EvrRtxMemoryPoolDeallocated(mp, block);");
+    let path = output.join("pool-free-test-provider.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"old_free":true}),
+    ))
+}
+
 /// Inject only a pending test IRQ into a copied provider. Keep the pinned
 /// production input unchanged and record the complete instrumented input.
 fn instrument_pool(source: &Path, output: &Path) -> Result<(PathBuf, Value)> {
@@ -347,6 +370,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "queue" => "rtx_msgqueue.c",
         "timer" => "rtx_timer.c",
         "pool" => "rtx_mempool.c",
+        "pool-free" => "rtx_mempool.c",
         "message" => "rtx_msgqueue.c",
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
@@ -366,11 +390,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     if old_put > 1 || (old_put == 1 && (case != "message" || !(4..=6).contains(&scenario))) {
         return fail("Old Put control requires one message admission scenario");
     }
+    let old_free = args[15..].iter().filter(|v| *v == "--old-free").count();
+    if old_free > 1 || (old_free == 1 && case != "pool-free") {
+        return fail("Old Free control requires one pool-free scenario");
+    }
     let baseline = args[15..].iter().any(|v| v == "--baseline");
-    if baseline && old_put == 1 {
-        return fail(
-            "Old Put control reverses only the selected provider; do not combine with --baseline",
-        );
+    if baseline && (old_put == 1 || old_free == 1) {
+        return fail("A single-source inverse cannot be combined with --baseline");
     }
     let archive = args[15..].iter().any(|v| v == "--archive");
     let lto = args[15..].iter().any(|v| v == "--lto");
@@ -415,6 +441,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_contract.ld",
         "rtos_timer_contract.inc",
         "rtos_pool_contract.inc",
+        "rtos_pool_free_admission.inc",
         "rtos_message_contract.inc",
         "rtos_message_space.inc",
         "rtos_message_admission.inc",
@@ -506,6 +533,21 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             instrumentation = record;
         }
+        if case == "pool-free" && old_free == 1 {
+            let selected = owned.join(provider);
+            let (instrumented, record) = instrument_old_pool_free(&selected, &out)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Pool Free provider selection is not unique");
+            }
+            instrumentation = record;
+        }
         if case == "event" && scenario == 2 {
             let selected = if !baseline && owned.join(provider).is_file() {
                 owned.join(provider)
@@ -582,6 +624,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                     format!("-DTEST_POOL_PHASE={phase}"),
                     format!("-DTEST_POOL_INSIDE={}", u8::from(inside)),
+                ]);
+            }
+            if case == "pool-free" {
+                command.args([
+                    "-DTEST_RTX_POOL_FREE=1".to_owned(),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                    format!("-DTEST_POOL_FREE_SCENARIO={scenario}"),
                 ]);
             }
             if case == "message" {
@@ -689,7 +738,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"old_put":old_put==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;

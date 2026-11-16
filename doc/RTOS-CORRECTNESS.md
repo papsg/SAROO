@@ -479,3 +479,60 @@ in the QEMU test build grows 24→32 bytes, not a measured whole-stack or IRQ
 peak. QEMU executes actual RTX/SVC/IRQ/PendSV code with synthetic startup,
 clock and memory. It does not qualify physical ISR timing, STM32/Saturn
 behavior, audio, arbitrary schedules or games.
+
+## SSR-124: reserve a pool wakeup before freeing its block
+
+The public parent `bf496e1` releases an ISR-freed block before posting the
+pool's deferred callback. With a waiting allocator and all 16 deferred slots
+occupied, a returning overflow hook leaves Free reporting `osOK`, the block
+available, and the infinite-wait allocator blocked after PendSV drains the
+ring. This is a conditional API defect, distinct from SSR-123's leaked message
+block. Both public-parent atomic modes reproduce status `osOK`, pool count 0,
+space 1, pending 16, blocked waiter and one overflow notification. The 15-slot
+controls each complete 192 transfers; the parent's no-waiter/full-ring path
+also posts an unnecessary callback and notifies overflow.
+
+The ISR path now uses the existing checked-publication helper before calling
+the original release operation, but only for a block in the pool's existing
+range with at least one waiting allocator. If the ring cannot accept that
+callback, Free returns `osErrorResource` without changing the caller's block
+or the pool. The caller can retry after PendSV recovers capacity. A pool with
+no waiter needs no callback and may free/reuse a block even when unrelated
+callbacks fill the ring. Invalid blocks retain the original parameter-error
+path. SVC Free, the low-level pool operations, ring capacity and the legacy
+void wrapper remain unchanged. The range guard does not promise alignment,
+double-free detection or validity for arbitrary pointers that Alloc never
+returned.
+
+This adapts paps-g `f987e9d4`/SSR-124 to the public RTX 5.5.1 provider; Arm
+Limited's original notice and Apache-2.0 license remain. No original tpunix
+issue/PR was identified. The pinned [CMSIS-RTOS2 API 2.1.3 pool declarations](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L653-L663)
+define Alloc and Free, and the [status definitions](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L197-L205)
+distinguish success, unavailable resources and invalid parameters. The locally
+preserved [Memory Pool reference](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__PoolMgmt.html)
+allows these operations from an ISR. [Cortex-M7 Generic User Guide DUI0646C](https://developer.arm.com/documentation/dui0646/c),
+§2.1.3 printed p.2-8 and §§2.3.5–2.3.7 printed pp.2-23–2-24, supports the
+masking/exception-return ownership reasoning. The refusal and no-waiter policy
+is this implementation's remedy; no Sega rule defines this kernel behavior.
+
+Use `firmware-build rtos-check` with the explicit local compiler/CMSIS/STM32/
+RTX arguments above, `--case pool-free --atomic=0|1`, and one of
+`--scenario=admission|last-slot|no-waiter|waiters`. Eight selected M7/QEMU
+images pass **1,536 cases**: all 16 ring positions, three IRQ/masked contexts,
+four block sizes, repeated full-ring refusals with unchanged caller bytes,
+recovery/retry, no-waiter reuse, and three priority/FIFO waiters with a
+partially admitted batch. Invalid null/foreign blocks, unique transferred
+blocks, exact pool count/space and complete waiter/list cleanup are checked.
+`--old-free --scenario=admission` reverses only this change in a copied
+provider; its bytes match the public parent exactly and reproduce the stranded
+waiter. LTO admission and stock-kernel-archive waiter images also pass. The
+test-only startup, IRQ schedule and semihosting do not enter normal firmware.
+
+The standard GNU App's Free API is not linked, and no normal application
+public-pool caller was found. The enabled QEMU Free direct frame remains 16
+bytes in both versions; complete call-chain/IRQ stack and cycle costs are
+unmeasured. Both 166-vector standard build profiles retain the prior 59,616/
+63,904 load sizes and 50,896/50,904 DTCM spans; complete parent/candidate
+flat images and allocated resources match fresh parent builds exactly. The
+unstripped ELF hashes differ in nonallocated metadata. These host/QEMU/build
+observations do not qualify a physical MCU, Saturn, audio, save or game.

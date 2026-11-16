@@ -9,7 +9,7 @@
 uint32_t SystemCoreClock = 25000000;
 static uint64_t boot_stack[512];
 static unsigned assertions;
-#if defined(TEST_RTX_EVENTS) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
+#if defined(TEST_RTX_EVENTS) || defined(TEST_RTX_POOL_FREE) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
 static volatile unsigned notifications;
 #endif
 static unsigned idle_delay_checked;
@@ -38,7 +38,7 @@ static void require(int valid, unsigned line) {
 }
 #define CHECK(x) require(!!(x),__LINE__)
 uint32_t osRtxErrorNotify(uint32_t code, void *object) {
-#if defined(TEST_RTX_EVENTS) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
+#if defined(TEST_RTX_EVENTS) || defined(TEST_RTX_POOL_FREE) || (defined(TEST_RTX_MESSAGE) && TEST_MESSAGE_SCENARIO >= 4)
     if (code == osRtxErrorISRQueueOverflow) { notifications++; return 0; }
 #endif
     (void)object; output("RTX error="); number(code); output("\n"); finish(3);
@@ -110,6 +110,8 @@ static void queue_constructor_contract(void) {
 #else
 #include "rtos_message_contract.inc"
 #endif
+#elif defined(TEST_RTX_POOL_FREE)
+#include "rtos_pool_free_admission.inc"
 #elif defined(TEST_RTX_POOL)
 #include "rtos_pool_contract.inc"
 #elif defined(TEST_RTX_TIMERS)
@@ -175,6 +177,9 @@ void (* const vectors[])(void)={
     (void (*)(void))(boot_stack+512),Reset_Handler,fault,fault,fault,fault,fault,
     0,0,0,0,SVC_Handler,fault,0,PendSV_Handler,SysTick_Handler
 #ifdef TEST_RTX_POOL
+    , pool_irq
+#endif
+#ifdef TEST_RTX_POOL_FREE
     , pool_irq
 #endif
 #ifdef TEST_RTX_MESSAGE

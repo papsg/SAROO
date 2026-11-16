@@ -468,6 +468,15 @@ hashes are recorded. Repeated or misplaced pool options refuse. The original
 mode1 release/allocation runs intentionally fail with256 wrong observations
 each, while mode0, masked and after controls pass. Existing results are retained.
 
+`--case pool-free --atomic=0|1` accepts
+`--scenario=admission|last-slot|no-waiter|waiters`. The fixture uses real event
+publications to fill or leave one/two deferred slots, then calls public Free
+from ordinary IRQ, masked IRQ and masked-thread contexts. It checks caller
+block ownership, waiting allocator state, pool count/list, exact transferred
+blocks, priority/FIFO and recovery after an actual PendSV drain. `--old-free`
+reverses only the new ISR Free admission in a copied provider and must
+reproduce the stranded waiter. No hook enters production firmware.
+
 Message checks accept `--atomic=0|1` and
 `--scenario=reuse|waiters|walk|space|admission|last-slot|receiver` (default
 reuse). Walk injects only a

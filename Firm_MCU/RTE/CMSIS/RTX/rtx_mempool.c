@@ -564,11 +564,20 @@ osStatus_t isrRtxMemoryPoolFree (osMemoryPoolId_t mp_id, void *block) {
     return osErrorParameter;
   }
 
-  // Free memory
+  /* Invalid blocks retain the existing parameter-error path below. For a
+   * valid block, admit any waiting allocator's callback before releasing
+   * caller ownership. PendSV cannot run in this ISR/masked context. */
+  if (((uintptr_t)block >= (uintptr_t)mp->mp_info.block_base) &&
+      ((uintptr_t)block <  (uintptr_t)mp->mp_info.block_lim) &&
+      (mp->thread_list != NULL) &&
+      (osRtxPostProcessTry(osRtxObject(mp)) == 0U)) {
+    EvrRtxMemoryPoolFreeFailed(mp, block);
+    return osErrorResource;
+  }
+
+  // Free memory; no callback is needed when there is no waiting allocator.
   status = osRtxMemoryPoolFree(&mp->mp_info, block);
   if (status == osOK) {
-    // Register post ISR processing
-    osRtxPostProcess(osRtxObject(mp));
     EvrRtxMemoryPoolDeallocated(mp, block);
   } else {
     EvrRtxMemoryPoolFreeFailed(mp, block);
