@@ -412,3 +412,101 @@ and 46,688 bytes of static DTCM span, down from 65,536 and 50,744 bytes.
 A separate GNU `BOOT` link retains the multi-format configuration and the
 same 29,112-byte image size; the linked bytes differ in `mount_volume`.
 Host tests and GNU links do not qualify physical media, gameplay or MDK output.
+
+## SSR-106: do not use a persisted free-count hint to deny allocation
+
+A valid FAT32 FSInfo sector can contain a stale but in-range free count. The
+public parent loads it into the mounted authoritative count; zero prevents
+allocation, and one permits only one cluster. On generated media with 128,988
+actually free clusters, these hints allow 0/512 of a 1,024-byte write. Actual
+public save-startup C then returns `FR_DISK_ERR` when its header write is short.
+It correctly refuses readiness, but cannot create the missing archive despite
+available space. Accurate/unknown counts and a genuinely full FAT are controls.
+
+Microsoft *FAT: General Overview of On-Disk Format*, v1.03 (6 December 2000),
+**FAT32 FSInfo Sector Structure and Backup Boot Sector**, printed p.21,
+defines `FSI_Free_Count` at byte 488 as last-known and potentially inaccurate
+even when in range. `FSI_Nxt_Free` at 492 is a separately validated search hint.
+The locally preserved primary PDF SHA-256 is
+`1a2c7e13a7b246a5581ab8cdf5c79c016bedf25be7a3c6739eede560423e3354`.
+The version-matched [FatFs R0.15 archive](https://elm-chan.org/fsw/ff/arc/ff15.zip),
+`documents/doc/config.html`, **FF_FS_NOFSINFO**, defines bit0 as distrust of the
+free count and bit1 as distrust of the next-cluster hint. These establish the
+input's limitations and the configuration choice, not a unique required
+implementation or a Sega-specific MCU rule. No new online research was used.
+
+Adapted from paps-g `8f8b63c5`/SSR-106, with papsg's public-layout tests and
+independent raw-volume checks. Set only `FF_FS_NOFSINFO` bit0. On mount, free
+count stays unknown; ordinary allocation searches real FAT entries without
+first recounting the whole volume. Bit1 stays clear: the allocator retains
+and range-checks the search hint at use. Explicit `f_getfree` scans once, then
+reuses its mounted count; existing allocation/freeing updates maintain a known
+count and leave an unknown count unknown. Persisting the unknown marker is
+valid. No new buffer, cache, scan algorithm, retry or API call is added.
+ChaN's notices and the selected/generic providers remain intact. No original
+tpunix issue/PR is identified for this independent finding. Private diagnostic
+configuration and runtime diagnostic code are outside this port.
+
+Reproduce using public files and a C compiler with ASan/UBSan:
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_fsinfo
+SAROO_FIRMWARE_SAVE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_fsinfo
+```
+
+The selected FAT32 and retained generic/64-bit providers pass 12 methods over
+38 API cases plus two image preparations in each build mode. ASan/UBSan and O2 both
+pass; the generic provider is exercised on FAT32, not exFAT. Independent image
+construction supplies real FAT32 geometry, two tables, backup boot sectors and
+valid FSInfo signatures. Cases change only the primary/backup count fields or
+the explicitly selected next hint; the full-volume controls mark free entries
+as unavailable. Prepared media are byte-identical across current/inverse and
+selected/generic variants. Images, input copies/hashes, results and failures
+remain under `tests/build`.
+
+To reproduce the inverse, copy `Firm_MCU/FatFS`, change only
+`FF_FS_NOFSINFO` bit0 back to zero and set `SAROO_FATFS_DIR` to that copy before
+running the first command. It produces 26 failed subcases, with 12 other API
+controls and both preparations valid. These are related manifestations of one
+cause, not 26 findings. Stale zero/one allocation is short, explicit queries
+return stale counts, the refused-query test cannot observe a FAT read, and
+save startup fails. Its partial/empty files are retained in the evidence.
+
+Selected cases complete all 1,024 bytes and remount/read the exact payload.
+Six actual save-startup cases create both 65,536-/8,388,608-byte archives,
+validate their headers and reopen after remount without new writes. Query
+read refusal preserves the output sentinel and succeeds on retry. Six search
+hint values per provider cover 0, 1, occupied 2, last-valid, first-invalid and
+unknown; all allocate safely despite a stale count of one. Independent raw
+audits of every resulting volume check table equality, unique live cluster
+ownership, chain/size agreement, neighboring/target payloads and archive header
+bytes. They never require persisted FSInfo counts to equal actual free space.
+
+The I/O tradeoff is explicit on the 64 MiB fixture: ordinary 1,024-byte allocation
+needs one FAT read, including accurate/unknown controls. A first explicit query
+reads 1,008 FAT sectors and the next adds none. With a truly full FAT and an
+accurate stored zero, the inverse safely refuses with zero allocation reads;
+the selected path uses 1,009 on its first attempt and 1,008 on the immediate
+repeat, whose initial FAT window is already cached. Unknown-count failures can
+repeat a search. High-count full-FAT controls also refuse safely. These are
+fixture I/O counts, not SD timing or universal bounds. `f_getfree` is absent
+from both standard App links; no automatic startup recount was introduced.
+
+All 28 relevant existing startup, contiguous-allocation, FAT32 growth/profile,
+active-copy/mirroring and FSInfo-error regression methods pass. The optional
+contiguous-allocation oracle already explicitly requests a current count before
+checking exact bookkeeping; its raw ownership/payload assertions are retained.
+Both fresh 166-vector standard App links pass, with only `ffconf.h` changed in
+all 70 public MCU input pins. LTO saves 12 load bytes to 59,524 (6,012 free);
+non-LTO saves 8 to 63,784 (1,752 free). Data/BSS stay 200/50,696 and 204/50,688;
+static DTCM span 50,896 and stack-address gap 80,176 remain. Direct frames stay 64
+for mount and 32 for chain creation in both profiles; callee/IRQ peaks are not
+measured. Menu/FPGA source is unchanged; the preceding paired menu build remains
+current by its complete source pins, without claiming a fresh menu build here.
+
+These are actual filesystem/save C and GNU target links over synchronous host
+block/shared-address/mutex adapters. MCU instructions, physical SD performance,
+durability, power loss, concurrent scheduling, full game launch and Saturn/game
+saves remain unqualified. Existing short/damaged archives are not repaired by
+this change; their established refusal policy remains intact.

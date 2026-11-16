@@ -309,6 +309,7 @@ class MCUSaveTest(unittest.TestCase):
                     code += b'#define HAS_SUBRW_PUBLISHER 1\n' + function(b'static void publish_subrw(')
                 (cls.target / 'reader.inc').write_bytes(code)
                 harnesses += [cls.c_source, getattr(cls, 'test_source', 'test_cue_geometry.py')]
+        harnesses += list(getattr(cls, 'extra_harnesses', ()))
         for name in harnesses:
             data = (ROOT / 'tests' / name).read_bytes()
             (cls.target / name).write_bytes(data); inputs['tests/' + name] = data
