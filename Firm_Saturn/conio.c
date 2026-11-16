@@ -435,7 +435,7 @@ void put_line (int x1, int y1, int x2, int y2, int c)
 		}
 		x1 <<= 16;
 		/* dy is apriori >0 */
-		dx = (dx << 16) / dy;
+		dx = (dx * 65536) / dy;
 		while (y1 <= y2) {
 			put_pixel (x1 >> 16, y1, c);
 			x1 += dx;
@@ -448,7 +448,7 @@ void put_line (int x1, int y1, int x2, int y2, int c)
 			dx = -dx; dy = -dy;
 		}
 		y1 <<= 16;
-		dy = dx ? (dy << 16) / dx : 0;
+		dy = dx ? (dy * 65536) / dx : 0;
 		while (x1 <= x2) {
 			put_pixel (x1, y1 >> 16, c);
 			y1 += dy;
