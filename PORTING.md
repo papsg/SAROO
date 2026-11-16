@@ -3116,3 +3116,15 @@ All six ordered findings have evidence-supported dispositions: five verified
 fixes are on public main and SSR-131 is inapplicable to the selected public
 firmware path. The five topic branches and main are published. No PR was opened,
 and the private repository and Saturn were left untouched.
+
+## RTX message Get and STM32 device-header follow-up
+
+Ordered scope: SSR-134, SSR-138, SSR-139, SSR-140, SSR-141, SSR-142. Revalidate
+each public source path and its selected vendor version, then publish one verified
+applicable correction at a time directly to main. No PRs, USB integration,
+runtime diagnostics, new CDON recipes or device operations. The private source
+and evidence remain read-only references.
+
+| Finding / historical reference | Public checkpoint | Validation, citations and limits |
+| --- | --- | --- |
+| SSR-134, paps-g `b1cd920c` | [`a9290a0`](https://github.com/papsg/SAROO/commit/a9290a0af39e2efabf89e3f174e17d73785490a4), on main; [`codex/public-message-get-admission`](https://github.com/papsg/SAROO/tree/codex/public-message-get-admission) | The exact public parent strands senders in all 792 actual Cortex-M7/QEMU full-ring, partial-batch and SVC/IRQ-gap cases across both atomic modes; the gap has no ring overflow, exposing a separate publication race. The selected provider passes the same 792 cases with zero lost wakeups, 480 explicit refusals, 528 immediate completions, 696 retries, 1,224 full-ring no-sender Gets and 792 empty controls. Copied-source waiter-only and no-window-guard controls each retain 72 gap losses. Payload, priority, capacity, pool ownership, masks and waiter state are checked. LTO/archive and adjacent RTX contracts, host SysTick/profile checks, 38 Rust/RTL unit checks, format and strict Clippy pass. Fresh 166-vector standard LTO/non-LTO GNU App images are byte-identical to the parent at 59,632/63,960 loaded bytes and 50,904 static DTCM bytes; queue APIs are absent from these standard links. The direct QEMU SVC Put frame grows 24→32 bytes. [Pinned CMSIS message/status declarations, Cortex-M7 DUI0646C sections/pages, attribution, rerun instructions and physical/game limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md#ssr-134-preserve-sender-progress-across-isr-get). Private tracked bytes and complete Git state match the preservation snapshot (3,272 paths). No device operation. |
