@@ -31,7 +31,7 @@ The App/retained-format variants execute the actual FatFs public API on sparse
 FAT32 files. Their independent complete FAT/directory/FSInfo oracle establishes
 unique ownership, no orphan/duplicate/out-of-range chains, maximum linear free
 span and unchanged filler chain; exact payloads and contiguous probe chains
-are checked after close. Original endpoint order is irrelevant to this API.
+are checked after close.
 
 Twenty public cases cover both preparation/allocation modes, split/end/head/
 cursor layouts and oversized requests in both variants. All pass under
