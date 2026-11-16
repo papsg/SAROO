@@ -2965,3 +2965,25 @@ payloads, new recipes or patch framework. No PRs, issue closures, USB
 integration, runtime diagnostics, installed loader, new task, device operation
 or resumption of other work occurred. The private repository, Saturn and
 read-only audit snapshot remain untouched.
+
+
+## CD metadata, PAL constants, save selectors and R–W correctness
+
+Active ordered follow-up from public `74ae03b`. Revalidate each contribution
+against current public main before direct publication, retaining local primary
+citations, original authorship, failure evidence and qualification limits. No
+PRs, USB integration, custom runtime diagnostics, new loaders/CDON recipes or
+device operations. Private sources/history/evidence remain read-only.
+
+- [ ] paps-g `acf616d6`, SSR-037: native file-unit/gap reply order.
+- [ ] paps-g `49fe3d2e`, SSR-041: dormant PAL 256-line constant.
+- [ ] paps-g `bda37c83`, SSR-044: explicit native save/slot selector admission.
+- [ ] paps-g `329466e4`, SSR-064: unread R–W queue overrun notification.
+- [ ] paps-g `e50ec388`, SSR-065: R–W decode eligibility and session lifetime.
+- [ ] paps-g `fac81eb1`, SSR-066: callable unsigned release-event helper.
+
+Intervening startup/browser/XML corrections already represented in the public
+implementation are not duplicate ports. Console/debugger and optional backup
+checksum diagnostic work remain excluded. Existing public save geometry and
+feature selections stay intact; no native-save format migration or PAL-mode
+enablement is planned. Host/target builds do not establish hardware/game timing.
