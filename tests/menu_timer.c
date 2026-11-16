@@ -165,6 +165,58 @@ static void repeat_case(u32 start, int late)
     for (unsigned i = 0; i < 20; ++i) assert(sample(due + ticks(500), 0) == 0);
 }
 
+
+/* papsg adaptation of paps-g SSR-016; independent packed-field oracle. */
+static void input_reset(void)
+{
+    last_pdat=last_value=curr_pdat=pdat_wait=0;
+    pdat_state=pdat_count=0;
+}
+static u32 event_bits(u32 previous,u32 current)
+{
+    return (previous^current)*UINT32_C(65536)+current;
+}
+static void packing_case(u32 buttons)
+{
+    input_reset();
+    u32 start=0xffff0000u;
+    for(unsigned i=0;i<3;++i) {
+        assert(sample(start,buttons)==0);
+        assert(sample(start,-1)==0);
+    }
+    u32 event=event_bits(0,buttons);
+    assert(sample(start,buttons)==event);
+    if(!buttons) return;
+    u32 due=start+ticks(500);
+    assert(sample(due-1,buttons)==0);
+    assert(sample(due,-1)==0);
+    assert(sample(due,buttons)==event);
+    assert(sample(due,buttons)==0);
+    /* A held-to-released transition takes five valid samples from repeat state. */
+    for(unsigned i=0;i<4;++i) assert(sample(due+1,0)==0);
+    assert(sample(due+1,0)==event_bits(buttons,0));
+    assert(sample(due+ticks(500),0)==0);
+}
+static void mixed_case(u32 start)
+{
+    input_reset();
+    const u32 states[]={0x9000,0x1000,0x8000,0};
+    u32 previous=0;
+    for(unsigned n=0;n<4;++n) {
+        unsigned settle=n?4:3;
+        for(unsigned i=0;i<settle;++i) {
+            assert(sample(start,states[n])==0);
+            assert(sample(start,-1)==0);
+        }
+        u32 event=event_bits(previous,states[n]);
+        assert(sample(start,states[n])==event);
+        if(states[n]) {
+            assert(sample(start+ticks(500),states[n])==event);
+            assert(sample(start+ticks(500),states[n])==0);
+        }
+        previous=states[n];start+=ticks(750);
+    }
+}
 static void scroll_case(u32 start)
 {
     MENU_DESC menu = {.current = 1, .items = {"first", "scrolling title"}};
@@ -189,8 +241,15 @@ int main(int argc, char **argv)
 {
     assert(argc == 3);
     unsigned value = (unsigned)strtoul(argv[2], NULL, 10);
+    if (!strcmp(argv[1],"pack")) {
+        assert(value<=0xfff8 && !(value&7));packing_case(value);
+    } else if (!strcmp(argv[1],"pack-all")) {
+        for(unsigned buttons=0;buttons<=0xfff8;buttons+=8) packing_case(buttons);
+        puts("defined button masks=8192");
+    } else {
     assert(value < 5);
-    if (!strcmp(argv[1], "clock")) { assert(value < 3); clock_case(value); }
+    if (!strcmp(argv[1],"mixed")) mixed_case(origins[value]);
+    else if (!strcmp(argv[1], "clock")) { assert(value < 3); clock_case(value); }
     else if (!strcmp(argv[1], "reset")) reset_case();
     else if (!strcmp(argv[1], "order")) reference_order_case();
     else if (!strcmp(argv[1], "sleep")) sleep_case(value);
@@ -199,6 +258,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "late")) repeat_case(origins[value], 1);
     else if (!strcmp(argv[1], "scroll")) scroll_case(origins[value]);
     else return 2;
+    }
     printf("%s: pass\n", argv[1]);
     return 0;
 }

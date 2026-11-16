@@ -89,6 +89,17 @@ class MenuTimerTests(unittest.TestCase):
         for value in range(5):
             with self.subTest(value=value): self.invoke('scroll', value)
 
+    def test_event_packing_press_repeat_and_release(self):
+        for mask in (0,0x1000,0x4000,0x7ff8,0x8000,0x9000,0xfff8):
+            with self.subTest(mask=mask): self.invoke('pack',mask)
+
+    def test_all_defined_button_masks_round_trip(self):
+        self.invoke('pack-all')
+
+    def test_mixed_right_transitions_at_clock_boundaries(self):
+        for value in range(5):
+            with self.subTest(value=value): self.invoke('mixed',value)
+
 
 if __name__ == '__main__':
     unittest.main()

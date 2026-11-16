@@ -565,7 +565,7 @@ u32 conio_getc(void)
 		}else{
 			pdat_state = 0;
 		}
-		last_value = (pdat<<16) | curr_pdat;
+		last_value = ((u32)pdat << 16) | curr_pdat;
 		return last_value;
 	case 3:
 		// 重复状态
