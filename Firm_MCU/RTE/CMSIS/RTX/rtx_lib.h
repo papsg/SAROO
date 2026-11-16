@@ -211,6 +211,7 @@ extern osStatus_t osRtxMemoryPoolFree  (os_mp_info_t *mp_info, void *block);
 extern void osRtxTick_Handler   (void);
 extern void osRtxPendSV_Handler (void);
 extern void osRtxPostProcess    (os_object_t *object);
+extern uint32_t osRtxPostProcessTry (os_object_t *object);
 
 
 #endif  // RTX_LIB_H_

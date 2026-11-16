@@ -9,6 +9,9 @@
 uint32_t SystemCoreClock = 25000000;
 static uint64_t boot_stack[512];
 static unsigned assertions;
+#ifdef TEST_RTX_EVENTS
+static volatile unsigned notifications;
+#endif
 static unsigned idle_delay_checked;
 static osStatus_t idle_relative, idle_absolute;
 
@@ -35,6 +38,9 @@ static void require(int valid, unsigned line) {
 }
 #define CHECK(x) require(!!(x),__LINE__)
 uint32_t osRtxErrorNotify(uint32_t code, void *object) {
+#ifdef TEST_RTX_EVENTS
+    if (code == osRtxErrorISRQueueOverflow) { notifications++; return 0; }
+#endif
     (void)object; output("RTX error="); number(code); output("\n"); finish(3);
 }
 __attribute__((noreturn)) void osRtxIdleThread(void *argument) {
@@ -88,7 +94,15 @@ static void queue_constructor_contract(void) {
     CHECK(queue && osMessageQueueDelete(queue)==osOK);
 }
 #endif
-#if defined(TEST_RTX_MESSAGE)
+#if defined(TEST_RTX_RETIRE)
+#include "rtos_retire_contract.inc"
+#elif defined(TEST_RTX_EVENTS)
+#if TEST_EVENT_SCENARIO == 2
+#include "rtos_event_nested.inc"
+#else
+#include "rtos_event_contract.inc"
+#endif
+#elif defined(TEST_RTX_MESSAGE)
 #if TEST_MESSAGE_SCENARIO == 3
 #include "rtos_message_space.inc"
 #else
@@ -168,5 +182,15 @@ void (* const vectors[])(void)={
 #else
     , walk_irq
 #endif
+#endif
+#ifdef TEST_RTX_EVENTS
+#if TEST_EVENT_SCENARIO == 2
+    , high_irq, low_irq
+#else
+    , event_irq
+#endif
+#endif
+#ifdef TEST_RTX_RETIRE
+    , first_irq, second_irq
 #endif
 };

@@ -15,14 +15,18 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             continue;
         }
-        if case == "message"
-            && (flag.starts_with("--scenario=")
-                || ["--old-space", "--omit-walk-invalidation"].contains(&flag.as_str()))
+        if ["message", "event"].contains(&case) && flag.starts_with("--scenario=") {
+            continue;
+        }
+        if case == "event" && flag == "--ignore-event-refusal" {
+            continue;
+        }
+        if case == "message" && ["--old-space", "--omit-walk-invalidation"].contains(&flag.as_str())
         {
             continue;
         }
-        if !["pool", "message"].contains(&case) {
-            return fail("Atomic options require --case pool or message");
+        if !["pool", "message", "event", "retire"].contains(&case) {
+            return fail("Atomic options require --case pool, message, event or retire");
         }
         if let Some(value) = flag.strip_prefix("--atomic=") {
             if atomic.is_some() || !["0", "1"].contains(&value) {
@@ -48,7 +52,7 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
     Ok((atomic.unwrap_or(1), phase, inside))
 }
 
-fn message_options(flags: &[String]) -> Result<(u8, bool, bool)> {
+fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
     let mut scenario = None;
     let mut old_space = false;
     let mut omit_invalidation = false;
@@ -57,12 +61,12 @@ fn message_options(flags: &[String]) -> Result<(u8, bool, bool)> {
             if scenario.is_some() {
                 return fail("Specify one message scenario");
             }
-            scenario = Some(match value {
-                "reuse" => 0,
-                "waiters" => 1,
-                "walk" => 2,
-                "space" => 3,
-                _ => return fail("Unknown message scenario"),
+            scenario = Some(match (case, value) {
+                ("message", "reuse") | ("event", "single") => 0,
+                ("message" | "event", "waiters") => 1,
+                ("message", "walk") | ("event", "nested") => 2,
+                ("message", "space") | ("event", "legacy") => 3,
+                _ => return fail("Unknown message/event scenario"),
             });
         } else if flag == "--old-space" {
             if old_space {
@@ -81,6 +85,114 @@ fn message_options(flags: &[String]) -> Result<(u8, bool, bool)> {
         return fail("Message negative control does not match its scenario");
     }
     Ok((scenario, old_space, omit_invalidation))
+}
+
+fn instrument_retire(
+    source: &Path,
+    output: &Path,
+    original_order: bool,
+) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let mut text = original.clone();
+    let start = text
+        .find("static os_object_t *isr_queue_get (void) {")
+        .ok_or("Missing ISR ring consumer")?;
+    let end = text[start..]
+        .find("//  ==== Library Functions ====")
+        .ok_or("Missing ring consumer boundary")?
+        + start;
+    let mut body = text[start..end].to_owned();
+    if original_order {
+        let selected = "  if (osRtxInfo.isr_queue.cnt != 0U) {\n    /* PendSV alone consumes. Read the object before an interrupt producer\n     * can reuse this slot; the atomic count update orders these accesses. */\n    n = osRtxInfo.isr_queue.out;\n    ret = osRtxObject(osRtxInfo.isr_queue.data[n]);\n    if (++osRtxInfo.isr_queue.out == max) {\n      osRtxInfo.isr_queue.out = 0U;\n    }\n    (void)atomic_dec16_nz(&osRtxInfo.isr_queue.cnt);";
+        if body.matches(selected).count() != 1 {
+            return fail("Retirement baseline requires the corrected consumer");
+        }
+        body = body.replace(selected, "  if (atomic_dec16_nz(&osRtxInfo.isr_queue.cnt) != 0U) {\n    n = atomic_inc16_lim(&osRtxInfo.isr_queue.out, max);\n    ret = osRtxObject(osRtxInfo.isr_queue.data[n]);");
+    }
+    let decrement = "atomic_dec16_nz(&osRtxInfo.isr_queue.cnt)";
+    let unmask = "  __enable_irq();\n#else";
+    if body.matches(decrement).count() != 1 || body.matches(unmask).count() != 1 {
+        return fail("Missing unique ring-retirement boundaries");
+    }
+    body = body.replace(decrement, "retire_test_dec(&osRtxInfo.isr_queue.cnt)");
+    body = body.replace(
+        unmask,
+        "  __enable_irq();\n  queue_retire_probe(&osRtxInfo.isr_queue.cnt);\n#else",
+    );
+    text.replace_range(start..end, &body);
+    text.insert_str(start, "extern void queue_retire_probe(uint16_t *);\n#if (EXCLUSIVE_ACCESS != 0)\n__STATIC_INLINE uint16_t retire_test_dec(uint16_t *mem) {\n  uint16_t value = atomic_dec16_nz(mem);\n  queue_retire_probe(mem);\n  return value;\n}\n#endif\n");
+    let path = output.join("retire-test-provider.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"original_retirement_order":original_order,"schedule_hook":"after successful count decrement; after unmask for mode0"}),
+    ))
+}
+
+fn header_matches(name: &str, original: &[u8], owned: &[u8]) -> bool {
+    if original == owned {
+        return true;
+    }
+    if name != "rtx_lib.h" {
+        return false;
+    }
+    let marker = "extern void osRtxPostProcess    (os_object_t *object);\n";
+    std::str::from_utf8(original).ok().is_some_and(|text| {
+        text.matches(marker).count() == 1
+            && text
+                .replace(
+                    marker,
+                    &format!(
+                        "{marker}extern uint32_t osRtxPostProcessTry (os_object_t *object);\n"
+                    ),
+                )
+                .as_bytes()
+                == owned
+    })
+}
+
+fn instrument_event(
+    source: &Path,
+    output: &Path,
+    ignore_refusal: bool,
+) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let mut text = original.clone();
+    let start = text
+        .find("uint32_t isrRtxEventFlagsSet (")
+        .ok_or("Missing event frontend")?;
+    let end = text[start..]
+        .find("uint32_t isrRtxEventFlagsWait (")
+        .ok_or("Missing event frontend boundary")?
+        + start;
+    let mut body = text[start..end].to_owned();
+    let guard = "  if (osRtxPostProcessTry(osRtxObject(ef)) == 0U) {\n    EvrRtxEventFlagsError(ef, (int32_t)osErrorResource);\n    return ((uint32_t)osErrorResource);\n  }\n";
+    if body.matches(guard).count() != 1 {
+        return fail("Nested-event test requires the corrected admission guard");
+    }
+    if ignore_refusal {
+        body = body.replace(guard, "  (void)osRtxPostProcessTry(osRtxObject(ef));\n");
+    }
+    let store = "  event_flags = EventFlagsSet(ef, flags);\n";
+    if body.matches(store).count() != 1 {
+        return fail("Missing unique event publication boundary");
+    }
+    body = body.replace(store, &format!("  event_publication_probe(ef);\n{store}"));
+    text.replace_range(start..end, &body);
+    let marker = "#include \"rtx_lib.h\"\n";
+    if text.matches(marker).count() != 1 {
+        return fail("Missing event declaration boundary");
+    }
+    text = text.replace(
+        marker,
+        &format!("{marker}extern void event_publication_probe(os_event_flags_t *);\n"),
+    );
+    let path = output.join("event-test-provider.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"irq_hook":true,"ignored_refusal":ignore_refusal}),
+    ))
 }
 
 fn instrument_message(
@@ -199,13 +311,16 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
                 return fail("Invalid RTX pin path");
             }
             let source = rtx.join("RTX/Source").join(name);
-            if Some(sha(&fs::read(source)?).as_str()) != expected.as_str() {
+            let original = fs::read(&source)?;
+            if Some(sha(&original).as_str()) != expected.as_str() {
                 return fail("RTX SDK differs from the selected 5.5.1 provider");
             }
             if section == "headers"
-                && fs::read(owned.join(name))? != fs::read(rtx.join("RTX/Source").join(name))?
+                && !header_matches(name, &original, &fs::read(owned.join(name))?)
             {
-                return fail("RTX support header is not the pinned original");
+                return fail(
+                    "RTX support header differs beyond the declared postprocess prototype",
+                );
             }
         }
     }
@@ -220,10 +335,20 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "timer" => "rtx_timer.c",
         "pool" => "rtx_mempool.c",
         "message" => "rtx_msgqueue.c",
+        "event" => "rtx_evflags.c",
+        "retire" => "rtx_system.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     let (atomic, phase, inside) = pool_options(case, &args[15..])?;
-    let (scenario, old_space, omit_invalidation) = message_options(&args[15..])?;
+    let (scenario, old_space, omit_invalidation) = scenario_options(case, &args[15..])?;
+    let ignore_event_refusal = args[15..]
+        .iter()
+        .filter(|v| *v == "--ignore-event-refusal")
+        .count();
+    if ignore_event_refusal > 1 || (ignore_event_refusal == 1 && (case != "event" || scenario != 2))
+    {
+        return fail("Event refusal control requires one --case event --scenario=nested");
+    }
     let baseline = args[15..].iter().any(|v| v == "--baseline");
     let archive = args[15..].iter().any(|v| v == "--archive");
     let lto = args[15..].iter().any(|v| v == "--lto");
@@ -270,6 +395,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_pool_contract.inc",
         "rtos_message_contract.inc",
         "rtos_message_space.inc",
+        "rtos_event_contract.inc",
+        "rtos_event_nested.inc",
+        "rtos_retire_contract.inc",
     ] {
         mcu::copy_file(
             &repo.join("tests").join(name),
@@ -298,7 +426,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let mut kernel_objects = Vec::new();
         for source in &mut sources {
             let name = source.file_name().ok_or("Missing kernel source name")?;
-            if owned.join(name).is_file() && !(baseline && name == provider) {
+            if owned.join(name).is_file() && !(baseline && name == provider && case != "retire") {
                 direct.push(owned.join(name));
                 if !archive {
                     *source = owned.join(name);
@@ -349,6 +477,45 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             instrumentation = record;
         }
+        if case == "event" && scenario == 2 {
+            let selected = if !baseline && owned.join(provider).is_file() {
+                owned.join(provider)
+            } else {
+                kernel.join(provider)
+            };
+            let (instrumented, record) =
+                instrument_event(&selected, &out, ignore_event_refusal == 1)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Event provider selection is not unique");
+            }
+            instrumentation = record;
+        }
+        if case == "retire" {
+            let selected = if owned.join(provider).is_file() {
+                owned.join(provider)
+            } else {
+                kernel.join(provider)
+            };
+            let (instrumented, record) = instrument_retire(&selected, &out, baseline)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Retirement provider selection is not unique");
+            }
+            instrumentation = record;
+        }
         let mut objects = Vec::new();
         for (index, source) in sources.iter().chain(&direct).enumerate() {
             let object = out.join(format!(
@@ -393,6 +560,19 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     "-DTEST_RTX_MESSAGE=1".to_owned(),
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                     format!("-DTEST_MESSAGE_SCENARIO={scenario}"),
+                ]);
+            }
+            if case == "event" {
+                command.args([
+                    "-DTEST_RTX_EVENTS=1".to_owned(),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                    format!("-DTEST_EVENT_SCENARIO={scenario}"),
+                ]);
+            }
+            if case == "retire" {
+                command.args([
+                    "-DTEST_RTX_RETIRE=1".to_owned(),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
                 ]);
             }
             if lto {
@@ -480,7 +660,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;
@@ -521,14 +701,47 @@ mod tests {
             vec!["--scenario=space", "--old-space", "--old-space"],
         ] {
             let flags = flags.into_iter().map(String::from).collect::<Vec<_>>();
-            assert!(message_options(&flags).is_err());
+            assert!(scenario_options("message", &flags).is_err());
         }
         assert!(pool_options("pool", &["--scenario=space".into()]).is_err());
         assert!(pool_options("message", &["--phase=after".into()]).is_err());
         assert_eq!(
-            message_options(&["--scenario=space".into(), "--old-space".into()]).unwrap(),
+            scenario_options(
+                "message",
+                &["--scenario=space".into(), "--old-space".into()]
+            )
+            .unwrap(),
             (3, true, false)
         );
+    }
+
+    #[test]
+    fn event_modes_do_not_admit_message_mutations_or_unrelated_modes() {
+        assert_eq!(
+            scenario_options("event", &["--scenario=nested".into()]).unwrap(),
+            (2, false, false)
+        );
+        assert_eq!(
+            scenario_options("event", &["--scenario=legacy".into()]).unwrap(),
+            (3, false, false)
+        );
+        assert!(scenario_options("event", &["--scenario=walk".into()]).is_err());
+        assert!(scenario_options("message", &["--scenario=single".into()]).is_err());
+        assert!(pool_options("event", &["--old-space".into()]).is_err());
+        assert!(pool_options("message", &["--ignore-event-refusal".into()]).is_err());
+    }
+
+    #[test]
+    fn only_the_shared_postprocess_declaration_can_extend_a_support_header() {
+        let original = b"before\nextern void osRtxPostProcess    (os_object_t *object);\nafter\n";
+        let selected = b"before\nextern void osRtxPostProcess    (os_object_t *object);\nextern uint32_t osRtxPostProcessTry (os_object_t *object);\nafter\n";
+        assert!(header_matches("rtx_lib.h", original, selected));
+        assert!(header_matches("rtx_lib.h", original, original));
+        assert!(!header_matches("rtx_core_c.h", original, selected));
+        let mut extra = selected.to_vec();
+        extra.extend_from_slice(b"extern int unrelated;\n");
+        assert!(!header_matches("rtx_lib.h", original, &extra));
+        assert!(!header_matches("rtx_lib.h", b"other SDK", selected));
     }
 
     #[test]

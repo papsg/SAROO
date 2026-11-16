@@ -448,8 +448,8 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay`, `--case queue`, `--case timer` or
-`--case pool` or `--case message`. Choose a fresh `--out tests/build/...`
+arguments as `mcu`, plus `--case delay|queue|timer|pool|message|event|retire`.
+Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results;
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
@@ -477,6 +477,25 @@ fail a payload check. These controls never modify the production provider.
 The original `--baseline --scenario=reuse` must report432 rejected replacement
 puts, retaining thread/after-IRQ/reset controls. `--lto` and `--archive` remain
 available. Test sources, mutations, input hashes, commands and logs are preserved.
+
+Event checks accept `--atomic=0|1` and
+`--scenario=single|waiters|nested|legacy` (default single). Single checks full
+and last-slot admission with an actual waiting thread; waiters checks three
+priority/FIFO waiters. Nested schedules a higher IRQ between admission and
+flag publication in a copied provider. `--ignore-event-refusal` is a negative
+control for nested only and must fail its refusal assertion. Legacy checks the
+original void wrapper's overflow notification. `--baseline --scenario=single`
+selects only the original event frontend and must report32 lost wakeups.
+
+`--case retire --atomic=0|1` checks ring-slot retirement with real event
+callbacks and a blocked waiter. `--baseline` reverses only the consumer's
+retirement order, retaining the new admission helper; mode1 must report16
+lost callbacks, while mode0 remains a valid passing control. Only copied
+providers receive scheduling hooks. The owned source has no test callbacks.
+Both cases support `--lto` and `--archive`; nested's baseline must use the
+refusal mutation instead of the stock frontend. The required support headers
+are pinned: `rtx_lib.h` permits only its declared postprocess prototype
+addition; all other bytes and the original SDK hashes must match.
 
 ### Compile the existing conditional BOOT body
 

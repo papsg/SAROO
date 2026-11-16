@@ -25,7 +25,8 @@
 
 #include "rtx_lib.h"
 
-/* SAROO/papsg, SSR-068: queue-owned deferred sender wakeups. */
+/* SAROO/papsg: SSR-068 queue callbacks; SSR-069 admission after paps-g
+ * d3b1f4d5, with slot-retirement prerequisite 6e96f528. */
 #if osRtxVersionKernel != 50050001
 #error "This RTX override requires the selected 5.5.1 kernel"
 #endif
@@ -103,9 +104,15 @@ static os_object_t *isr_queue_get (void) {
 
   __enable_irq();
 #else
-  if (atomic_dec16_nz(&osRtxInfo.isr_queue.cnt) != 0U) {
-    n = atomic_inc16_lim(&osRtxInfo.isr_queue.out, max);
+  if (osRtxInfo.isr_queue.cnt != 0U) {
+    /* PendSV alone consumes. Read the object before an interrupt producer
+     * can reuse this slot; the atomic count update orders these accesses. */
+    n = osRtxInfo.isr_queue.out;
     ret = osRtxObject(osRtxInfo.isr_queue.data[n]);
+    if (++osRtxInfo.isr_queue.out == max) {
+      osRtxInfo.isr_queue.out = 0U;
+    }
+    (void)atomic_dec16_nz(&osRtxInfo.isr_queue.cnt);
   } else {
     ret = NULL;
   }
@@ -203,17 +210,24 @@ void osRtxPendSV_Handler (void) {
   osRtxThreadDispatch(NULL);
 }
 
-/// Register post ISR processing.
+/// Admit processing without the legacy overflow notification. The caller
+/// must prevent PendSV until the admitted object's publication is complete.
+uint32_t osRtxPostProcessTry (os_object_t *object) {
+  if (isr_queue_put(object) == 0U) {
+    return 0U;
+  }
+  if (osRtxInfo.kernel.blocked == 0U) {
+    SetPendSV();
+  } else {
+    osRtxInfo.kernel.pendSV = 1U;
+  }
+  return 1U;
+}
+
+/// Register post ISR processing with its existing overflow notification.
 /// \param[in]  object          generic object.
 void osRtxPostProcess (os_object_t *object) {
-
-  if (isr_queue_put(object) != 0U) {
-    if (osRtxInfo.kernel.blocked == 0U) {
-      SetPendSV();
-    } else {
-      osRtxInfo.kernel.pendSV = 1U;
-    }
-  } else {
+  if (osRtxPostProcessTry(object) == 0U) {
     (void)osRtxErrorNotify(osRtxErrorISRQueueOverflow, object);
   }
 }

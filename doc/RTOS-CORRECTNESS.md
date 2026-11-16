@@ -26,8 +26,9 @@ There is no original tpunix issue/PR identified for this independent finding.
 The original project selects CMSIS 5.6.0 / RTX 5.5.1's Library variant.
 Both App and BootLoader explicitly compile the replacement `rtx_delay.c`;
 its public symbols resolve before the library's delay member is needed.
-Three unchanged source-private headers are the required compilation interface;
-public RTX/API headers still come from the selected pack. The override checks
+Three source-private headers supply the compilation interface; SSR-069 below
+adds exactly one prototype to `rtx_lib.h`. The other two remain byte-identical.
+Public RTX/API headers still come from the selected pack. The override checks
 the kernel version at compile time. The GNU builder selects the same source
 and excludes the stock delay translation unit, retaining all other SDK units.
 It rejects changed base-provider/header hashes, never patches the installed
@@ -332,3 +333,88 @@ No STM32/Saturn timing, physical IRQ/cache/bus, arbitrary schedule/priority,
 deleted/stale-object lifetime, deferred-ring-overflow or game qualification is
 claimed. No intermediate design was published; menu, FPGA, feature selections
 and device state remain unchanged.
+
+## SSR-069: admit an event wakeup before publishing its flags
+
+The parent sets an event's bits before attempting to queue its deferred wakeup.
+With a full ISR ring, Set reports success but a real waiting thread remains
+blocked. The public-parent fixture reproduces 32 such losses per atomic mode,
+with 32 last-slot controls passing. Retry after draining recovers the waiter.
+The selected ISR/masked-call frontend first admits its callback, then publishes
+the flags. Failed admission returns `osFlagsErrorResource`, preserves all flags
+and emits no overflow notification. Parameter validation still precedes both
+operations. Thread-context Set retains the original SVC path.
+
+The shared `osRtxPostProcessTry` helper returns admission status and retains
+the existing PendSV/blocked-kernel scheduling. Its caller must prevent PendSV
+until object publication completes; ISR execution or the existing caller mask
+does so here. The old void wrapper retains its overflow notification for other
+callers. No object layout, ring capacity, callback table or buffer grows. The
+support-header extension is exactly its one prototype; the GNU tool still
+requires the original SDK hashes and rejects every other header change.
+
+There is one necessary prerequisite from paps-g `6e96f528`: in exclusive mode,
+PendSV must read a ring object's pointer before releasing its slot. The public
+parent decrements occupancy first, allowing a higher IRQ to overwrite the old
+slot. Across 256 real event histories at 16 offsets and occupancies1–16, reversing
+only this ordering loses 16 callbacks and leaves 16 actual waiters blocked;
+240 controls pass. The selected order loses none. The already IRQ-masked mode0
+also passes all 256 old-order controls. PendSV remains the sole consumer; it
+reads the object and advances its private output index before atomically
+releasing capacity. This is required for the new admission policy to rely on
+a reusable slot. No broader private-kernel work is imported.
+
+The event correction adapts paps-g `d3b1f4d5`/SSR-069; the dependency above and
+papsg's public integration/tests are identified separately. Original Arm Limited
+notices and Apache-2.0 license remain. The complete pinned 5.5.1 event provider's
+original SHA-256 is `be526e1766fb47fa6c578b8c5e0bc7ded931f514a27c0e4b0b4aacffad1299fe`.
+App and BootLoader explicitly select it; GNU excludes the stock duplicate.
+No original tpunix issue/PR was identified for this independent finding.
+
+The locally preserved [CMSIS-RTOS2 API2.1.3 header](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L538-L561),
+`osEventFlagsSet` and `osEventFlagsWait` return descriptions, specifies flags
+or an error result; its flag constants define `osFlagsErrorResource`, WaitAny,
+WaitAll and NoClear. The explicit refusal policy is the chosen remedy, not a
+claim that this header mandates one implementation. The [Cortex-M7 Generic User
+Guide, ARM DUI0646C](https://developer.arm.com/documentation/dui0646/c), **§2.1.3**,
+printed p.2-8, and **§§2.3.5–2.3.7**, printed pp.2-23–2-24, describes PRIMASK,
+preemption and exception return. Together with the observed interleavings these
+support the ownership argument. No Sega-specific MCU event rule is inferred.
+
+Use `rtos-check --case event --atomic=0|1` for each
+`--scenario=single|waiters|nested|legacy`. Single covers 64 cases/mode; waiters
+covers 32 with three priority/FIFO waiters; legacy checks three ring capacities
+and the retained single overflow notification. Nested covers 17,856 cases/mode:
+all 16 ring offsets, 31 legal bits, four wait modes, three IRQ/masked contexts and
+occupancies 14–16, including 5,952 refusals/retries and 11,904 higher IRQs. Exact
+results, unrelated bits, one wakeup, caller masks and empty recovery all pass.
+`--ignore-event-refusal --scenario=nested` intentionally fails the higher-IRQ
+refusal assertion. `--baseline --scenario=single` reproduces 32 lost wakeups.
+
+Use `--case retire` for the prerequisite; `--baseline --atomic=1` reverses only
+its retirement order, retains the new helper and reproduces 16 lost callbacks.
+Mode0 is a valid old-order control. Hooks in copied providers only select IRQ
+timing; source and mutated hashes remain in receipts. All 15 selected images
+pass, including LTO single/nested/retire and archive waiters/retire. Thirteen
+existing wait, constructor, timer, pool and message regression images pass.
+Rust 17 unit/two RTL tests, formatting and strict Clippy pass. Initial Rust-borrow
+and mode0 fixture compile failures were setup errors, repaired and preserved;
+they are not defect witnesses.
+
+Both fresh standard 166-vector App builds pass, with all 70 public MCU input
+pins matching their staged cohorts. LTO load adds 12 bytes to 59,508 (6,028 free);
+non-LTO adds 16 to 63,768 (1,768 free). Data/BSS remain 200/50,696 and 204/50,688;
+static DTCM span remains 50,896. Event APIs are absent from these standard links,
+so this is a retained optional-API repair, not a demonstrated game bug.
+Uninstrumented M7 output tests admission before flag OR/store and loads the
+ring pointer before releasing occupancy. Non-LTO Set text changes 108→128
+bytes, direct frame 16 unchanged; the old 100-byte/frame 16 wrapper becomes 24/
+frame 8 plus a 108-byte/frame 16 helper. PendSV changes 148→160 bytes, frame 16
+unchanged. These are object/direct-frame observations, excluding callees and
+exception peaks, not measured cycles or whole-stack bounds.
+
+Actual RTX APIs, blocked threads, SVC, IRQ and PendSV execute on one QEMU M7.
+Startup, memory map, clock, IRQ scheduling hooks and semihosting are synthetic.
+No STM32/Saturn IRQ/cache/bus timing, arbitrary schedules, NMI/fault behavior,
+stale/deleted lifetime, other APIs' overflow behavior or game qualification is
+claimed. Menu, FPGA, feature selections and device state remain unchanged.
