@@ -15,8 +15,14 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["--baseline", "--lto", "--archive"].contains(&flag.as_str()) {
             continue;
         }
-        if case != "pool" {
-            return fail("Pool options require --case pool");
+        if case == "message"
+            && (flag.starts_with("--scenario=")
+                || ["--old-space", "--omit-walk-invalidation"].contains(&flag.as_str()))
+        {
+            continue;
+        }
+        if !["pool", "message"].contains(&case) {
+            return fail("Atomic options require --case pool or message");
         }
         if let Some(value) = flag.strip_prefix("--atomic=") {
             if atomic.is_some() || !["0", "1"].contains(&value) {
@@ -24,7 +30,7 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
             }
             atomic = Some(value.parse::<u8>()?);
         } else if let Some(value) = flag.strip_prefix("--phase=") {
-            if phase.is_some() {
+            if case != "pool" || phase.is_some() {
                 return fail("Specify one pool phase");
             }
             phase = Some(match value {
@@ -40,6 +46,98 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
     }
     let (phase, inside) = phase.unwrap_or((0, true));
     Ok((atomic.unwrap_or(1), phase, inside))
+}
+
+fn message_options(flags: &[String]) -> Result<(u8, bool, bool)> {
+    let mut scenario = None;
+    let mut old_space = false;
+    let mut omit_invalidation = false;
+    for flag in flags {
+        if let Some(value) = flag.strip_prefix("--scenario=") {
+            if scenario.is_some() {
+                return fail("Specify one message scenario");
+            }
+            scenario = Some(match value {
+                "reuse" => 0,
+                "waiters" => 1,
+                "walk" => 2,
+                "space" => 3,
+                _ => return fail("Unknown message scenario"),
+            });
+        } else if flag == "--old-space" {
+            if old_space {
+                return fail("Repeated old-space control");
+            }
+            old_space = true;
+        } else if flag == "--omit-walk-invalidation" {
+            if omit_invalidation {
+                return fail("Repeated walk control");
+            }
+            omit_invalidation = true;
+        }
+    }
+    let scenario = scenario.unwrap_or(0);
+    if (old_space && scenario != 3) || (omit_invalidation && scenario != 2) {
+        return fail("Message negative control does not match its scenario");
+    }
+    Ok((scenario, old_space, omit_invalidation))
+}
+
+fn instrument_message(
+    source: &Path,
+    output: &Path,
+    scenario: u8,
+    old_space: bool,
+    omit_invalidation: bool,
+) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let mut text = original.clone();
+    if old_space {
+        let expression = "mq->mp_info.max_blocks - mq->mp_info.used_blocks";
+        if text.matches(expression).count() != 2 {
+            return fail("Missing corrected queue-space expressions");
+        }
+        text = text.replace(expression, "mq->mp_info.max_blocks - mq->msg_count");
+    }
+    if scenario == 2 {
+        let put = text
+            .find("static void MessageQueuePut (")
+            .ok_or("Missing inserter")?;
+        let get = text[put..]
+            .find("static os_message_t *MessageQueueGet (")
+            .ok_or("Missing inserter boundary")?
+            + put;
+        let walk = text[put..get]
+            .find("    while ((prev != NULL)")
+            .ok_or("Missing priority walk")?
+            + put;
+        let enable = "        __enable_irq();";
+        let at = text[walk..get]
+            .find(enable)
+            .ok_or("Priority-walk test requires the corrected provider")?
+            + walk;
+        text.insert_str(at, "        message_walk_probe(mq);\n");
+        let at = text
+            .find("static void MessageQueuePut (")
+            .ok_or("Missing inserter")?;
+        text.insert_str(
+            at,
+            "extern void message_walk_probe(os_message_queue_t *);\n",
+        );
+    }
+    if omit_invalidation {
+        let store = "    mq->flags |= MSGQUEUE_CHANGED;";
+        if text.matches(store).count() != 1 {
+            return fail("Missing queue walk invalidation");
+        }
+        text = text.replace(store, "    /* Test-only omission of walk invalidation. */");
+    }
+    let path = output.join("message-test-provider.c");
+    fs::write(&path, &text)?;
+    Ok((
+        path,
+        json!({"original_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"walk_irq_hook":scenario==2,"old_space":old_space,"omitted_invalidation":omit_invalidation}),
+    ))
 }
 
 /// Inject only a pending test IRQ into a copied provider. Keep the pinned
@@ -121,9 +219,11 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "queue" => "rtx_msgqueue.c",
         "timer" => "rtx_timer.c",
         "pool" => "rtx_mempool.c",
+        "message" => "rtx_msgqueue.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     let (atomic, phase, inside) = pool_options(case, &args[15..])?;
+    let (scenario, old_space, omit_invalidation) = message_options(&args[15..])?;
     let baseline = args[15..].iter().any(|v| v == "--baseline");
     let archive = args[15..].iter().any(|v| v == "--archive");
     let lto = args[15..].iter().any(|v| v == "--lto");
@@ -168,6 +268,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_contract.ld",
         "rtos_timer_contract.inc",
         "rtos_pool_contract.inc",
+        "rtos_message_contract.inc",
+        "rtos_message_space.inc",
     ] {
         mcu::copy_file(
             &repo.join("tests").join(name),
@@ -227,6 +329,26 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             instrumentation = record;
         }
+        if case == "message" && (scenario == 2 || old_space) {
+            let selected = if !baseline && owned.join(provider).is_file() {
+                owned.join(provider)
+            } else {
+                kernel.join(provider)
+            };
+            let (instrumented, record) =
+                instrument_message(&selected, &out, scenario, old_space, omit_invalidation)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Message provider selection is not unique");
+            }
+            instrumentation = record;
+        }
         let mut objects = Vec::new();
         for (index, source) in sources.iter().chain(&direct).enumerate() {
             let object = out.join(format!(
@@ -264,6 +386,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                     format!("-DTEST_POOL_PHASE={phase}"),
                     format!("-DTEST_POOL_INSIDE={}", u8::from(inside)),
+                ]);
+            }
+            if case == "message" {
+                command.args([
+                    "-DTEST_RTX_MESSAGE=1".to_owned(),
+                    format!("-DEXCLUSIVE_ACCESS={atomic}"),
+                    format!("-DTEST_MESSAGE_SCENARIO={scenario}"),
                 ]);
             }
             if lto {
@@ -351,7 +480,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;
@@ -379,6 +508,26 @@ mod tests {
         assert_eq!(
             pool_options("pool", &["--phase=after".into(), "--atomic=0".into()]).unwrap(),
             (0, 0, false)
+        );
+    }
+
+    #[test]
+    fn message_controls_require_the_corresponding_scenario() {
+        for flags in [
+            vec!["--scenario=reuse", "--old-space"],
+            vec!["--scenario=space", "--omit-walk-invalidation"],
+            vec!["--scenario=walk", "--scenario=space"],
+            vec!["--scenario=unknown"],
+            vec!["--scenario=space", "--old-space", "--old-space"],
+        ] {
+            let flags = flags.into_iter().map(String::from).collect::<Vec<_>>();
+            assert!(message_options(&flags).is_err());
+        }
+        assert!(pool_options("pool", &["--scenario=space".into()]).is_err());
+        assert!(pool_options("message", &["--phase=after".into()]).is_err());
+        assert_eq!(
+            message_options(&["--scenario=space".into(), "--old-space".into()]).unwrap(),
+            (3, true, false)
         );
     }
 

@@ -449,7 +449,7 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
 arguments as `mcu`, plus `--case delay`, `--case queue`, `--case timer` or
-`--case pool`. Choose a fresh `--out tests/build/...`
+`--case pool` or `--case message`. Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results;
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
@@ -467,6 +467,16 @@ Only the copied test input receives hooks; both its original and instrumented
 hashes are recorded. Repeated or misplaced pool options refuse. The original
 mode1 release/allocation runs intentionally fail with256 wrong observations
 each, while mode0, masked and after controls pass. Existing results are retained.
+
+Message checks accept `--atomic=0|1` and
+`--scenario=reuse|waiters|walk|space` (default reuse). Walk injects only a
+pending IRQ into a copied inserter; other scenarios use uninstrumented code.
+`--old-space` with space reverts only the available-slot expression and must
+fail with816 wrong observations. `--omit-walk-invalidation` with walk must
+fail a payload check. These controls never modify the production provider.
+The original `--baseline --scenario=reuse` must report432 rejected replacement
+puts, retaining thread/after-IRQ/reset controls. `--lto` and `--archive` remain
+available. Test sources, mutations, input hashes, commands and logs are preserved.
 
 ### Compile the existing conditional BOOT body
 

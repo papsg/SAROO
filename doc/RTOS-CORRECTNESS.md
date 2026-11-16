@@ -233,3 +233,101 @@ Startup, memory map, IRQ source, clock and semihosting are test infrastructure.
 No STM32/Saturn timing, cache/bus/IRQ latency, arbitrary priorities/schedules,
 NMI/fault caller, stale/deleted object, whole stack or game qualification is
 claimed. Menu, FPGA, feature selections and device state remain unchanged.
+
+## SSR-068: retire ISR reads and count reserved backing slots
+
+The public parent reproduces432 rejected replacement puts per atomic mode:
+an ISR has completed a successful queue read, but the backing block is still
+held until PendSV. Thread Get/Put and after-IRQ replacement controls pass.
+PendSV cannot finish that deferred release while the higher-priority IRQ runs.
+This is a retained API defect; no ordinary application queue caller or linked
+queue API is found in the standard public firmware.
+
+A read now detaches its ready node and decrements the count under saved
+PRIMASK, then copies the payload and releases the backing block before success
+returns. A blocked sender receives a queue-owned deferred callback; nothing
+retains a pointer to the released message. The existing message callback slot
+handles queue objects as well as pending ISR-put message objects. Its object
+identifier is checked before conversion. The shared dispatcher adds that queue
+identifier; no callback-table entry or persistent buffer is added.
+
+Immediate reuse can invalidate a ready-list pointer saved by an interrupted
+priority search. A spare private queue flag records a detachment. The inserter
+reads each traversal step under PRIMASK and, when enabled on entry, restores
+IRQs with ISB between steps. It tests the flag before dereferencing a saved
+pointer again and restarts from the current tail after removal. Priority and
+equal-priority FIFO behavior are preserved; an already-masked caller stays
+masked. Each step has bounded structural work, but the search remains dependent
+on capacity and may repeat after removals. This is not a measured IRQ-latency
+or wall-clock bound. Payload copies remain outside that list exclusion.
+
+The final correction also computes available slots from backing-pool occupancy,
+not just ready-message count. A successful ISR put owns storage before PendSV
+publishes it to the ready list. Reverting only this expression gives816 wrong
+space observations per atomic mode, even with no competing producer and ample
+deferred-ring capacity. The selected expression counts ready, private and
+pending reservations. SSR-067's consistent pool publication is a prerequisite.
+GetCount retains its existing deferred visibility; Count+Space need not equal
+capacity while ISR puts are pending. Space is not a reservation or a guarantee
+against another producer or exhaustion of the separate deferred ring.
+
+This ports paps-g `8b5cbe9b` and the final `03fa6494` amendment together.
+Papsg's public adaptation preserves the previous SSR-008 constructor guard,
+original Arm Limited notices and Apache-2.0 license. The new owned system source
+is the pinned5.5.1 original plus the version guard and queue-dispatch case;
+its original hash is `f2abcf9eb25ab57f680ee01d8c1e7dc0dbbb20f4a69b9ec99c9f3c6923361569`.
+App/BootLoader explicitly select it and GNU excludes its stock duplicate.
+Later private ring-admission changes are outside this contribution. No original
+tpunix issue/PR is identified for this independent finding.
+
+The locally preserved [Arm CMSIS-RTOS2 API2.1.3, Message Queue](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__Message.html)
+documents ISR-callable timeout-zero Put/Get, higher-numbered message priorities
+and **osMessageQueueGetSpace**, **Returns** and description: available message
+slots. The **ISR-callable functions** note includes the getter. There is no
+cached exception treating occupied backing storage as available. The [Cortex-M7
+Generic User Guide, ARM DUI0646C](https://developer.arm.com/documentation/dui0646/c),
+**§2.1.3**, printed p.2-8, and **§§2.3.5–2.3.7**, printed pp.2-23–2-24,
+describe PRIMASK, group priority and exception preemption/return. These support
+the tested IRQ/PendSV interaction, not a Sega-specific kernel requirement.
+
+Run `rtos-check --case message` with `--atomic=0` and `--atomic=1` for each
+`--scenario=reuse`, `waiters`, `walk` and `space`, using fresh output paths.
+The two-mode selected checks cover:
+
+- 128 reuse cases/992 ISR reads, optional priority outputs, guarded complete
+ payloads and preserved caller masks; no rejected replacement or retired-block
+ callback remains.128 full-queue resets and subsequent reuse pass as controls.
+- 128 real blocked-thread cases: receivers, senders, replacement before sender
+ admission and three senders with priority/FIFO wake order. Pools and lists empty.
+- 400 SVC/PendSV priority walks, interrupted at each selected traversal step
+ across capacities2/3/8/16 and four message sizes. Omitting only the invalidation
+ store fails an exact payload assertion.
+- 512 public ownership histories/4,160 space observations, capacities1/3/5/8,
+ sizes1/4/12/64, masked/unmasked ISR, pending puts, replacement, get-only and
+ thread controls. The old-expression controls finish all histories with816
+ wrong observations each; selected code has zero and exact payload recovery.
+
+All13 selected message images pass, including LTO reuse/walk/space and
+stock-kernel archive waiter/walk variants. The initial actual public parent and
+the final pinned-original controls reproduce the same432 failures per mode;
+64 thread and64 after-IRQ controls per image remain valid. Final fixtures also
+retain64 reset controls per mode. Existing delay, constructor, timer and both
+pool-publication regression modes pass. Rust15 unit/two RTL tests, formatting
+and strict Clippy pass. Test-only IRQ hooks change no list, payload or count;
+copied provider/mutation hashes and failed-control logs remain preserved.
+
+Both fresh standard166-vector App links add4 load bytes:59,496 LTO/free6,040
+and63,752 non-LTO/free1,784. Data/BSS stay200/50,696 and204/50,688, with50,896
+static DTCM span. All69 public MCU input pins match their actual staged cohorts.
+The queue APIs are absent from both final links. Non-LTO object insertion text
+grows74→110 bytes/direct frame12→16; removal stays66 bytes/frame8, the space
+getter42/frame8 and dispatcher144→148/frame16. These are conditional object
+and direct-frame costs, excluding transitive/interrupt stack peaks. No layout
+fields, queue capacity, payload allocation or callback-table allocation grows.
+
+Actual RTX APIs, real blocked threads, SVC, IRQ and PendSV run in QEMU M7.
+Startup, memory map, clock, scheduling hooks and semihosting are test fixtures.
+No STM32/Saturn timing, physical IRQ/cache/bus, arbitrary schedule/priority,
+deleted/stale-object lifetime, deferred-ring-overflow or game qualification is
+claimed. No intermediate design was published; menu, FPGA, feature selections
+and device state remain unchanged.

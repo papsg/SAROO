@@ -88,7 +88,13 @@ static void queue_constructor_contract(void) {
     CHECK(queue && osMessageQueueDelete(queue)==osOK);
 }
 #endif
-#if defined(TEST_RTX_POOL)
+#if defined(TEST_RTX_MESSAGE)
+#if TEST_MESSAGE_SCENARIO == 3
+#include "rtos_message_space.inc"
+#else
+#include "rtos_message_contract.inc"
+#endif
+#elif defined(TEST_RTX_POOL)
 #include "rtos_pool_contract.inc"
 #elif defined(TEST_RTX_TIMERS)
 #include "rtos_timer_contract.inc"
@@ -154,5 +160,13 @@ void (* const vectors[])(void)={
     0,0,0,0,SVC_Handler,fault,0,PendSV_Handler,SysTick_Handler
 #ifdef TEST_RTX_POOL
     , pool_irq
+#endif
+#ifdef TEST_RTX_MESSAGE
+    , queue_irq
+#if TEST_MESSAGE_SCENARIO == 3
+    , fault
+#else
+    , walk_irq
+#endif
 #endif
 };

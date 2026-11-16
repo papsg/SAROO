@@ -25,7 +25,8 @@
 
 #include "rtx_lib.h"
 
-/* SAROO/papsg, SSR-008: reject unrepresentable message extents. */
+/* SAROO/papsg: SSR-008 extent admission; SSR-068 after paps-g 8b5cbe9b
+ * and 03fa6494, completed-read retirement and backed-slot availability. */
 #if osRtxVersionKernel != 50050001
 #error "This RTX override requires the selected 5.5.1 kernel"
 #endif
@@ -41,21 +42,51 @@ __attribute__((section(".data.os.msgqueue.obj"))) =
 
 //  ==== Helper functions ====
 
-/// Put a Message into Queue sorted by Priority (Highest at Head).
-/// \param[in]  mq              message queue object.
-/// \param[in]  msg             message object.
+/* A detaching IRQ invalidates saved list pointers without growing the object. */
+#define MSGQUEUE_CHANGED 0x80U
+
+static void MessageQueueRemove (os_message_queue_t *mq, const os_message_t *msg) {
+  if (msg->prev != NULL) {
+    msg->prev->next = msg->next;
+  } else {
+    mq->msg_first = msg->next;
+  }
+  if (msg->next != NULL) {
+    msg->next->prev = msg->prev;
+  } else {
+    mq->msg_last = msg->prev;
+  }
+}
+
 static void MessageQueuePut (os_message_queue_t *mq, os_message_t *msg) {
-#if (EXCLUSIVE_ACCESS == 0)
-  uint32_t      primask = __get_PRIMASK();
-#endif
+  uint32_t primask = __get_PRIMASK();
   os_message_t *prev, *next;
 
-  if (mq->msg_last != NULL) {
+  /* Only SVC/PendSV inserts ready nodes. An IRQ may detach and recycle a
+   * node between masked traversal steps; restart before dereferencing any
+   * saved pointer after such a change. No wrapping generation is needed. */
+  for (;;) {
+    __disable_irq();
+    mq->flags &= (uint8_t)~MSGQUEUE_CHANGED;
     prev = mq->msg_last;
     next = NULL;
     while ((prev != NULL) && (prev->priority < msg->priority)) {
       next = prev;
       prev = prev->prev;
+      if (primask == 0U) {
+        __enable_irq();
+        __ISB();
+      }
+      __disable_irq();
+      if ((mq->flags & MSGQUEUE_CHANGED) != 0U) {
+        break;
+      }
+    }
+    if ((mq->flags & MSGQUEUE_CHANGED) != 0U) {
+      if (primask == 0U) {
+        __enable_irq();
+      }
+      continue;
     }
     msg->prev = prev;
     msg->next = next;
@@ -69,95 +100,31 @@ static void MessageQueuePut (os_message_queue_t *mq, os_message_t *msg) {
     } else {
       mq->msg_last = msg;
     }
-  } else {
-    msg->prev = NULL;
-    msg->next = NULL;
-    mq->msg_first= msg;
-    mq->msg_last = msg;
-  }
-
-#if (EXCLUSIVE_ACCESS == 0)
-  __disable_irq();
-
-  mq->msg_count++;
-
-  if (primask == 0U) {
-    __enable_irq();
-  }
-#else
-  (void)atomic_inc32(&mq->msg_count);
-#endif
-}
-
-/// Get a Message from Queue with Highest Priority.
-/// \param[in]  mq              message queue object.
-/// \return message object or NULL.
-static os_message_t *MessageQueueGet (os_message_queue_t *mq) {
-#if (EXCLUSIVE_ACCESS == 0)
-  uint32_t      primask = __get_PRIMASK();
-#endif
-  os_message_t *msg;
-  uint32_t      count;
-  uint8_t       flags;
-
-#if (EXCLUSIVE_ACCESS == 0)
-  __disable_irq();
-
-  count = mq->msg_count;
-  if (count != 0U) {
-    mq->msg_count--;
-  }
-
-  if (primask == 0U) {
-    __enable_irq();
-  }
-#else
-  count = atomic_dec32_nz(&mq->msg_count);
-#endif
-
-  if (count != 0U) {
-    msg = mq->msg_first;
-
-    while (msg != NULL) {
-#if (EXCLUSIVE_ACCESS == 0)
-      __disable_irq();
-
-      flags = msg->flags;
-      msg->flags = 1U;
-
-      if (primask == 0U) {
-        __enable_irq();
-      }
-#else
-      flags = atomic_wr8(&msg->flags, 1U);
-#endif
-      if (flags == 0U) {
-        break;
-      }
-      msg = msg->next;
+    mq->msg_count++;
+    if (primask == 0U) {
+      __enable_irq();
     }
-  } else {
-    msg = NULL;
+    return;
   }
-
-  return msg;
 }
 
-/// Remove a Message from Queue
-/// \param[in]  mq              message queue object.
-/// \param[in]  msg             message object.
-static void MessageQueueRemove (os_message_queue_t *mq, const os_message_t *msg) {
+static os_message_t *MessageQueueGet (os_message_queue_t *mq) {
+  uint32_t primask = __get_PRIMASK();
+  os_message_t *msg;
 
-  if (msg->prev != NULL) {
-    msg->prev->next = msg->next;
-  } else {
-    mq->msg_first = msg->next;
+  /* Detach and count together before granting ownership to the reader. */
+  __disable_irq();
+  msg = mq->msg_first;
+  if (msg != NULL) {
+    MessageQueueRemove(mq, msg);
+    mq->msg_count--;
+    mq->flags |= MSGQUEUE_CHANGED;
+    msg->flags = 1U;
   }
-  if (msg->next != NULL) {
-    msg->next->prev = msg->prev;
-  } else {
-    mq->msg_last = msg->prev;
+  if (primask == 0U) {
+    __enable_irq();
   }
+  return msg;
 }
 
 
@@ -173,16 +140,11 @@ static void osRtxMessageQueuePostProcess (os_message_t *msg) {
   const void         *ptr_src;
         void         *ptr_dst;
 
-  if (msg->flags != 0U) {
-    // Remove Message
-    //lint -e{9079} -e{9087} "cast between pointers to different object types"
-    mq = *((os_message_queue_t **)(void *)&msg[1]);
-    MessageQueueRemove(mq, msg);
-    // Free memory
-    msg->id = osRtxIdInvalid;
-    (void)osRtxMemoryPoolFree(&mq->mp_info, msg);
-    // Check if Thread is waiting to send a Message
-    if (mq->thread_list != NULL) {
+  /* Queue callbacks wake senders; message callbacks publish ISR puts.
+   * Inspect the common identifier before converting the object type. */
+  if (*((const uint8_t *)(const void *)msg) == osRtxIdMessageQueue) {
+    mq = (os_message_queue_t *)(void *)msg;
+    if ((mq->thread_list != NULL) && (mq->thread_list->state == osRtxThreadWaitingMessagePut)) {
       // Try to allocate memory
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       msg0 = osRtxMemoryPoolAlloc(&mq->mp_info);
@@ -489,7 +451,6 @@ static osStatus_t svcRtxMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr
   // Get Message from Queue
   msg = MessageQueueGet(mq);
   if (msg != NULL) {
-    MessageQueueRemove(mq, msg);
     // Copy Message
     memcpy(msg_ptr, &msg[1], mq->msg_size);
     if (msg_prio != NULL) {
@@ -612,9 +573,10 @@ static uint32_t svcRtxMessageQueueGetSpace (osMessageQueueId_t mq_id) {
     return 0U;
   }
 
-  EvrRtxMessageQueueGetSpace(mq, mq->mp_info.max_blocks - mq->msg_count);
+  /* Pending ISR puts already own backing slots before ready-list publication. */
+  EvrRtxMessageQueueGetSpace(mq, mq->mp_info.max_blocks - mq->mp_info.used_blocks);
 
-  return (mq->mp_info.max_blocks - mq->msg_count);
+  return (mq->mp_info.max_blocks - mq->mp_info.used_blocks);
 }
 
 /// Reset a Message Queue to initial empty state.
@@ -640,7 +602,6 @@ static osStatus_t svcRtxMessageQueueReset (osMessageQueueId_t mq_id) {
     if (msg == NULL) {
       break;
     }
-    MessageQueueRemove(mq, msg);
     EvrRtxMessageQueueRetrieved(mq, NULL);
     // Free memory
     msg->id = osRtxIdInvalid;
@@ -806,10 +767,12 @@ osStatus_t isrRtxMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8
     if (msg_prio != NULL) {
       *msg_prio = msg->priority;
     }
-    // Register post ISR processing
-    //lint -e{9079} -e{9087} "cast between pointers to different object types"
-    *((os_message_queue_t **)(void *)&msg[1]) = mq;
-    osRtxPostProcess(osRtxObject(msg));
+    /* Return storage before another ISR Put; callbacks retain only mq. */
+    msg->id = osRtxIdInvalid;
+    (void)osRtxMemoryPoolFree(&mq->mp_info, msg);
+    if ((mq->thread_list != NULL) && (mq->thread_list->state == osRtxThreadWaitingMessagePut)) {
+      osRtxPostProcess(osRtxObject(mq));
+    }
     EvrRtxMessageQueueRetrieved(mq, msg_ptr);
     status = osOK;
   } else {
