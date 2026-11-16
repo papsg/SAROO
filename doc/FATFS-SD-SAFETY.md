@@ -510,3 +510,84 @@ block/shared-address/mutex adapters. MCU instructions, physical SD performance,
 durability, power loss, concurrent scheduling, full game launch and Saturn/game
 saves remain unqualified. Existing short/damaged archives are not repaired by
 this change; their established refusal policy remains intact.
+
+## SSR-107: retain a failed child directory until cleanup is synchronized
+
+A failed FAT directory clear can leave its allocation flushed but unpublished.
+The parent `91bd560` clears the allocation only in its dirty FAT window;
+immediate unmount discards that rollback and leaves a lost cluster. An
+intervening lookup accidentally flushes it and hides the defect. This is a
+retained/shared-library cleanup defect, with no identified normal game/save
+failure: `f_mkdir` and `mkdir_p` are absent from both standard GNU App links.
+
+Adapted from paps-g `99d0b565` and retained-format qualification `4842feaa`
+(SSR-107), with papsg's public recovery integration, fixtures and independent
+raw-volume audits. The public provider already tracks parent-extension
+rollback; it must not reuse that state for a separately allocated child.
+One new DWORD owns the child. Bit31 records completed count credit, safe for
+FAT12/16/32 cluster numbers. Cleanup clears the FAT entry, credits a known
+count once, leaves an unknown count unknown, and retains ownership until
+`sync_fs` succeeds. Existing mount, object-validation and unmount/replacement
+recovery gates retry it before parent recovery. Failures retain both owners
+and refuse new operations. Empty state adds a check without device I/O.
+ChaN's notices, feature selections and existing exFAT recovery stay intact.
+No new normal mkdir caller, diagnostic provider or allocation buffer is added.
+
+This is **project cleanup policy**, not a promise required by upstream FatFs
+or a Sega transaction rule. The locally preserved [FatFs R0.15 archive](https://elm-chan.org/fsw/ff/arc/ff15.zip)
+(SHA-256 `e0d76654d877e6c74be5ea3c395808794d495169514e98cbf6046168b8f4f070`)
+contains `documents/doc/mount.html`, **Description**, which permits
+unregistration with opt0 without physical I/O. Its `sync.html`, **Description**,
+and `appnote.html`, **Critical Section**, describe interrupted-write damage
+and risk reduction, not atomic directory transactions. The archive is the
+versioned citation; these claims were checked locally, without online research.
+No original tpunix issue/PR is identified for this independent finding.
+
+A pending cleanup can therefore make this fork's opt0 unregister/replacement
+perform I/O and fail. The caller must honor failure, keep the old FATFS object
+alive, restore access to the same media and retry. Replacement storage stays
+untouched on refusal. Volume-management calls require external serialization,
+even in the reentrant configuration (R0.15 `appnote.html`, **Re-entrancy**).
+There is no new force-discard policy or physical card-identity protection.
+
+Run the two commands in [the public test instructions](../tests/README.md#failed-directory-creation-and-immediate-unmount).
+Fourteen methods execute 72 cases per mode across selected FAT32/static LFN
+and retained generic FAT12/16/32/stack LFN with a volume mutex. Both ASan/UBSan
+and O2 pass. The exact parent fails all 60 fault cases and retains 12 valid
+healthy/lookup controls. Those 60 final images have an independently identified
+orphan each; corrected images have none. This is one cause, not 60 findings.
+
+The cases exercise one/four-sector clusters, observable 256-byte partial clears,
+known/unknown counts, FAT reads, both FAT writes and synchronization refusal.
+Repeated unmount, allocation, existing-file read/close and replacement attempts
+retain ownership; modeled not-ready/write-protect responses preserve state and
+release the test mutex. Restored access permits close/unmount and remount.
+The existing open-file not-ready return convention is preserved. Four cases
+also force simultaneous child127 and uncounted parent-extension128 obligations
+through actual allocation APIs, without fabricating recovery fields. Final raw
+walks verify FAT-copy equality, packed FAT12 neighbors, unique live ownership,
+chain sizes and exact neighboring/anchor payloads, without trusting FSInfo.
+All eight healthy cases have identical parent/corrected read/write/sync counts;
+these counts do not measure CPU cost or physical SD timing.
+
+Both fresh 166-vector standard GNU links pass. LTO load grows 59,524→59,616
+(5,920 free ITCM bytes); non-LTO grows 63,784→63,904 (1,632 free).
+The native `sdfs` object grows 576→580 bytes. Alignment keeps LTO total BSS
+50,696/static DTCM span50,896 unchanged; non-LTO BSS grows50,688→50,696,
+span50,896→50,904 and stack-address gap80,176→80,168. Data stays200/204.
+Direct recovery frame grows8→16 bytes; non-LTO child helper is16. Mount-volume,
+chain creation, mount and retained mkdir direct frames stay64/32/40/112.
+These compiler frames are not complete call-chain, IRQ or runtime stack peaks.
+Only `ff.c`/`ff.h` differ in the matched 70-input MCU cohorts. All40 source
+pins of the preceding paired menu build remain exact; no fresh menu build is
+claimed. Menu/FPGA source and standard optional-feature settings are unchanged.
+All37 focused existing directory/growth/expand/FSInfo/save-startup/common-pool
+methods pass, including the actual native allocator check in local M7 QEMU.
+The host builder's19 unit/two RTL tests, formatting and strict Clippy pass.
+Its reusable preservation check matches all3,272 tracked private paths and
+complete Git state; that host-only tool is outside firmware.
+
+These tests use actual filesystem C over synchronous host block/status/mutex
+adapters. They do not establish real-media durability, power-loss recovery,
+card replacement, complete directory transactions after entry publication,
+concurrent scheduling, repair of existing damage or Saturn/game acceptance.

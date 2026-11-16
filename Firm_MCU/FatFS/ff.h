@@ -173,6 +173,7 @@ typedef struct {
 #if !FF_FS_READONLY
 	DWORD	last_clst;		/* Last allocated cluster */
 	DWORD	free_clst;		/* Number of free clusters */
+    DWORD mkdir_cluster; /* Failed child release; bit 31 records count credit. */
 #endif
 #if FF_FS_RPATH
 	DWORD	cdir;			/* Current directory start cluster (0:root) */

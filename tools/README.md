@@ -507,3 +507,28 @@ The receipt separates its source/object hashes, `load_app` bytes and compiler
 frames from normal App resources; `boot-object.asm` and symbols are retained.
 Repeated/unknown options refuse before output staging. This is a source/compiler
 check, without a complete BOOT image, proprietary Keil linkage or device access.
+
+### Check preservation of a read-only reference
+
+```sh
+tools/target/debug/firmware-build preservation --repo /path/to/reference \
+  --against /path/to/before.json --out /path/to/new-evidence-directory
+```
+
+This host-only command compares a retained snapshot with tracked bytes, symlink
+link text, HEAD/branch, complete refs, stashes, status, worktrees and index hash.
+The JSON baseline contains `branch`, `head`, `refs`, `stashes`, `status`,
+`worktrees` (exact Git stdout strings), `index_sha256`, and `tracked_sha256`
+(relative path to digest). A preceding receipt's `observed` member is also
+accepted. Baseline creation is separate: the command never blesses changed
+inputs as a new baseline. Differences return failure with a comparison receipt.
+
+Output must be unused and outside the reference, its Git directory and its
+common Git directory, including aliases. Git optional locks and file-monitor
+hooks are disabled. Subprocess groups have bounded output/deadlines; tracked
+input has per-file/total size bounds. Source hashing uses a fixed-size buffer.
+Metadata is compared before/after observation. This is a sequential check,
+not an atomic snapshot with concurrent writers. Ignored/untracked contents
+and filesystem metadata are not hashed. Receipts can contain local paths,
+branch names and commit metadata; retain them privately under ignored build
+or evidence storage. No firmware or device operation is involved.

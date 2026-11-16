@@ -29,6 +29,9 @@ class FatFsSeekTests(unittest.TestCase):
                 inputs['production-ffconf.h'] = data
                 old = b'#define FF_USE_MKFS\t\t0'; assert data.count(old) == 1
                 data = data.replace(old, b'#define FF_USE_MKFS\t\t1')
+                for before, after in getattr(cls, 'config_replacements', ()):
+                    assert data.count(before) == 1
+                    data = data.replace(before, after)
             (fatfs / name).write_bytes(data); inputs['FatFS/' + name] = data
         data = (fatfs / 'ff.c').read_bytes(); begin = data.index(b'if (ifptr ', data.index(b'FRESULT f_lseek (')); end = data.index(b'{', begin)
         (cls.target / 'seek.inc').write_bytes(b'if (!ofs) return 0;\n' + data[begin:end] + b'{ return 1; }\nreturn 0;\n')

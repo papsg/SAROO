@@ -1525,6 +1525,29 @@ static FRESULT remove_chain (	/* FR_OK(0):succeeded, !=0:error */
 
 static FRESULT dir_clear (FATFS* fs, DWORD clst);
 
+/* SAROO/papsg after paps-g 99d0b565 (SSR-107): a failed FAT mkdir owns
+ * its child until the release is synchronized. FAT12/16/32 cluster numbers
+ * cannot use bit 31, which records that count credit has already happened. */
+static FRESULT mkdir_recover(FATFS* fs)
+{
+    DWORD pending = fs->mkdir_cluster;
+    FRESULT res;
+    if (!pending) return FR_OK;
+    DSTATUS status = disk_status(fs->pdrv);
+    if (status & STA_NOINIT) return FR_NOT_READY;
+    if (status & STA_PROTECT) return FR_WRITE_PROTECTED;
+    if (!(pending & 0x80000000U)) {
+        res = put_fat(fs, pending, 0);
+        if (res != FR_OK) return res;
+        if (fs->free_clst < fs->n_fatent - 2) fs->free_clst++;
+        fs->fsi_flag |= 1;
+        fs->mkdir_cluster = pending | 0x80000000U;
+    }
+    res = sync_fs(fs);
+    if (res == FR_OK) fs->mkdir_cluster = 0;
+    return res;
+}
+
 #if FF_FS_EXFAT
 enum {
     DIR_ALLOCATE = 1, DIR_FLUSH_ALLOCATION, DIR_LINK_TAIL,
@@ -1539,6 +1562,8 @@ enum {
  * volume retains both identities until the FAT writes and sync complete. */
 static FRESULT recover_volume(FATFS* fs)
 {
+    FRESULT child = mkdir_recover(fs);
+    if (child != FR_OK) return child;
     if (!fs->growth_cluster) return FR_OK;
     DSTATUS status = disk_status(fs->pdrv);
     if (status & STA_NOINIT) return FR_NOT_READY;
@@ -2340,6 +2365,8 @@ static FRESULT recover_volume(FATFS* fs)
 {
     FF_DIR_PENDING* pending = &fs->dir_pending;
     FRESULT res;
+    res = mkdir_recover(fs);
+    if (res != FR_OK) return res;
     if (!pending->phase) return FR_OK;
     DSTATUS status = disk_status(fs->pdrv);
     if (status & STA_NOINIT) return FR_NOT_READY;
@@ -3639,9 +3666,9 @@ static DSTATUS resume_drive (BYTE drive)
 static int volume_has_pending(const FATFS* fs)
 {
 #if FF_FS_EXFAT
-    return fs->dir_pending.phase != 0;
+    return fs->mkdir_cluster != 0 || fs->dir_pending.phase != 0;
 #else
-    return fs->growth_cluster != 0;
+    return fs->mkdir_cluster != 0 || fs->growth_cluster != 0;
 #endif
 }
 #endif
@@ -4014,6 +4041,9 @@ FRESULT f_mount (
 
 	if (fs) {					/* Register new filesystem object */
 		fs->pdrv = LD2PD(vol);	/* Volume hosting physical drive */
+#if !FF_FS_READONLY
+        fs->mkdir_cluster = 0;
+#endif
 #if FF_FS_REENTRANT				/* Create a volume mutex */
 		fs->ldrv = (BYTE)vol;	/* Owner volume ID */
 		if (!ff_mutex_create(vol)) return FR_INT_ERR;
@@ -5457,11 +5487,6 @@ FRESULT f_mkdir (
 			}
 			tm = GET_FATTIME();
 			if (res == FR_OK && !exfat) {
-#if FF_FS_EXFAT
-				/* Failed registration removes this single allocated cluster. */
-				sobj.sclust = dcl;
-				sobj.objsize = (FSIZE_t)fs->csize * SS(fs);
-#endif
 				res = dir_clear(fs, dcl);		/* Clean up the new table */
 				if (res == FR_OK) {
 					if (!FF_FS_EXFAT || fs->fs_type != FS_EXFAT) {	/* Create dot entries (FAT only) */
@@ -5498,7 +5523,11 @@ FRESULT f_mkdir (
 					res = sync_fs(fs);
 				}
 			} else if (!exfat) {
-				remove_chain(&sobj, dcl, 0);		/* Could not register, remove the allocated cluster */
+                if (dcl >= 2 && dcl < fs->n_fatent) {
+                    fs->mkdir_cluster = dcl;
+                    FRESULT cleanup = mkdir_recover(fs);
+                    if (cleanup != FR_OK) res = cleanup;
+                }
 			}
 		}
 		FREE_NAMBUF();

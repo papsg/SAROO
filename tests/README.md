@@ -49,3 +49,25 @@ control method. This narrow correction deliberately retains FPGA05 MCU-SET
 priority, including its separate lost-acknowledgement limitation. See the
 [contract, citations, attribution and qualification limits](../doc/CD-DRIVE-SAFETY.md#fpga-hirq-001-combine-simultaneous-clears-on-the-original-fpga).
 Host RTL checks do not qualify physical bus strobes, crossings or games.
+
+## Failed directory creation and immediate unmount
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_mkdir_rollback
+SAROO_FIRMWARE_SAVE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_mkdir_rollback
+```
+
+This compiles the actual public FatFs against independently generated FAT12,
+FAT16 and FAT32 images and a synchronous file-backed block adapter. The copied
+generic configuration uses stack LFN storage with its volume mutex; selected
+FAT32 keeps its static LFN/nonreentrant configuration. Neither changes firmware
+features. Each case preserves source hashes, logs, commands and its final image
+under `tests/build/fatfs-mkdir-rollback`. Independent raw walks check both FATs,
+cluster ownership, directory chains and neighboring data without trusting FSInfo.
+
+To reproduce the defect, copy the five `Firm_MCU/FatFS` source/header inputs from
+public parent `91bd560` into a separate directory and set `SAROO_FATFS_DIR` to
+that copy. The 60 failed-cleanup cases must fail; 12 healthy/lookup controls
+remain valid. See [the cleanup contract and limits](../doc/FATFS-SD-SAFETY.md#ssr-107-retain-a-failed-child-directory-until-cleanup-is-synchronized).
+These are host block-error tests, not physical SD or Saturn qualification.

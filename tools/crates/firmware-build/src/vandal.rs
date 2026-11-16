@@ -326,7 +326,7 @@ pub fn source(repo: &Path, output: &Path, recipe_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn execute(
+pub(super) fn execute(
     command: &mut Command,
     out: &Path,
     label: &str,

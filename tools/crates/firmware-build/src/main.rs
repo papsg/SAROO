@@ -14,6 +14,8 @@ mod fpga;
 #[cfg(unix)]
 mod mcu;
 #[cfg(unix)]
+mod preservation;
+#[cfg(unix)]
 mod rtos;
 #[cfg(unix)]
 mod vandal;
@@ -424,12 +426,28 @@ fn run() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] {
         println!("firmware-build menu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY\nUses the cached pinned Yaul image and original Makefile; no network or devices.");
+        println!("firmware-build preservation --repo REFERENCE --against SNAPSHOT.json --out UNUSED-DIRECTORY\nRead-only tracked-byte/Git-state comparison. Output must be outside the reference and its Git directories; never changes or locks the reference.");
         println!("firmware-build mcu --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 [--no-lto] [--boot-object]\nOffline GNU App compile/link with LTO by default; never installs firmware.");
         println!("firmware-build rtos-check --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE --rtx CMSIS-RTOS2 --case delay|queue|timer|pool|message|event|retire [--baseline] [--lto] [--archive]\nPool/message/event/retire: [--atomic=0|1]\nPool: [--phase=release|allocate|masked|after]\nMessage: [--scenario=reuse|waiters|walk|space] [--old-space] [--omit-walk-invalidation]\nEvent: [--scenario=single|waiters|nested|legacy] [--ignore-event-refusal]\nRetire: real event callback/blocked-waiter checks at slot release\nActual RTX API/SVC/kernel contracts in local QEMU; never accesses SAROO.");
         println!("firmware-build fpga --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --quartus QUARTUS-ROOT\nOffline original FPGA project build with cached Quartus 25.1 and a pinned local runtime; never programs a device.");
         println!("firmware-build vandal --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --upstream YABAUSE-CHECKOUT --inputs INPUTS.json\nOffline native startup comparison using local source and caller-owned inputs; no devices.");
         println!("firmware-build vandal-source --repo REPOSITORY --out tests/build/UNUSED-DIRECTORY --recipe RECIPE.json\nAssemble/link the native AIP with the cached pinned SH-2 toolchain and check the recipe bytes; no downloads or devices.");
         return Ok(());
+    }
+    if args.len() == 7
+        && args[0] == "preservation"
+        && args[1] == "--repo"
+        && args[3] == "--against"
+        && args[5] == "--out"
+    {
+        #[cfg(unix)]
+        return preservation::run(
+            Path::new(&args[2]),
+            Path::new(&args[4]),
+            Path::new(&args[6]),
+        );
+        #[cfg(not(unix))]
+        return fail("Source preservation checks require a Unix host");
     }
     if args.len() == 7
         && args[0] == "vandal-source"
