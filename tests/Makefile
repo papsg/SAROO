@@ -91,6 +91,7 @@ check-cdc-command-buffer:
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_read_ownership.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_sector_input.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_directory.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_cdc_file_info_wire.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_xa.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_drive.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_cdc_play_continuity.py -v

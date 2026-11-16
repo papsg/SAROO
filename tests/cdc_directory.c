@@ -375,7 +375,7 @@ static void queries(void)
             const FILE_INFO *f = &snapshot[index+i];
             const u32 fad = f->lba + 150, size = f->size;
             const u8 expected[12] = {fad>>24, fad>>16, fad>>8, fad, size>>24, size>>16, size>>8, size,
-                                     f->gap, f->unit, f->fid, f->attr & 0xfa};
+                                     f->unit, f->gap, f->fid, f->attr & 0xfa};
             check_file_words(i*6, expected);
         }
         assert(!memcmp(snapshot, cdb.fi, sizeof(snapshot)));

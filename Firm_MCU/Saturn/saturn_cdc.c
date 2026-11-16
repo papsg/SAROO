@@ -200,7 +200,7 @@ void fill_fifo(u8 *addr, int size)
 }
 
 /* File information is complete when the command task admits this transfer.
- * Emit the existing byte order as little-endian FIFO halfwords. */
+ * Little-endian FIFO halfwords become the native unit-first byte record. */
 static __attribute__((noinline)) void fill_file_info_fifo(unsigned start, unsigned count)
 {
     for (unsigned i = 0; i < count; ++i) {
@@ -211,7 +211,7 @@ static __attribute__((noinline)) void fill_file_info_fifo(unsigned start, unsign
         word = bswap32(fi->size);
         FIFO_DATA = (u16)word;
         FIFO_DATA = (u16)(word >> 16);
-        FIFO_DATA = ((u16)fi->unit << 8) | fi->gap;
+        FIFO_DATA = ((u16)fi->gap << 8) | fi->unit;
         FIFO_DATA = ((u16)(fi->attr & 0xfa) << 8) | fi->fid;
     }
 }
