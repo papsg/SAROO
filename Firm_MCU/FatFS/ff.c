@@ -5816,6 +5816,9 @@ FRESULT f_getlabel (
 					WCHAR hs;
 					UINT nw;
 
+					/* exFAT CharacterCount covers only the 11-word label,
+					 * never reserved bytes or the next directory entry. */
+					if (dj.dir[XDIR_NumLabel] > 11) LEAVE_FF(fs, FR_INT_ERR);
 					for (si = di = hs = 0; si < dj.dir[XDIR_NumLabel]; si++) {	/* Extract volume label from 83 entry */
 						wc = ld_word(dj.dir + XDIR_Label + si * 2);
 						if (hs == 0 && IsSurrogate(wc)) {	/* Is the code a surrogate? */

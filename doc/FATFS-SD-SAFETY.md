@@ -765,3 +765,89 @@ This does not certify arbitrary-value rounding, every parser/encoding/fenv
 case, I/O failures, enabled task-stack fit, physical CPU/SD/Saturn execution
 or games. No diagnostic provider, USB integration, installed firmware change
 or device operation is included. ChaN notices and earlier evidence remain.
+
+## SSR-117: reject an invalid exFAT volume-label count before decoding
+
+The optional `f_getlabel` reader used an on-disk exFAT `CharacterCount` as an
+unbounded loop limit. A count above 11 makes it read reserved bytes or another
+directory entry and can write past the API's documented caller buffer. This is
+an optional malformed-media defect: standard `FF_USE_LABEL=0` and FAT32-only
+builds cannot reach this branch. No normal game, installed firmware or physical
+failure is established.
+
+Port of paps-g `d063f6db`, adapted and independently reproduced in the public
+layout. Reject counts above 11 with `FR_INT_ERR` before decoding or publishing a
+label. The existing `LEAVE_FF` route releases a held volume grant. The guard
+stays in `f_getlabel`, so serial-only requests bypass malformed labels and
+`f_setlabel` can still repair one. The directory walker, valid decoding, FAT32
+path and configuration are unchanged. No task, storage or I/O call is added.
+
+The locally preserved [Microsoft exFAT specification, §7.3 Table 26 and
+§7.3.2](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#73-volume-label-directory-entry)
+assigns 22 bytes to the UTF-16 label and limits `CharacterCount` to 0–11; the
+last eight bytes of the 32-byte entry are reserved. The locally checked
+[FatFs R0.15 archive](https://elm-chan.org/fsw/ff/arc/ff15.zip) includes
+`documents/doc/getlabel.html`, **Parameters** and **Return Values**, which give
+minimum `TCHAR` capacities of 34 for UTF-8, 12 for UTF-16/UTF-32 and 23 for
+OEM with exFAT, and include `FR_INT_ERR`. Its `config.html` defines the optional
+label/exFAT/encoding settings. The vulnerable exFAT loop matches that release;
+the public parent also retains earlier SAROO FAT32-only serial selection.
+These are filesystem/API contracts, not Sega hardware rules. No original
+tpunix issue or PR for this defect is identified.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_label
+SAROO_FIRMWARE_SAVE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_label
+# Optional standalone Cortex-M7 objects with an existing local toolchain:
+SAROO_ARM_CC=/path/to/arm-none-eabi-gcc PYTHONPATH=tests \
+  python3 -B -m unittest -v test_fatfs_label
+# Reproduce the three expected invalid-count failures against the public parent:
+parent_dir=$(mktemp -d)
+git archive c61ff31 Firm_MCU/FatFS | tar -x -C "$parent_dir"
+SAROO_FATFS_DIR="$parent_dir/Firm_MCU/FatFS" \
+  SAROO_LABEL_VARIANTS='["generic-u2","fat32-u2"]' \
+  PYTHONPATH=tests python3 -B -m unittest -v test_fatfs_label
+```
+
+The public fixture uses the complete selected and generic FatFs providers,
+real formatting/mount/label calls and file-backed block media. Only copied
+test configurations enable label/formatting; generic copies enable exFAT and
+re-entrancy. Four API encodings run in each provider with CP437 conversion.
+Valid controls keep unused label words and reserved bytes zero; malformed
+entries poison the reserved bytes. It tests every valid count 0–11, ASCII/BMP/
+supplementary encodings, the first/final root-sector slots, and exact documented
+heap capacities. Every invalid byte count 12–255 is exercised at both slots,
+twice after remount. Reader operations make no disk writes; generic trials
+check that the volume grant is released. Absent-label, null-output,
+serial-only, repair and FAT32 remount controls remain valid.
+
+The two complete host modes pass **32 API processes and 22,780 checks each**
+under ASan/UBSan and optimized O2, with empty sanitizer stderr. The public
+parent, using the same final fixture in a copied two-profile run, retains its
+valid/repair/FAT32 controls but fails three invalid-count methods. Count 12/13
+returns `FR_OK` and changes three/six bytes beyond a guarded 34-item UTF-8
+buffer, including repeated reads. A real 34-byte allocation separately
+triggers ASan heap-buffer-overflow in actual `put_utf`/`f_getlabel`.
+`SAROO_FATFS_DIR` selects copied pre-correction provider inputs, and
+`SAROO_LABEL_VARIANTS` accepts a JSON list of known profile names for a scoped
+reproduction. Sources, hashes, commands, outputs and sparse media are retained
+under `tests/build/fatfs-label`; repeated runs use fresh directories.
+
+Eight optional Arm object builds before and after preserve direct `f_getlabel`
+frames: generic OEM/UTF-8/UTF-16 128 bytes, generic UTF-32 120 bytes;
+FAT32-only profiles 80–88 bytes. Generic function text grows 18/20/18/18
+bytes across OEM/UTF-16/UTF-8/UTF-32, respectively; FAT32-only text is
+unchanged. The generic UTF-8 disassembly loads the count, compares it with 11,
+and routes rejection through `unlock_volume` before `put_utf`. These are direct
+non-LTO object costs, not complete call-chain or task/interrupt stack peaks.
+
+Both fresh 166-vector standard GNU App links succeed, retain their previous
+complete flat-image bytes and resource accounting at 59,616 LTO and 63,904
+non-LTO load bytes, and contain no `f_getlabel`/`f_setlabel` symbol. The 155
+builder source pins differ only in `ff.c`. Adjacent focused getcwd and float
+regressions pass 11 processes/70 checks and 16 processes/8,694 checks. No
+diagnostic provider, installed firmware change or device operation is part of
+this port. These host and target-build observations do not qualify physical
+storage/Saturn timing, all code pages, malformed Unicode, arbitrary I/O faults
+or games. Callers must still provide the documented output capacity.
