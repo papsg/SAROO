@@ -6,7 +6,7 @@ BUILD_DIR = build
 
 .PHONY: check check-language check-menu-text check-language-catalog check-font check-peripherals check-arabic check-menu-assets check-host-tools check-native-save check-firmware-save check-mcu-save check-save-endian check-web-save check-web-save-browser check-web-save-capacity check-web-cover check-web-cover-browser check-web-cover-capacity clean
 
-check: check-language check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-cdc-command-buffer check-audio check-uart check-config check-fatfs check-save-endian check-web-save check-web-cover check-cdgfix
+check: check-language check-language-collision check-menu-text check-menu-binary check-language-catalog check-font check-peripherals check-arabic check-host-tools check-native-save check-firmware-save check-mcu-save check-mcu-diskio check-native-cover check-cover-display check-menu-safety check-gif check-mcu-shrink check-file-transfer check-cdc-command-buffer check-audio check-uart check-config check-fatfs check-save-endian check-web-save check-web-cover check-cdgfix
 
 .PHONY: check-cdgfix
 check-cdgfix:
@@ -214,3 +214,7 @@ $(BUILD_DIR)/language: language.c ../Firm_Saturn/language.c ../Firm_Saturn/main.
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+.PHONY: check-language-collision
+check-language-collision:
+	$(PYTHON) -B -m unittest discover -s . -p test_language_collision.py -v

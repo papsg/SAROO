@@ -23,7 +23,7 @@ static void startup_language(int supplied, char ***languages, int count)
     assert(lang_id == (selected + 1) % count);
 }
 
-int main(void)
+static int language_controls(void)
 {
     char **expected[] = {lang_zhcn, lang_en, lang_ptbr, lang_ja, lang_fr,
         lang_ru, lang_zhtw, lang_de, lang_es, lang_it, lang_pl, lang_swe,
@@ -73,4 +73,50 @@ int main(void)
         startup_language(id, expected, (int)count);
     puts("65,540 signed startup IDs preserve valid selections or fall back safely.");
     return 0;
+}
+
+/* papsg adaptation of paps-g SSR-021; collision found for this public table. */
+static int collision_controls(void)
+{
+    char collision[] = "probe_uCuB4ef", neighbor[] = "probe_uCuB4eg";
+    char source[] = "选择游戏";
+    assert(str_hash(collision) == 0x95eb3646u);
+    assert(str_hash(source) == 0x95eb3646u);
+    assert(str_hash(neighbor) != 0x95eb3646u);
+    /* Equal content at different addresses must still translate. Check every
+     * actual key/language before the adversarial unknown lookup. */
+    for (int language = 0; language < lang_nr; language++) {
+        lang_id = language; lang_init();
+        for (int key = 0; key < LANG_STR_NR; key++) {
+            char copy[256];
+            assert(strlen(lang_zhcn[key]) < sizeof copy);
+            strcpy(copy, lang_zhcn[key]);
+            assert(copy != lang_zhcn[key]);
+            assert(!strcmp(TT(copy), lang_list[language][key]));
+        }
+    }
+    for (int language = 0; language < lang_nr; language++) {
+        lang_id = language; lang_init();
+        assert(TT(neighbor) == neighbor);
+        char *actual = TT(collision);
+        if (actual != collision) {
+            fprintf(stderr, "language=%d hash=%08x unknown=%s returned=%s\n",
+                    language, (unsigned)str_hash(collision), collision, actual);
+            return 42;
+        }
+    }
+    puts("380 copied keys and 19 full-hash collision refusals passed.");
+    return 0;
+}
+
+int main(int argc,char **argv)
+{
+    if(argc==1) {
+        int result=language_controls();
+        return result?result:collision_controls();
+    }
+    assert(argc==2);
+    if(!strcmp(argv[1],"languages")) return language_controls();
+    if(!strcmp(argv[1],"collision")) return collision_controls();
+    return 2;
 }

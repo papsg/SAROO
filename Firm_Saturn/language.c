@@ -529,7 +529,7 @@ char *TT(char *str)
 	u32 hash = str_hash(str);
 	STR_ENTRY *entry = lang_str_table[hash&0x3f];
 	while(entry){
-		if(hash==entry->hash){
+		if(hash==entry->hash && !strcmp(str, entry->str)){
 			//printk("TT: %s(%08x) -> %d %s\n", str, hash, entry->index, lang_cur[entry->index]);
 			return lang_cur[entry->index];
 		}

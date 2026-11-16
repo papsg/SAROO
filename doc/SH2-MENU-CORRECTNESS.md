@@ -131,3 +131,49 @@ resources from SSR-016:87,896 code/data,9,508 BSS,16KiB reserved stack and
 reduces the multiplication to its prior target shifts; this defines the source
 without asserting previously incorrect target pixels. Nonloaded ELF metadata
 may differ. MCU/FPGA sources and feature selections are unchanged.
+
+## SSR-021: compare the actual translation key
+
+Equal32-bit hashes do not establish equal source text. Keep the hash as a
+candidate filter and require exact`strcmp` equality before returning that
+entry's translation; otherwise continue through the existing chain and
+return the original unknown label. Languages,64-bucket layout, stored keys,
+hash arithmetic, initialization and formatting strings remain unchanged.
+This adapts paps-g `f7634ce3`/SSR-021, with papsg's public integration and
+new public-table collision witness identified.
+
+The requirement is the original dictionary's key/fallback contract, visible
+in [original TT and stored source keys](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/language.c).
+C11 N1570 **§7.24.4.2**, printedp365/PDFp383, defines the exact string comparison
+used by this repair: [WG14 strcmp](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=383).
+This does not invent a Sega translation rule. No original issue/PR is identified
+for this separate discovery. Cached/local evidence was used without online research.
+
+The private witness targets a later formatted label, so it is not reused as
+public proof. A bounded ASCII search found`probe_uCuB4ef`, whose actual public
+hash`0x95eb3646` equals that of`选择游戏`. Independent assertions in the compiled
+actual module verify both hashes. The parent returns`Select Game` for that
+unknown input (status42, empty sanitizer diagnostics); its ordinary language
+control passes. The corrected source preserves unknown-pointer identity in
+all19 languages and retains content equality for380 copied keys at distinct
+addresses. A one-character noncolliding neighbor remains unchanged too.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_language_collision.py -v
+SAROO_MENU_SAFETY_PROFILE=release python3 -B -m unittest discover -s tests -p test_language_collision.py -v
+make -C tests check-language
+```
+
+Both new methods pass under sanitizers/optimization; the existing default C
+fixture also runs the collision checks. The old19-language repeated lookup/
+selection/wrap controls and65,540 signed startup-ID cases are retained. This
+is an API/dictionary defect; no ordinary menu label or game is claimed to have
+produced the adversarial input. Existing initialization and valid terminated-
+string requirements are unchanged; no NULL admission or separate early-console
+lifecycle fix is imported. Physical rendering and SH-2 execution are unqualified.
+
+Fresh target code/data grows16 bytes to87,912, leaving17,268 margin. BSS9,508,
+16KiB stack reservation,488,770-byte padded image size and357,698-byte font/hash
+are unchanged. The individual TT direct frame grows8→20 bytes, excluding callees
+and interrupt/full-stack peaks. Matching-hash candidates now incur an exact
+string comparison; no timing claim is made. MCU/FPGA are unchanged.
