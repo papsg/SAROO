@@ -3090,3 +3090,18 @@ issue closure, USB/diagnostic integration, new CDON recipe, device operation or
 subagent work occurred. Host/QEMU tests, standalone native objects and GNU
 links do not establish physical Saturn/game qualification or complete runtime
 stack and timing margins; each entry records its remaining specific limits.
+
+## RTX deferred admission and system-clock follow-up
+
+Ordered owner-authorized scope: SSR-123, SSR-124, SSR-130, SSR-131, SSR-132,
+SSR-133. Revalidate each public parent and selected vendor source, then publish
+one verified change at a time directly to main. No PRs, USB integration,
+runtime diagnostics, new CDON recipes or device operations. Private evidence
+and source are read-only references.
+
+| Finding / historical reference | Public checkpoint | Validation, citations and limits |
+| --- | --- | --- |
+| SSR-123, paps-g `8d211442` | [`bf496e1`](https://github.com/papsg/SAROO/commit/bf496e1f2e3f710d41cfb4d534e0d9838003bc44), on main; [`codex/public-isr-message-put`](https://github.com/papsg/SAROO/tree/codex/public-isr-message-put) | The public parent falsely reports success with one leaked backing block and a full 16-entry deferred ring in both atomic modes; 15-slot controls pass. The correction admits before transfer and frees the still-private block on refusal. Six actual M7/QEMU images pass 1,920 full/last/receiver cases across ring offsets, contexts, sizes and capacity, including retry and pool/queue/waiter state. A copied-source inverse is byte-identical to the public parent and reproduces the defect. LTO and stock-archive controls, adjacent message/event/pool contracts, 19 Rust unit/two RTL checks, formatting and strict Clippy pass. Fresh LTO/non-LTO standard 166-vector builds have byte-identical flat images and resources to the parent (59,616/63,904 loaded bytes). Only the owned queue provider differs among production source inputs; Put is absent from standard links. [Pinned CMSIS-RTOS2 API/status, Cortex-M7 sections/pages, authorship, reproduction and hardware limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md#ssr-123-refuse-an-unpublished-isr-message). This is conditional API correctness, with no established game failure or physical qualification. Private preservation matches all 3,272 tracked paths and Git state. |
+
+SSR-124, SSR-130, SSR-131, SSR-132 and SSR-133 remain in order. Public main
+and the topic branch are pushed; the ledger records this completed checkpoint.
