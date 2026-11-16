@@ -2918,7 +2918,7 @@ and exact local primary citations. No PRs, USB integration, runtime diagnostics,
 new loaders/CDON recipes or device operations. Private sources/evidence remain
 read-only. Existing optional feature selections stay unchanged.
 
-- [ ] paps-g `491f8b63`, SSR-013: linear optional contiguous allocation.
+- [x] paps-g `491f8b63`, SSR-013 → [`428788e`](https://github.com/papsg/SAROO/commit/428788e). Actual public App/retained-format APIs reproduce eight split/cursor errors, including two independently decoded persisted out-of-heap FAT links; genuine end/head spans remain controls. Twenty public API scenarios and29,688 private bitmap cases pass sanitizer/optimized profiles with complete FAT/directory/FSInfo ownership, payload and filler-chain checks. Original bitmap returns1,200 invalid spans and misses611; corrected has zero with no writes. The bitmap state is manufactured, not mounted-exFAT qualification. Requests and intervals are bounded, scans finite, and normal FF_USE_EXPAND remains0. Fresh LTO/non-LTO App/166-vector builds retain every loaded byte:59,488/63,760 load,6,048/1,776 free ITCM and unchanged data/BSS/static span/stack reservations. [Official FatFs R0.15 f_expand contract, attribution, public commands, failures and physical/conditional limits](https://github.com/papsg/SAROO/blob/main/doc/CONTIGUOUS-ALLOCATION.md). All source pins/privacy checks pass; no new loader, runtime diagnostic or device operation.
 - [ ] paps-g `67f025a6`, SSR-015: representable SH-2 serial receive budgets.
 - [ ] paps-g `342fc309`, SSR-016: defined unsigned controller-event packing.
 - [ ] paps-g `77173c38`, SSR-017: defined negative fixed-point line slopes.
