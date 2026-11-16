@@ -11,7 +11,7 @@ related requests and relevant primary documentation are credited in commits and 
 USB integration, custom diagnostics and private patch-application machinery
 are excluded. This solo-maintainer workflow was authorized by the owner.
 
-Last updated: 2026-11-12.
+Last updated: 2026-11-16.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
@@ -3021,3 +3021,23 @@ no private paths, secrets, PII, proprietary payload, .patch framework, new recip
 USB integration or custom runtime diagnostic. No Saturn/USB/SSH/power/capture/
 installation operation or subagent/other-goal work occurred. Original source,
 failures, evidence, research branches and paused work remain preserved.
+
+
+## RTX publication and SD filename/free-space safety
+
+Active ordered follow-up from public `3c7bb19`. Revalidate the final design of
+each entry against current public main before publication. Use direct original-
+layout source commits, reproducible checks, primary citations and attribution.
+No PRs, USB integration, custom runtime diagnostics, new CDON recipes or device
+operations. Private source, refs, stashes, evidence and the Saturn stay untouched.
+
+- [x] paps-g `093a51b6`, SSR-067 → [27bee3a8e421ab1b6504358081285f405cd4c628](https://github.com/papsg/SAROO/commit/27bee3a8e421ab1b6504358081285f405cd4c628): pool ownership/count publication. The pinned original5.5.1 provider reproduces256 release and256 allocation wrong-count histories through real public APIs/SVC/external IRQ/PendSV, retaining768 masked/after-return/mode0 controls. Ten selected images pass2,560 histories across both atomic modes, four phases, LTO and stock-kernel archive selection. Original IRQ-state restoration, unique ownership, other payload words and full recovery remain checked. The maintained Rust command records staged original/instrumented hashes; no hook enters production. Existing delay, queue, timer and common-allocator regressions pass, with14 Rust unit/two RTL tests, format and strict Clippy. Both fresh166-vector App links save44 load bytes:59,492 LTO/free6,044 and63,748 non-LTO/free1,788; static DTCM span50,896 and data/BSS stay unchanged. All68 public MCU pins match. Internal primitives remain linked here, so private-profile byte-parity claims are not imported. Full Arm5.5.1 source/Apache-2.0 notice and explicit App/BootLoader selection preserve attribution. [Exact CMSIS2.1.3 contracts, DUI0646C §2.1.3 p.2-8/§§2.3.5–2.3.6 p.2-23, reproduction and physical/game limits](https://github.com/papsg/SAROO/blob/main/doc/RTOS-CORRECTNESS.md#ssr-067-publish-pool-ownership-and-occupancy-together). Source/privacy review passes; initial formatting/doc-edit refusals are separate from the genuine target witnesses. No menu/FPGA change or device operation.
+- [ ] SSR-068, `8b5cbe9b` plus final `03fa6494`: completed ISR message retirement and actual backing-slot availability. Requires the SSR-067 pool invariant. Port the final amendment at this checkpoint, preserving interrupted priority walks, waiters and payload/ordering controls.
+- [ ] SSR-069, `d3b1f4d5`: deferred event-wakeup admission before flag publication, with explicit resource refusal and retry controls.
+- [ ] SSR-087, `399d72df`: FatFs filename invalidation on failed directory reads, preserving error and null-output rewind semantics.
+- [ ] SSR-097, `b6b04d6d`: full supported UTF-8 leaf identity across FatFs, MCU catalog and menu decoding; independent full-path limits remain.
+- [ ] SSR-106, `8f8b63c5`: distrust the persisted FAT32 free count while retaining the validated next-cluster hint. Preserve and quantify full-volume I/O costs.
+
+The remaining five entries are pending independent public-baseline investigation,
+implementation where applicable, verification and direct publication. Historical
+private evidence does not qualify current public firmware or physical games.
