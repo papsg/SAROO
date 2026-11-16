@@ -1797,11 +1797,11 @@ int _main(void)
     /* Keep the menu available. Each virtual launch verifies CD takeover. */
     cdblock_off();
 
+	lang_init();
 	if((debug_flag&0x0003)==0x0003){
 		sci_shell();
 	}
 
-	lang_init();
 	while(1){
 		menu_init();
 	}

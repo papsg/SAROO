@@ -24,6 +24,7 @@ check-uart:
 check-menu-safety:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_button_up.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_button_down.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_language_startup.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_scu_dma.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_selection_dma.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_scsp.py -v

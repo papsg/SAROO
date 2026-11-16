@@ -314,3 +314,66 @@ MCU build or physical test is claimed. Rust unit/RTL tests, strict Clippy,
 formatting, repeated-option refusal and private preservation checks pass.
 These checks do not qualify physical pad sampling, SMPC timing, latency,
 Saturn execution, games or every optional build.
+
+## SSR-111: initialize translations before the existing early console
+
+Port of paps-g `6491b42b`, with papsg's independent public stock-path fixture.
+With debug bits0/1 set, `_main` enters the existing `sci_shell` before the old
+`lang_init`. Its existing `menu` command calls `menu_init`, which translates
+labels before installing/running `main_handle`. That handler's LT branch calls
+`lang_next`. Empty startup buckets give wrong text for valid configured
+languages; invalid IDs can reach array-bound or increment undefined behavior
+before the existing initializer admits them. No ordinary post-console
+menu/game failure or normal source of the invalid counterexamples is asserted.
+
+Move the existing single call immediately before the console conditional,
+still after CD takeover and raw debug printing. Complete `main.c` differs
+only by that call reorder. The language module, its admission/bounds, existing
+shell, input handlers and selection on reentry are unchanged. This neither
+adds a console feature nor ports private diagnostic/command-channel code.
+
+The requirement is the project's translation/startup contract. [WG14 N1570
+§6.5p5, printed p.76/PDF p.94](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=94)
+and [§6.5.6p8, printed p.93/PDF p.111](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=111)
+bound signed arithmetic and array access; they explain the invalid-ID
+consequences, not a Sega electrical initialization rule. These are locally
+checked primary citations. No original tpunix issue/PR is identified.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest -v test_menu_language_startup test_language_collision
+SAROO_MENU_SAFETY_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest -v test_menu_language_startup test_language_collision
+```
+
+The fixture copies the complete actual language C unchanged and extracts the
+actual startup tail, shell `menu` clause and handler's LT clause. It checks
+the source-traced translate-before-handler UI order. Only the complete UI,
+transport, CD takeover, boot prefix and input endpoints are host substitutes;
+this is not execution of the full UART/controller/UI. A wrapper counts actual
+initializer calls. Each startup scenario is a fresh process. Normal admission,
+all19 languages, invalid boundary/reported values, early lookup/cycling,
+debug-bit combinations, repeated UI entry and selection after console return
+are covered. All43 startup processes and both complete language/collision
+controls pass under ASan/UBSan and O2 (six methods per mode).
+
+The parent passes31 startup controls but fails eight wrong-text scenarios and
+four nonrecovering UBSan cases: three array bounds and `INT_MAX` increment.
+Reproduce it by saving `git show cc8f6db:Firm_Saturn/main.c` outside the source
+and setting `SAROO_MENU_STARTUP_SOURCE` to that file. The current source
+initializes exactly once before the early UI. The actual language controls
+retain their65,541 startup inputs and copied-key/full-hash collision checks.
+Synthetic invalid metadata is a boundary test, not evidence that normal
+configuration produces it. Source copies, extracted clauses, compile commands,
+per-process results and failures remain under `tests/build`.
+
+The full native build and all40 menu inputs join with only `main.c` changed.
+Inspected linked calls move initialization from0x02003a8a to0x02003a7a, before
+the conditional console at0x02003a88 (formerly0x02003a82); CD takeover remains
+at0x02003a74. The normal488,770-byte image changes to SHA-256
+`5df4296ec40cfbd99820e12f6b71071181ebde3efdaac37e7327fbf94b3e6170`.
+Code/data87,928, BSS9,508, reserved stack16,384, body margin17,252 and font
+bytes/hash stay unchanged. Direct `_main`/`lang_init`/`sci_shell` frames remain
+24/24/172 bytes, not complete stack or IRQ peaks. Prior standard MCU input
+pins remain exact. Source/privacy/whitespace and private preservation checks
+pass. No device, installed firmware, MCU/FPGA source or physical gameplay is
+changed or qualified.
