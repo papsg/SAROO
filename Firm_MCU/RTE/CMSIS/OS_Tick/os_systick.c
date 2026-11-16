@@ -35,6 +35,9 @@
 #endif
 
 static uint8_t PendST;
+/* papsg: own writable CTRL bits without consuming read-clear COUNTFLAG.
+ * Adapted from paps-g 3feed85e (SSR-132). */
+static uint32_t TickControl;
 
 // Setup OS Tick.
 __WEAK int32_t OS_Tick_Setup (uint32_t freq, IRQHandler_t handler) {
@@ -69,7 +72,8 @@ __WEAK int32_t OS_Tick_Setup (uint32_t freq, IRQHandler_t handler) {
 #error "Unknown ARM Core!"
 #endif
 
-  SysTick->CTRL =  SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk;
+  TickControl = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk;
+  SysTick->CTRL = TickControl;
   SysTick->LOAD =  load;
   SysTick->VAL  =  0U;
 
@@ -86,13 +90,15 @@ __WEAK void OS_Tick_Enable (void) {
     SCB->ICSR = SCB_ICSR_PENDSTSET_Msk;
   }
 
-  SysTick->CTRL |=  SysTick_CTRL_ENABLE_Msk;
+  TickControl |= SysTick_CTRL_ENABLE_Msk;
+  SysTick->CTRL = TickControl;
 }
 
 /// Disable OS Tick.
 __WEAK void OS_Tick_Disable (void) {
 
-  SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
+  TickControl &= ~SysTick_CTRL_ENABLE_Msk;
+  SysTick->CTRL = TickControl;
 
   if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0U) {
     SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;

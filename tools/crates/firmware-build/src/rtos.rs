@@ -18,6 +18,9 @@ fn pool_options(case: &str, flags: &[String]) -> Result<(u8, u8, bool)> {
         if ["message", "event", "pool-free"].contains(&case) && flag.starts_with("--scenario=") {
             continue;
         }
+        if case == "syscounter" && flag.starts_with("--mode=") {
+            continue;
+        }
         if case == "event" && flag == "--ignore-event-refusal" {
             continue;
         }
@@ -96,6 +99,82 @@ fn scenario_options(case: &str, flags: &[String]) -> Result<(u8, bool, bool)> {
         return fail("Message negative control does not match its scenario");
     }
     Ok((scenario, old_space, omit_invalidation))
+}
+
+fn syscounter_mode(case: &str, flags: &[String]) -> Result<u8> {
+    let mut mode = None;
+    for flag in flags {
+        if let Some(value) = flag.strip_prefix("--mode=") {
+            if case != "syscounter" || mode.is_some() {
+                return fail("Specify one syscounter mode only for --case syscounter");
+            }
+            let value = value.parse::<u8>()?;
+            if value > 10 {
+                return fail("Syscounter mode must be 0 through 10");
+            }
+            mode = Some(value);
+        }
+    }
+    Ok(mode.unwrap_or(0))
+}
+
+fn instrument_syscounter(source: &Path, output: &Path, mode: u8) -> Result<(PathBuf, Value)> {
+    let original = fs::read_to_string(source)?;
+    let mut text = original.clone();
+    let mut hooks = Vec::new();
+    if mode == 3 {
+        let marker = "  OS_Tick_AcknowledgeIRQ();\n";
+        if text.matches(marker).count() != 1 {
+            return fail("Missing unique SysTick acknowledgement boundary");
+        }
+        text = format!(
+            "extern void syscounter_ack_probe(void);\n{}",
+            text.replace(marker, &format!("{marker}  syscounter_ack_probe();\n"))
+        );
+        hooks.push("after-acknowledgement");
+    }
+    if mode == 4 || mode == 7 {
+        let marker = "  OS_Tick_Disable();\n";
+        if text.matches(marker).count() != 1 {
+            return fail("Missing unique kernel-block tick boundary");
+        }
+        text = format!(
+            "extern void syscounter_block_probe(void);\n{}",
+            text.replace(marker, &format!("  syscounter_block_probe();\n{marker}"))
+        );
+        hooks.push("before-kernel-block");
+    }
+    if mode == 5 {
+        let marker = "OS_Tick_GetOverflow()";
+        if text.matches(marker).count() != 1 {
+            return fail("Missing unique destructive overflow observation");
+        }
+        text = format!(
+            "#include <stdint.h>\nextern uint32_t syscounter_observe_overflow(void);\n{}",
+            text.replace(marker, "syscounter_observe_overflow()")
+        );
+        hooks.push("after-overflow-observation");
+    }
+    if mode == 7 {
+        let marker = "  osRtxInfo.kernel.tick += sleep_ticks;";
+        if text.matches(marker).count() != 1 {
+            return fail("Missing unique sleep-tick publication boundary");
+        }
+        text = format!(
+            "extern void syscounter_resume_probe(void);\n{}",
+            text.replace(marker, &format!("{marker}\n  syscounter_resume_probe();"))
+        );
+        hooks.push("after-sleep-tick-publication");
+    }
+    if hooks.is_empty() {
+        return fail("Syscounter mode needs no source instrument");
+    }
+    let output = output.join(format!("syscounter-{mode}-instrumented.c"));
+    fs::write(&output, &text)?;
+    Ok((
+        output,
+        json!({"source_sha256":sha(original.as_bytes()),"instrumented_sha256":sha(text.as_bytes()),"test_hooks":hooks}),
+    ))
 }
 
 fn instrument_retire(
@@ -362,10 +441,26 @@ fn validate_tick(owned: &Path, rtx: &Path) -> Result<()> {
     }
     let original = fs::read_to_string(rtx.join("Source/os_systick.c"))?;
     let selected = fs::read_to_string(owned.join("os_systick.c"))?;
-    let old = "  if (load > 0x00FFFFFFU) {";
-    let replacement = "  /* papsg: reject reload zero before changing timer or saved tick state.\n   * Adapted from paps-g a90f6e3c (SSR-130). */\n  if ((load == 0U) || (load > 0x00FFFFFFU)) {";
-    if original.matches(old).count() != 1 || original.replace(old, replacement) != selected {
-        return fail("OS Tick owner must contain only the admitted reload guard");
+    let changes = [
+        ("  if (load > 0x00FFFFFFU) {", "  /* papsg: reject reload zero before changing timer or saved tick state.\n   * Adapted from paps-g a90f6e3c (SSR-130). */\n  if ((load == 0U) || (load > 0x00FFFFFFU)) {"),
+        ("static uint8_t PendST;", "static uint8_t PendST;\n/* papsg: own writable CTRL bits without consuming read-clear COUNTFLAG.\n * Adapted from paps-g 3feed85e (SSR-132). */\nstatic uint32_t TickControl;"),
+        ("  SysTick->CTRL =  SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk;", "  TickControl = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk;\n  SysTick->CTRL = TickControl;"),
+        ("  SysTick->CTRL |=  SysTick_CTRL_ENABLE_Msk;", "  TickControl |= SysTick_CTRL_ENABLE_Msk;\n  SysTick->CTRL = TickControl;"),
+        ("  SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;", "  TickControl &= ~SysTick_CTRL_ENABLE_Msk;\n  SysTick->CTRL = TickControl;"),
+    ];
+    let mut expected = original;
+    for (step, (before, after)) in changes.into_iter().enumerate() {
+        if expected.matches(before).count() != 1 {
+            return fail("OS Tick base differs from declared source changes");
+        }
+        expected = expected.replace(before, after);
+        if step == 0 && expected == selected {
+            // The directly preceding public checkpoint owns only SSR-130.
+            return Ok(());
+        }
+    }
+    if expected != selected {
+        return fail("OS Tick owner differs from declared reload/control changes");
     }
     Ok(())
 }
@@ -405,10 +500,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "message" => "rtx_msgqueue.c",
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
+        "syscounter" => "rtx_kernel.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     let (atomic, phase, inside) = pool_options(case, &args[15..])?;
     let (scenario, old_space, omit_invalidation) = scenario_options(case, &args[15..])?;
+    let counter_mode = syscounter_mode(case, &args[15..])?;
     let ignore_event_refusal = args[15..]
         .iter()
         .filter(|v| *v == "--ignore-event-refusal")
@@ -426,6 +523,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         return fail("Old Free control requires one pool-free scenario");
     }
     let baseline = args[15..].iter().any(|v| v == "--baseline");
+    if case == "syscounter" && baseline {
+        return fail("Use the preceding public worktree for a complete syscounter baseline");
+    }
     if baseline && (old_put == 1 || old_free == 1) {
         return fail("A single-source inverse cannot be combined with --baseline");
     }
@@ -489,10 +589,15 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_event_nested.inc",
         "rtos_retire_contract.inc",
     ] {
+        let input = if case == "syscounter" && name == "rtos_contract.c" {
+            "rtos_syscounter.c"
+        } else {
+            name
+        };
         mcu::copy_file(
-            &repo.join("tests").join(name),
+            &repo.join("tests").join(input),
             &out.join(name),
-            format!("tests/{name}"),
+            format!("tests/{input}"),
             &mut pins,
         )?;
     }
@@ -633,6 +738,30 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             instrumentation = record;
         }
+        if case == "syscounter" && [3, 4, 5, 7].contains(&counter_mode) {
+            let name = if counter_mode == 3 {
+                "rtx_system.c"
+            } else {
+                "rtx_kernel.c"
+            };
+            let selected = if owned.join(name).is_file() {
+                owned.join(name)
+            } else {
+                kernel.join(name)
+            };
+            let (instrumented, record) = instrument_syscounter(&selected, &out, counter_mode)?;
+            let mut replaced = 0;
+            for source in sources.iter_mut().chain(direct.iter_mut()) {
+                if *source == selected {
+                    *source = instrumented.clone();
+                    replaced += 1;
+                }
+            }
+            if replaced != 1 {
+                return fail("Syscounter provider selection is not unique");
+            }
+            instrumentation = record;
+        }
         let mut objects = Vec::new();
         for (index, source) in sources.iter().chain(&direct).enumerate() {
             let object = out.join(format!(
@@ -698,6 +827,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     "-DTEST_RTX_RETIRE=1".to_owned(),
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                 ]);
+            }
+            if case == "syscounter" {
+                command.arg(format!("-DTEST_SYSCOUNTER_MODE={counter_mode}"));
             }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
@@ -784,7 +916,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     fs::write(
         out.join("receipt.json"),
         serde_json::to_vec_pretty(
-            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
+            &json!({"case":case,"baseline":baseline,"archive":archive,"lto":lto,"pool_atomic":atomic,"pool_phase":phase,"pool_inside":inside,"message_scenario":scenario,"event_scenario":scenario,"syscounter_mode":counter_mode,"old_put":old_put==1,"old_free":old_free==1,"instrumentation":instrumentation,"compiler_version":compiler_version,"compiler_sha256":compiler_sha256,"builder_sha256":builder_sha256,"success":result.is_ok(),"error":result.as_ref().err().map(ToString::to_string),"inputs_sha256":pins.hashes,"commands":commands,"scope":"Actual RTX API/SVC/kernel in QEMU; no SAROO or game qualification"}),
         )?,
     )?;
     result?;
@@ -795,6 +927,27 @@ pub(super) fn run(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn syscounter_modes_are_bounded_and_single() {
+        assert_eq!(syscounter_mode("syscounter", &[]).unwrap(), 0);
+        assert_eq!(
+            syscounter_mode("syscounter", &["--mode=10".into()]).unwrap(),
+            10
+        );
+        for flags in [
+            vec!["--mode=11"],
+            vec!["--mode=0", "--mode=1"],
+            vec!["--mode=bad"],
+        ] {
+            assert!(syscounter_mode(
+                "syscounter",
+                &flags.into_iter().map(String::from).collect::<Vec<_>>()
+            )
+            .is_err());
+        }
+        assert!(syscounter_mode("delay", &["--mode=0".into()]).is_err());
+    }
 
     #[test]
     fn pool_case_refuses_ambiguous_or_misapplied_configuration() {

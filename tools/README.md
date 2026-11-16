@@ -467,6 +467,13 @@ CMSIS 5.6.0 RTOS2 SDK, set `SAROO_TICK_SDK=/path/to/CMSIS/RTOS2` and run
 [SSR-130](../doc/RTOS-CORRECTNESS.md#ssr-130-refuse-a-zero-systick-reload)
 for baseline replay, attribution, citations and limits.
 
+For the SysTick rollover regression, run `rtos-check` with `--case syscounter`
+and `--mode=0` through `--mode=10`, using a fresh output for each mode.
+Modes 3/4/5/7 insert hooks only into staged QEMU test copies. Mode 0 with
+`--lto` or `--archive` checks alternate link selection. See
+[SSR-132](../doc/RTOS-CORRECTNESS.md#ssr-132-retain-an-observed-rollover-until-tick-retirement)
+for the mode meanings, parent replay and hardware limits.
+
 For pool publication use `--atomic=0` or `--atomic=1` and one of
 `--phase=release`, `--phase=allocate`, `--phase=masked`, `--phase=after`.
 Defaults are atomic mode1 and release. Release/allocation pend a test IRQ at

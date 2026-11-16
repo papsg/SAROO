@@ -587,3 +587,64 @@ retains the 63,904-byte load and 1,632-byte ITCM margin, while DTCM drops
 is 64→68 bytes in non-LTO, and both images retain a strong SysTick handler.
 Neither GNU link nor host/QEMU checks qualify an MDK build, physical clock,
 interrupt rate, audio or game behavior.
+
+## SSR-132: retain an observed rollover until tick retirement
+
+Arm's [CMSIS-RTOS2 Kernel Control reference](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__KernelCtrl.html)
+defines `osKernelGetSysTimerCount` as a rolling 32-bit system counter and permits
+queries from an ISR. [Cortex-M7 Generic User Guide DUI0646C §§4.4.1 and
+4.4.3, printed pp.4-33 and 4-35](https://developer.arm.com/documentation/dui0646/c)
+defines SysTick `COUNTFLAG` as read-clear through `CTRL`; writing `VAL` also
+clears it. The selected RTX 5.5.1 query originally treated a single destructive
+overflow read as a complete event. A second query before the software tick
+increment then omitted one interval, making a short elapsed time appear to
+wrap backward. Tick acknowledgement and kernel suspension introduce further
+windows that consume the same flag. This is a conditional API defect; no normal
+game caller or audible symptom is established.
+
+The public parent's actual Cortex-M7/QEMU test reaches 32 natural rollovers at
+25 MHz/100 Hz without rewriting timer registers after startup. Ordinary IRQ,
+masked-thread and software-tick-wrap modes each report 224 phase errors and 32
+backward steps. Instrumented acknowledgement, kernel suspension, overflow
+observation and resume modes each report 256 phase errors. A software-pended
+interrupt with no natural rollover passes as a valid negative control. The
+selected provider passes all 11 modes: ordinary and masked queries, 32-bit tick
+wrap, acknowledgement, suspend/resume, raw read-clear, start reset, software
+pending, and a deliberately repeated software-tick value. Every selected mode
+records 32 observation rounds and 32 post-retirement controls with zero phase
+or order errors. The temporary hooks exist only in copied QEMU test inputs.
+
+This ports paps-g `3feed85e` / SSR-132 onto the public RTX and OS Tick owners.
+The query saves PRIMASK, masks configurable interrupts while it snapshots the
+software tick and hardware count, and retains a destructive overflow observation
+until the tick truly retires. Acknowledgement, software-tick increment and
+observation retirement occur in one masked transition. Successful KernelStart
+clears a prestart observation. The OS Tick port shadows only its writable CTRL
+bits so Enable/Disable do not consume COUNTFLAG; its raw overflow getter stays
+read-clear. SSR-130's zero-reload refusal, valid setup and saved-pending tests
+still pass. The full Arm notices/licenses and source hashes remain in the
+owned providers; the SDK archives remain untouched. The original MDK App and
+BootLoader each select the kernel and tick owner once.
+
+Run `firmware-build rtos-check` with the explicit toolchain/CMSIS/STM32/RTX
+arguments in [the build instructions](../tools/README.md#actual-rtx-api-contracts-offline),
+`--case syscounter`, and `--mode=0` through `--mode=10`, using a fresh output
+per mode. Modes 3/4/5/7 add only test-copy hooks at the stated boundaries.
+`--lto` and `--archive` mode 0 also pass, as do adjacent delay, both ring
+retirement modes, pool Free, message Put and event contracts. For a public
+parent replay, check out `65eb181` into a disposable worktree and copy only
+the new `tests/rtos_syscounter.c` into its `tests` directory; run the same
+current builder against that worktree. The retained initial parallel parent
+setup collision is a directory-creation failure, not an RTX result; those
+modes were rerun sequentially.
+
+Fresh standard 166-vector GNU App LTO/non-LTO builds select one owner of each
+provider and pass source, link and resource checks. Relative to SSR-130, load
+sizes rise 59,616→59,636 and 63,904→63,960 bytes; free ITCM is
+5,900/1,576 bytes. Static DTCM rises 50,896→50,904 in both profiles. The
+counter query and overflow getter are absent from the standard linked images;
+the writable control shadow remains. The direct tick-handler frame stays 16
+bytes in both profiles. These observations do not bound complete stack or IRQ
+latency. The cache covers one unretired natural rollover, not multiple lost
+periods, NMI/fault preemption, concurrent external SysTick reconfiguration,
+physical timing, MDK linking or Saturn/game behavior. No device was touched.

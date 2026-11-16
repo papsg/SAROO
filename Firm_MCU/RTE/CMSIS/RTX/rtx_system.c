@@ -122,6 +122,10 @@ static os_object_t *isr_queue_get (void) {
 }
 
 
+/* papsg: retire observed SysTick rollover with tick publication.
+ * Adapted from paps-g 3feed85e (SSR-132). */
+extern void osRtxSysTimerRetired (void);
+
 //  ==== Library Functions ====
 
 /// Tick Handler.
@@ -131,8 +135,16 @@ static os_object_t *isr_queue_get (void) {
 void osRtxTick_Handler (void) {
   os_thread_t *thread;
 
-  OS_Tick_AcknowledgeIRQ();
-  osRtxInfo.kernel.tick++;
+  // Acknowledge, software tick and observed-overflow retirement publish as
+  // one IRQ-visible transition, restoring the incoming interrupt mask.
+  {
+    uint32_t irq_mask = __get_PRIMASK();
+    __disable_irq();
+    OS_Tick_AcknowledgeIRQ();
+    osRtxInfo.kernel.tick++;
+    osRtxSysTimerRetired();
+    __set_PRIMASK(irq_mask);
+  }
 
   // Process Timers
   if (osRtxInfo.timer.tick != NULL) {

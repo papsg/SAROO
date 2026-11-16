@@ -685,6 +685,11 @@
               <FilePath>.\RTE\CMSIS\RTX\rtx_system.c</FilePath>
             </File>
             <File>
+              <FileName>rtx_kernel.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_kernel.c</FilePath>
+            </File>
+            <File>
               <FileName>rtx_evflags.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_evflags.c</FilePath>
@@ -1434,6 +1439,11 @@
               <FileName>rtx_system.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_system.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtx_kernel.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_kernel.c</FilePath>
             </File>
             <File>
               <FileName>rtx_evflags.c</FileName>

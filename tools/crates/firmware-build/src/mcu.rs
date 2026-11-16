@@ -317,6 +317,15 @@ pub fn build(
     {
         return fail("OS Tick owner must be selected once in App and BootLoader");
     }
+    let selected_kernel = app.join("RTE/CMSIS/RTX/rtx_kernel.c");
+    if selected_kernel.is_file()
+        && project
+            .matches("<FilePath>.\\RTE\\CMSIS\\RTX\\rtx_kernel.c</FilePath>")
+            .count()
+            != 2
+    {
+        return fail("RTX kernel owner must be selected once in App and BootLoader");
+    }
     // MDK selects this configured component through RTE rather than FilePath.
     let config = app.join("RTE/CMSIS/RTX_Config.c");
     if !sources.contains(&config) {
@@ -358,6 +367,19 @@ pub fn build(
         }
     } else {
         sources.push(sdk.join("rtos/Source/os_systick.c"));
+    }
+    if selected_kernel.is_file()
+        && sources
+            .iter()
+            .filter(|source| {
+                source
+                    .file_name()
+                    .is_some_and(|name| name == "rtx_kernel.c")
+            })
+            .count()
+            != 1
+    {
+        return fail("RTX kernel owner is not uniquely selected by the App");
     }
     if sources.len() > 80 {
         return fail("Unexpected MCU/RTX translation-unit count");
