@@ -475,14 +475,16 @@ int sci_getc(int timeout)
 {
 	int ch;
 
-	timeout *= 1500;
-	while(timeout){
-		if(SSR&0x40){
-			ch = RDR;
-			SSR &= 0xbf;
-			return ch;
-		}
-		timeout -= 1;
+	while(timeout > 0){
+		int polls = 1500;
+		do {
+			if(SSR&0x40){
+				ch = RDR;
+				SSR &= 0xbf;
+				return ch;
+			}
+		} while(--polls);
+		--timeout;
 	}
 
 	return -1;

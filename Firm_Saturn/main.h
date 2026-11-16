@@ -320,6 +320,8 @@ void vdp2_win0(int scr, int outside, int sx, int sy, int ex, int ey);
 
 void sci_init(void);
 void sci_putc(int ch);
+/* Positive units allow 1500 status probes each; nonpositive inputs expire.
+ * This polling budget is not a calibrated wall-clock duration. */
 int sci_getc(int timeout);
 
 
