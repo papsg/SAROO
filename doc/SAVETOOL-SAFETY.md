@@ -501,3 +501,62 @@ All seven requested native safety contributions are now represented here. The
 earlier sections retain each checkpoint's then-remaining scope; their following
 series members are implemented above. These bounded changes do not claim general
 save-tool safety or alter the console firmware's separate storage behavior.
+
+
+## SSR-044: complete decimal save and slot selectors
+
+Port of paps-g `bda37c83`, independently adapted/verified by papsg against the
+public legacy slot format. This is our host-tool finding, with no asserted
+original upstream issue/PR and no Sega MMIO requirement.
+
+The existing CLI used `atoi` for `-s`, `-x` and `-t`. [C11 N1570 §7.22.1.2p2,
+printed p.341/PDF p.359](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=359)
+defines conversion of an initial string portion, which cannot validate the
+complete selector. The cached official Apple `atoi(3)` manual also documents
+initial-substring conversion and absent required error reporting; its SHA-256 is
+`bcace13774d38baa13723a06b76d0a5ebcea45791234d322efe209540732f47e`.
+That is documentation identity, not the installed libc source identity.
+
+The CLI now requires complete ASCII decimal IDs: save/export IDs start at0,
+SAROO slot IDs at1, and every explicit ID fits `int`. The parser checks each
+digit and `INT_MAX` before arithmetic and publishes the output only on success.
+Empty strings, signs, whitespace, suffixes, non-ASCII digits and overflow refuse
+before archive loading or dispatch. Leading zeroes remain valid. Existing omitted
+`-1` defaults still select listing/new import; representable IDs must still exist
+in the selected archive. Unknown/conflicting options beyond these selectors are
+not redesigned. Usage text states the explicit ranges.
+
+```sh
+python3 -B -m unittest discover -s tests -p test_savetool_selectors.py -v
+make -C tests check-native-save
+make -C tools/savetool
+# Optionally test another already-built binary:
+SAROO_SAVETOOL_BINARY=/absolute/path/to/sst python3 -B -m unittest discover -s tests -p test_savetool_selectors.py -v
+```
+
+The unchanged public CLI reproduces59 incorrect successes among70 malformed
+operations. Four methods execute88 real commands against independent disposable
+MEMS and public legacy SAROO-slot archives. Corrected sanitizer and optimized
+profiles refuse all70 malformed cases without archive mutation or output
+publication;18 valid/missing/default controls preserve neighbor saves, complete
+SRO/BUP payload exports, leading-zero IDs and new imports. Overflow observations
+are host-specific; ordinary text/prefix cases independently establish the bug.
+
+The source/binary/driver hashes, original archives, compressed output snapshots,
+results and parent failures are retained under ignored `tests/build/savetool`.
+The first copied binary lost execute permission and a separate optimized run had
+an invalid binary path; both setup failures are retained and excluded. They are
+not accepted defect witnesses. The corrected fixture preserves permissions and
+uses the actual supplied executable.
+
+The full native regression passes54 methods. The original Makefile and separate optimized native builds pass. Optimized
+Apple Silicon Mach-O text15,632→15,708 and strings1,472→1,501 bytes; BSS34,004
+and common1,048,576 stay unchanged. The helper is inlined: main's reported direct
+frame128→96 bytes, with other direct frames unchanged. Segment-sized output
+remains equal because of alignment. These figures exclude callees/library/OS
+allocation and are not universal host costs. MCU/menu/FPGA inputs do not change.
+
+These generated host archives do not qualify other platforms, actual user-data
+loss, physical SD persistence, concurrent writers, termination/power loss or
+Saturn/game behavior. No save-format migration, runtime diagnostic, USB
+integration, overlay recipe or device operation is introduced.

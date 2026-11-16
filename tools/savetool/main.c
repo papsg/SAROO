@@ -541,6 +541,23 @@ int bup_load(char *bup_name)
 /******************************************************************************/
 
 
+/* Explicit selectors are complete decimal IDs; -1 is an internal default. */
+static int parse_selector(const char *text, int minimum, int *out)
+{
+    unsigned value = 0;
+    if (!*text) return -1;
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        if (*p < '0' || *p > '9') return -1;
+        unsigned digit = *p - '0';
+        if (value > ((unsigned)INT_MAX - digit) / 10) return -1;
+        value = value * 10 + digit;
+    }
+    if (value < (unsigned)minimum) return -1;
+    *out = (int)value;
+    return 0;
+}
+
+
 int main(int argc, char *argv[])
 {
 	int slot_id = -1;
@@ -558,10 +575,10 @@ int main(int argc, char *argv[])
 
 	if(argc==1){
 		printf("Usage: sstool  save_file [-c \"gameid\"][-t n] [-s n] [-i [file]]\n");
-		printf("    -t n        Select save slot(for SAROO save).\n");
+		printf("    -t n        Select SAROO save slot (decimal ID >= 1).\n");
 		printf("    -c \"gameid\" New save slot(for SAROO save).\n");
-		printf("    -s n        Select and Export(without -i/-d) save.\n");
-		printf("    -x n        Select and Export save as .BUP format.\n");
+		printf("    -s n        Select/Export save (decimal ID >= 0; without -i/-d).\n");
+		printf("    -x n        Select/Export save as .BUP (decimal ID >= 0).\n");
 		printf("    -i [file]   Import save.\n");
 		printf("    -d          Delete save.\n");
 		printf("                List save.\n");
@@ -576,7 +593,8 @@ int main(int argc, char *argv[])
 			case 't':
 				if(p+1==argc)
 					goto _invalid_params;
-				slot_id = atoi(argv[p+1]);
+				if (parse_selector(argv[p+1], 1, &slot_id) < 0)
+					goto _invalid_params;
 				p += 1;
 				break;
 			case 'x':
@@ -584,7 +602,8 @@ int main(int argc, char *argv[])
 			case 's':
 				if(p+1==argc)
 					goto _invalid_params;
-				save_id = atoi(argv[p+1]);
+				if (parse_selector(argv[p+1], 0, &save_id) < 0)
+					goto _invalid_params;
 				p += 1;
 				break;
 			case 'c':
