@@ -2,8 +2,8 @@
   "source_pack": "Keil.STM32H7xx_DFP.2.3.1",
   "source_path": "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h750xx.h",
   "source_sha256": "bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae9263113da5ffa8a2",
-  "owned_sha256": "87691b861be57fe4542c92ea75a6ca3bee93997064c71cd8f2a045bf3dc65edd",
+  "owned_sha256": "c9906fd910d7b7a3be63f4b25b9b8722f4a13f9a5259a8d560e841e3986ebffe",
   "license": "BSD-3-Clause; see source notice and LICENSE-ST-CMSIS",
-  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8, SSR-142 / 688c5c06, SSR-143 / db250f11 and SSR-144 / 4cfad282: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value, one-bit DAC channel-one busy mask, Ethernet receive-state positions and four DMA2D packed-color masks. No other raw-header definitions are changed.",
+  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8, SSR-142 / 688c5c06, SSR-143 / db250f11, SSR-144 / 4cfad282 and SSR-145 / 3dc1e892: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value, one-bit DAC channel-one busy mask, Ethernet receive-state positions, four DMA2D packed-color masks and EXTI D3 line-25 pending position. No other raw-header definitions are changed.",
   "selection": "The owned stm32h7xx.h includes this H750 header from the same Firm_MCU/inc directory for STM32H750xx. GNU App dependencies confirm selection; MDK compilation was not available."
 }

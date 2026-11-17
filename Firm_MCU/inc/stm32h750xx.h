@@ -9890,8 +9890,8 @@ typedef struct
 #define EXTI_D3PMR1_MR21_Pos       (21U)
 #define EXTI_D3PMR1_MR21_Msk       (0x1UL << EXTI_D3PMR1_MR21_Pos)             /*!< 0x00200000 */
 #define EXTI_D3PMR1_MR21           EXTI_D3PMR1_MR21_Msk                        /*!< Pending Mask Event for line 21 */
-#define EXTI_D3PMR1_MR25_Pos       (24U)
-#define EXTI_D3PMR1_MR25_Msk       (0x1UL << EXTI_D3PMR1_MR25_Pos)             /*!< 0x01000000 */
+#define EXTI_D3PMR1_MR25_Pos       (25U)
+#define EXTI_D3PMR1_MR25_Msk       (0x1UL << EXTI_D3PMR1_MR25_Pos)             /*!< 0x02000000 */
 #define EXTI_D3PMR1_MR25           EXTI_D3PMR1_MR25_Msk                        /*!< Pending Mask Event for line 25 */
 
 /*******************  Bit definition for EXTI_D3PCR1L register  ****************/

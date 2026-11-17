@@ -263,3 +263,34 @@ byte: 59,632/63,960 loaded bytes for LTO/non-LTO and 50,904 static DTCM bytes.
 No direct DMA2D output-color consumer was found. Compiler expressions cannot
 qualify transfer timing, CLUT access rules, rendered pixels, MDK compilation or
 physical Saturn/game behavior.
+
+## SSR-145: address EXTI D3 pending line 25
+
+[ST RM0433 Rev. 8, §20.6.4, printed pp. 773–775](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places line 25's D3 pending mask at bit 25 of `EXTI_D3PMR1`; bits 24:22 are
+reserved. The selected DFP 2.3.1 H750 header instead gives its named line-25
+mask position 24. Constructing an enable word therefore sets a reserved bit,
+and clearing an existing line-25 bit with that mask leaves it enabled. The
+clear-source selector in `EXTI_D3PCR1H` is a different field.
+
+This directly ports paps-g `3dc1e892` / SSR-145 after SSR-144. Only the
+line-25 position and numeric mask comment change; its factor, alias, other
+lines, clear-source selector and register layout remain unchanged. The selected
+H750 SHA-256 is
+`c9906fd910d7b7a3be63f4b25b9b8722f4a13f9a5259a8d560e841e3986ebffe`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public parent and pinned raw provider fail five target-compiler assertions
+for position, mask, reserved-bit exclusion, enable/clear and preservation of
+other supported lines. Neighboring lines, the separate clear-source selector
+and register offsets pass as valid controls. Corrected selected and raw
+controls pass; selected contract passes while raw contract retains the five
+failures. Run [`stm32-check --case exti`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. All seven earlier selected header
+contracts pass. Both standard 166-vector GNU App images and ELFs match SSR-144
+byte for byte: 59,632/63,960 loaded bytes for LTO/non-LTO and 50,904 static
+DTCM bytes. No direct `EXTI_D3PMR1` application consumer was found. Word
+construction does not qualify an actual pending request, D3 power routing,
+MDK compilation or physical Saturn/game behavior.
