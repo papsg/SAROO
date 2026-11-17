@@ -358,3 +358,35 @@ LTO/non-LTO and 50,904 static DTCM bytes. No direct JPEG clear-command
 consumer was found. Symbolic expressions do not perform a JPEG transaction,
 resolve concurrent status events, qualify MDK compilation or establish
 physical Saturn/game behavior.
+
+## SSR-148: clip LTDC layer-window coordinates
+
+[ST RM0433 Rev. 8, §§32.7.15–32.7.16, printed pp. 1221–1222](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines the layer-window horizontal stop as bits 27:16 and vertical start/stop
+as bits 10:0/26:16. The selected DFP 2.3.1 H750 header gives those masks
+16, 12 and 16 bits, respectively, retaining reserved bits when a generic
+helper receives a wider value. The horizontal start is correctly 12 bits;
+the separate current-position status fields are correctly 16 bits. This MCU
+LTDC peripheral is separate from the Saturn VDPs.
+
+This directly ports paps-g `3a3d4ad7` / SSR-148 after SSR-147. Only three
+window mask factors/comments change to `0xfff`/`0x0fff0000` and
+`0x7ff`/`0x000007ff`/`0x07ff0000`. Positions, aliases, horizontal start,
+status fields and both layer layouts remain unchanged. The final selected
+H750 SHA-256 is
+`37b8b840a9bc3d3f7846c69238109322175952b95e09dd571a34d1f2166274cd`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public parent and pinned raw provider fail five target-compiler assertions
+for the three widths, reserved-bit exclusion and arbitrary-input clipping.
+The manual's bounded example words, horizontal start, read-only position status
+and both layer layouts pass as controls. Corrected selected provider passes
+both modes and all ten earlier selected header contracts; raw contract retains
+the five failures. Run [`stm32-check --case ltdc`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. Both standard 166-vector GNU App images
+and ELFs match SSR-147 byte for byte: 59,632/63,960 loaded bytes for
+LTO/non-LTO and 50,904 static DTCM bytes. No direct LTDC window-register
+consumer was found. These expressions do not verify window order, display
+timing, rendered pixels, MDK compilation or physical Saturn/game behavior.

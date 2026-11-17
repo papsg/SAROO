@@ -13590,16 +13590,16 @@ typedef struct
 #define LTDC_LxWHPCR_WHSTPOS_Msk     (0xFFFUL << LTDC_LxWHPCR_WHSTPOS_Pos)     /*!< 0x00000FFF */
 #define LTDC_LxWHPCR_WHSTPOS         LTDC_LxWHPCR_WHSTPOS_Msk                  /*!< Window Horizontal Start Position */
 #define LTDC_LxWHPCR_WHSPPOS_Pos     (16U)
-#define LTDC_LxWHPCR_WHSPPOS_Msk     (0xFFFFUL << LTDC_LxWHPCR_WHSPPOS_Pos)    /*!< 0xFFFF0000 */
+#define LTDC_LxWHPCR_WHSPPOS_Msk     (0xFFFUL << LTDC_LxWHPCR_WHSPPOS_Pos)    /*!< 0x0FFF0000 */
 #define LTDC_LxWHPCR_WHSPPOS         LTDC_LxWHPCR_WHSPPOS_Msk                  /*!< Window Horizontal Stop Position  */
 
 /********************  Bit definition for LTDC_LxWVPCR register  **************/
 
 #define LTDC_LxWVPCR_WVSTPOS_Pos     (0U)
-#define LTDC_LxWVPCR_WVSTPOS_Msk     (0xFFFUL << LTDC_LxWVPCR_WVSTPOS_Pos)     /*!< 0x00000FFF */
+#define LTDC_LxWVPCR_WVSTPOS_Msk     (0x7FFUL << LTDC_LxWVPCR_WVSTPOS_Pos)     /*!< 0x000007FF */
 #define LTDC_LxWVPCR_WVSTPOS         LTDC_LxWVPCR_WVSTPOS_Msk                  /*!< Window Vertical Start Position */
 #define LTDC_LxWVPCR_WVSPPOS_Pos     (16U)
-#define LTDC_LxWVPCR_WVSPPOS_Msk     (0xFFFFUL << LTDC_LxWVPCR_WVSPPOS_Pos)    /*!< 0xFFFF0000 */
+#define LTDC_LxWVPCR_WVSPPOS_Msk     (0x7FFUL << LTDC_LxWVPCR_WVSPPOS_Pos)    /*!< 0x07FF0000 */
 #define LTDC_LxWVPCR_WVSPPOS         LTDC_LxWVPCR_WVSPPOS_Msk                  /*!< Window Vertical Stop Position  */
 
 /********************  Bit definition for LTDC_LxCKCR register  ***************/

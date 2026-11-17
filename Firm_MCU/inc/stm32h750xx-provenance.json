@@ -2,8 +2,8 @@
   "source_pack": "Keil.STM32H7xx_DFP.2.3.1",
   "source_path": "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h750xx.h",
   "source_sha256": "bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae9263113da5ffa8a2",
-  "owned_sha256": "cecd38117bb921d6dcf74161b0e6cf62fce34251e6e725f39574e3e9c295c20a",
+  "owned_sha256": "37b8b840a9bc3d3f7846c69238109322175952b95e09dd571a34d1f2166274cd",
   "license": "BSD-3-Clause; see source notice and LICENSE-ST-CMSIS",
-  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8, SSR-142 / 688c5c06, SSR-143 / db250f11, SSR-144 / 4cfad282, SSR-145 / 3dc1e892, SSR-146 / 262a8306 and SSR-147 / e0a9922c: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value, one-bit DAC channel-one busy mask, Ethernet receive-state positions, four DMA2D packed-color masks, EXTI D3 line-25 pending position, three HSEM owner widths and two JPEG clear commands. No other raw-header definitions are changed.",
+  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8, SSR-142 / 688c5c06, SSR-143 / db250f11, SSR-144 / 4cfad282, SSR-145 / 3dc1e892, SSR-146 / 262a8306, SSR-147 / e0a9922c and SSR-148 / 3a3d4ad7: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value, one-bit DAC channel-one busy mask, Ethernet receive-state positions, four DMA2D packed-color masks, EXTI D3 line-25 pending position, three HSEM owner widths, two JPEG clear commands and three LTDC window masks. No other raw-header definitions are changed.",
   "selection": "The owned stm32h7xx.h includes this H750 header from the same Firm_MCU/inc directory for STM32H750xx. GNU App dependencies confirm selection; MDK compilation was not available."
 }

@@ -10,6 +10,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     let (case, provider, mode) = (args[12].as_str(), args[14].as_str(), args[16].as_str());
     if ![
         "version", "sdram", "qspi", "ccr5", "dac", "ethernet", "dma2d", "exti", "hsem", "jpeg",
+        "ltdc",
     ]
     .contains(&case)
         || !["selected", "original"].contains(&provider)
