@@ -51,6 +51,7 @@ class SaveJournalRuntimeTests(unittest.TestCase):
                b"    if (dev >= 0 && dev <= 1 && journal_admit(dev)) return BUP_BROKEN;")
         change(b"static int same_pending_write(int dev, BUPDIR *dir, int mode)",
                b'#include "save_journal_plan.c"\n#include "save_runtime.c"\n'
+               b'#include "save_launch.c"\n'
                b"static int same_pending_write(int dev, BUPDIR *dir, int mode)")
         change(b"    int result = access_data(header, data, 2);",
                b"    if (dev && journal_state != JOURNAL_LEGACY)\n"
@@ -60,12 +61,12 @@ class SaveJournalRuntimeTests(unittest.TestCase):
         target_source.mkdir(exist_ok=True)
         (target_source / "game_save.c").write_bytes(source)
         for name in ("save_runtime.c", "save_runtime.h", "save_journal_plan.c",
-                     "save_journal.h"):
+                     "save_journal.h", "save_launch.c"):
             shutil.copyfile(ROOT / "Firm_Saturn" / name, target_source / name)
         change(b"0x06000c20", b"((uintptr_t)test_game_id)")
         (target / "game_save.c").write_bytes(source)
         for name in ("save_runtime.c", "save_runtime.h", "save_journal_plan.c",
-                     "save_journal.h"):
+                     "save_journal.h", "save_launch.c"):
             shutil.copyfile(ROOT / "Firm_Saturn" / name, target / name)
         shutil.copyfile(ROOT / "Firm_Saturn/crc32.c", target / "crc32.c")
         (target / "crc").mkdir()

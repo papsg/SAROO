@@ -18,21 +18,25 @@ WIRE_NAMES = (
 )
 
 
+def write_protocol(work):
+    header = (ROOT / "Firm_Saturn/main.h").read_text()
+    lines = []
+    for name in WIRE_NAMES:
+        match = re.search(rf"^#define\s+{name}\s+\S+\s*$", header, re.M)
+        if not match:
+            raise AssertionError(f"missing menu wire constant: {name}")
+        lines.append(match.group())
+    (work / "menu-channel-protocol.h").write_text("\n".join(lines) + "\n")
+
+
 class MenuChannelCoreTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         BUILD.mkdir(parents=True, exist_ok=True)
         cls.work = tempfile.TemporaryDirectory(prefix="case-", dir=BUILD)
         cls.addClassCleanup(cls.work.cleanup)
-        header = (ROOT / "Firm_Saturn/main.h").read_text()
-        lines = []
-        for name in WIRE_NAMES:
-            match = re.search(rf"^#define\s+{name}\s+\S+\s*$", header, re.M)
-            if not match:
-                raise AssertionError(f"missing menu wire constant: {name}")
-            lines.append(match.group())
         work = Path(cls.work.name)
-        (work / "menu-channel-protocol.h").write_text("\n".join(lines) + "\n")
+        write_protocol(work)
         profile = os.environ.get("SAROO_MENU_CHANNEL_PROFILE", "sanitizer")
         if profile not in ("sanitizer", "release"):
             raise ValueError("unknown profile")

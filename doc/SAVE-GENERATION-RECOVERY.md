@@ -318,3 +318,78 @@ stack bound. The standard menu remains byte-identical at 88,040 code/data,
 `d3ec0d5a6b96f14d00c7d502cdd4a9d518747f4b9c3bc8cc81a7409fdae61fc2`.
 Caller conversion, a compatible production MCU/menu pair, normal-game behavior,
 actual reset handoff and physical bus timing remain unqualified.
+
+## Launch save binding (staged; not enabled)
+
+The sixth checkpoint stages the selected save-session transition and menu
+callbacks. Before `STARTUP`, the callback checks the save/file/archive
+capabilities and admits journal recovery under the command lease. Before a new
+`LOADDISC` or physical `LSAVE`, it settles an earlier journal and both devices'
+pending writes, then detaches the old internal slot. A successful game load
+publishes a full 16-byte canonical key in the existing
+[MCU output field](../Firm_MCU/Saturn/saturn_utils.c); the callback resolves its
+slot through the primary archive owner. A successful audio/stop result leaves
+the internal slot unselected. A failed lookup retains the new key and requires
+recovery. The physical request key is copied after prior save work, because that
+work can reuse the same request workspace. These rules preserve the distinct
+game-facing [Sega Backup Library §2.3 write API](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50)
+and SAROO's own journal/owner protocol.
+
+**paps-g** authored the selected binding in private `5b7729cc`; the later
+production selection was `607267b9`. This public port adds `save_launch.c/.h`
+and `menu_launch.c` as direct unlinked source. It adapts the cache-purge call to
+the current public three-argument helper. The runtime test's temporary
+`game_save.c` integration now includes the selected launch source, while the
+shipping `game_save.c`, menu command callers and MCU image remain unchanged.
+At production integration, the allocator's archive lookup must resolve to the
+explicit **owned** transport variant while this lease is held; the isolated
+test currently supplies a synchronous archive owner and does not prove that
+caller wiring.
+
+Both ASan/UBSan and O2 profiles pass three focused launch methods: startup,
+new game, audio/stop and legacy controls; missing capability, failed admission,
+pending write, failed lookup, completed MCU error and malformed reply; and
+physical key preparation after simulated workspace reuse. The two existing
+transaction profiles still pass their 44 allocator/store scenarios each with
+`save_launch.c` compiled into that test integration. The host launch fixture
+models owner results and MCU key publication; it is not the actual MCU or a
+physical-disc test. The public [MCU completion suite](../tests/test_menu_command_completion.py)
+separately verifies the compatible menu command response protocol.
+
+```sh
+python3 -B -m unittest tests.test_save_launch_core tests.test_save_journal_runtime -v
+SAROO_SAVE_LAUNCH_PROFILE=release python3 -B -m unittest tests.test_save_launch_core -v
+SAROO_SAVE_JOURNAL_PROFILE=release python3 -B -m unittest tests.test_save_journal_runtime -v
+docker run --rm --pull=never --platform linux/amd64 --network none \
+  -v "$PWD":/work \
+  'ijacquez/yaul@sha256:b6d272204767cd0a734139dd3a2ab298ef5912fb7b7224b78e6d9fac1a7825a6' \
+  /opt/tool-chains/sh2eb-elf/bin/sh2eb-elf-gcc \
+  -m2 -mb -ffreestanding -fno-builtin -fomit-frame-pointer \
+  -std=gnu99 -Os -Wall -Wextra -Werror -fstack-usage \
+  -I /work/Firm_Saturn -c /work/tests/target_menu_launch.c \
+  -o /work/tests/build/save-launch-core/target_menu_launch.o
+docker run --rm --pull=never --platform linux/amd64 --network none \
+  -v "$PWD":/work \
+  'ijacquez/yaul@sha256:b6d272204767cd0a734139dd3a2ab298ef5912fb7b7224b78e6d9fac1a7825a6' \
+  /opt/tool-chains/sh2eb-elf/bin/sh2eb-elf-gcc \
+  -m2 -mb -ffreestanding -fno-builtin -fomit-frame-pointer \
+  -std=c99 -Os -Wall -Wextra -Werror -Wno-sign-compare \
+  -Wno-unused-function -fstack-usage -I /work/Firm_Saturn \
+  -c /work/tests/build/save-journal-runtime/target-source/game_save.c \
+  -o /work/tests/build/save-launch-core/target_game_save.o
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-launch-stage-menu
+```
+
+The strict SuperH menu-glue fixture compiles to 1,344 text/eight BSS bytes;
+the temporary allocator integration containing the launch source compiles to
+10,364 text/2,144 BSS bytes. Those are separate object costs with stubs, not a
+combined linked-image delta. The new allocator launch helpers have eight-byte
+direct frames; the glued physical-key channel has a 16-byte direct frame.
+Whole-call-chain stack remains unmeasured. The standard menu is byte-identical
+at 88,040 linked code/data, 9,508 BSS and 17,140 body bytes free, so this
+checkpoint adds no shipping payload or resident workspace. Activation must
+reserve the existing 64 KiB journal window exclusively. The current companion
+ROM staging range overlaps that window during physical save binding; it must
+be moved and verified before the binding is linked. Actual Saturn reset,
+physical media, electrical power loss and game behavior remain unqualified.
