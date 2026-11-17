@@ -20484,7 +20484,7 @@ typedef struct
 #define LPTIM_CR_ENABLE_Msk         (0x1UL << LPTIM_CR_ENABLE_Pos)             /*!< 0x00000001 */
 #define LPTIM_CR_ENABLE             LPTIM_CR_ENABLE_Msk                        /*!< LPTIMer enable */
 #define LPTIM_CR_SNGSTRT_Pos        (1U)
-#define LPTIM_CR_SNGSTRT_Msk        (0x40001UL << LPTIM_CR_SNGSTRT_Pos)        /*!< 0x00080002 */
+#define LPTIM_CR_SNGSTRT_Msk        (0x1UL << LPTIM_CR_SNGSTRT_Pos)            /*!< 0x00000002 */
 #define LPTIM_CR_SNGSTRT            LPTIM_CR_SNGSTRT_Msk                       /*!< Timer start in single mode */
 #define LPTIM_CR_CNTSTRT_Pos        (2U)
 #define LPTIM_CR_CNTSTRT_Msk        (0x1UL << LPTIM_CR_CNTSTRT_Pos)            /*!< 0x00000004 */

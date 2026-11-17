@@ -458,3 +458,35 @@ in fresh ignored output directories. No direct current output-mode consumer
 was found. This tests compiler values, not all supported timer/channel/mode
 combinations, LOCK/preload/COM sequencing, physical waveforms, MDK compilation
 or Saturn/game behavior.
+
+## SSR-151: constrain the LPTIM single-start command to bit one
+
+[ST RM0433 Rev. 8, §43.7.5, printed pp. 1882–1883](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines `SNGSTRT` at bit 1 and reserves bits 31:5 in the low-power timer's
+control register. The selected DFP 2.3.1 H750 header included reserved bit 19
+in its single-start mask (`0x80002`), although bit 1 was already correct. An
+enabled single-start command assembled with that alias became `0x80003` instead
+of `0x3`. This does not establish that a timer failed to start or what silicon
+does when the reserved bit is written.
+
+This directly ports paps-g `7bef6096` / SSR-151 after SSR-150. Only the
+single-start mask factor and its numeric comment change in the owned H750
+header. Its position, alias, other commands and register layout remain exact.
+The pinned raw DFP source, ST notice and BSD license remain unchanged. The
+selected H750 SHA-256 is
+`90dc1532cbd6e6c33caf002907b7af070a244b52e762589fb5fe20d742340543`.
+See [source provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail three target-compiler
+assertions for the single bit, reserved bit exclusion and intended command
+words; position, neighboring commands and member offsets pass as controls.
+The corrected selected provider passes contract and controls, while the raw
+contract retains the failures. All thirteen earlier selected header contracts,
+21 Rust unit tests, two RTL checks and formatting pass. Both standard
+166-vector GNU App builds pass; LTO/non-LTO flat images, ELFs and resources
+match SSR-150 byte for byte at 59,632/63,960 loaded and 50,904 static DTCM
+bytes. Run [`stm32-check --case lptim`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No current direct single-start caller was
+found. Compiler expressions do not exercise enable/trigger admission, hardware
+auto-clear, reset sequencing, waveforms, MDK compilation or Saturn/game behavior.

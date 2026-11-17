@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc|sai|timer_modes --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc|sai|timer_modes|lptim --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -602,6 +602,9 @@ layout remain available. No audio transfer is executed.
 For `timer_modes`, it checks the split high mode bit on TIM1/TIM8 channels
 3–6, their helper bits and high-to-low mode replacement. Channels 1–2 and
 register layout are controls; no output waveform is generated.
+For `lptim`, it checks that single-start writes bit 1 without reserved bit 19;
+other command fields, enabled command words and register layout are controls.
+No low-power timer command is executed.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).
