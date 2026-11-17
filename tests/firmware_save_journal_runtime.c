@@ -295,9 +295,44 @@ done:
     free(before_slot); free(before_mems); free(expected_slot); free(expected_mems); free(bytes);
 }
 
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+static void refuse_native_growth(int size)
+{
+    assert(size > 29434);
+    journal_state = JOURNAL_LEGACY;
+    initialize();
+    BUPDIR neighbor = directory("KEEP0000001", 32);
+    u8 *keep = payload(32, 7);
+    assert(sro_bup_write(0, &neighbor, keep, 0) == 0);
+    reload_model();
+    u8 before[sizeof(slot_disk)];
+    memcpy(before, slot_disk, sizeof(before));
+    journal_exists = journal_size = journal_writes = primary_writes = 0;
+    memset(journal_disk, 0, sizeof(journal_disk));
+    assert(journal_start() == 0 && journal_select(test_game_id) == 0);
+    BUPDIR target = directory("NEW00000001", size);
+    u8 *bytes = payload(size, 71);
+    assert(bup_write(0, &target, bytes, 0) == BUP_NOT_ENOUGH_MEMORY);
+    assert(journal_writes == 0 && primary_writes == 0 && journal_size == 0);
+    assert(!memcmp(slot_disk, before, sizeof(before)));
+    assert(backup_enter());
+    check_save(0, &neighbor, keep);
+    assert(command_leave());
+    printf("PASS native refusal size=%d\n", size);
+    free(keep);
+    free(bytes);
+}
+#endif
+
 int main(int argc, char **argv)
 {
     assert(argc == 5);
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    if (!strcmp(argv[3], "refuse")) {
+        refuse_native_growth(atoi(argv[2]));
+        return 0;
+    }
+#endif
     exercise(atoi(argv[1]), atoi(argv[2]), argv[3], argv[4]);
     return 0;
 }

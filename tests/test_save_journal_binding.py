@@ -108,6 +108,19 @@ int command_memcmp(void *, void *, int);
                                      result.stdout + result.stderr)
                     self.assertIn("PASS", result.stdout)
 
+    def test_native_growth_refuses_overcapacity_without_archive_or_journal_writes(self):
+        if not self.native:
+            self.skipTest("Native device-0 profile only")
+        for size in (29435, 29551, 65024):
+            with self.subTest(size=size):
+                result = subprocess.run(
+                    [str(self.binary), "0", str(size), "refuse", "none"],
+                    capture_output=True, text=True, timeout=90,
+                    env={**os.environ, "UBSAN_OPTIONS": "halt_on_error=1",
+                         "ASAN_OPTIONS": "detect_leaks=0"})
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS native refusal", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

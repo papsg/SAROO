@@ -101,3 +101,21 @@ cost rather than the private 128-byte transport stride. It lists a 992-byte
 native save as 18 blocks and a 992-byte old-format save as nine, and checks
 both complete payload exports without changing the archive. This is a host
 display correction; it makes no claim about game-side directory behavior.
+
+Private SSR-018 concerned the order in which private test patches were applied.
+The public [journal binding fixture](../tests/test_save_journal_binding.py)
+copies the current production modules, selects the native profile at compile
+time and runs the public backup entries. It has no patch-finalization order to
+repair. The default and native profiles both compile and pass; the native
+profile also passes its optimized build. This disposition applies to this
+public fixture, without claiming all private test classes were ported.
+
+Private SSR-038 identified an obsolete 65,024-byte growth expectation. With a
+32-byte neighboring save, the native fixture's accepted boundary is 29,434
+bytes. The [journal fixture](../tests/firmware_save_journal_runtime.c) now also
+requires refusal at 29,435, 29,551 and the obsolete 65,024 bytes, with zero
+archive and journal writes, unchanged complete archive bytes and an intact
+neighbor. Both sanitizer and optimized native profiles pass. The 58-byte
+continuation formula is the selected implementation contract established by
+the private native-BIOS investigation; the linked Sega manual specifies the
+32 KiB device and backup API, not that private formula.
