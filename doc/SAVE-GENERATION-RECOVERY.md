@@ -132,3 +132,65 @@ This proves no release behavior change at this stage. The modeled store does
 not prove FatFs durability, power-loss ordering, actual Saturn behavior, or
 recovery from an interrupted transaction. Those require the later runtime,
 command ownership, launch binding and activation checkpoints.
+
+## Transaction runtime (staged; not enabled)
+
+The third checkpoint adds `save_runtime.c` and `save_runtime.h` as unlinked menu
+source. **paps-g** authored the original binding in private `5e318867`, with
+later session and input-admission corrections retained in the selected source.
+This public adaptation tests it against the current public allocator and
+archive-owner interface, without importing the private patch framework. The
+test injects the prospective call sites into a temporary copy of `game_save.c`;
+the standard menu still links neither the runtime nor the SJR1 core.
+
+The runtime writes an inactive journal body to `/SAROO/SAVEJRN.BIN`, then its
+checked header. After publication, it applies the selected bytes through the
+existing primary archive owner, synchronizes, clears the journal header and
+reloads the backup shadows. A failed reply can mean that the journal is already
+durable, so admission must replay or refuse it before another operation. The
+record's 16-byte game key is retained separately from the MCU's selected key.
+The implementation reuses the existing 65,536-byte file workspace beginning at
+`0x220c7100`, immediately after the 64 KiB MEMS data window, and the allocator's
+1,008-byte claims bitmap. The owner must exclude concurrent use of both for the
+whole transaction. [FatFs `f_sync` documentation](https://elm-chan.org/fsw/ff/doc/sync.html)
+describes the required file synchronization; the public
+[archive-owner contract](SAVE-OWNERSHIP-RAM.md#access-the-existing-save-archive-handles)
+describes the selected primary handles and exact command counts. Sega's
+[Backup Library §2.3 function No. 5, printed p. 45](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50)
+defines the game-facing write result, not SAROO's journal protocol.
+
+The public host fixture runs the real allocator, planner, core and runtime with
+synchronous modeled file and archive owners. Each of its ASan/UBSan and O2 runs
+passes 44 cases: normal create/overwrite/delete/format, inline and block sizes,
+the 479 KiB expansion limit, body-write failure, lost publication reply, failed
+and partially applied primary writes followed by recovery, and corruption that
+blocks replay. The normal-operation oracle is the same allocator's complete
+legacy persisted image, including its neighboring and unused bytes. The public
+owner's directory lookup, FatFs implementation and command register timing are
+covered separately; this fixture models only their synchronous contract.
+There is no file/MCU command timeout or physical power-cut qualification here.
+
+An isolated SuperH menu **cost link** uses the test integration and the selected
+core with `-ffreestanding` on the two affected objects. It links 93,064
+code/data bytes, 9,532 BSS bytes and the existing 16,384-byte stack reserve,
+leaving 12,092 body bytes. Against this checkpoint's ordinary menu, that is
++5,024 linked code/data and +24 BSS bytes. The largest direct runtime frames
+in the cost link are 80 bytes for the MEMS write planner and 52 for the root
+commit helper; these are not whole-call-chain stack peaks. The standard menu
+still produces the preceding byte-identical image with 17,140 body bytes free.
+The isolated cost link is **not an installable or production-qualified image**:
+it has no command/workspace exclusion, launch binding or startup recovery.
+
+Reproduce the host checks with `python3 -B -m unittest
+tests.test_save_journal_runtime -v` and the same command under
+`SAROO_SAVE_JOURNAL_PROFILE=release`. The test writes its target integration
+source to `tests/build/save-journal-runtime/target-source/game_save.c`. That
+translation unit compiles with the pinned offline SuperH compiler using
+`-m2 -mb -ffreestanding -std=c99 -Os -Wall -Wextra -Werror
+-Wno-sign-compare -Wno-unused-function`; the two exceptions cover the older
+date comparison and API guards not wired until activation. The host fixture
+does not yet exercise those caller-span and initialization guards;
+they remain part of ownership and activation acceptance. The selected public
+source has no new heap, task, handle or resident payload. BIOS delegated
+internal saves remain on their existing path; the excluded native-backup
+migration is not implied by this checkpoint.
