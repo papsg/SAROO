@@ -8452,23 +8452,23 @@ typedef struct
 #define ETH_DMADSR_RPS_Msk                            (0xFUL << ETH_DMADSR_RPS_Pos) /*!< 0x00000F00 */
 #define ETH_DMADSR_RPS                                ETH_DMADSR_RPS_Msk       /* DMA Channel Receive Process State */
 #define ETH_DMADSR_RPS_STOPPED                        ((uint32_t)0x00000000)   /* Stopped (Reset or Stop Receive Command issued) */
-#define ETH_DMADSR_RPS_FETCHING_Pos                   (12U)
-#define ETH_DMADSR_RPS_FETCHING_Msk                   (0x1UL << ETH_DMADSR_RPS_FETCHING_Pos) /*!< 0x00001000 */
+#define ETH_DMADSR_RPS_FETCHING_Pos                   (8U)
+#define ETH_DMADSR_RPS_FETCHING_Msk                   (0x1UL << ETH_DMADSR_RPS_FETCHING_Pos) /*!< 0x00000100 */
 #define ETH_DMADSR_RPS_FETCHING                       ETH_DMADSR_RPS_FETCHING_Msk /* Running (Fetching Rx Transfer Descriptor) */
-#define ETH_DMADSR_RPS_WAITING_Pos                    (12U)
-#define ETH_DMADSR_RPS_WAITING_Msk                    (0x3UL << ETH_DMADSR_RPS_WAITING_Pos) /*!< 0x00003000 */
+#define ETH_DMADSR_RPS_WAITING_Pos                    (8U)
+#define ETH_DMADSR_RPS_WAITING_Msk                    (0x3UL << ETH_DMADSR_RPS_WAITING_Pos) /*!< 0x00000300 */
 #define ETH_DMADSR_RPS_WAITING                        ETH_DMADSR_RPS_WAITING_Msk /* Running (Waiting for status) */
-#define ETH_DMADSR_RPS_SUSPENDED_Pos                  (14U)
-#define ETH_DMADSR_RPS_SUSPENDED_Msk                  (0x1UL << ETH_DMADSR_RPS_SUSPENDED_Pos) /*!< 0x00004000 */
+#define ETH_DMADSR_RPS_SUSPENDED_Pos                  (10U)
+#define ETH_DMADSR_RPS_SUSPENDED_Msk                  (0x1UL << ETH_DMADSR_RPS_SUSPENDED_Pos) /*!< 0x00000400 */
 #define ETH_DMADSR_RPS_SUSPENDED                      ETH_DMADSR_RPS_SUSPENDED_Msk /* Suspended (Rx Descriptor Unavailable) */
-#define ETH_DMADSR_RPS_CLOSING_Pos                    (12U)
-#define ETH_DMADSR_RPS_CLOSING_Msk                    (0x5UL << ETH_DMADSR_RPS_CLOSING_Pos) /*!< 0x00005000 */
+#define ETH_DMADSR_RPS_CLOSING_Pos                    (8U)
+#define ETH_DMADSR_RPS_CLOSING_Msk                    (0x5UL << ETH_DMADSR_RPS_CLOSING_Pos) /*!< 0x00000500 */
 #define ETH_DMADSR_RPS_CLOSING                        ETH_DMADSR_RPS_CLOSING_Msk /* Running (Closing the Rx Descriptor) */
-#define ETH_DMADSR_RPS_TIMESTAMP_WR_Pos               (13U)
-#define ETH_DMADSR_RPS_TIMESTAMP_WR_Msk               (0x3UL << ETH_DMADSR_RPS_TIMESTAMP_WR_Pos) /*!< 0x00006000 */
+#define ETH_DMADSR_RPS_TIMESTAMP_WR_Pos               (9U)
+#define ETH_DMADSR_RPS_TIMESTAMP_WR_Msk               (0x3UL << ETH_DMADSR_RPS_TIMESTAMP_WR_Pos) /*!< 0x00000600 */
 #define ETH_DMADSR_RPS_TIMESTAMP_WR                   ETH_DMADSR_RPS_TIMESTAMP_WR_Msk /* Timestamp write state */
-#define ETH_DMADSR_RPS_TRANSFERRING_Pos               (12U)
-#define ETH_DMADSR_RPS_TRANSFERRING_Msk               (0x7UL << ETH_DMADSR_RPS_TRANSFERRING_Pos) /*!< 0x00007000 */
+#define ETH_DMADSR_RPS_TRANSFERRING_Pos               (8U)
+#define ETH_DMADSR_RPS_TRANSFERRING_Msk               (0x7UL << ETH_DMADSR_RPS_TRANSFERRING_Pos) /*!< 0x00000700 */
 #define ETH_DMADSR_RPS_TRANSFERRING                   ETH_DMADSR_RPS_TRANSFERRING_Msk /* Running (Transferring the received packet data from the Rx buffer to the system memory) */
 
 /* Bit definition for Ethernet DMA Channel Control Register */

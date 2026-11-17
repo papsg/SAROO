@@ -200,3 +200,35 @@ earlier version/SDRAM/QSPI/timer contracts pass against the final selected
 headers. No DAC transaction, sample-time synchronization, analog output,
 MDK compile, physical MCU or Saturn/game qualification is claimed. No device
 was touched.
+
+## SSR-143: put Ethernet receive states in the receive field
+
+[ST RM0433 Rev. 8, Ethernet DMA debug status register `ETH_DMADSR`, printed
+pp. 2924–2925](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places receive process state in bits 11:8 and transmit process state in bits
+15:12. The selected DFP 2.3.1 H750 header already gives the aggregate receive
+field the correct position and mask, but its six nonzero named receive states
+all select the transmit field. For example, receive-fetching status `0x100`
+cannot match the header's `ETH_DMADSR_RPS_FETCHING` value `0x1000`.
+
+This directly ports paps-g `db250f11` / SSR-143 after SSR-142. The six named
+receive positions and their numeric comments move down four bits; the factors,
+aliases, aggregate fields, transmit definitions, stopped state and register
+layout remain unchanged. The selected H750 SHA-256 becomes
+`b2177497393186402d3f5c63aeefeb67359581ace668f0b70f7fcbfe54cfb197`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public target-compiler contract reproduces 84 failing named receive
+comparisons on the public parent, across seven receive states, seven transmit
+states and both bit-zero values. Its field-extraction, transmit-name and layout
+controls compile. After correction, the selected header passes both control
+and contract; the pinned raw provider still fails the same 84 comparisons and
+passes its controls. Run [`stm32-check --case ethernet`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with selected/original providers and contract/control modes in fresh ignored
+output directories. Both standard 166-vector GNU App builds produce images and
+ELFs byte-identical to SSR-142: 59,632/63,960 loaded bytes for LTO/non-LTO and
+50,904 static DTCM bytes. No direct `ETH_DMADSR` application consumer was found.
+These compile expressions do not execute the Ethernet peripheral or establish
+an existing SAROO network/game failure, MDK build result or physical behavior.

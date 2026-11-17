@@ -8,7 +8,7 @@ const RAW_PERIPHERAL: &str = "bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae92
 
 pub(super) fn run(args: &[String]) -> Result<()> {
     let (case, provider, mode) = (args[12].as_str(), args[14].as_str(), args[16].as_str());
-    if !["version", "sdram", "qspi", "ccr5", "dac"].contains(&case)
+    if !["version", "sdram", "qspi", "ccr5", "dac", "ethernet"].contains(&case)
         || !["selected", "original"].contains(&provider)
         || !["contract", "control", "alias"].contains(&mode)
         || (mode == "alias" && case != "version")

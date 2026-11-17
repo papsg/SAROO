@@ -2,8 +2,8 @@
   "source_pack": "Keil.STM32H7xx_DFP.2.3.1",
   "source_path": "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h750xx.h",
   "source_sha256": "bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae9263113da5ffa8a2",
-  "owned_sha256": "2866b495da1aefeac91bf8ebffd045f1fb07185f59b0b6025090161b5ee7ba1e",
+  "owned_sha256": "b2177497393186402d3f5c63aeefeb67359581ace668f0b70f7fcbfe54cfb197",
   "license": "BSD-3-Clause; see source notice and LICENSE-ST-CMSIS",
-  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8 and SSR-142 / 688c5c06: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value and one-bit DAC channel-one busy mask. No other raw-header definitions are changed.",
+  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e, SSR-140 / d032da23, SSR-141 / a126b1b8, SSR-142 / 688c5c06 and SSR-143 / db250f11: FMC command bit 2, QSPI threshold width/helper, 16-bit TIM CCR5 value, one-bit DAC channel-one busy mask and Ethernet receive-state field positions. No other raw-header definitions are changed.",
   "selection": "The owned stm32h7xx.h includes this H750 header from the same Firm_MCU/inc directory for STM32H750xx. GNU App dependencies confirm selection; MDK compilation was not available."
 }
