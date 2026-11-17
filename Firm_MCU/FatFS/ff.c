@@ -2169,20 +2169,226 @@ static WORD xdir_sum (	/* Get checksum of the directoly entry block */
 
 
 
-static WORD xname_sum (	/* Get check sum (to be used as hash) of the file name */
-	const WCHAR* name	/* File name to be calculated */
-)
+/* Per-volume exFAT case authority. All state is owned by the volume grant. */
+typedef struct {
+    FATFS *fs;
+    QWORD offset;
+    DWORD cluster;
+} FF_UPCASE_READER;
+
+static FRESULT upcase_link (FATFS *fs, DWORD cluster, DWORD *next)
 {
-	WCHAR chr;
-	WORD sum = 0;
+    FRESULT res;
+    if (cluster < 2 || cluster >= fs->n_fatent) return FR_INT_ERR;
+    res = move_window(fs, fs->fatbase + cluster / (SS(fs) / 4));
+    if (res != FR_OK) return res;
+    *next = ld_dword(fs->win + cluster % (SS(fs) / 4) * 4);
+    if (*next != 0xFFFFFFFF && (*next < 2 || *next >= fs->n_fatent)) return FR_INT_ERR;
+    return FR_OK;
+}
 
+static FRESULT upcase_fast (FATFS *fs, DWORD *cluster)
+{
+    UINT i;
+    FRESULT res;
+    for (i = 0; i < 2 && *cluster != 0xFFFFFFFF; i++) {
+        res = upcase_link(fs, *cluster, cluster);
+        if (res != FR_OK) return res;
+    }
+    return FR_OK;
+}
 
-	while ((chr = *name++) != 0) {
-		chr = (WCHAR)ff_wtoupper(chr);		/* File name needs to be up-case converted */
-		sum = ((sum & 1) ? 0x8000 : 0) + (sum >> 1) + (chr & 0xFF);
-		sum = ((sum & 1) ? 0x8000 : 0) + (sum >> 1) + (chr >> 8);
-	}
-	return sum;
+static FRESULT upcase_allocated (FATFS *fs, DWORD cluster)
+{
+    DWORD bit;
+    FRESULT res;
+    if (cluster < 2 || cluster >= fs->n_fatent) return FR_INT_ERR;
+    bit = cluster - 2;
+    res = move_window(fs, fs->bitbase + bit / (SS(fs) * 8));
+    if (res != FR_OK) return res;
+    return (fs->win[bit / 8 % SS(fs)] & (1U << (bit % 8))) ? FR_OK : FR_INT_ERR;
+}
+
+static FRESULT upcase_chain (FATFS *fs, DWORD first, DWORD count)
+{
+    DWORD current = first, fast = first, i, next;
+    FRESULT res;
+    for (i = 0; i < count; i++) {
+        res = upcase_allocated(fs, current);
+        if (res != FR_OK) return res;
+        res = upcase_link(fs, current, &next);
+        if (res != FR_OK) return res;
+        if (next == 0xFFFFFFFF && i + 1 < count) return FR_INT_ERR;
+        current = next;
+        res = upcase_fast(fs, &fast);
+        if (res != FR_OK) return res;
+        if (current != 0xFFFFFFFF && current == fast) return FR_INT_ERR;
+    }
+    return FR_OK;
+}
+
+static FRESULT upcase_word (FF_UPCASE_READER *reader, WORD *word, DWORD *sum)
+{
+    FATFS *fs = reader->fs;
+    QWORD cluster_bytes = (QWORD)fs->csize * SS(fs);
+    UINT offset;
+    FRESULT res;
+    if (reader->offset >= fs->upcase_length || fs->upcase_length - reader->offset < 2) return FR_INT_ERR;
+    if (reader->offset && reader->offset % cluster_bytes == 0) {
+        res = upcase_link(fs, reader->cluster, &reader->cluster);
+        if (res != FR_OK) return res;
+    }
+    if (reader->cluster < 2 || reader->cluster >= fs->n_fatent) return FR_INT_ERR;
+    res = move_window(fs, clst2sect(fs, reader->cluster) +
+                      (LBA_t)(reader->offset % cluster_bytes / SS(fs)));
+    if (res != FR_OK) return res;
+    offset = (UINT)(reader->offset % SS(fs));
+    *word = ld_word(fs->win + offset);
+    if (sum) {
+        *sum = ((*sum >> 1) | (*sum << 31)) + (*word & 255);
+        *sum = ((*sum >> 1) | (*sum << 31)) + (*word >> 8);
+    }
+    reader->offset += 2;
+    return FR_OK;
+}
+
+/* One literal or identity run. Zero-count runs consume bytes without mapping;
+ * the last U+FFFF may be literal or a one-character identity run. */
+static FRESULT upcase_token (FF_UPCASE_READER *reader, DWORD code,
+                            WORD *value, DWORD *count, DWORD *sum)
+{
+    WORD word, run;
+    FRESULT res = upcase_word(reader, &word, sum);
+    if (res != FR_OK) return res;
+    if (code == 0x10000) {
+        if (word != 0xFFFF) return FR_INT_ERR;
+        res = upcase_word(reader, &run, sum);
+        if (res != FR_OK) return res;
+        if (run) return FR_INT_ERR;
+        *value = 0; *count = 0;
+        return FR_OK;
+    }
+    *value = word; *count = 1;
+    if (word != 0xFFFF) return FR_OK;
+    if (code == 0xFFFF && reader->offset == reader->fs->upcase_length) return FR_OK;
+    res = upcase_word(reader, &run, sum);
+    if (res != FR_OK) return res;
+    if (code == 0xFFFF && run == 0xFFFF) {
+        /* Last literal followed by an empty trailing identity run. */
+        res = upcase_word(reader, &run, sum);
+        if (res != FR_OK) return res;
+        if (run) return FR_INT_ERR;
+        return FR_OK;
+    }
+    if ((DWORD)run > 0x10000 - code) return FR_INT_ERR;
+    *value = (WORD)code; *count = run;
+    return FR_OK;
+}
+
+static FRESULT upcase_init (FATFS *fs)
+{
+    DWORD root = (DWORD)fs->dirbase, fast = root, visited, next;
+    DWORD first = 0, expected = 0, sum = 0, code = 0, count, i;
+    QWORD length = 0, cluster_bytes = (QWORD)fs->csize * SS(fs);
+    UINT sector, offset, found = 0;
+    WORD value;
+    FF_UPCASE_READER reader, before;
+    FRESULT res;
+    fs->upcase_length = 0;
+    for (visited = 0; visited < fs->n_fatent - 2 &&
+         (QWORD)visited * cluster_bytes < MAX_DIR_EX; visited++) {
+        res = upcase_allocated(fs, root);
+        if (res != FR_OK) return res;
+        for (sector = 0; sector < fs->csize; sector++) {
+            res = move_window(fs, clst2sect(fs, root) + sector);
+            if (res != FR_OK) return res;
+            for (offset = 0; offset < SS(fs); offset += SZDIRE) {
+                BYTE *entry = fs->win + offset;
+                if (!entry[0]) goto root_done;
+                if (entry[0] == ET_UPCASE) {
+                    if (found++) return FR_INT_ERR;
+                    first = ld_dword(entry + 20);
+                    length = ld_qword(entry + 24);
+                    expected = ld_dword(entry + 4);
+                }
+            }
+        }
+        res = upcase_link(fs, root, &next);
+        if (res != FR_OK) return res;
+        if (next == 0xFFFFFFFF) goto root_done;
+        root = next;
+        res = upcase_fast(fs, &fast);
+        if (res != FR_OK) return res;
+        if (root == fast) return FR_INT_ERR;
+    }
+    return FR_INT_ERR;
+root_done:
+    if (found != 1 || !length || (length & 1) ||
+        length > (QWORD)(fs->n_fatent - 2) * cluster_bytes) return FR_INT_ERR;
+    res = upcase_chain(fs, first, (DWORD)((length - 1) / cluster_bytes + 1));
+    if (res != FR_OK) return res;
+    fs->upcase_length = length;
+    reader.fs = fs; reader.cluster = first; reader.offset = 0;
+    while (reader.offset < length) {
+        before = reader;
+        res = upcase_token(&reader, code, &value, &count, &sum);
+        if (res != FR_OK) return res;
+        for (i = 0; i < count; i++) {
+            DWORD current = code + i;
+            WORD mapped = (WORD)(value + i);
+            if (current < 128 && mapped !=
+                (current >= 'a' && current <= 'z' ? current - 32 : current)) return FR_INT_ERR;
+            if (current % 1024 == 0) {
+                FF_UPCASE_POS *position = &fs->upcase_index[current / 1024];
+                position->offset = before.offset;
+                position->cluster = before.cluster;
+                position->code = (WORD)code;
+            }
+        }
+        code += count;
+    }
+    return code == 0x10000 && sum == expected ? FR_OK : FR_INT_ERR;
+}
+
+static FRESULT upcase_char (FATFS *fs, WCHAR code, WCHAR *mapped)
+{
+    FF_UPCASE_POS *position;
+    FF_UPCASE_READER reader;
+    DWORD current, count;
+    WORD value;
+    FRESULT res;
+    if (code < 128) {
+        *mapped = (code >= 'a' && code <= 'z') ? code - 32 : code;
+        return FR_OK;
+    }
+    position = &fs->upcase_index[code / 1024];
+    reader.fs = fs; reader.cluster = position->cluster; reader.offset = position->offset;
+    current = position->code;
+    while (reader.offset < fs->upcase_length) {
+        res = upcase_token(&reader, current, &value, &count, 0);
+        if (res != FR_OK) return res;
+        if ((DWORD)code >= current && (DWORD)code - current < count) {
+            *mapped = (WCHAR)(value + (DWORD)code - current);
+            return FR_OK;
+        }
+        current += count;
+    }
+    return FR_INT_ERR;
+}
+
+static FRESULT xname_sum (FATFS *fs, const WCHAR *name, WORD *hash)
+{
+    WCHAR chr;
+    WORD sum = 0;
+    FRESULT res;
+    while ((chr = *name++) != 0) {
+        res = upcase_char(fs, chr, &chr);
+        if (res != FR_OK) return res;
+        sum = ((sum & 1) ? 0x8000 : 0) + (sum >> 1) + (chr & 255);
+        sum = ((sum & 1) ? 0x8000 : 0) + (sum >> 1) + (chr >> 8);
+    }
+    *hash = sum;
+    return FR_OK;
 }
 
 
@@ -2527,7 +2733,8 @@ static __attribute__((noinline)) FRESULT dir_extend_exfat(DIR* dp)
 
 static void create_xdir (
 	BYTE* dirb,			/* Pointer to the directory entry block buffer */
-	const WCHAR* lfn	/* Pointer to the object name */
+	const WCHAR* lfn,	/* Pointer to the object name */
+    WORD hash
 )
 {
 	UINT i;
@@ -2555,7 +2762,7 @@ static void create_xdir (
 
 	dirb[XDIR_NumName] = nlen;		/* Set name length */
 	dirb[XDIR_NumSec] = 1 + nc1;	/* Set secondary count (C0 + C1s) */
-	st_word(dirb + XDIR_NameHash, xname_sum(lfn));	/* Set name hash */
+	st_word(dirb + XDIR_NameHash, hash);	/* Set name hash */
 }
 
 #endif	/* !FF_FS_READONLY */
@@ -2666,7 +2873,9 @@ static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
 	if (fs->fs_type == FS_EXFAT) {	/* On the exFAT volume */
 		BYTE nc;
 		UINT di, ni;
-		WORD hash = xname_sum(fs->lfnbuf);		/* Hash value of the name to find */
+		WORD hash;
+        res = xname_sum(fs, fs->lfnbuf, &hash);
+        if (res != FR_OK) return res;
 
 		while ((res = DIR_READ_FILE(dp)) == FR_OK) {	/* Read an item */
 #if FF_MAX_LFN < 255
@@ -2675,8 +2884,16 @@ static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
 			if (ld_word(fs->dirbuf + XDIR_NameHash) != hash) continue;	/* Skip comparison if hash mismatched */
 			for (nc = fs->dirbuf[XDIR_NumName], di = SZDIRE * 2, ni = 0; nc; nc--, di += 2, ni++) {	/* Compare the name */
 				if ((di % SZDIRE) == 0) di += 2;
-				if (ff_wtoupper(ld_word(fs->dirbuf + di)) != ff_wtoupper(fs->lfnbuf[ni])) break;
+                WCHAR left, right;
+                res = upcase_char(fs, ld_word(fs->dirbuf + di), &left);
+                if (res != FR_OK) return res;
+                res = upcase_char(fs, fs->lfnbuf[ni], &right);
+                if (res != FR_OK) return res;
+                if (left != right) break;
 			}
+            /* Mapping reads borrow win[]; preserve the directory postcondition. */
+            res = move_window(fs, dp->sect);
+            if (res != FR_OK) return res;
 			if (nc == 0 && !fs->lfnbuf[ni]) break;	/* Name matched? */
 		}
 		return res;
@@ -2746,6 +2963,10 @@ static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too
 
 #if FF_FS_EXFAT
 	if (fs->fs_type == FS_EXFAT) {	/* On the exFAT volume */
+        WORD hash;
+        /* Refuse a failed fold before any directory allocation or growth. */
+        res = xname_sum(fs, fs->lfnbuf, &hash);
+        if (res != FR_OK) return res;
 		n_ent = (len + 14) / 15 + 2;	/* Number of entries to allocate (85+C0+C1s) */
 		res = dir_alloc(dp, n_ent);		/* Allocate directory entries */
 		if (res != FR_OK) return res;
@@ -2753,7 +2974,7 @@ static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too
 
 
 
-		create_xdir(fs->dirbuf, fs->lfnbuf);	/* Create on-memory directory block to be written later */
+		create_xdir(fs->dirbuf, fs->lfnbuf, hash);	/* Create on-memory directory block to be written later */
 		return FR_OK;
 	}
 #endif
@@ -3821,6 +4042,10 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 #if !FF_FS_READONLY
 		fs->last_clst = fs->free_clst = 0xFFFFFFFF;		/* Initialize cluster allocation information */
 #endif
+        {
+            FRESULT mapping = upcase_init(fs);
+            if (mapping != FR_OK) return mapping == FR_INT_ERR ? FR_NO_FILESYSTEM : mapping;
+        }
 		fmt = FS_EXFAT;			/* FAT sub-type */
 	} else
 #endif	/* FF_FS_EXFAT */

@@ -149,6 +149,15 @@ typedef struct {
 } FF_DIR_PENDING;
 #endif
 
+#if FF_FS_EXFAT
+/* Sparse per-volume up-case cursors; offsets are not limited to 32 bits. */
+typedef struct {
+    QWORD offset;
+    DWORD cluster;
+    WORD code;
+} FF_UPCASE_POS;
+#endif
+
 /* Filesystem object structure (FATFS) */
 
 typedef struct {
@@ -169,6 +178,8 @@ typedef struct {
 #endif
 #if FF_FS_EXFAT
 	BYTE*	dirbuf;			/* Directory entry block scratchpad buffer for exFAT */
+    QWORD upcase_length;
+    FF_UPCASE_POS upcase_index[64];
 #endif
 #if !FF_FS_READONLY
 	DWORD	last_clst;		/* Last allocated cluster */

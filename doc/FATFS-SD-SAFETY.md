@@ -851,3 +851,46 @@ diagnostic provider, installed firmware change or device operation is part of
 this port. These host and target-build observations do not qualify physical
 storage/Saturn timing, all code pages, malformed Unicode, arbitrary I/O faults
 or games. Callers must still provide the documented output capacity.
+
+## SSR-163: use each exFAT volume's up-case table
+
+The optional exFAT reader previously used FatFs's global Unicode upper-case
+conversion for file-name hashes, comparisons and creation. A valid volume can
+carry a different mapping. On the public parent `be4b589`, a file named
+`Ɐ.BIN` on a volume mapping `ɐ` to `Ɐ` opens by its stored name but an
+open by `ɐ.BIN` returns `FR_NO_FILE`. The independent raw-media oracle verifies
+both boot regions, allocation, table checksum, name hash and payload on that
+input; the original image is unchanged by the lookup.
+
+The correction adapts paps-g `f3714b9e319a8721325dc80521e43c090228e95a`
+to the public tree. Mount validates the unique active up-case entry, bounded
+cluster chain, allocation, full 65,536-code mapping, mandatory ASCII mappings
+and checksum before publishing the volume. A sparse per-volume index is used
+for name hashes and comparisons; failures propagate before directory entry
+allocation. The shared filesystem window is restored after comparison. The
+standard FAT32-only configuration remains excluded from this optional path.
+The [Microsoft exFAT specification §§7.2, 7.2.2, 7.2.5 and 7.6.4](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification)
+requires the table checksum before use, supports compressed and uncompressed
+tables, and defines NameHash over the volume's up-cased name. The original
+[FatFs configuration documentation](https://elm-chan.org/fsw/ff/doc/config.html)
+identifies exFAT as an optional build feature. ChaN's source notices remain.
+
+Run `python3 -B -m unittest discover -s tests -p test_fatfs_upcase.py -v`.
+Eight corrected methods pass under ASan/UBSan with 1,140 actual compile/API
+processes. They cover complete mapping vectors, read-only and concurrent
+two-volume reads, create/rename/directory/unlink, malformed table refusal and
+each injected mount/lookup/creation read failure. The baseline witness is
+publicly reproducible by exporting `Firm_MCU/FatFS` from `be4b589` into a
+temporary directory, setting `SAROO_FATFS_DIR` to that exported folder and
+`SAROO_UPCASE_BASELINE=1`, then running the same test command. The baseline
+method confirms the valid alias is missing while the stored-name control works.
+The host fixture uses file-backed sectors and pthread grants.
+
+Both standard GNU App builds pass and match the prior checkpoint's flat image
+byte for byte: LTO SHA-256 `e4c577489865f7d6f22ece2f2d1d318b924b4a3497082792b5a771dc9c71e122`,
+non-LTO SHA-256 `22f9e9e5c782d5f7dc65bbe6be39bdb857ed257fab4e0457b64772115b5bdabb`.
+An isolated Cortex-M7 exFAT `ff.c` object grows from 16,453 to 18,509 text
+bytes; its BSS is unchanged. In the selected host configuration, `FATFS`
+grows from 688 to 1,720 bytes per volume. These are object and host-structure
+measurements, not an optional linked firmware admission or complete stack and
+timing qualification. Physical SD, Saturn and game behavior remain untested.
