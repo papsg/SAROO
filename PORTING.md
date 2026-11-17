@@ -3150,3 +3150,16 @@ index, refs, stashes, status and worktrees remain unchanged across all six
 checks. Host/QEMU/target compilation and GNU links do not qualify MDK,
 physical MCU timing, Saturn hardware or games. The private repository, its
 research/evidence branches, other paused work and the Saturn were untouched.
+
+## STM32 device-header fields, SSR-143–148
+
+Active ordered follow-up from public `b978555`. Port each independently
+verified definition directly to main, with its own reproducing compiler
+contract, valid controls, primary RM0433 citation and paps-g attribution.
+No PRs, USB stack, diagnostics, new CDON recipes or device operations. The
+private source and evidence remain read-only.
+
+| Private finding and source | Public checkpoint | Validation and limits |
+| --- | --- | --- |
+| SSR-143, paps-g `db250f11` | [`1c7d2b6`](https://github.com/papsg/SAROO/commit/1c7d2b6), on main | Six Ethernet receive-state definitions now select bits 11:8. The actual public parent and pinned raw provider each fail 84 named comparisons while their receive/transmit extraction, transmit names and register-layout controls pass. Corrected selected header passes both modes; all five preceding selected contracts and Cargo/format checks pass. Both standard 166-vector LTO/non-LTO GNU App images and ELFs match SSR-142 byte for byte at 59,632/63,960 loaded and 50,904 DTCM bytes. [RM0433 Rev. 8, `ETH_DMADSR`, printed pp. 2924–2925, source attribution, rerun and limits](https://github.com/papsg/SAROO/blob/main/doc/STM32-DEVICE-HEADERS.md#ssr-143-put-ethernet-receive-states-in-the-receive-field). No direct normal Ethernet client, MDK build, peripheral execution or Saturn/game qualification. |
+| SSR-144 through SSR-148 | Pending in order | Each must be independently revalidated and published before this series is complete. |
