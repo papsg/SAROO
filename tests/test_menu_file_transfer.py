@@ -18,6 +18,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class MenuFileTransferTests(unittest.TestCase):
+    extra_flags = ('-DSAROO_SAVE_GENERATION',) if os.environ.get('SAROO_TEST_OWNER_TRANSPORT') == '1' else ()
     @classmethod
     def setUpClass(cls):
         source=Path(os.environ.get('SAROO_MENU_FILE_SOURCE',ROOT/'Firm_Saturn/main.c'))
@@ -71,7 +72,10 @@ class MenuFileTransferTests(unittest.TestCase):
         (cls.target/'inputs.json').write_text(json.dumps({n:hashlib.sha256(b).hexdigest() for n,b in inputs.items()},indent=2)+'\n')
         flags=['-O2'] if os.environ.get('SAROO_FILE_PROFILE')=='release' else ['-O1','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         cls.binary=cls.target/'menu-file-transfer'
-        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,'-I',str(cls.target),'-I',str(fatfs),str(cls.target/c_source),str(fatfs/'ff.c'),str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
+        args=[*shlex.split(os.environ.get('CC','cc')),'-std=gnu11','-g','-Wall','-Wextra','-Werror',*flags,
+              *getattr(cls,'extra_flags',()),'-I',str(cls.target),'-I',str(fatfs),
+              '-I',str(ROOT/'Firm_Saturn'),str(cls.target/c_source),str(fatfs/'ff.c'),
+              str(fatfs/'ffunicode.c'),'-o',str(cls.binary)]
         result=subprocess.run(args,capture_output=True,timeout=60);(cls.target/'compile.log').write_bytes(result.stdout+result.stderr);(cls.target/'command.json').write_text(json.dumps(args,indent=2)+'\n');result.check_returncode()
 
     @classmethod
@@ -111,6 +115,11 @@ class MenuFileTransferTests(unittest.TestCase):
 
     def test_busy_command_preserves_existing_file_request_and_payload(self):
         self.run_cases((40, 41))
+
+    def test_foreign_owner_refuses_file_transfer_without_touching_request(self):
+        if not self.extra_flags:
+            self.skipTest('The command gate is staged behind SAROO_SAVE_GENERATION')
+        self.run_cases((42, 43), tags=(32,))
 
 
 if __name__=='__main__':unittest.main()

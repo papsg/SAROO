@@ -443,3 +443,61 @@ code/data and 9,508 BSS bytes with 17,140 body bytes free; its padded image is
 The changed bytes reflect the staging address, not save-generation activation.
 The host and instruction models do not establish physical cartridge mapping,
 live game behavior, electrical reset or SD durability.
+
+## Shared transport caller ownership (staged, not enabled)
+
+This checkpoint adapts **paps-g**'s private command-gate integration
+`e4fe5cff` (later refined in `bc592d82` and `607267b9`) to the current public
+menu transport. When `SAROO_SAVE_GENERATION` is defined, public file and primary
+archive entry points acquire the existing atomic lease. Their explicit
+`*_owned` counterparts let one journal transaction retain that lease across its
+file and archive calls. Invalid reply tags or impossible transfer counts poison
+the lease; a caller cannot report success after that fault. The diagnostic
+formatter and byte comparison have owned entry points, so a backup mismatch
+can log without trying to reacquire its own lease. The alternative build also
+tags MCU messages with the latched menu completion bit.
+
+The unmodified public transport has no cross-CPU admission lock: an idle
+`SS_CMD` register alone cannot exclude another Saturn CPU while it prepares a
+request. The host tests model that foreign owner and show the staged wrappers
+refuse reads, writes and archive calls before invoking their internal endpoint
+or changing request memory. They also prove normal lease release, nested public
+call refusal, owned mismatch logging and sticky quarantine. The actual menu/MCU
+file transfer fixture passes all 13 methods under ASan/UBSan and O2 with the
+staged flag, including reset-cleared/malformed replies, short counts, full 2 MiB
+loads and foreign-owner refusal. The same ordinary fixture passes 13 methods
+with one staged-only method skipped. The three command-gate core methods and
+source-extracted public-wrapper method pass; the latter passes both profiles.
+
+Reproduce the host checks with:
+
+```sh
+SAROO_TEST_OWNER_TRANSPORT=1 PYTHONPATH=tests python3 -B -m unittest \
+  test_menu_file_transfer -q
+SAROO_TEST_OWNER_TRANSPORT=1 SAROO_FILE_PROFILE=release PYTHONPATH=tests \
+  python3 -B -m unittest test_menu_file_transfer -q
+PYTHONPATH=tests python3 -B -m unittest test_command_transport_binding \
+  test_command_gate_core -q
+SAROO_COMMAND_TRANSPORT_PROFILE=release PYTHONPATH=tests python3 -B \
+  -m unittest test_command_transport_binding -q
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-owner-stage-default-final
+```
+
+The ordinary menu build is byte-identical to the preceding ROM-separation
+checkpoint: 88,040 code/data, 9,508 BSS and 17,140 body-margin bytes, with
+image SHA-256 `d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+An isolated copy of the same menu sources with only
+`-DSAROO_SAVE_GENERATION` added to its Makefile links at 88,968 code/data,
+9,512 BSS and 16,208 body-margin bytes. This is a **candidate transport cost**,
+not the final journal-enabled cost. No new workspace buffer or save capacity is
+introduced here. The [Hitachi SH7604 Hardware Manual](https://antime.kapsi.fi/sega/files/sh7604.pdf)
+§7.10 (printed p. 203), §8.4.4 (p. 221) and §8.5.3 (p. 228) describes the
+TAS, cache and bus operations used by the existing gate.
+
+The gate remains disabled in the standard menu because its backup and menu
+callers are not all linked yet. The current asynchronous folder browser is an
+additional menu-command producer that must join the same ownership scheme.
+Host TAS and file-bus models, plus the alternative SuperH link, do not qualify
+physical dual-CPU arbitration, SRAM aliases, SD durability, Saturn startup or
+game execution. The installed firmware is unchanged.

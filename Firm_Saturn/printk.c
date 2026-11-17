@@ -235,10 +235,51 @@ int vsnprintf(char *buf, int size, char *fmt, va_list args)
 
 void (*printk_putc)(int ch) = NULL;
 void (*printk_puts)(char *) = NULL;
+#ifdef SAROO_SAVE_GENERATION
+int stm32_puts(char *str);
+int stm32_puts_owned(char *str);
+#else
 void stm32_puts(char *str);
+#endif
 int to_stm32 = 0;
 
 
+#ifdef SAROO_SAVE_GENERATION
+static int vprintk_owned(char *fmt, va_list args, int (*emit)(char *))
+{
+    char printk_buf[128];
+    int printed_len = vsnprintf(printk_buf, sizeof(printk_buf), fmt, args);
+    if (!printed_len) return 0;
+    if (to_stm32) {
+        int result = emit(printk_buf);
+        if (result < 0) return result;
+    } else if (printk_puts) {
+        printk_puts(printk_buf);
+    } else if (printk_putc) {
+        for (char *p = printk_buf; *p; ++p) printk_putc(*p);
+    }
+    return printed_len;
+}
+
+int printk(char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int result = vprintk_owned(fmt, args, stm32_puts);
+    va_end(args);
+    return result;
+}
+
+/* Used only while the caller retains the shared command lease. */
+int command_printk(char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int result = vprintk_owned(fmt, args, stm32_puts_owned);
+    va_end(args);
+    return result;
+}
+#else
 int printk(char *fmt, ...)
 {
 	va_list args;
@@ -264,6 +305,7 @@ int printk(char *fmt, ...)
 
 	return printed_len;
 }
+#endif
 
 
 int snprintf(char *buf, int size, char *fmt, ...)

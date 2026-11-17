@@ -9,6 +9,9 @@
  */
 
 #include "main.h"
+#ifdef SAROO_SAVE_GENERATION
+#include "command_gate.h"
+#endif
 #include "smpc.h"
 #include "vdp2.h"
 
@@ -380,21 +383,50 @@ int menu_command_wait(void)
     return 0;
 }
 
+#ifdef SAROO_SAVE_GENERATION
+/* Callers already holding the command lease use this entry directly. */
+int stm32_puts_owned(char *str)
+{
+    if (command_faulted()) return -2;
+#else
 void stm32_puts(char *str)
 {
 	if (menu_command_wait()) return;
+#endif
 	u32 stm32_base = TMPBUFF_ADDR;
 	int len;
 
 	len = strlen(str);
+#ifdef SAROO_SAVE_GENERATION
+    if (len >= 0xf0) return -19;
+#endif
 	LE32W((void*)(stm32_base+0), len);
 
 	memcpy((void*)stm32_base+0x10, str, len+1);
 
 	__asm__ volatile ("" ::: "memory");
+#ifdef SAROO_SAVE_GENERATION
+    SS_ARG = 0;
+    SS_CMD = SSCMD_PRINTF | menu_ack;
+#else
 	SS_CMD = 0x0001;
+#endif
 	while(SS_CMD);
+#ifdef SAROO_SAVE_GENERATION
+    __asm__ volatile ("" ::: "memory");
+    if (menu_ack && command_reply(menu_ack, 0, 0)) return -2;
+    return len;
+#endif
 }
+
+#ifdef SAROO_SAVE_GENERATION
+int stm32_puts(char *str)
+{
+    if (!command_enter()) return -16;
+    int result = stm32_puts_owned(str);
+    return command_leave() ? result : -2;
+}
+#endif
 
 
 /**********************************************************/
@@ -591,10 +623,20 @@ static void file_cache_purge(u32 address, u32 size, int mirrored)
     __asm__ volatile ("" ::: "memory");
 }
 
+#ifdef SAROO_SAVE_GENERATION
+#include "command_gate.c"
+#define OWNED_TRANSPORT(name) name##_owned
+#else
+#define OWNED_TRANSPORT(name) name
+#endif
+
 /* The low mode bit is direction. Modes 0/1 are named files, and 2/3
  * and 4/5 address the two primary owners with a direct FPGA buffer. */
 static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (command_faulted()) return -2;
+#endif
     int archive = mode >> 1, writing = mode & 1;
     unsigned length = 0;
     if (!archive) {
@@ -631,6 +673,16 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
     while (SS_CMD);
     /* Consume shared response/data only after external completion. */
     __asm__ volatile ("" ::: "memory");
+#ifdef SAROO_SAVE_GENERATION
+    int result = command_reply(ack, -19, 0);
+    if (!result) {
+        u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
+        if (count > size || (archive && count != size)) {
+            command_fault();
+            result = -19;
+        } else result = (int)count;
+    }
+#else
     int result = (signed short)SS_ARG;
     u32 count = LE32((void*)(TMPBUFF_ADDR+0x04));
     if (result >= 0) {
@@ -638,6 +690,7 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
         if (result != ack) result = -1;
         else result = (count > size || (archive && count != size)) ? -19 : (int)count;
     }
+#endif
     if (!writing) {
         if (direct) {
             u32 affected = result < 0 ? size : (u32)result;
@@ -653,7 +706,7 @@ static int file_command(char *name, u32 offset, u32 size, void *buf, int mode)
 /* Positive lengths read, negative lengths write, and (0, NULL, 0) syncs.
  * The MCU admits existing file extents. The caller owns the buffer and
  * determines when it may access the archive. */
-int archive_command(unsigned device, u32 offset, void *buf, int length)
+int OWNED_TRANSPORT(archive_command)(unsigned device, u32 offset, void *buf, int length)
 {
     u32 size = length < 0 ? 0u - (u32)length : (u32)length;
     if (!archive_ack) return -12; /* FR_NOT_ENABLED */
@@ -665,7 +718,7 @@ int archive_command(unsigned device, u32 offset, void *buf, int length)
 
 /* Find an existing slot using the primary owner's directory. The caller
  * supplies the read window, which may also contain the input key. */
-int archive_find_slot(const u8 *key, void *workspace, u32 capacity)
+int OWNED_TRANSPORT(archive_find_slot)(const u8 *key, void *workspace, u32 capacity)
 {
     u8 wanted[16];
     if (!key || !key[0] || !workspace || capacity < 512 || capacity > 65536 ||
@@ -675,10 +728,16 @@ int archive_find_slot(const u8 *key, void *workspace, u32 capacity)
     for (u32 offset = 0; offset < 65536;) {
         u32 size = 65536 - offset;
         if (size > capacity) size = capacity;
-        int result = archive_command(0, offset, workspace, size);
+        int result = OWNED_TRANSPORT(archive_command)(0, offset, workspace, size);
         if (result < 0) return result;
         u8 *entry = workspace;
-        if (!offset && memcmp(entry, "Saroo Save File", 16)) return -2;
+        if (!offset &&
+#ifdef SAROO_SAVE_GENERATION
+            command_memcmp(entry, "Saroo Save File", 16)
+#else
+            memcmp(entry, "Saroo Save File", 16)
+#endif
+           ) return -2;
         for (u32 pos = offset ? 0 : 16; pos < size; pos += 16) {
             if (entry[pos] && !strncmp((char *)entry + pos, (char *)wanted, 16)) {
                 if (found) return -2;
@@ -690,7 +749,7 @@ int archive_find_slot(const u8 *key, void *workspace, u32 capacity)
     return found ? (int)(found << 12) : -4; /* FR_NO_FILE */
 }
 
-int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity)
+int OWNED_TRANSPORT(read_file_bounded)(char *name, int offset, int size, void *buf, u32 capacity)
 {
     if (offset < 0 || size < 0 || (u32)size > capacity || (!size && !capacity)) return -19;
     u32 requested = size ? (u32)size : capacity;
@@ -712,11 +771,44 @@ int read_file(char *name, int offset, int size, void *buf)
 }
 
 /* Preserve the four-argument homebrew ABI at 0x02000f0c. */
-int write_file(char *name, int offset, int size, void *buf)
+int OWNED_TRANSPORT(write_file)(char *name, int offset, int size, void *buf)
 {
     if (size < 0) return -19;
     return file_command(name, offset, size, buf, 1);
 }
+
+#ifdef SAROO_SAVE_GENERATION
+/* Public transport entry points take their own lease; a save transaction
+ * keeps one lease across all of its internal *_owned callbacks. */
+int archive_command(unsigned device, u32 offset, void *buf, int length)
+{
+    if (!command_enter()) return -16;
+    int result = archive_command_owned(device, offset, buf, length);
+    return command_leave() ? result : -2;
+}
+
+int archive_find_slot(const u8 *key, void *workspace, u32 capacity)
+{
+    if (!command_enter()) return -16;
+    int result = archive_find_slot_owned(key, workspace, capacity);
+    return command_leave() ? result : -2;
+}
+
+int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity)
+{
+    if (!command_enter()) return -16;
+    int result = read_file_bounded_owned(name, offset, size, buf, capacity);
+    return command_leave() ? result : -2;
+}
+
+int write_file(char *name, int offset, int size, void *buf)
+{
+    if (!command_enter()) return -16;
+    int result = write_file_owned(name, offset, size, buf);
+    return command_leave() ? result : -2;
+}
+#endif
+#undef OWNED_TRANSPORT
 
 
 /**********************************************************/

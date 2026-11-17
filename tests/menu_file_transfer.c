@@ -88,6 +88,20 @@ static volatile u8 ccr_dummy __attribute__((unused));
 #define cache_control_read(address) ((void)(address), 0u)
 static int command_admission;
 #define menu_command_wait() command_admission
+#ifdef SAROO_SAVE_GENERATION
+#define COMMAND_GATE_ADDRESS (&command_lock)
+#define COMMAND_READY_ADDRESS (&command_ready)
+#define COMMAND_GATE_LOAD(lock) __atomic_load_n((lock), __ATOMIC_ACQUIRE)
+#define COMMAND_GATE_RELEASE(lock) __atomic_store_n((lock), 0, __ATOMIC_RELEASE)
+#define COMMAND_GATE_POISON(lock) ((void)__atomic_fetch_or((lock), 1, __ATOMIC_RELEASE))
+#define COMMAND_GATE_READY(lock) __atomic_store_n((lock), 1, __ATOMIC_RELEASE)
+static int command_try_lock(volatile u8 *lock)
+{
+    return __atomic_fetch_or(lock, 0x80, __ATOMIC_ACQUIRE) == 0;
+}
+static int command_memcmp(void *a, void *b, int n) { return memcmp(a, b, n); }
+int read_file_bounded(char *name, int offset, int size, void *buf, u32 capacity);
+#endif
 #include "menu-file.inc"
 
 static FILE *disk;
@@ -112,7 +126,7 @@ DRESULT disk_ioctl(BYTE drive,BYTE cmd,void *buffer)
 int main(int argc,char **argv)
 {
     assert(argc==4);
-    int test=atoi(argv[2]);assert(test>=0 && test<42);
+    int test=atoi(argv[2]);assert(test>=0 && test<44);
     file_ack=atoi(argv[3]);assert(!file_ack || file_ack==SSCMD_SAVE_ACK);
     /* The old table calls keep four arguments; new capacity is opt-in. */
     int (*legacy_read)(char*,int,int,void*)=read_file;
@@ -163,17 +177,31 @@ int main(int argc,char **argv)
         if (test==34 || test==35 || test==39) { writing=1; offset=-1; size=0; }
         if (test>=38) peer_fault=INVALID_POSITIVE_REPLY;
     }
-    if (test >= 40) {
+    if (test >= 40 && test <= 41) {
         command_admission = -FR_TIMEOUT;
         peer_fault = 0;
         writing = test == 41;
         expected = -FR_TIMEOUT;
         expected_commands = 0;
     }
+#ifdef SAROO_SAVE_GENERATION
+    if (test >= 42) {
+        writing = test == 43;
+        expected = -16;
+        expected_commands = 0;
+    }
+#endif
     if(!HAS_BOUNDED_READER) {
         if(test==1 || test==3 || test==26) expected_commands=1;
         if(test==13) { expected=128; expected_commands=1; peer_fault=0; }
     }
+#ifdef SAROO_SAVE_GENERATION
+    /* Once ownership is enabled, an impossible completion/count quarantines
+     * the lease. The older transport only returned a local request error. */
+    int protocol_fault = test==12 || test==28 || test==29 ||
+                         (test>=30 && test<=39);
+    if (protocol_fault) expected = -2;
+#endif
     /* Generate larger valid fixtures in fixed chunks; no source/game images needed. */
     u8 block[4096];for(unsigned i=0;i<sizeof block;i++)block[i]=(i*7+3)%251;
     FIL file;UINT count;assert(f_open(&file,name,FA_CREATE_ALWAYS|FA_WRITE)==FR_OK);
@@ -195,11 +223,17 @@ int main(int argc,char **argv)
     u8 request[272];
     memset((void*)TMPBUFF_ADDR,0x55,sizeof(request));
     memcpy(request,(void*)TMPBUFF_ADDR,sizeof(request));
+#ifdef SAROO_SAVE_GENERATION
+    if (test >= 42) command_lock = 0x80; /* Another CPU owns the request. */
+#endif
     int result=writing ? legacy_write(name,offset,size,buffer) : legacy ? legacy_read(name,offset,size,buffer) :
         read_file_bounded(test==11?NULL:name,offset,size,buffer,capacity);
     if (result!=expected)
         fprintf(stderr,"case %d returned %d, expected %d\n",test,result,expected);
     assert(result==expected && commands==expected_commands && !mcu_cmd);
+#ifdef SAROO_SAVE_GENERATION
+    assert(command_lock == (protocol_fault ? 0x81 : test >= 42 ? 0x80 : 0));
+#endif
     /* The legacy unused request word is not a new capacity/protocol field. */
     assert(*(u32*)(TMPBUFF_ADDR+0x0c)==0x55555555u);
     if(!commands)assert(!memcmp(request,(void*)TMPBUFF_ADDR,sizeof(request)));

@@ -32,6 +32,32 @@ void *memcpy(void *to, void *from, int n)
 }
 #endif
 
+#ifdef SAROO_SAVE_GENERATION
+static int compare_memory(void *dst, void *src, int n,
+                          int (*emit)(char *, ...))
+{
+    char *s = src, *d = dst;
+    for (int i = 0; i < n; ++i, ++s, ++d) {
+        if (*s != *d) {
+            emit("memcmp mismatch at %08x:\n", i);
+            emit("    dst_%08x=%02x\n", d, *d);
+            emit("    src_%08x=%02x\n", s, *s);
+            return *d - *s;
+        }
+    }
+    return 0;
+}
+
+int memcmp(void *dst, void *src, int n)
+{
+    return compare_memory(dst, src, n, printk);
+}
+
+int command_memcmp(void *dst, void *src, int n)
+{
+    return compare_memory(dst, src, n, command_printk);
+}
+#else
 int memcmp(void *dst, void *src, int n)
 {
 	register int i;
@@ -51,6 +77,7 @@ int memcmp(void *dst, void *src, int n)
 
 	return 0;
 }
+#endif
 
 
 

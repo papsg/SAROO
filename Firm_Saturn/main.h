@@ -364,6 +364,10 @@ u32 strtoul(char *str, char **endptr, int requestedbase, int *ret);
 void *memset(void *s, int v, int n);
 void *memcpy(void *to, void *from, int n);
 int memcmp(void *dst, void *src, int n);
+#ifdef SAROO_SAVE_GENERATION
+int command_memcmp(void *dst, void *src, int n);
+int command_printk(char *fmt, ...);
+#endif
 
 int tiny_xmodem_recv(u8 *dest);
 
@@ -509,6 +513,12 @@ void gif_timer(void);
 /* Primary save archive transport used by the menu. */
 int archive_command(unsigned device, u32 offset, void *buf, int length);
 int archive_find_slot(const u8 *key, void *workspace, u32 capacity);
+#ifdef SAROO_SAVE_GENERATION
+int archive_command_owned(unsigned device, u32 offset, void *buf, int length);
+int archive_find_slot_owned(const u8 *key, void *workspace, u32 capacity);
+int read_file_bounded_owned(char *name, int offset, int size, void *buf, u32 capacity);
+int write_file_owned(char *name, int offset, int size, void *buf);
+#endif
 
 #endif
 
