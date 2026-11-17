@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc|sai --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -596,6 +596,9 @@ layout are controls; no MCU JPEG codec operation is executed.
 For `ltdc`, it checks three layer-window coordinate widths and clipping while
 retaining the manual's bounded examples. Horizontal start, sixteen-bit current
 position status and both layer layouts are controls; no scanout is executed.
+For `sai`, it checks that a reserved FIFO-request clear command is absent while
+the six supported clear commands, FIFO-request status/interrupt bit and block
+layout remain available. No audio transfer is executed.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).

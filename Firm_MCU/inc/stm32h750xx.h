@@ -17713,9 +17713,7 @@ typedef struct
 #define SAI_xCLRFR_CWCKCFG_Pos     (2U)
 #define SAI_xCLRFR_CWCKCFG_Msk     (0x1UL << SAI_xCLRFR_CWCKCFG_Pos)           /*!< 0x00000004 */
 #define SAI_xCLRFR_CWCKCFG         SAI_xCLRFR_CWCKCFG_Msk                      /*!<Clear Wrong Clock Configuration                      */
-#define SAI_xCLRFR_CFREQ_Pos       (3U)
-#define SAI_xCLRFR_CFREQ_Msk       (0x1UL << SAI_xCLRFR_CFREQ_Pos)             /*!< 0x00000008 */
-#define SAI_xCLRFR_CFREQ           SAI_xCLRFR_CFREQ_Msk                        /*!<Clear FIFO request                                   */
+/* FREQ is FIFO-condition-dependent; CLRFR bit 3 is reserved (RM0433). */
 #define SAI_xCLRFR_CCNRDY_Pos      (4U)
 #define SAI_xCLRFR_CCNRDY_Msk      (0x1UL << SAI_xCLRFR_CCNRDY_Pos)            /*!< 0x00000010 */
 #define SAI_xCLRFR_CCNRDY          SAI_xCLRFR_CCNRDY_Msk                       /*!<Clear Codec not ready                                */

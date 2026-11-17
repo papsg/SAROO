@@ -390,3 +390,37 @@ and ELFs match SSR-147 byte for byte: 59,632/63,960 loaded bytes for
 LTO/non-LTO and 50,904 static DTCM bytes. No direct LTDC window-register
 consumer was found. These expressions do not verify window order, display
 timing, rendered pixels, MDK compilation or physical Saturn/game behavior.
+
+## SSR-149: remove an unsupported SAI FIFO clear command
+
+[ST RM0433 Rev. 8, §§51.6.12–51.6.15, printed pp. 2293–2298](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines FIFO request (`FREQ`) as read-only status at bit 3 and reserves bit 3
+in both SAI clear registers. Six supported clear commands occupy bits 0, 1, 2,
+4, 5 and 6. The selected DFP 2.3.1 H750 header nevertheless advertised a
+`CFREQ` clear command at the reserved bit. Its use is unsupported by that
+manual; the hardware effect of such a write has not been measured.
+
+This directly ports paps-g `5b37a2f0` / SSR-149 after SSR-148. Only the three
+unsupported `SAI_xCLRFR_CFREQ` definitions are removed, with a short reserved
+bit comment. The six valid clear commands, FIFO-request status and interrupt
+enable, register layout, ST notice and BSD license remain. The pinned raw
+source is unchanged and identified in [provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+The selected H750 SHA-256 is
+`bd83245dd5678a400566af72d68f5893418760326add5955275be8c741aaffa4`.
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail three target-compiler
+assertions because they expose the unsupported position, mask and alias. Both
+pass controls for the six valid commands, read-only status, interrupt enable
+and block layout. The corrected selected provider passes contract and controls;
+the raw provider retains the three failures. All eleven earlier selected
+header contracts, 21 Rust unit tests, two RTL checks and formatting pass.
+Both standard 166-vector GNU App builds pass; their LTO/non-LTO flat images,
+ELFs and resources match SSR-148 byte for byte at 59,632/63,960 loaded bytes
+and 50,904 static DTCM bytes. Run
+[`stm32-check --case sai`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No current normal SAI clear-register
+caller was found; SAROO's existing CD audio source uses SPI2/I2S. This is an
+SDK header correction, not a demonstrated audio repair. Compiler expressions
+do not exercise an SAI register, FIFO timing, MDK compilation, physical Saturn
+or game behavior.
