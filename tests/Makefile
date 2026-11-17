@@ -138,6 +138,7 @@ check-fatfs:
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_growth.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_upcase.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_boot_checksum.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_fatfs_valid_data.py -v
 	$(PYTHON) -B -m unittest discover -s . -p test_unicode_ranges.py -v
 
 .PHONY: check-menu-binary

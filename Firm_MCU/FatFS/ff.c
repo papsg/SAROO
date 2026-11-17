@@ -4351,6 +4351,14 @@ __attribute__((weak)) FRESULT saroo_save_file_access (const DIR* entry)
 }
 #endif
 
+#if FF_FS_EXFAT && !FF_FS_TINY
+static int file_zero_sector (const FIL *fp, const FATFS *fs)
+{
+    return fs->fs_type == FS_EXFAT &&
+           fp->fptr - fp->fptr % SS(fs) >= fp->valid_size;
+}
+#endif
+
 FRESULT f_open (
 	FIL* fp,			/* Pointer to the blank file object */
 	const TCHAR* path,	/* Pointer to the file name */
@@ -4380,6 +4388,13 @@ FRESULT f_open (
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
 		res = follow_path(&dj, path);	/* Follow the file path */
+#if FF_FS_EXFAT
+        if (res == FR_OK && fs->fs_type == FS_EXFAT &&
+            !(dj.fn[NSFLAG] & NS_NONAME) && !(dj.obj.attr & AM_DIR) &&
+            ld_qword(fs->dirbuf + XDIR_ValidFileSize) > ld_qword(fs->dirbuf + XDIR_FileSize)) {
+            res = FR_INT_ERR;
+        }
+#endif
 #if !FF_FS_READONLY	/* Read/Write configuration */
 		if (res == FR_OK) {
 			if (dj.fn[NSFLAG] & NS_NONAME) {	/* Origin directory itself? */
@@ -4492,11 +4507,15 @@ FRESULT f_open (
 				fp->obj.c_size = ((DWORD)dj.obj.objsize & 0xFFFFFF00) | dj.obj.stat;
 				fp->obj.c_ofs = dj.blk_ofs;
 				init_alloc_info(fs, &fp->obj);
+                fp->valid_size = ld_qword(fs->dirbuf + XDIR_ValidFileSize);
 			} else
 #endif
 			{
 				fp->obj.sclust = ld_clust(fs, dj.dir);					/* Get object allocation info */
 				fp->obj.objsize = ld_dword(dj.dir + DIR_FileSize);
+#if FF_FS_EXFAT
+                fp->valid_size = fp->obj.objsize;
+#endif
 			}
 #if FF_USE_FASTSEEK
 			fp->cltbl = 0;		/* Disable fast seek mode */
@@ -4528,6 +4547,10 @@ FRESULT f_open (
 					} else {
 						fp->sect = sc + (DWORD)(ofs / SS(fs));
 #if !FF_FS_TINY
+#if FF_FS_EXFAT
+                        if (file_zero_sector(fp, fs)) memset(fp->buf, 0, SS(fs));
+                        else
+#endif
 						if (disk_read(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) res = FR_DISK_ERR;
 #endif
 					}
@@ -4600,7 +4623,20 @@ FRESULT f_read (
 			sect = clst2sect(fs, fp->clust);	/* Get current sector */
 			if (sect == 0) ABORT(fs, FR_INT_ERR);
 			sect += csect;
-			cc = btr / SS(fs);					/* When remaining bytes >= sector size, */
+#if FF_FS_EXFAT
+            if (fs->fs_type == FS_EXFAT && fp->fptr >= fp->valid_size) {
+                rcnt = (fs->csize - csect) * SS(fs);
+                if (rcnt > btr) rcnt = btr;
+                memset(rbuff, 0, rcnt);
+                continue;
+            }
+#endif
+			cc = btr / SS(fs);
+#if FF_FS_EXFAT
+            if (fs->fs_type == FS_EXFAT && (FSIZE_t)btr > fp->valid_size - fp->fptr) {
+                cc = (UINT)((fp->valid_size - fp->fptr) / SS(fs));
+            }
+#endif					/* When remaining bytes >= sector size, */
 			if (cc > 0) {						/* Read maximum contiguous sectors directly */
 				if (csect + cc > fs->csize) {	/* Clip at cluster boundary */
 					cc = fs->csize - csect;
@@ -4634,7 +4670,16 @@ FRESULT f_read (
 			fp->sect = sect;
 		}
 		rcnt = SS(fs) - (UINT)fp->fptr % SS(fs);	/* Number of bytes remains in the sector */
-		if (rcnt > btr) rcnt = btr;					/* Clip it by btr if needed */
+		if (rcnt > btr) rcnt = btr;
+#if FF_FS_EXFAT
+        if (fs->fs_type == FS_EXFAT) {
+            if (fp->fptr >= fp->valid_size) {
+                memset(rbuff, 0, rcnt);
+                continue;
+            }
+            if ((FSIZE_t)rcnt > fp->valid_size - fp->fptr) rcnt = (UINT)(fp->valid_size - fp->fptr);
+        }
+#endif					/* Clip it by btr if needed */
 #if FF_FS_TINY
 		if (move_window(fs, fp->sect) != FR_OK) ABORT(fs, FR_DISK_ERR);	/* Move sector window */
 		memcpy(rbuff, fs->win + fp->fptr % SS(fs), rcnt);	/* Extract partial sector */
@@ -4654,6 +4699,17 @@ FRESULT f_read (
 /* Write File                                                            */
 /*-----------------------------------------------------------------------*/
 
+#if FF_FS_EXFAT
+static FRESULT seek_file_owned (FIL *fp, FSIZE_t ofs, FATFS *fs);
+#define WRITE_ABORT(fs, result) { \
+    if (padding) { fp->fptr = padding_target; fp->clust = padding_cluster; } \
+    ABORT(fs, result); \
+}
+#define WRITE_ACCEPT_VALID , fp->valid_size = (fs->fs_type == FS_EXFAT && fp->fptr > fp->valid_size) ? fp->fptr : fp->valid_size
+#else
+#define WRITE_ABORT(fs, result) ABORT(fs, result)
+#define WRITE_ACCEPT_VALID
+#endif
 FRESULT f_write (
 	FIL* fp,			/* Open file to be written */
 	const void* buff,	/* Data to be written */
@@ -4667,6 +4723,14 @@ FRESULT f_write (
 	LBA_t sect;
 	UINT wcnt, cc, csect;
 	const BYTE *wbuff = (const BYTE*)buff;
+#if FF_FS_EXFAT
+    FSIZE_t padding_target = 0;
+    DWORD padding_cluster = 0;
+    UINT request = btw, padding_count;
+    UINT *user_count = bw;
+    BYTE padding = 0;
+    static const BYTE zero_data[512] = {0};
+#endif
 
 
 	*bw = 0;	/* Clear write byte counter */
@@ -4682,14 +4746,35 @@ FRESULT f_write (
 	/* A partial write can abort after changing data, allocation or size.
 	 * Keep close/sync responsible for those changes on every exit. */
 	fp->flag |= FA_MODIFIED;
+#if FF_FS_EXFAT
+    if (btw && fs->fs_type == FS_EXFAT && fp->fptr > fp->valid_size) {
+        BYTE writing = fp->flag & FA_WRITE;
+        padding = 1; padding_target = fp->fptr; padding_cluster = fp->clust;
+        fp->flag &= (BYTE)~FA_WRITE; /* Existing allocation only. */
+        res = seek_file_owned(fp, fp->valid_size, fs);
+        fp->flag |= writing;
+        if (res != FR_OK) WRITE_ABORT(fs, res);
+        if (fp->fptr != fp->valid_size) WRITE_ABORT(fs, FR_INT_ERR);
+        bw = &padding_count;
+    }
+write_next:
+    if (padding) {
+        padding_count = 0;
+        btw = padding_target - fp->fptr > sizeof zero_data ? sizeof zero_data : (UINT)(padding_target - fp->fptr);
+        wbuff = zero_data;
+    }
+#endif
 
-	for ( ; btw > 0; btw -= wcnt, *bw += wcnt, wbuff += wcnt, fp->fptr += wcnt, fp->obj.objsize = (fp->fptr > fp->obj.objsize) ? fp->fptr : fp->obj.objsize) {	/* Repeat until all data written */
+	for ( ; btw > 0; btw -= wcnt, *bw += wcnt, wbuff += wcnt, fp->fptr += wcnt, fp->obj.objsize = (fp->fptr > fp->obj.objsize) ? fp->fptr : fp->obj.objsize WRITE_ACCEPT_VALID) {	/* Repeat until all data written */
 		if (fp->fptr % SS(fs) == 0) {		/* On the sector boundary? */
 			csect = (UINT)(fp->fptr / SS(fs)) & (fs->csize - 1);	/* Sector offset in the cluster */
 			if (csect == 0) {				/* On the cluster boundary? */
 				if (fp->fptr == 0) {		/* On the top of the file? */
 					clst = fp->obj.sclust;	/* Follow from the origin */
 					if (clst == 0) {		/* If no cluster is allocated, */
+#if FF_FS_EXFAT
+                        if (padding) WRITE_ABORT(fs, FR_INT_ERR);
+#endif
 						clst = create_chain(&fp->obj, 0, 0);	/* create a new cluster chain */
 					}
 				} else {					/* On the middle or end of the file */
@@ -4699,32 +4784,40 @@ FRESULT f_write (
 					} else
 #endif
 					{
+#if FF_FS_EXFAT
+                        if (padding) {
+                            clst = get_fat(&fp->obj, fp->clust);
+                            if (clst < 2 || clst >= fs->n_fatent) {
+                                WRITE_ABORT(fs, clst == 0xFFFFFFFF ? FR_DISK_ERR : FR_INT_ERR);
+                            }
+                        } else
+#endif
 						clst = create_chain(&fp->obj, fp->clust, 0);	/* Follow or stretch cluster chain on the FAT */
 					}
 				}
 				if (clst == 0) break;		/* Could not allocate a new cluster (disk full) */
-				if (clst == 1) ABORT(fs, FR_INT_ERR);
-				if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
+				if (clst == 1) WRITE_ABORT(fs, FR_INT_ERR);
+				if (clst == 0xFFFFFFFF) WRITE_ABORT(fs, FR_DISK_ERR);
 				fp->clust = clst;			/* Update current cluster */
 				if (fp->obj.sclust == 0) fp->obj.sclust = clst;	/* Set start cluster if the first write */
 			}
 #if FF_FS_TINY
-			if (fs->winsect == fp->sect && sync_window(fs) != FR_OK) ABORT(fs, FR_DISK_ERR);	/* Write-back sector cache */
+			if (fs->winsect == fp->sect && sync_window(fs) != FR_OK) WRITE_ABORT(fs, FR_DISK_ERR);	/* Write-back sector cache */
 #else
 			if (fp->flag & FA_DIRTY) {		/* Write-back sector cache */
-				if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);
+				if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) WRITE_ABORT(fs, FR_DISK_ERR);
 				fp->flag &= (BYTE)~FA_DIRTY;
 			}
 #endif
 			sect = clst2sect(fs, fp->clust);	/* Get current sector */
-			if (sect == 0) ABORT(fs, FR_INT_ERR);
+			if (sect == 0) WRITE_ABORT(fs, FR_INT_ERR);
 			sect += csect;
 			cc = btw / SS(fs);				/* When remaining bytes >= sector size, */
 			if (cc > 0) {					/* Write maximum contiguous sectors directly */
 				if (csect + cc > fs->csize) {	/* Clip at cluster boundary */
 					cc = fs->csize - csect;
 				}
-				if (disk_write(fs->pdrv, wbuff, sect, cc) != RES_OK) ABORT(fs, FR_DISK_ERR);
+				if (disk_write(fs->pdrv, wbuff, sect, cc) != RES_OK) WRITE_ABORT(fs, FR_DISK_ERR);
 #if FF_FS_MINIMIZE <= 2
 #if FF_FS_TINY
 				if (fs->winsect - sect < cc) {	/* Refill sector cache if it gets invalidated by the direct write */
@@ -4742,15 +4835,28 @@ FRESULT f_write (
 				continue;
 			}
 #if FF_FS_TINY
+#if FF_FS_EXFAT
+            if (fs->fs_type == FS_EXFAT && fp->fptr >= fp->valid_size) {
+                if (fs->winsect != sect) {
+                    if (sync_window(fs) != FR_OK) WRITE_ABORT(fs, FR_DISK_ERR);
+                    memset(fs->win, 0, SS(fs));
+                    fs->winsect = sect;
+                }
+            } else
+#endif
 			if (fp->fptr >= fp->obj.objsize) {	/* Avoid silly cache filling on the growing edge */
-				if (sync_window(fs) != FR_OK) ABORT(fs, FR_DISK_ERR);
+				if (sync_window(fs) != FR_OK) WRITE_ABORT(fs, FR_DISK_ERR);
 				fs->winsect = sect;
 			}
 #else
+#if FF_FS_EXFAT
+            if (fp->sect != sect && file_zero_sector(fp, fs)) memset(fp->buf, 0, SS(fs));
+            else
+#endif
 			if (fp->sect != sect && 		/* Fill sector cache with file data */
 				fp->fptr < fp->obj.objsize &&
 				disk_read(fs->pdrv, fp->buf, sect, 1) != RES_OK) {
-					ABORT(fs, FR_DISK_ERR);
+					WRITE_ABORT(fs, FR_DISK_ERR);
 			}
 #endif
 			fp->sect = sect;
@@ -4758,7 +4864,7 @@ FRESULT f_write (
 		wcnt = SS(fs) - (UINT)fp->fptr % SS(fs);	/* Number of bytes remains in the sector */
 		if (wcnt > btw) wcnt = btw;					/* Clip it by btw if needed */
 #if FF_FS_TINY
-		if (move_window(fs, fp->sect) != FR_OK) ABORT(fs, FR_DISK_ERR);	/* Move sector window */
+		if (move_window(fs, fp->sect) != FR_OK) WRITE_ABORT(fs, FR_DISK_ERR);	/* Move sector window */
 		memcpy(fs->win + fp->fptr % SS(fs), wbuff, wcnt);	/* Fit data to the sector */
 		fs->wflag = 1;
 #else
@@ -4767,8 +4873,20 @@ FRESULT f_write (
 #endif
 	}
 
+#if FF_FS_EXFAT
+    if (padding) {
+        if (fp->fptr < padding_target) {
+            if (!padding_count) WRITE_ABORT(fs, FR_INT_ERR);
+            goto write_next;
+        }
+        padding = 0; bw = user_count; btw = request; wbuff = (const BYTE *)buff;
+        goto write_next;
+    }
+#endif
 	LEAVE_FF(fs, FR_OK);
 }
+#undef WRITE_ABORT
+#undef WRITE_ACCEPT_VALID
 
 
 
@@ -4831,7 +4949,7 @@ FRESULT f_sync (
 						fs->dirbuf[XDIR_GenFlags] = fp->obj.stat | 1;	/* Update file allocation information */
 						st_dword(fs->dirbuf + XDIR_FstClus, fp->obj.sclust);		/* Update start cluster */
 						st_qword(fs->dirbuf + XDIR_FileSize, fp->obj.objsize);		/* Update file size */
-						st_qword(fs->dirbuf + XDIR_ValidFileSize, fp->obj.objsize);	/* (FatFs does not support Valid File Size feature) */
+						st_qword(fs->dirbuf + XDIR_ValidFileSize, fp->valid_size);	/* Publish only initialized user/zero bytes. */
 						st_dword(fs->dirbuf + XDIR_ModTime, tm);		/* Update modified time */
 						fs->dirbuf[XDIR_ModTime10] = 0;
 						st_dword(fs->dirbuf + XDIR_AccTime, 0);
@@ -5092,11 +5210,23 @@ FRESULT f_getcwd (
 
 
 
-#if FF_FS_MINIMIZE <= 2
+#if FF_FS_MINIMIZE <= 2 || (FF_FS_EXFAT && !FF_FS_READONLY)
 /*-----------------------------------------------------------------------*/
 /* Seek File Read/Write Pointer                                          */
 /*-----------------------------------------------------------------------*/
 
+#if FF_FS_EXFAT
+#define SEEK_LEAVE(fs, result) return (result)
+#define SEEK_ABORT(fs, result) { fp->err = (BYTE)(result); return (result); }
+#else
+#define SEEK_LEAVE(fs, result) LEAVE_FF(fs, result)
+#define SEEK_ABORT(fs, result) ABORT(fs, result)
+#endif
+#if FF_FS_EXFAT
+static FRESULT seek_file_owned (FIL *fp, FSIZE_t ofs, FATFS *fs)
+{
+    FRESULT res = FR_OK;
+#else
 FRESULT f_lseek (
 	FIL* fp,		/* Pointer to the file object */
 	FSIZE_t ofs		/* File pointer from top of file */
@@ -5104,6 +5234,7 @@ FRESULT f_lseek (
 {
 	FRESULT res;
 	FATFS *fs;
+#endif
 	DWORD clst, bcs;
 	LBA_t nsect;
 	FSIZE_t ifptr;
@@ -5113,14 +5244,16 @@ FRESULT f_lseek (
 	LBA_t dsc;
 #endif
 
+#if !FF_FS_EXFAT
 	res = validate(&fp->obj, &fs);		/* Check validity of the file object */
 	if (res == FR_OK) res = (FRESULT)fp->err;
+#endif
 #if FF_FS_EXFAT && !FF_FS_READONLY
 	if (res == FR_OK && fs->fs_type == FS_EXFAT) {
 		res = fill_last_frag(&fp->obj, fp->clust, 0xFFFFFFFF);	/* Fill last fragment on the FAT if needed */
 	}
 #endif
-	if (res != FR_OK) LEAVE_FF(fs, res);
+	if (res != FR_OK) SEEK_LEAVE(fs, res);
 
 #if FF_USE_FASTSEEK
 	if (fp->cltbl) {	/* Fast seek */
@@ -5135,8 +5268,8 @@ FRESULT f_lseek (
 					do {
 						pcl = cl; ncl++;
 						cl = get_fat(&fp->obj, cl);
-						if (cl <= 1) ABORT(fs, FR_INT_ERR);
-						if (cl == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
+						if (cl <= 1) SEEK_ABORT(fs, FR_INT_ERR);
+						if (cl == 0xFFFFFFFF) SEEK_ABORT(fs, FR_DISK_ERR);
 					} while (cl == pcl + 1);
 					if (ulen <= tlen) {		/* Store the length and top of the fragment */
 						*tbl++ = ncl; *tbl++ = tcl;
@@ -5155,17 +5288,21 @@ FRESULT f_lseek (
 			if (ofs > 0) {
 				fp->clust = clmt_clust(fp, ofs - 1);
 				dsc = clst2sect(fs, fp->clust);
-				if (dsc == 0) ABORT(fs, FR_INT_ERR);
+				if (dsc == 0) SEEK_ABORT(fs, FR_INT_ERR);
 				dsc += (DWORD)((ofs - 1) / SS(fs)) & (fs->csize - 1);
 				if (fp->fptr % SS(fs) && dsc != fp->sect) {	/* Refill sector cache if needed */
 #if !FF_FS_TINY
 #if !FF_FS_READONLY
 					if (fp->flag & FA_DIRTY) {		/* Write-back dirty sector cache */
-						if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);
+						if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) SEEK_ABORT(fs, FR_DISK_ERR);
 						fp->flag &= (BYTE)~FA_DIRTY;
 					}
 #endif
-					if (disk_read(fs->pdrv, fp->buf, dsc, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);	/* Load current sector */
+					#if FF_FS_EXFAT
+            if (file_zero_sector(fp, fs)) memset(fp->buf, 0, SS(fs));
+            else
+#endif
+            if (disk_read(fs->pdrv, fp->buf, dsc, 1) != RES_OK) SEEK_ABORT(fs, FR_DISK_ERR);	/* Load current sector */
 #endif
 					fp->sect = dsc;
 				}
@@ -5195,10 +5332,10 @@ FRESULT f_lseek (
 				clst = fp->obj.sclust;					/* start from the first cluster */
 #if !FF_FS_READONLY
 				if (clst == 0) {						/* If no cluster chain, create a new chain */
-					if (!(fp->flag & FA_WRITE)) ABORT(fs, FR_INT_ERR);
+					if (!(fp->flag & FA_WRITE)) SEEK_ABORT(fs, FR_INT_ERR);
 					clst = create_chain(&fp->obj, 0, 0);
-					if (clst == 1) ABORT(fs, FR_INT_ERR);
-					if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
+					if (clst == 1) SEEK_ABORT(fs, FR_INT_ERR);
+					if (clst == 0xFFFFFFFF) SEEK_ABORT(fs, FR_DISK_ERR);
 					fp->obj.sclust = clst;
 				}
 #endif
@@ -5222,14 +5359,14 @@ FRESULT f_lseek (
 					{
 						clst = get_fat(&fp->obj, clst);	/* Follow cluster chain if not in write mode */
 					}
-					if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
-					if (clst <= 1 || clst >= fs->n_fatent) ABORT(fs, FR_INT_ERR);
+					if (clst == 0xFFFFFFFF) SEEK_ABORT(fs, FR_DISK_ERR);
+					if (clst <= 1 || clst >= fs->n_fatent) SEEK_ABORT(fs, FR_INT_ERR);
 					fp->clust = clst;
 				}
 				fp->fptr += ofs;
 				if (ofs % SS(fs)) {
 					nsect = clst2sect(fs, clst);	/* Current sector */
-					if (nsect == 0) ABORT(fs, FR_INT_ERR);
+					if (nsect == 0) SEEK_ABORT(fs, FR_INT_ERR);
 					nsect += (DWORD)(ofs / SS(fs));
 				}
 			}
@@ -5242,18 +5379,34 @@ FRESULT f_lseek (
 #if !FF_FS_TINY
 #if !FF_FS_READONLY
 			if (fp->flag & FA_DIRTY) {			/* Write-back dirty sector cache */
-				if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);
+				if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) SEEK_ABORT(fs, FR_DISK_ERR);
 				fp->flag &= (BYTE)~FA_DIRTY;
 			}
 #endif
-			if (disk_read(fs->pdrv, fp->buf, nsect, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);	/* Fill sector cache */
+			#if FF_FS_EXFAT
+            if (file_zero_sector(fp, fs)) memset(fp->buf, 0, SS(fs));
+            else
+#endif
+            if (disk_read(fs->pdrv, fp->buf, nsect, 1) != RES_OK) SEEK_ABORT(fs, FR_DISK_ERR);	/* Fill sector cache */
 #endif
 			fp->sect = nsect;
 		}
 	}
 
-	LEAVE_FF(fs, res);
+	SEEK_LEAVE(fs, res);
 }
+#undef SEEK_LEAVE
+#undef SEEK_ABORT
+#if FF_FS_EXFAT && FF_FS_MINIMIZE <= 2
+FRESULT f_lseek (FIL *fp, FSIZE_t ofs)
+{
+    FATFS *fs;
+    FRESULT res = validate(&fp->obj, &fs);
+    if (res == FR_OK) res = (FRESULT)fp->err;
+    if (res == FR_OK) res = seek_file_owned(fp, ofs, fs);
+    LEAVE_FF(fs, res);
+}
+#endif
 
 
 
@@ -5604,6 +5757,9 @@ FRESULT f_truncate (
 			}
 		}
 		fp->obj.objsize = fp->fptr;	/* Set file size to current read/write point */
+#if FF_FS_EXFAT
+        if (fs->fs_type == FS_EXFAT && fp->valid_size > fp->obj.objsize) fp->valid_size = fp->obj.objsize;
+#endif
 		fp->flag |= FA_MODIFIED;
 #if !FF_FS_TINY
 		if (res == FR_OK && (fp->flag & FA_DIRTY)) {

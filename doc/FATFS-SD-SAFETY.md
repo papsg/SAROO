@@ -935,3 +935,49 @@ Both standard GNU App builds pass and their LTO/non-LTO flat images remain
 byte-identical to SSR-163. The isolated optional Cortex-M7 `ff.c` object grows
 from 18,509 to 18,733 text bytes, with BSS unchanged. An optional linked
 image, whole-call-chain stack and physical SD/Saturn timing are unqualified.
+
+## SSR-165: preserve exFAT valid-data length through file operations
+
+An exFAT file can have a `ValidDataLength` shorter than its `DataLength`.
+On the public parent `d94932c`, a 512-byte file with valid-data length zero
+returns its 512 raw `0xC9` storage bytes. The independent raw-media oracle
+checks the file's allocation, entry checksum, name hash, 512-byte length and
+zero valid-data length; the baseline read makes no writes. The
+[Microsoft exFAT specification §7.6.5](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#765-validdatalength-field)
+requires reads beyond valid-data length to return zeroes and writers to update
+that boundary as user data is written. This is an optional exFAT defect;
+standard SAROO firmware builds FAT32-only.
+
+This port adapts paps-g `14edd9cd5a4dd04b10c32f9137c22247297df1fd`
+to the public source, including its existing save-owner check and seek guards.
+The file object tracks its initialized end separately from file size. Direct
+and cached reads zero the uninitialized tail. Writes fill only the gap before
+new user bytes, preserve user byte counts, and sync publishes only initialized
+data. Open refuses a regular file whose valid-data length exceeds file size.
+Seek expansion and zero-byte writes leave the unwritten tail uninitialized.
+The owned seek helper avoids taking the volume lock recursively while filling
+a write gap; the existing allocation and error paths remain responsible for
+cleanup. The correction does not add a runtime probe or diagnostic mode.
+
+Run `python3 -B -m unittest discover -s tests -p test_fatfs_valid_data.py -v`.
+Eight sanitizer-backed methods (232 compile/API processes) cover direct and
+cached reads, both cache
+configurations, read-only and fragmented files, writes across gaps, append,
+truncate, seek expansion, replacement, malformed lengths, interleaved readers,
+injected read/write/sync failures, zero-byte writes and bounded large gaps.
+The raw oracle checks logical bytes, valid/file lengths, allocation, neighbor
+payloads and entry checksums. To reproduce the parent, export `Firm_MCU/FatFS`
+from `d94932c` into a temporary directory, set `SAROO_VALID_DATA_SOURCE` to
+that folder and `SAROO_VALID_DATA_BASELINE=1`, then run the same test command.
+The baseline method verifies that the valid-data-zero file incorrectly returns
+its raw tail. File-backed sectors and host mutexes do not model physical SD
+timing, power loss or every upstream exFAT feature combination.
+
+Both standard GNU App builds pass and remain byte-identical to SSR-164 in LTO
+and non-LTO modes. The isolated optional Cortex-M7 `ff.c` text grows from
+18,733 to 20,041 bytes with BSS unchanged. In the selected host configuration,
+`FIL` grows 88→96 bytes per open file; `FATFS` stays 1,720 bytes per volume.
+These host structure sizes do not measure complete target allocation or stack
+peaks. Optional linked-image resources and
+whole-call-chain stack admission, physical SD, Saturn and game behavior remain
+unqualified.

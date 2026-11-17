@@ -244,6 +244,9 @@ typedef struct {
 	BYTE	flag;			/* File status flags */
 	BYTE	err;			/* Abort flag (error code) */
 	FSIZE_t	fptr;			/* File read/write pointer (Zeroed on file open) */
+#if FF_FS_EXFAT
+    FSIZE_t valid_size;       /* Initialized prefix; independent of allocated file size. */
+#endif
 	DWORD	clust;			/* Current cluster of fpter (invalid when fptr is 0) */
 	LBA_t	sect;			/* Sector number appearing in buf[] (0:invalid) */
 #if !FF_FS_READONLY
