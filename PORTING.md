@@ -3175,3 +3175,7 @@ controls and exact RM0433 citation; none claims normal game impact. Standard
 MCU GNU images and ELFs remain byte-identical throughout the series. No PR,
 USB stack feature, runtime diagnostic, new CDON recipe or device operation was
 introduced. The private source and preserved evidence were read only.
+The final read-only preservation receipt matches all 3,272 private tracked
+paths, index, HEAD, branch, refs, stashes, status and worktrees against the
+pre-series snapshot. The cited local RM0433 Rev. 8 PDF matches its recorded
+SHA-256 `9ba54135736a47a302cdc28fdc7ca8f23c6eed5a646fa0a639af6ed2ad71336e`.
