@@ -523,3 +523,35 @@ at 59,632/63,960 loaded and 50,904 static DTCM bytes. Run
 in fresh ignored output directories. No current direct HRTIM trigger-source
 caller was found. Compiler expressions do not exercise preload ownership,
 event timing, ADC conversion, MDK compilation or Saturn/game behavior.
+
+## SSR-153: include TIM15–17 in DMA-burst capability
+
+[ST RM0433 Rev. 8, §§41.5.17–41.5.18 and 41.6.15–41.6.16, printed pp. 1819 and 1839–1840](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines DCR and DMAR for TIM15, TIM16 and TIM17 at offsets `0x48` and
+`0x4c`. The selected DFP 2.3.1 H750 header's `IS_TIM_DMABURST_INSTANCE`
+predicate omitted those three timers, although it advertised the DMA-burst
+hardware feature. The six existing members remain correct; TIM6/7/12/13/14
+are nonmembers. Ordinary DMA requests and DMA bursts are separate features.
+
+This directly ports paps-g `e2a7a5b3` / SSR-153 after SSR-152. Only the
+three timer memberships are added to that predicate in the owned H750 header.
+No channel, request-source or other capability predicate changes. The pinned
+raw DFP source, ST notice and BSD license remain unchanged. The selected
+H750 SHA-256 is
+`d5fe28b691d14b8af653d352e1fd2af840100c53a158114dd51af48b8643eebf`.
+See [source provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail three target-compiler
+membership assertions, one per omitted timer. Six existing members, five
+nonmembers and DCR/DMAR layout/field controls pass. The corrected selected
+provider passes contract and controls; the raw contract retains the failures.
+All fifteen earlier selected header contracts, 21 Rust unit tests, two RTL
+checks and formatting pass. Both standard 166-vector GNU App builds pass;
+LTO/non-LTO flat images, ELFs and resources match SSR-152 byte for byte at
+59,632/63,960 loaded and 50,904 static DTCM bytes. Run
+[`stm32-check --case timer_burst`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No current direct DMA-burst predicate
+caller was found. Membership does not authorize every timer register or DMA
+request, establish transfer width/routing, exercise an actual bus transfer,
+qualify MDK compilation or demonstrate Saturn/game behavior.

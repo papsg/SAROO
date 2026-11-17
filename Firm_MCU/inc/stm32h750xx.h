@@ -26088,7 +26088,10 @@ typedef struct
                                             ((INSTANCE) == TIM3)   || \
                                             ((INSTANCE) == TIM4)   || \
                                             ((INSTANCE) == TIM5)   || \
-                                            ((INSTANCE) == TIM8))
+                                            ((INSTANCE) == TIM8)   || \
+                                            ((INSTANCE) == TIM15)  || \
+                                            ((INSTANCE) == TIM16)  || \
+                                            ((INSTANCE) == TIM17))
 
 /*************** TIM Instances : external trigger reamp input available *******/
 #define IS_TIM_ETR_INSTANCE(INSTANCE)     (((INSTANCE) == TIM1)   || \
