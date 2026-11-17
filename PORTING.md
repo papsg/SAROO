@@ -3216,3 +3216,20 @@ the local RM0433 Rev. 8 PDF retained its recorded SHA-256
 No PR, USB stack change, runtime diagnostic, new CDON recipe, device operation
 or subagent work occurred. The public main source and progress worktrees are
 clean, and each verified checkpoint was pushed promptly.
+
+## Legacy timer, RTX, menu and exFAT follow-up
+
+Ordered scope: SSR-156, SSR-161, SSR-158, SSR-163, SSR-164 and SSR-165.
+The private tree and preserved evidence are read-only references. Each direct
+public-main checkpoint must reproduce its current defect, preserve valid
+controls, cite the governing source/specification and original paps-g work,
+and pass focused checks plus relevant builds before publication. No PRs, USB
+stack, diagnostics, new CDON recipes or Saturn operations are in scope.
+
+| Finding / historical reference | Public checkpoint | Validation, citations and limits |
+| --- | --- | --- |
+| SSR-156, paps-g `a922f865` | [`5ad9789`](https://github.com/papsg/SAROO/commit/5ad9789a64545b531c2402049a75af3bca240376), on main | The public parent and pinned raw H750 header each fail two target-compiler assertions for the missing TIM10 update-handler alias and spurious TIM9 update alias; neighboring handler/IRQ controls pass. The one-line selected correction, all seventeen earlier header contracts, 21 Rust unit/two RTL checks, formatting and both 166-vector GNU App builds pass. LTO/non-LTO ELFs and flat images match SSR-154 byte for byte at 59,632/63,960 loaded and 50,904 static DTCM bytes. [ST RM0433 Rev. 8 Table 145 p. 751, attribution, public reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/STM32-DEVICE-HEADERS.md#ssr-156-bind-the-legacy-tim1-updatetim10-handler). The selected source has no identified current handler consumer; MDK, hardware interrupts and games remain unqualified. |
+
+Remaining in this ordered scope: SSR-161, SSR-158, SSR-163, SSR-164 and
+SSR-165. The verified SSR-156 main checkpoint is pushed; the next item has not
+yet been published.
