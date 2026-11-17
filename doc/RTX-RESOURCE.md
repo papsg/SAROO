@@ -46,3 +46,45 @@ Run `python3 -m unittest discover -s tests -p test_rtx_profile.py` for the
 configured-profile controls. Compare the same public parent and candidate
 with fresh output directories; the original private image sizes are not used
 as the public baseline.
+
+## Specialize the configured RTX allocation policy
+
+Original implementation: **paps-g**, private commit `b483124c`, AUD-RES-020.
+The public adaptation gates the selected thread, default-stack, mutex and
+semaphore fixed-pool branches with their `RTX_Config.h` switches while retaining
+the runtime pool-pointer and ownership checks. The pinned `rtx_lib.c` constructs
+each fixed-pool pointer from precisely these switches, and `rtx_kernel.c`
+copies those pointers into runtime state during initialization. Standard SAROO
+sets all four switches to zero, so these branches cannot select a fixed pool.
+The nonzero configuration still reaches the original runtime checks. The
+selected semaphore provider is now an owned source in both original MDK
+targets; the GNU builder verifies its selection and its recorded source hash.
+
+[Arm's RTX memory-pool configuration](https://arm-software.github.io/CMSIS_5/RTOS2/html/config_rtx5.html)
+describes the object-specific fixed-block pools. The pinned
+[RTX 5.5.1 configuration initializer](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_lib.c#L486-L539)
+is the source of the compile-time pointer relationship. The new selected
+semaphore source retains Arm's Apache-2.0 header; the recorded original hash
+identifies the unmodified pinned provider. This is a configured-size
+specialization, not a change to the CMSIS allocation API.
+
+On the exact public parent `614562f`, the GNU LTO App loads 59,576 bytes and
+leaves 5,960 ITCM bytes. The selected App loads **59,380 bytes**, saving 196,
+and leaves 6,156 free. The no-LTO App falls from 63,892 to 63,648 loaded bytes,
+saving 244 and leaving 1,888 free. Static DTCM stays 50,904 bytes in both
+build modes. The two App builds and BootLoader object compile. Actual
+Cortex-M7/QEMU LTO `delay`, `mutex` and `pool` cases pass, as do the builder's
+Rust tests, formatting and strict Clippy checks. With all four fixed-pool
+switches enabled, target-compiled thread, mutex and semaphore disassemblies
+match their exact-parent providers (1,986, 529 and 481 lines respectively).
+The QEMU cases exercise the standard disabled-fixed-pool configuration;
+enabled fixed-pool runtime behavior is not qualified on hardware. The first
+runtime-pointer-only adaptation saved 196
+LTO bytes but grew the no-LTO image by 60 bytes, so it was replaced by this
+compile-time gate. No firmware was installed.
+
+Reproduce with the same [offline GNU build instructions](../tools/README.md#original-mcu-app-compilelink-check)
+on public parent `614562f` and this checkpoint, using fresh output directories.
+Run `firmware-build rtos-check --case delay`, `--case mutex` and `--case pool`
+with `--lto` and the same pinned dependencies. MDK output, physical allocation
+timing and Saturn games remain unqualified.

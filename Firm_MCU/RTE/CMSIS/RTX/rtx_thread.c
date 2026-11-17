@@ -24,6 +24,7 @@
  */
 
 #include "rtx_lib.h"
+#include "RTX_Config.h"
 
 /* papsg: admit ISR thread-flag wakeups before changing flags.
  * Adapted from paps-g 6a244892 (SSR-133). */
@@ -658,7 +659,7 @@ static osThreadId_t svcRtxThreadNew (osThreadFunc_t func, void *argument, const 
 
   // Allocate object memory if not provided
   if (thread == NULL) {
-    if (osRtxInfo.mpi.thread != NULL) {
+    if ((OS_THREAD_OBJ_MEM != 0) && (osRtxInfo.mpi.thread != NULL)) {
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       thread = osRtxMemoryPoolAlloc(osRtxInfo.mpi.thread);
     } else {
@@ -684,7 +685,7 @@ static osThreadId_t svcRtxThreadNew (osThreadFunc_t func, void *argument, const 
   if ((thread != NULL) && (stack_mem == NULL)) {
     if (stack_size == 0U) {
       stack_size = osRtxConfig.thread_stack_size;
-      if (osRtxInfo.mpi.stack != NULL) {
+      if (((OS_THREAD_OBJ_MEM != 0) && (OS_THREAD_DEF_STACK_NUM != 0)) && (osRtxInfo.mpi.stack != NULL)) {
         //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
         stack_mem = osRtxMemoryPoolAlloc(osRtxInfo.mpi.stack);
         if (stack_mem != NULL) {
@@ -700,7 +701,7 @@ static osThreadId_t svcRtxThreadNew (osThreadFunc_t func, void *argument, const 
     }
     if (stack_mem == NULL) {
       if ((flags & osRtxFlagSystemObject) != 0U) {
-        if (osRtxInfo.mpi.thread != NULL) {
+        if ((OS_THREAD_OBJ_MEM != 0) && (osRtxInfo.mpi.thread != NULL)) {
           (void)osRtxMemoryPoolFree(osRtxInfo.mpi.thread, thread);
         } else {
           (void)osRtxMemoryFree(osRtxInfo.mem.common, thread);
@@ -721,14 +722,14 @@ static osThreadId_t svcRtxThreadNew (osThreadFunc_t func, void *argument, const 
     if (tz_memory == 0U) {
       EvrRtxThreadError(NULL, osRtxErrorTZ_AllocContext_S);
       if ((flags & osRtxFlagSystemMemory) != 0U) {
-        if ((flags & osRtxThreadFlagDefStack) != 0U) {
+        if (((OS_THREAD_OBJ_MEM != 0) && (OS_THREAD_DEF_STACK_NUM != 0)) && ((flags & osRtxThreadFlagDefStack) != 0U)) {
           (void)osRtxMemoryPoolFree(osRtxInfo.mpi.stack, thread->stack_mem);
         } else {
           (void)osRtxMemoryFree(osRtxInfo.mem.stack, thread->stack_mem);
         }
       }
       if ((flags & osRtxFlagSystemObject) != 0U) {
-        if (osRtxInfo.mpi.thread != NULL) {
+        if ((OS_THREAD_OBJ_MEM != 0) && (osRtxInfo.mpi.thread != NULL)) {
           (void)osRtxMemoryPoolFree(osRtxInfo.mpi.thread, thread);
         } else {
           (void)osRtxMemoryFree(osRtxInfo.mem.common, thread);
@@ -1100,7 +1101,7 @@ static void osRtxThreadFree (os_thread_t *thread) {
 
   // Free stack memory
   if ((thread->flags & osRtxFlagSystemMemory) != 0U) {
-    if ((thread->flags & osRtxThreadFlagDefStack) != 0U) {
+    if (((OS_THREAD_OBJ_MEM != 0) && (OS_THREAD_DEF_STACK_NUM != 0)) && ((thread->flags & osRtxThreadFlagDefStack) != 0U)) {
       (void)osRtxMemoryPoolFree(osRtxInfo.mpi.stack, thread->stack_mem);
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.stack, thread->stack_mem);
@@ -1109,7 +1110,7 @@ static void osRtxThreadFree (os_thread_t *thread) {
 
   // Free object memory
   if ((thread->flags & osRtxFlagSystemObject) != 0U) {
-    if (osRtxInfo.mpi.thread != NULL) {
+    if ((OS_THREAD_OBJ_MEM != 0) && (osRtxInfo.mpi.thread != NULL)) {
       (void)osRtxMemoryPoolFree(osRtxInfo.mpi.thread, thread);
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, thread);

@@ -344,6 +344,15 @@ pub fn build(
     {
         return fail("RTX mutex owner must be selected once in App and BootLoader");
     }
+    let selected_semaphore = app.join("RTE/CMSIS/RTX/rtx_semaphore.c");
+    if selected_semaphore.is_file()
+        && project
+            .matches("<FilePath>.\\RTE\\CMSIS\\RTX\\rtx_semaphore.c</FilePath>")
+            .count()
+            != 2
+    {
+        return fail("RTX semaphore owner must be selected once in App and BootLoader");
+    }
     // MDK selects this configured component through RTE rather than FilePath.
     let config = app.join("RTE/CMSIS/RTX_Config.c");
     if !sources.contains(&config) {

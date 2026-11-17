@@ -24,6 +24,7 @@
  */
 
 #include "rtx_lib.h"
+#include "RTX_Config.h"
 
 
 //  OS Runtime Object Memory Usage
@@ -129,7 +130,7 @@ static osMutexId_t svcRtxMutexNew (const osMutexAttr_t *attr) {
 
   // Allocate object memory if not provided
   if (mutex == NULL) {
-    if (osRtxInfo.mpi.mutex != NULL) {
+    if ((OS_MUTEX_OBJ_MEM != 0) && (osRtxInfo.mpi.mutex != NULL)) {
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       mutex = osRtxMemoryPoolAlloc(osRtxInfo.mpi.mutex);
     } else {
@@ -420,7 +421,7 @@ static osStatus_t svcRtxMutexDelete (osMutexId_t mutex_id) {
 
   // Free object memory
   if ((mutex->flags & osRtxFlagSystemObject) != 0U) {
-    if (osRtxInfo.mpi.mutex != NULL) {
+    if ((OS_MUTEX_OBJ_MEM != 0) && (osRtxInfo.mpi.mutex != NULL)) {
       (void)osRtxMemoryPoolFree(osRtxInfo.mpi.mutex, mutex);
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, mutex);

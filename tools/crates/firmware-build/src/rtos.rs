@@ -619,6 +619,15 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             return fail("Selected mutex source differs from the declared correction");
         }
     }
+    let selected_semaphore = owned.join("rtx_semaphore.c");
+    if selected_semaphore.is_file() {
+        let expected = pins["selected_semaphore_sha256"]
+            .as_str()
+            .ok_or("Missing selected semaphore source pin")?;
+        if sha(&fs::read(selected_semaphore)?) != expected {
+            return fail("Selected semaphore source differs from the declared allocation policy");
+        }
+    }
     Ok(())
 }
 
