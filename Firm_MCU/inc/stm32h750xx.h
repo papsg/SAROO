@@ -18695,12 +18695,13 @@ typedef struct
 #define QUADSPI_CR_FSEL_Msk              (0x1UL << QUADSPI_CR_FSEL_Pos)        /*!< 0x00000080 */
 #define QUADSPI_CR_FSEL                  QUADSPI_CR_FSEL_Msk                   /*!< Flash Select */
 #define QUADSPI_CR_FTHRES_Pos            (8U)
-#define QUADSPI_CR_FTHRES_Msk            (0xFUL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00000F00 */
-#define QUADSPI_CR_FTHRES                QUADSPI_CR_FTHRES_Msk                 /*!< FTHRES[3:0] FIFO Level */
+#define QUADSPI_CR_FTHRES_Msk            (0x1FUL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00001F00 */
+#define QUADSPI_CR_FTHRES                QUADSPI_CR_FTHRES_Msk                 /*!< FTHRES[4:0] FIFO Level */
 #define QUADSPI_CR_FTHRES_0              (0x1UL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00000100 */
 #define QUADSPI_CR_FTHRES_1              (0x2UL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00000200 */
 #define QUADSPI_CR_FTHRES_2              (0x4UL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00000400 */
 #define QUADSPI_CR_FTHRES_3              (0x8UL << QUADSPI_CR_FTHRES_Pos)      /*!< 0x00000800 */
+#define QUADSPI_CR_FTHRES_4              (0x10UL << QUADSPI_CR_FTHRES_Pos)     /*!< 0x00001000 */
 #define QUADSPI_CR_TEIE_Pos              (16U)
 #define QUADSPI_CR_TEIE_Msk              (0x1UL << QUADSPI_CR_TEIE_Pos)        /*!< 0x00010000 */
 #define QUADSPI_CR_TEIE                  QUADSPI_CR_TEIE_Msk                   /*!< Transfer Error Interrupt Enable */

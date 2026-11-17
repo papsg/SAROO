@@ -89,3 +89,39 @@ large owned header affects public definitions, not currently linked code.
 These checks do not issue an SDRAM command, prove a populated SDRAM bank,
 resolve the separate mode-register-width question, or qualify MDK, physical
 timing, Saturn hardware or games. No device was touched.
+
+## SSR-140: retain all five QSPI FIFO-threshold bits
+
+[ST RM0433 Rev. 8, §23.5.1, printed pp.895–896](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines `QUADSPI_CR.FTHRES` at bits 12:8. Values 0–31 represent threshold
+levels 1–32 in indirect mode. The pinned DFP 2.3.1 H750 header instead masks
+only bits 11:8 and provides helpers only for bits 0–3. Threshold 16 therefore
+extracts as zero; replacing threshold 16 with 7 leaves the old bit 12 set.
+The locally preserved ST CMSIS-H7 V1.10.3 release notes (23 September 2022)
+also identify the field-width correction. No direct current application
+consumer of `FTHRES` or `QUADSPI_CR` was found.
+
+This ports paps-g `d032da23` / SSR-140 on top of SSR-139. The owned header
+widens only the threshold mask/comment to bits 4:0 and adds the fifth helper
+at `0x1000`; the earlier SDRAM correction and all other raw definitions remain
+unchanged. The selected H750 SHA-256 is
+`757f408fe5808650e7b85f14f61b1265e4b917396064eb2fecae671b9b122022`.
+The exact raw 2.3.1 hash, selection and full BSD notice remain in the
+[provenance record](../Firm_MCU/inc/stm32h750xx-provenance.json). No original
+tpunix issue or PR was identified.
+
+The raw selected header fails 37 compiler diagnostics: the five-bit mask and
+helper are wrong/missing, supported high values are truncated, and replacing a
+high threshold retains its stale bit. The low 0/1/7/15 values and neighboring
+field controls pass. The owned header passes all 32 threshold insertions and
+extractions, the high-to-low replacement, unrelated-bit preservation and the
+same valid controls. The raw-provider reversal still fails the contract while
+its controls pass. Use [`stm32-check --case qspi`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with each provider/mode and fresh ignored outputs. These are compiler
+expressions, not QSPI transactions.
+
+Both standard GNU App images remain byte-identical to SSR-139 at 59,632/63,960
+loaded bytes and 50,904 static DTCM bytes, with 166 vectors each. The prior
+version and SDRAM contracts pass against the selected header. No FIFO timing,
+interrupt signaling, target execution, MDK compile, physical MCU or Saturn/game
+qualification is claimed. No device was touched.

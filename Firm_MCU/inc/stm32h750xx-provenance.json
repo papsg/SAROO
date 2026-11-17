@@ -2,8 +2,8 @@
   "source_pack": "Keil.STM32H7xx_DFP.2.3.1",
   "source_path": "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h750xx.h",
   "source_sha256": "bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae9263113da5ffa8a2",
-  "owned_sha256": "9b628779956b51e260bf9544ccfae05eb472dd10f83fe92db93b9ba1a7bc6afe",
+  "owned_sha256": "757f408fe5808650e7b85f14f61b1265e4b917396064eb2fecae671b9b122022",
   "license": "BSD-3-Clause; see source notice and LICENSE-ST-CMSIS",
-  "adaptation": "papsg port of paps-g SSR-139 / 2789ea4e: FMC_SDCMR_MODE_2 is the third independent bit. Only source line 11545 differs from the raw header at this checkpoint.",
+  "adaptation": "papsg ports of paps-g SSR-139 / 2789ea4e and SSR-140 / d032da23: FMC_SDCMR_MODE_2 is the third independent bit; QUADSPI FTHRES has five bits and a fifth helper. No other raw-header definitions are changed.",
   "selection": "The owned stm32h7xx.h includes this H750 header from the same Firm_MCU/inc directory for STM32H750xx. GNU App dependencies confirm selection; MDK compilation was not available."
 }
