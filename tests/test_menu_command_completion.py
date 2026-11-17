@@ -12,46 +12,9 @@ import unittest
 
 from test_file_transfer import protocol_definitions
 from test_menu_cdplayer import function
+from tests.menu_source_flags import menu_source_variant
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def ordinary_menu_source(source):
-    """Select the shipped branch before extracting legacy menu functions.
-
-    This suite checks the standard menu/MCU pair. The opt-in channel has its
-    own source and wire tests, and must not leave half a conditional in these
-    extracted function bodies.
-    """
-    out = []
-    frames = []
-    active = True
-    for line in source.splitlines(keepends=True):
-        directive = line.strip()
-        if directive.startswith((b'#ifdef ', b'#ifndef ', b'#if ')):
-            stage = directive in (b'#ifdef SAROO_SAVE_GENERATION',
-                                  b'#ifndef SAROO_SAVE_GENERATION')
-            frames.append((stage, active, directive.startswith(b'#ifndef ')))
-            if stage:
-                active = active and directive.startswith(b'#ifndef ')
-            elif active:
-                out.append(line)
-        elif directive == b'#else' and frames:
-            stage, parent, first = frames[-1]
-            if stage:
-                active = parent and not first
-            elif active:
-                out.append(line)
-        elif directive == b'#endif' and frames:
-            stage, parent, _ = frames.pop()
-            if not stage and active:
-                out.append(line)
-            active = parent
-        elif active:
-            out.append(line)
-    if frames:
-        raise AssertionError('unbalanced menu conditionals')
-    return b''.join(out)
 
 
 class MenuCommandCompletionTests(unittest.TestCase):
@@ -76,7 +39,7 @@ class MenuCommandCompletionTests(unittest.TestCase):
         (cls.target / 'publish-bin.inc').write_bytes(publish_bin[0] if publish_bin else b'')
 
         menu = Path(os.environ.get('SAROO_MENU_STARTUP_SOURCE', ROOT / 'Firm_Saturn'))
-        main = ordinary_menu_source((menu / 'main.c').read_bytes())
+        main = menu_source_variant((menu / 'main.c').read_bytes())
         main_header = (menu / 'main.h').read_bytes()
         definitions = dict(re.findall(rb'^#define (\w+)\s+(\S+)', protocol_definitions(header), re.M))
         if b'static int start_menu_services(' in main:

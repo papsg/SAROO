@@ -1411,6 +1411,19 @@ static void bin_schedule(BIN_BROWSER *browser, int target)
     menu_status(&sel_menu, TT("加载文件中......"));
 }
 
+#ifdef SAROO_SAVE_GENERATION
+/* One admission step per UI tick keeps a slow prior preview from blocking
+ * controller input. A successful step retains both locks until BIN completion. */
+static int bin_admit(void)
+{
+    if (!command_try_lock(&MENU_CHANNEL_ADDRESS->lock)) return 0;
+    int result = menu_channel_admit();
+    if (!result) return 1;
+    COMMAND_GATE_RELEASE(&MENU_CHANNEL_ADDRESS->lock);
+    return result == 1 || result == -16 ? 0 : -1;
+}
+#endif
+
 /* Return to the main menu only after the request and any catalog restore retire. */
 static int bin_step(BIN_BROWSER *browser)
 {
@@ -1423,16 +1436,42 @@ static int bin_step(BIN_BROWSER *browser)
         browser->slow = 1;
         menu_status(&sel_menu, "Still reading... B/C: go back");
     }
+#ifdef SAROO_SAVE_GENERATION
+    if (phase == BIN_WAIT) {
+        int admitted = bin_admit();
+        if (admitted < 0) {
+            browser->phase = BIN_FAULT;
+            menu_status(&sel_menu, "MCU response lost. Reset Saturn.");
+            return 0;
+        }
+        if (!admitted) return 0;
+    } else {
+        if (SS_CMD) return 0;
+        __asm__ volatile ("" ::: "memory");
+    }
+#else
     if (SS_CMD) return 0;
     __asm__ volatile ("" ::: "memory");
+#endif
 
     if (phase == BIN_WAIT) {
         if (browser->leave) {
-            if (!browser->listed) return 1;
+            if (!browser->listed) {
+#ifdef SAROO_SAVE_GENERATION
+                menu_channel_finish(0);
+#endif
+                return 1;
+            }
             SS_ARG = 0;
+#ifdef SAROO_SAVE_GENERATION
+            __asm__ volatile ("" ::: "memory");
+#endif
             SS_CMD = SSCMD_LISTDISC | SSCMD_SAVE_ACK;
             browser->phase = BIN_RESTORING;
         } else if (bin_prepare_path(browser->target)) {
+#ifdef SAROO_SAVE_GENERATION
+            menu_channel_finish(-1);
+#endif
             browser->phase = BIN_IDLE;
             bin_draw(LE32((void *)IMGINFO_ADDR));
             menu_error(&sel_menu, TT("文件加载失败! %d"), -1);
@@ -1446,6 +1485,32 @@ static int bin_step(BIN_BROWSER *browser)
         return 0;
     }
 
+#ifdef SAROO_SAVE_GENERATION
+    int result = command_reply(SSCMD_SAVE_ACK, -19, 0);
+    if (command_faulted()) {
+        menu_channel_finish(result);
+        browser->phase = BIN_FAULT;
+        menu_status(&sel_menu, "MCU response lost. Reset Saturn.");
+        return 0;
+    }
+    /* Consume every MCU-owned output before returning the command lease. */
+    u32 count = LE32((void *)IMGINFO_ADDR);
+    if (phase == BIN_LISTING && count > (0x2800u - 4) / 4 && !result)
+        result = -1;
+    if (!result && phase == BIN_LISTING && !browser->leave) {
+        char *request = (char *)(TMPBUFF_ADDR + 0x10);
+        unsigned length = 0;
+        while (length < BIN_PATH_CAPACITY && request[length]) ++length;
+        if (length < BIN_PATH_CAPACITY) memcpy(bin_path, request, length + 1);
+        else result = -1;
+    }
+    menu_channel_finish(result);
+    if (command_faulted()) {
+        browser->phase = BIN_FAULT;
+        menu_status(&sel_menu, "MCU response lost. Reset Saturn.");
+        return 0;
+    }
+#else
     int wire = (signed short)SS_ARG;
     if (wire != SSCMD_SAVE_ACK && !(wire >= -19 && wire < 0)) {
         browser->phase = BIN_FAULT;
@@ -1455,6 +1520,7 @@ static int bin_step(BIN_BROWSER *browser)
     int result = wire == SSCMD_SAVE_ACK ? 0 : wire;
     u32 count = LE32((void *)IMGINFO_ADDR);
     if (phase == BIN_LISTING && count > (0x2800u - 4) / 4 && !result) result = -1;
+#endif
     if (phase == BIN_RESTORING) {
         if (!result) return 1;
         browser->leave = 0;
@@ -1466,11 +1532,13 @@ static int bin_step(BIN_BROWSER *browser)
         bin_schedule(browser, BIN_CURRENT);
         return 0;
     } else if (!result) {
+#ifndef SAROO_SAVE_GENERATION
         char *request = (char *)(TMPBUFF_ADDR + 0x10);
         unsigned length = 0;
         while (length < BIN_PATH_CAPACITY && request[length]) ++length;
         if (length < BIN_PATH_CAPACITY) memcpy(bin_path, request, length + 1);
         else result = -1;
+#endif
     }
     browser->phase = BIN_IDLE;
     bin_draw(result ? 0 : count);

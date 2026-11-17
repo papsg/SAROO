@@ -73,6 +73,27 @@ static void complete(int result)
 }
 static u32 get_timer(void) { return now += MS2TICK(1); }
 static int timer_reached(u32 tick, u32 deadline) { return tick - deadline < 0x80000000u; }
+#ifdef SAROO_SAVE_GENERATION
+static volatile u8 command_lock;
+static int overwrite_path_on_release;
+#define COMMAND_GATE_ADDRESS (&command_lock)
+#define COMMAND_READY_ADDRESS (&command_ready)
+#define COMMAND_GATE_LOAD(p) __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#define COMMAND_GATE_RELEASE(p) do { \
+    if ((p) == &command_lock && overwrite_path_on_release) \
+        memset(shared + 16, 'X', 16); \
+    __atomic_store_n((p), 0, __ATOMIC_RELEASE); \
+} while (0)
+#define COMMAND_GATE_POISON(p) ((void)__atomic_fetch_or((p), 1, __ATOMIC_RELEASE))
+#define COMMAND_GATE_READY(p) __atomic_store_n((p), 1, __ATOMIC_RELEASE)
+static int command_try_lock(volatile u8 *p)
+{ return __atomic_fetch_or(p, 0x80, __ATOMIC_ACQUIRE) == 0; }
+static void file_cache_purge(u32 address, u32 size, int mirrored)
+{ assert(address == 0x02000000u && size == 0x00100000u && !mirrored); }
+#include "command_gate.c"
+#define MENU_CHANNEL_ADDRESS (&menu_channel)
+#include "menu_channel.c"
+#endif
 static void draw_menu_frame(MENU_DESC *menu)
 { assert(menu == &sel_menu && menu->num <= MENU_ITEMS && menu->current >= 0); }
 static void menu_status(MENU_DESC *menu, char *message) { assert(menu == &sel_menu && message); }
@@ -169,11 +190,19 @@ static void browse(void)
     set32(sysinfo + 0x34, BIN_DIRECTORY_VERSION);
     command_value = SSCMD_SELECT | SSCMD_SAVE_ACK;
     argument = 0x4321;
+#ifdef SAROO_SAVE_GENERATION
+    menu_channel_init(1);
+    menu_channel.flags |= MENU_ACTIVE;
+    command_lock = 0x80;
+#endif
     memset(shared, 0xa5, sizeof(shared));
     select_bins();
     assert(menu_action == 9 && file_reads == 1 && !flat_calls && !command_value);
     assert(idle_ticks >= 7 && gif_ticks == idle_ticks && !sel_mode);
     assert(!strcmp((char *)catalog_bytes + 0x2800, "Game"));
+#ifdef SAROO_SAVE_GENERATION
+    assert(!command_lock && !menu_channel.lock && menu_channel.flags == MENU_ENABLED);
+#endif
 }
 
 static void flat(void)
@@ -190,10 +219,16 @@ static void flat(void)
 static BIN_BROWSER listing(void)
 {
     BIN_BROWSER browser = {0};
+#ifdef SAROO_SAVE_GENERATION
+    menu_channel_init(1);
+#endif
     sel_mode = BIN_FOLDER_MODE;
     sel_menu.version = bin_current_path();
     bin_schedule(&browser, BIN_CURRENT);
     assert(!bin_step(&browser) && browser.phase == BIN_LISTING && command_value == SSCMD_BINDIR);
+#ifdef SAROO_SAVE_GENERATION
+    assert(command_lock == 0x80 && menu_channel.lock == 0x80);
+#endif
     return browser;
 }
 
@@ -220,11 +255,48 @@ static void invalid_reply(void)
     BIN_BROWSER browser = listing();
     command_value = 0;
     assert(!bin_step(&browser) && browser.phase == BIN_FAULT);
+#ifdef SAROO_SAVE_GENERATION
+    assert(command_lock == 0x81 && !menu_channel.lock &&
+           (menu_channel.flags & MENU_FAULT));
+#endif
     bin_input(&browser, button(PAD_A));
     bin_input(&browser, button(PAD_B));
     assert(!bin_step(&browser) && !command_value && browser.phase == BIN_FAULT);
     assert(!strcmp((char *)shared + 16, BIN_ROOT));
 }
+
+#ifdef SAROO_SAVE_GENERATION
+static void foreign_owner(void)
+{
+    BIN_BROWSER browser = {0};
+    menu_channel_init(1);
+    sel_mode = BIN_FOLDER_MODE;
+    sel_menu.version = bin_current_path();
+    bin_schedule(&browser, BIN_CURRENT);
+    command_lock = 0x80; /* Another CPU still owns the command channel. */
+    memset(shared, 0xa5, sizeof(shared));
+    assert(!bin_step(&browser) && browser.phase == BIN_WAIT);
+    assert(command_lock == 0x80 && !command_value && shared[16] == 0xa5);
+    command_lock = 0;
+    assert(!bin_step(&browser) && browser.phase == BIN_LISTING);
+    assert(command_lock == 0x80 && menu_channel.lock == 0x80);
+    list("Tools@Demo", 1);
+    complete(0);
+    assert(!bin_step(&browser) && browser.phase == BIN_IDLE);
+    assert(!command_lock && !menu_channel.lock);
+}
+
+static void output_owner(void)
+{
+    BIN_BROWSER browser = listing();
+    list("Tools@Demo", 1);
+    complete(0);
+    overwrite_path_on_release = 1;
+    assert(!bin_step(&browser) && browser.phase == BIN_IDLE);
+    assert(!strcmp(bin_current_path(), BIN_ROOT));
+    assert(shared[16] == 'X' && !command_lock && !menu_channel.lock);
+}
+#endif
 
 static void retry(void)
 {
@@ -318,6 +390,10 @@ int main(int argc, char **argv)
 #if HAS_BIN_BROWSER
     else if (!strcmp(argv[1], "cancel")) cancel();
     else if (!strcmp(argv[1], "invalid-reply")) invalid_reply();
+#ifdef SAROO_SAVE_GENERATION
+    else if (!strcmp(argv[1], "foreign-owner")) foreign_owner();
+    else if (!strcmp(argv[1], "output-owner")) output_owner();
+#endif
     else if (!strcmp(argv[1], "retry")) retry();
     else if (!strcmp(argv[1], "bounds")) bounds();
     else if (!strcmp(argv[1], "utf8")) utf8();

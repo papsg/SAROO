@@ -626,3 +626,59 @@ The alternate build remains **uninstallable**. The asynchronous folder
 browser still writes commands without a lease, and launch callbacks have not
 yet been enabled for startup/game/return. No save-generation recovery occurs
 in the standard menu or this incomplete alternate.
+
+## Asynchronous folder-browser ownership (staged, not enabled)
+
+This checkpoint brings the remaining folder-browser command producer under
+the opt-in menu channel. **paps-g** authored the selected private integration
+in `607267b9`, building on the channel from `139fd48f`. The public adaptation
+admits one channel step per UI poll instead of blocking while an earlier
+preview retires. It holds the metadata and command leases across each `BINDIR`
+or `LISTDISC` request, including cancel and failed-child restore, and consumes
+the returned path before releasing the command lease. A foreign owner defers
+publication without touching the shared input. An invalid reply poisons the
+command lease and leaves the browser in its reset-required fault state. The
+standard menu path remains compiled exactly as before.
+
+The source-extracted browser fixture runs the actual menu function alongside
+the actual gate and channel source, with a modeled mailbox. In the staged
+ASan/UBSan and O2 profiles, eight active methods cover prior-preview
+retirement, folder traversal, cancel/restore, retry, bounds/UTF-8, foreign
+ownership, malformed-reply quarantine and reply-buffer replacement immediately
+on lease release. The standard branch passes seven active browser methods;
+its thirteen paired menu/MCU completion methods pass in both profiles. The
+source-route check confirms that the alternate's six direct command writes
+are now two owned transport, two channel and two **leased** browser writes.
+Those two browser writes are intentionally still direct because they span UI
+ticks. Reproduce with:
+
+```sh
+PYTHONPATH=tests SAROO_MENU_BIN_OWNER=1 python3 -B -m unittest test_menu_bin_browser -q
+PYTHONPATH=tests SAROO_MENU_BIN_OWNER=1 SAROO_MENU_BIN_PROFILE=release \
+  python3 -B -m unittest test_menu_bin_browser -q
+PYTHONPATH=tests python3 -B -m unittest \
+  test_menu_bin_browser test_menu_command_completion -q
+PYTHONPATH=tests SAROO_MENU_BIN_PROFILE=release SAROO_FILE_PROFILE=release \
+  python3 -B -m unittest test_menu_bin_browser test_menu_command_completion -q
+python3 -B -m unittest tests.test_menu_caller_routes -q
+python3 -B tests/build_save_generation_candidate.py
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/menu-bin-owner-default-final
+```
+
+The pinned SuperH alternate links 96,680 code/data bytes, 9,540 BSS bytes,
+reserves 16,384 stack bytes and leaves 8,468 body bytes. Largest reported
+direct frames remain 268/88/84/92 bytes in main/conio/game-load/game-save and
+80 in the journal core; these are not nested-call or interrupt stack maxima.
+The existing 65,536-byte transfer workspace is reused. The ordinary menu
+remains byte-identical at 88,040 code/data, 9,508 BSS and 17,140 body-margin
+bytes, image SHA-256
+`d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+
+The gate's SH-2 atomic lease is based on the [SH7604 Hardware Manual §7.10,
+printed p. 203](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=218);
+the tagged acknowledgment is SAROO's menu/MCU protocol, not a Sega command.
+The host mailbox and target link do not qualify Saturn CPU interleaving, a
+physical reset, SD durability or game behavior. Launch/return callbacks are
+still unbound, so neither the alternate nor the standard image performs
+save-generation recovery yet.
