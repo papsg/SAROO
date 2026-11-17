@@ -326,3 +326,35 @@ LTO/non-LTO and 50,904 static DTCM bytes. No direct HSEM owner-token consumer
 was found. These compiler words do not perform read-lock, clear/unlock, key or
 bus transactions; they do not qualify authorization, MDK compilation or
 physical Saturn/game behavior.
+
+## SSR-147: target the intended MCU JPEG clear flags
+
+[ST RM0433 Rev. 8, §§33.5.7–33.5.8, printed pp. 1241–1242](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places end-of-conversion status/clear at bit 5 and header-parsing-done
+status/clear at bit 6. The selected DFP 2.3.1 H750 header gives the status
+flags those positions, but defines their clear commands at bits 4 and 5.
+Thus an end-of-conversion clear requests a reserved bit and a header-done
+clear selects the end-of-conversion flag. This MCU JPEG peripheral is separate
+from the Saturn MPEG-card work.
+
+This directly ports paps-g `e0a9922c` / SSR-147 after SSR-146. Only the two
+clear-command positions and numeric comments change to `0x20`/`0x40`; factors,
+aliases, status/interrupt fields and register layout remain unchanged. The
+selected H750 SHA-256 is
+`cecd38117bb921d6dcf74161b0e6cf62fce34251e6e725f39574e3e9c295c20a`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public parent and pinned raw provider fail five target-compiler assertions
+for the two positions, reserved bits, request combinations and symbolic
+status clearing. Correct status flags, zero requests and register layout pass
+as controls. The corrected selected provider passes both modes and all nine
+earlier selected header contracts; raw contract retains the five failures.
+Run [`stm32-check --case jpeg`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. Both standard 166-vector GNU App images
+and ELFs match SSR-146 byte for byte: 59,632/63,960 loaded bytes for
+LTO/non-LTO and 50,904 static DTCM bytes. No direct JPEG clear-command
+consumer was found. Symbolic expressions do not perform a JPEG transaction,
+resolve concurrent status events, qualify MDK compilation or establish
+physical Saturn/game behavior.
