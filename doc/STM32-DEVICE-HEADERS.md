@@ -161,3 +161,42 @@ loaded bytes and 50,904 static DTCM bytes, with 166 vectors each. The prior
 version, SDRAM and QSPI contracts pass against the selected header. Timer
 preload, update-event and output behavior, MDK compilation, physical MCU and
 Saturn/game qualification remain untested. No device was touched.
+
+## SSR-142: isolate the channel-one DAC busy flag
+
+[ST RM0433 Rev. 8, §§26.7.14 and 26.7.17, printed pp.1073–1074 and
+1077](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+assigns `DAC_SR.BWST1` to bit 15 and the independent channel-two DMA underrun
+flag to bit 29. The latter is cleared by writing one; the busy flag is cleared
+by hardware after sample-time synchronization. A channel-one sample-time
+write during operation depends on its own busy flag. The raw DFP 2.3.1 H750
+header instead defines the busy mask as `0x20008000`, which includes both
+bits. With only channel-two underrun set, a channel-one busy test is therefore
+falsely true. This is a header-field defect; the locally preserved later ST
+header retains it, and no direct current application DAC-status caller was
+found.
+
+This ports paps-g `688c5c06` / SSR-142 on top of SSR-141. Only the `BWST1`
+mask/comment line changes to `0x00008000`; the alias follows that mask.
+Channel-two underrun, all other status flags, register storage/layout and the
+earlier header corrections remain intact. The final selected H750 SHA-256 is
+`2866b495da1aefeac91bf8ebffd045f1fb07185f59b0b6025090161b5ee7ba1e`.
+The pinned raw source, complete ST notice and BSD license remain in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The raw selected header fails 50 compiler assertions: mask/disjointness, 16
+false busy predicates and 32 wrong busy extractions across all 64 combinations
+of the six documented status bits. Cases without channel-two underrun,
+neighboring flags and the SR/SHSR offsets pass. The owned header passes all
+64 combinations and valid controls; the raw-provider reversal still fails
+the contract. Use [`stm32-check --case dac`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with each provider/mode and fresh ignored outputs. The fixture reads
+constant status words only; it never models a status-register write.
+
+Both standard GNU App images remain byte-identical to SSR-141 at 59,632/63,960
+loaded bytes and 50,904 static DTCM bytes, with 166 vectors each. All four
+earlier version/SDRAM/QSPI/timer contracts pass against the final selected
+headers. No DAC transaction, sample-time synchronization, analog output,
+MDK compile, physical MCU or Saturn/game qualification is claimed. No device
+was touched.

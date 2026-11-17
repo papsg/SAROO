@@ -5972,7 +5972,7 @@ typedef struct
 #define DAC_SR_CAL_FLAG1_Msk        (0x1UL << DAC_SR_CAL_FLAG1_Pos)            /*!< 0x00004000 */
 #define DAC_SR_CAL_FLAG1            DAC_SR_CAL_FLAG1_Msk                       /*!<DAC channel1 calibration offset status */
 #define DAC_SR_BWST1_Pos            (15U)
-#define DAC_SR_BWST1_Msk            (0x4001UL << DAC_SR_BWST1_Pos)             /*!< 0x20008000 */
+#define DAC_SR_BWST1_Msk            (0x1UL << DAC_SR_BWST1_Pos)                /*!< 0x00008000 */
 #define DAC_SR_BWST1                DAC_SR_BWST1_Msk                           /*!<DAC channel1 busy writing sample time flag */
 
 #define DAC_SR_DMAUDR2_Pos          (29U)
