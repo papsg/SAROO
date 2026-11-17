@@ -35,6 +35,13 @@ OBJ	=	obj/crt0.o  \
 		obj/tiny_xm.o \
 		obj/version.o
 
+# Save-generation integration remains opt-in until every menu command producer
+# joins the same lease. The ordinary image and object list stay unchanged.
+ifeq ($(SAROO_SAVE_GENERATION),1)
+FLAGS += -DSAROO_SAVE_GENERATION
+OBJ += obj/save_journal.o
+endif
+
 define ECHO_CMD
 	$(if $(V), , @echo "    "$(1)" " $(2))
 	$(if $(V), $(3), @$(3))

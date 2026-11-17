@@ -501,3 +501,69 @@ additional menu-command producer that must join the same ownership scheme.
 Host TAS and file-bus models, plus the alternative SuperH link, do not qualify
 physical dual-CPU arbitration, SRAM aliases, SD durability, Saturn startup or
 game execution. The installed firmware is unchanged.
+
+## Backup API and journal binding (staged, not enabled)
+
+This checkpoint binds the selected **paps-g** allocator/runtime from private
+`5e318867`, the command ownership from `e4fe5cff`, and the selected recovery
+integration from `607267b9` to the public menu's actual `game_save.c` and
+Makefile. The alternate `SAROO_SAVE_GENERATION=1` build links the journal core
+and groups the existing allocator fields with its recovery state. Public backup
+API entries take one backup/command lease; internal allocator, file and archive
+calls use owned variants until that entry returns. A busy owner refuses the
+call, and an invalid command reply cannot be reported as a successful save.
+Journal start/selection and the legacy `save_command` entry also have public
+lease wrappers. The normal menu build remains byte-identical, so this change
+does not activate recovery in standard firmware.
+
+The binding validates caller input/output extents before using the journal's
+transfer workspace or backup shadows. It preserves zero-length payloads and
+the existing 64 KiB/8 MiB backup capacities. The only target portability
+adaptation is a freestanding SuperH definition of the exact-width journal
+types: the pinned Yaul compiler has no libc `stdint.h`. The host model now
+compiles the actual opt-in `game_save.c` rather than inserting runtime logic
+into a transformed copy. It exercises both backup devices, public API calls,
+owner contention, protected-input refusals, normal writes and interrupted
+body/publication/apply paths, replay, and corrupt-record refusal. The older
+transformed-source test remains a separate comparison to the public allocator.
+
+Reproduce this checkpoint with:
+
+```sh
+python3 -B -m unittest tests.test_save_journal_binding -q
+SAROO_SAVE_JOURNAL_PROFILE=release python3 -B -m unittest \
+  tests.test_save_journal_binding -q
+python3 -B -m unittest tests.test_save_journal_runtime \
+  tests.test_save_journal_plan tests.test_save_journal_core \
+  tests.test_save_launch_core tests.test_command_gate_core \
+  tests.test_command_transport_binding -q
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-binding-default
+python3 -B tests/build_save_generation_candidate.py
+```
+
+Both binding profiles pass 38 process cases, including invalid output/input
+and name extents plus an occupied command owner before every operation. The
+six existing focused suites pass 12 methods under ASan/UBSan. An isolated copy
+of the menu with only `SAROO_SAVE_GENERATION=1` added to its Makefile compiles
+and links with the pinned SuperH toolchain: 95,608 code/data bytes, 9,536 BSS
+bytes, 9,544 bytes of body margin and a 16,384-byte reserved stack. The normal
+menu remains 88,040 code/data, 9,508 BSS, 17,140 bytes of body margin and
+SHA-256 `d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+The alternate's direct compiler frames include 92 bytes in `sro_bup_write`,
+80 in `journal_mems_write`, 80 in the record publisher and 72 in replay; these
+are not a whole-call-chain or interrupt stack bound. The existing 65,536-byte
+transfer workspace is reused rather than duplicated.
+
+Sega's [Backup Library §2.1, printed p. 42](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=47)
+defines the directory and data size, and [§2.3 function No. 5, printed p. 45](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50)
+defines write results. The [SH7604 Hardware Manual](https://antime.kapsi.fi/sega/files/sh7604.pdf)
+§7.10 (printed p. 203) and §8.4.4 (p. 221) cover the TAS and cache assumptions
+of the existing command gate. SJR1 and command leasing remain SAROO mechanisms.
+
+The alternate image is **not** ready to install: raw menu command producers,
+including the asynchronous browser and launch/return paths, have not all joined
+the lease. Host execution models completed file operations and selected
+interruption points; it does not establish physical power-loss atomicity,
+dual-CPU arbitration, Saturn behavior or SD durability. The standard image
+and installed firmware remain unchanged.

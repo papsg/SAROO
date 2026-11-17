@@ -1,7 +1,17 @@
 /* Recovery-record core for atomic save generations. */
 #ifndef SAROO_SAVE_JOURNAL_H
 #define SAROO_SAVE_JOURNAL_H
+#ifdef __sh__
+/* The pinned Yaul freestanding target has no libc stdint.h. */
+typedef unsigned char uint8_t;
+typedef unsigned int uint32_t;
+typedef unsigned int uintptr_t;
+#define UINTPTR_MAX 0xffffffffu
+_Static_assert(sizeof(uint8_t) == 1 && sizeof(uint32_t) == 4 &&
+               sizeof(uintptr_t) == sizeof(void *), "journal target widths");
+#else
 #include <stdint.h>
+#endif
 
 enum {
     SJ_HEADER_BYTES = 512,

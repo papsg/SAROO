@@ -1,6 +1,21 @@
 
 #include "main.h"
 #include "smpc.h"
+#ifdef SAROO_SAVE_GENERATION
+#include "command_gate.h"
+/* Internal allocator and replay calls retain their caller's command lease. */
+#define printk command_printk
+#define memcmp command_memcmp
+#define archive_command archive_command_owned
+#define archive_find_slot archive_find_slot_owned
+#define read_file_bounded read_file_bounded_owned
+#define write_file write_file_owned
+#define journal_start journal_start_owned
+#define journal_select journal_select_owned
+#define SAVE_COMMAND save_command_owned
+#else
+#define SAVE_COMMAND save_command
+#endif
 
 
 
@@ -58,15 +73,21 @@ typedef struct {
 }BUPDATE;
 
 
+#ifndef SAROO_SAVE_GENERATION
 static int bup_dev;
+#endif
 
 // 64k buffer at 220c4000, 64 blocks
+#ifndef SAROO_SAVE_GENERATION
 static int mblk_start;
 static int mblk_end;
 static int mblk_bmp[2];
+#endif
 // header at 220c1000, 8192 bytes
 // save_hdr at 220c3000, 1024 bytes
+#ifndef SAROO_SAVE_GENERATION
 static int msav_blk;
+#endif
 
 
 /******************************************************************************/
@@ -116,24 +137,39 @@ typedef struct {
     short last;
     u8 state, flags, mode;
 } PendingSave;
+#ifdef SAROO_SAVE_GENERATION
+#include "save_runtime.h"
+#else
 static PendingSave pending_save[2];
+#endif
 
 /* The capability is latched at menu entry. A cleared pair of registers
  * cannot acknowledge a tagged request. */
+#ifdef SAROO_SAVE_GENERATION
+int save_command_owned(int cmd, int arg)
+{
+    if (command_faulted()) return BUP_BROKEN;
+#else
 int save_command(int cmd, int arg)
 {
     int ready = menu_command_wait();
     if (ready) return ready;
+#endif
     int ack = save_ack;
     SS_ARG = arg;
     SS_CMD = cmd | ack;
     while (SS_CMD);
+#ifdef SAROO_SAVE_GENERATION
+    __asm__ volatile ("" ::: "memory");
+    return command_reply(ack, 0, 19);
+#else
     return SS_ARG ^ ack;
+#endif
 }
 
 static int bup_update(int flag)
 {
-    if (save_command(flag == BUPSAVE ? SSCMD_SSAVE : SSCMD_SMEMS,
+    if (SAVE_COMMAND(flag == BUPSAVE ? SSCMD_SSAVE : SSCMD_SMEMS,
                      flag == BUPSAVE ? 0 : flag))
         return BUP_BROKEN;
     if (flag & MEMS_BUF)
@@ -156,6 +192,9 @@ static int finish_pending(int dev)
 
 static int commit_save(int dev, int flags)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (journal_state != JOURNAL_LEGACY) return journal_commit(dev);
+#endif
     pending_save[dev].flags = flags;
     pending_save[dev].state = SAVE_COMMIT;
     return finish_pending(dev);
@@ -163,7 +202,7 @@ static int commit_save(int dev, int flags)
 
 static int mems_load(int blk)
 {
-    return save_command(SSCMD_LMEMS, blk) ? BUP_BROKEN : 0;
+    return SAVE_COMMAND(SSCMD_LMEMS, blk) ? BUP_BROKEN : 0;
 }
 
 
@@ -301,6 +340,11 @@ static int access_data(int block, u8 *data, int type)
 	dsize = *(u32*)(bp+0x0c);
     if (!dsize)
         return 0;
+#ifdef SAROO_SAVE_GENERATION
+    /* The stored extent is known only after validated lookup/recovery. */
+    if (type < 2 && journal_state != JOURNAL_LEGACY &&
+        !journal_input_span(data, dsize)) return BUP_BROKEN;
+#endif
     if (data == NULL) {
         return BUP_BROKEN;
     }
@@ -422,9 +466,11 @@ static int find_exact_save(char *name, int *last)
 
 /* Validation and resizing run sequentially and share this scratch space.
  * No archive bytes change until all headers and block ownership are valid. */
+#ifndef SAROO_SAVE_GENERATION
 static u8 resize_bitmap[1008];
 static u16 resize_blocks[510];
 static int checked_free, checked_saves;
+#endif
 
 static int claim_block(int block)
 {
@@ -569,6 +615,9 @@ static int check_backup(int dev)
     u8 *entry, *bitmap;
     if (dev < 0 || dev > 1)
         return BUP_NON;
+#ifdef SAROO_SAVE_GENERATION
+    if (journal_admit(dev)) return BUP_BROKEN;
+#endif
     bup_dev = dev;
     if (finish_pending(dev)) return BUP_BROKEN;
     if (dev == 0) {
@@ -663,8 +712,11 @@ int sro_bup_sel_part(int dev, int num)
 
 	if(dev<0 || dev>=2)
 		return BUP_NON;
-
+#ifdef SAROO_SAVE_GENERATION
+    return journal_admit(dev);
+#else
 	return 0;
+#endif
 }
 
 
@@ -674,7 +726,9 @@ int sro_bup_format(int dev)
 
 	if(dev<0 || dev>1)
 		return BUP_NON;
-
+#ifdef SAROO_SAVE_GENERATION
+    if (journal_admit(dev)) return BUP_BROKEN;
+#endif
     pending_save[dev].state = 0;
     pending_save[dev].header = 0;
     if (dev) {
@@ -714,6 +768,11 @@ int sro_bup_format(int dev)
 
 int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (dev >= 0 && dev <= 1 && journal_state != JOURNAL_LEGACY &&
+        (((uintptr_t)stat & 3) || !journal_input_span(stat, sizeof(*stat))))
+        return BUP_BROKEN;
+#endif
     int result = check_backup(dev);
     u32 count, limit = dev ? 479u * 1024 : 510u * 128;
     if (result)
@@ -821,6 +880,14 @@ static int resize_save(int header, u32 new_size)
 }
 
 
+#ifdef SAROO_SAVE_GENERATION
+#define SAROO_SAVE_JOURNAL_RUNTIME_ONLY
+#include "save_journal_plan.c"
+#undef SAROO_SAVE_JOURNAL_RUNTIME_ONLY
+#include "save_runtime.c"
+#include "save_launch.c"
+#endif
+
 static int same_pending_write(int dev, BUPDIR *dir, int mode)
 {
     PendingSave *pending = &pending_save[dev];
@@ -843,6 +910,10 @@ static int write_pending(int dev, BUPDIR *dir, u8 *data)
     *(u32*)(bp + 28) = dir->date;
     bp[27] = dir->language;
     memcpy(bp + 16, dir->comment, 10);
+#ifdef SAROO_SAVE_GENERATION
+    if (dev && journal_state != JOURNAL_LEGACY)
+        return journal_mems_write(dir, data, bp);
+#endif
     int result = access_data(header, data, 2);
     if (result)
         return result;
@@ -865,10 +936,20 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 {
     if (dev < 0 || dev > 1)
         return BUP_NON;
+#ifdef SAROO_SAVE_GENERATION
+    if (journal_state != JOURNAL_LEGACY &&
+        (((uintptr_t)dir & 3) || !journal_input_span(dir, sizeof(*dir))))
+        return BUP_BROKEN;
+#endif
     if (!dir || !dir->file_name[0] || (dir->data_size && !data))
         return BUP_BROKEN;
     if (dir->data_size > (dev ? 479u * 1024 : 510u * 128))
         return BUP_NOT_ENOUGH_MEMORY;
+#ifdef SAROO_SAVE_GENERATION
+    if ((journal_state != JOURNAL_LEGACY &&
+         !journal_input_span(data, dir->data_size)) || journal_admit(dev))
+        return BUP_BROKEN;
+#endif
     bup_dev = dev;
     PendingSave *pending = &pending_save[dev];
     if (pending->state && same_pending_write(dev, dir, mode))
@@ -930,6 +1011,9 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 
 int sro_bup_read(int dev, char *file_name, u8 *data)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!journal_name_input(dev, file_name)) return BUP_BROKEN;
+#endif
     int block;
     int result = check_backup(dev);
     if (result)
@@ -948,6 +1032,9 @@ int sro_bup_read(int dev, char *file_name, u8 *data)
 
 int sro_bup_delete(int dev, char *file_name)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!journal_name_input(dev, file_name)) return BUP_BROKEN;
+#endif
     int block, last, has_data;
     u8 *bp;
     int result = check_backup(dev);
@@ -1040,6 +1127,15 @@ static void directory_record(BUPDIR *dir, u8 *bp, int dev)
 
 int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!journal_name_input(dev, file_name)) return 0;
+    if (journal_state != JOURNAL_LEGACY && tbsize > 0) {
+        unsigned copies = tbsize, maximum = dev ? 448 : 510;
+        if (copies > maximum) copies = maximum;
+        if (((uintptr_t)dir & 3) ||
+            !journal_input_span(dir, copies * sizeof(*dir))) return 0;
+    }
+#endif
     if (check_backup(dev) || !file_name || tbsize < 0 || (tbsize && !dir))
         return 0;
     int len = 0, count = 0;
@@ -1089,6 +1185,9 @@ int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)
 
 int sro_bup_verify(int dev, char *file_name, u8 *data)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!journal_name_input(dev, file_name)) return BUP_BROKEN;
+#endif
     int block;
     int result = check_backup(dev);
     if (result)
@@ -1104,6 +1203,12 @@ int sro_bup_verify(int dev, char *file_name, u8 *data)
 	return access_data(block, data, 1);
 }
 
+
+#ifdef SAROO_SAVE_GENERATION
+/* Date conversion is pure and its ordinary logging takes its own lease. */
+#undef printk
+#undef memcmp
+#endif
 
 /* Gregorian dates in the API's 8-bit year range: 1980 through 2235.
  * Century exceptions within this range are 2100 (120) and 2200 (220). */
@@ -1238,81 +1343,145 @@ __asm__(
 
 BUP_ENTRY(int, bup_sel_part, (int dev, int num))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_sel_part(dev, num) : sro_bup_sel_part(dev, num);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_sel_part(dev, num);
 	}else{
 		return sro_bup_sel_part(dev, num);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_format, (int dev))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_format(dev) : sro_bup_format(dev);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_format(dev);
 	}else{
 		return sro_bup_format(dev);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_stat, (int dev, int dsize, BUPSTAT *stat))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_stat(dev, dsize, stat) : sro_bup_stat(dev, dsize, stat);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_stat(dev, dsize, stat);
 	}else{
 		return sro_bup_stat(dev, dsize, stat);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_write, (int dev, BUPDIR *dir, u8 *data, int mode))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_write(dev, dir, data, mode) : sro_bup_write(dev, dir, data, mode);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_write(dev, dir, data, mode);
 	}else{
 		return sro_bup_write(dev, dir, data, mode);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_read, (int dev, char *file_name, u8 *data))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_read(dev, file_name, data) : sro_bup_read(dev, file_name, data);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_read(dev, file_name, data);
 	}else{
 		return sro_bup_read(dev, file_name, data);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_delete, (int dev, char *file_name))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_delete(dev, file_name) : sro_bup_delete(dev, file_name);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_delete(dev, file_name);
 	}else{
 		return sro_bup_delete(dev, file_name);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_dir, (int dev, char *file_name, int tbsize, BUPDIR *dir))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return 0;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_dir(dev, file_name, tbsize, dir) : sro_bup_dir(dev, file_name, tbsize, dir);
+    return command_leave() ? result : 0;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_dir(dev, file_name, tbsize, dir);
 	}else{
 		return sro_bup_dir(dev, file_name, tbsize, dir);
 	}
+#endif
+
 }
 
 
 BUP_ENTRY(int, bup_verify, (int dev, char *file_name, u8 *data))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = use_sys_bup && dev == 0 ?
+        sys_bup_verify(dev, file_name, data) : sro_bup_verify(dev, file_name, data);
+    return command_leave() ? result : BUP_BROKEN;
+#else
 	if(use_sys_bup && dev==0){
 		return sys_bup_verify(dev, file_name, data);
 	}else{
 		return sro_bup_verify(dev, file_name, data);
 	}
+#endif
+
 }
 
 
@@ -1339,8 +1508,22 @@ BUP_ENTRY(u32, bup_set_date, (BUPDATE *bdt))
 /******************************************************************************/
 
 
+#ifdef SAROO_SAVE_GENERATION
+#define printk command_printk
+#endif
 BUP_ENTRY(void, bup_init, (u8 *lib_addr, u8 *work_addr, void *cfg_ptr))
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!backup_enter()) return;
+    /* BIOS initialization uses 16 KiB library and 8,312-byte work areas;
+     * virtual initialization touches only its 44-byte function table. */
+    if (journal_state != JOURNAL_LEGACY &&
+        !journal_init_input(lib_addr, work_addr, cfg_ptr)) {
+        journal_state = JOURNAL_OFF;
+        command_leave();
+        return;
+    }
+#endif
 	BUPCFG *cfg = (BUPCFG*)cfg_ptr;
 
 	if(debug_flag&1)
@@ -1386,21 +1569,42 @@ BUP_ENTRY(void, bup_init, (u8 *lib_addr, u8 *work_addr, void *cfg_ptr))
 	cfg[2].unit_id = 0;
 	cfg[2].partition = 0;
 
+#ifdef SAROO_SAVE_GENERATION
+	if(use_sys_bup==0 && !journal_admit(0)){
+#else
 	if(use_sys_bup==0){
+#endif
 		// Check "SaroSave"
 		if((BUPMEM->magic0!=0x5361726f || BUPMEM->magic1!=0x53617665) && backup_blank(0)){
 			printk("  empty bup memory, need format.\n");
+#ifdef SAROO_SAVE_GENERATION
+            sro_bup_format(0);
+#else
 			bup_format(0);
+#endif
 		}
 	}
 
 	// Check "SaroMems"
+#ifdef SAROO_SAVE_GENERATION
+	if(!journal_admit(1) && (MEMS->magic0!=0x5361726f || MEMS->magic1!=0x4d656d73) && backup_blank(1)){
+#else
 	if((MEMS->magic0!=0x5361726f || MEMS->magic1!=0x4d656d73) && backup_blank(1)){
+#endif
 		printk("  empty memory card, need format.\n");
+#ifdef SAROO_SAVE_GENERATION
+        sro_bup_format(1);
+#else
 		bup_format(1);
+#endif
 	}
-
+#ifdef SAROO_SAVE_GENERATION
+    command_leave();
+#endif
 }
+#ifdef SAROO_SAVE_GENERATION
+#undef printk
+#endif
 
 
 /******************************************************************************/
@@ -1408,3 +1612,36 @@ BUP_ENTRY(void, bup_init, (u8 *lib_addr, u8 *work_addr, void *cfg_ptr))
 
 
 
+
+#ifdef SAROO_SAVE_GENERATION
+#undef SAVE_COMMAND
+#undef archive_command
+#undef archive_find_slot
+#undef read_file_bounded
+#undef write_file
+#undef journal_start
+#undef journal_select
+
+/* External entry points acquire a fresh lease. Internal journal and allocator
+ * calls above use only their explicit owned variants. */
+int journal_start(void)
+{
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = journal_start_owned();
+    return command_leave() ? result : BUP_BROKEN;
+}
+
+int journal_select(const u8 *key)
+{
+    if (!backup_enter()) return BUP_BROKEN;
+    int result = journal_select_owned(key);
+    return command_leave() ? result : BUP_BROKEN;
+}
+
+int save_command(int cmd, int arg)
+{
+    if (!command_enter()) return BUP_BROKEN;
+    int result = save_command_owned(cmd, arg);
+    return command_leave() ? result : BUP_BROKEN;
+}
+#endif

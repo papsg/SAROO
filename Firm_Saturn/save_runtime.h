@@ -1,7 +1,7 @@
 /* Private declarations for the game_save.c recovery binding. */
 #ifndef SAROO_SAVE_RUNTIME_H
 #define SAROO_SAVE_RUNTIME_H
-#include <stdint.h>
+#include "save_journal.h"
 enum { JOURNAL_OFF, JOURNAL_RECOVER, JOURNAL_READY, JOURNAL_LEGACY };
 /* Every mutable allocator/journal object has the same backup-operation lease.
  * Keep its exact existing capacity in one object so admission can protect all

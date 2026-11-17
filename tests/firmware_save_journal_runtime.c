@@ -4,6 +4,41 @@
 #include "firmware_save_resize.c"
 #undef main
 
+#ifdef SAROO_SAVE_GENERATION
+/* Only the command gate and external transports are modeled here. The menu
+ * allocator, journal binding, public backup entries and record core are the
+ * actual production sources compiled with the staged integration enabled. */
+static int model_lease, model_busy, model_fault, model_leaves;
+
+int command_enter(void)
+{
+    if (model_busy || model_lease || model_fault) return 0;
+    model_lease = 1;
+    return 1;
+}
+int backup_enter(void) { return command_enter(); }
+int command_leave(void)
+{
+    assert(model_lease);
+    model_leaves++;
+    if (model_fault) return 0;
+    model_lease = 0;
+    return 1;
+}
+int command_faulted(void) { return model_fault; }
+void command_fault(void) { model_fault = 1; }
+int command_reply(int tag, int minimum, int maximum)
+{
+    (void)tag; (void)minimum; (void)maximum;
+    assert(model_lease || journal_state == JOURNAL_LEGACY);
+    return test_arg;
+}
+int command_printk(char *fmt, ...) { (void)fmt; return 0; }
+int printk(char *fmt, ...) { (void)fmt; return 0; }
+int command_memcmp(void *left, void *right, int count)
+{ return memcmp(left, right, (size_t)count); }
+#endif
+
 const u8 test_game_id[16] = "TESTGAME00000001";
 _Alignas(8) u8 test_work[0x100 + SJ_WRITE_BYTES];
 static u8 journal_disk[SJ_MAX_BYTES];
@@ -78,11 +113,28 @@ int archive_command(unsigned device, u32 offset, void *data, int length)
     return size;
 }
 
+#ifdef SAROO_SAVE_GENERATION
+int read_file_bounded_owned(char *name, int offset, int size, void *data, u32 capacity)
+{ assert(model_lease); return read_file_bounded(name, offset, size, data, capacity); }
+int write_file_owned(char *name, int offset, int size, void *data)
+{ assert(model_lease); return write_file(name, offset, size, data); }
+int archive_find_slot_owned(const u8 *key, void *workspace, u32 capacity)
+{ assert(model_lease); return archive_find_slot(key, workspace, capacity); }
+int archive_command_owned(unsigned device, u32 offset, void *data, int length)
+{ assert(model_lease); return archive_command(device, offset, data, length); }
+#endif
+
 static int operation(int dev, const char *change, BUPDIR *dir, u8 *bytes)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (!strcmp(change, "delete")) return bup_delete(dev, dir->file_name);
+    if (!strcmp(change, "format")) return bup_format(dev);
+    return bup_write(dev, dir, bytes, 0);
+#else
     if (!strcmp(change, "delete")) return sro_bup_delete(dev, dir->file_name);
     if (!strcmp(change, "format")) return sro_bup_format(dev);
     return sro_bup_write(dev, dir, bytes, 0);
+#endif
 }
 
 static void baseline(int dev, const char *change, BUPDIR *dir, u8 *bytes,
@@ -128,6 +180,22 @@ static void exercise(int dev, int size, const char *change, const char *failure)
     memset(journal_disk, 0, sizeof(journal_disk));
     int legacy_flushes = flushes;
     assert(journal_start() == 0 && journal_select(test_game_id) == 0);
+#ifdef SAROO_SAVE_GENERATION
+    /* A foreign command owner must refuse a public API call before changing
+     * either the active record or the selected archive. */
+    unsigned before_busy_writes = journal_writes;
+    model_busy = 1;
+    assert(bup_write(dev, &target, bytes, 0) == BUP_BROKEN);
+    model_busy = 0;
+    assert(journal_writes == before_busy_writes && !model_lease);
+    BUPDIR *overlapping_dir = (BUPDIR *)(test_work + 0x200);
+    memcpy(overlapping_dir, &target, sizeof(*overlapping_dir));
+    assert(bup_write(dev, overlapping_dir, bytes, 0) == BUP_BROKEN);
+    if (target.data_size)
+        assert(bup_write(dev, &target, test_work + 0x200, 0) == BUP_BROKEN);
+    assert(bup_delete(dev, (char *)(test_work + 0x200)) == BUP_BROKEN);
+    assert(journal_writes == before_busy_writes && !model_lease);
+#endif
     if (!strcmp(failure, "body")) fail_body = 1;
     if (!strcmp(failure, "header-reply")) fail_header_reply = 1;
     if (!strcmp(failure, "apply")) fail_apply = 1;
@@ -144,7 +212,13 @@ static void exercise(int dev, int size, const char *change, const char *failure)
             assert(journal_size > SJ_HEADER_BYTES + 8);
             journal_disk[journal_size - 1] ^= 1;
             unsigned old_writes = primary_writes;
+#ifdef SAROO_SAVE_GENERATION
+            assert(backup_enter());
+#endif
             assert(journal_admit(1) == BUP_BROKEN);
+#ifdef SAROO_SAVE_GENERATION
+            assert(command_leave());
+#endif
             assert(primary_writes == old_writes);
             goto done;
         }
@@ -153,7 +227,13 @@ static void exercise(int dev, int size, const char *change, const char *failure)
             journal_state = JOURNAL_OFF;
             assert(journal_start() == 0 && journal_select(test_game_id) == 0);
         } else {
+#ifdef SAROO_SAVE_GENERATION
+            assert(backup_enter());
+#endif
             assert(journal_admit(1) == 0);
+#ifdef SAROO_SAVE_GENERATION
+            assert(command_leave());
+#endif
         }
         if (!strcmp(failure, "body")) {
             assert(!memcmp(slot_disk, before_slot, sizeof(slot_disk)));
@@ -165,9 +245,18 @@ static void exercise(int dev, int size, const char *change, const char *failure)
     assert(!memcmp(slot_disk, expected_slot, sizeof(slot_disk)));
     assert(!memcmp(mems_disk, expected_mems, sizeof(mems_disk)));
     SaveJournalRecovery recovered;
+#ifdef SAROO_SAVE_GENERATION
+    assert(backup_enter());
+#endif
     assert(save_journal_load(&recovered, JOURNAL_WORK, resize_bitmap,
                              journal_read, NULL) == SJ_EMPTY);
+#ifdef SAROO_SAVE_GENERATION
+    assert(command_leave());
+#endif
     reload_model();
+#ifdef SAROO_SAVE_GENERATION
+    assert(backup_enter());
+#endif
     if (!strcmp(change, "delete") || !strcmp(change, "format")) {
         BUPDIR found;
         assert(sro_bup_dir(dev, target.file_name, 1, &found) == 0);
@@ -180,8 +269,14 @@ static void exercise(int dev, int size, const char *change, const char *failure)
             assert(sro_bup_dir(dev, "KEEP0000001", 1, &found) == 0);
         }
     } else check_save(dev, &target, bytes);
+#ifdef SAROO_SAVE_GENERATION
+    assert(command_leave());
+#endif
 done:
     assert(flushes == legacy_flushes);
+#ifdef SAROO_SAVE_GENERATION
+    assert(!model_lease && model_leaves > 0);
+#endif
     printf("PASS device=%d size=%d change=%s failure=%s journal=%u primary=%u\n",
            dev, size, change, failure, journal_writes, primary_writes);
     free(before_slot); free(before_mems); free(expected_slot); free(expected_mems); free(bytes);
