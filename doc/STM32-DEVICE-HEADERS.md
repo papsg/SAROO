@@ -490,3 +490,36 @@ bytes. Run [`stm32-check --case lptim`](../tools/README.md#pinned-stm32-device-h
 in fresh ignored output directories. No current direct single-start caller was
 found. Compiler expressions do not exercise enable/trigger admission, hardware
 auto-clear, reset sequencing, waveforms, MDK compilation or Saturn/game behavior.
+
+## SSR-152: retain the HRTIM trigger-four update-source high bit
+
+[ST RM0433 Rev. 8, §37.5.39, printed pp. 1487–1488](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places the trigger-four update-source field at bits 27:25. Source encodings 4
+and 5 select timers D and E; 6 and 7 are reserved. The selected DFP 2.3.1
+H750 header had the right field mask and low helpers, but its high helper
+`HRTIM_CR1_ADC4USRC_2` was zero. Composing source D therefore selected master,
+and composing E selected timer A. Direct literal encodings already worked.
+The selector concerns update of trigger configuration from preload to active;
+it does not by itself configure a complete ADC conversion trigger.
+
+This directly ports paps-g `1997cb02` / SSR-152 after SSR-151. Only the
+trigger-four high helper factor and its numeric comment change in the owned
+H750 header. Other trigger fields, update-disable bits, the register layout,
+pinned raw DFP source, ST notice and BSD license remain exact. The selected
+H750 SHA-256 is
+`e2e801b111f865a65fe152a9ee225c608e7cef54a1f844992c7ed67f6c61ef93`.
+See [source provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail three target-compiler
+assertions for the helper, field coverage and D/E composition. Lower-source,
+other-trigger, update-disable and common-register layout controls pass. The
+corrected selected provider passes both modes; the raw contract retains the
+failures. All fourteen earlier selected header contracts, 21 Rust unit tests,
+two RTL checks and formatting pass. Both standard 166-vector GNU App builds
+pass; LTO/non-LTO flat images, ELFs and resources match SSR-151 byte for byte
+at 59,632/63,960 loaded and 50,904 static DTCM bytes. Run
+[`stm32-check --case hrtim`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No current direct HRTIM trigger-source
+caller was found. Compiler expressions do not exercise preload ownership,
+event timing, ADC conversion, MDK compilation or Saturn/game behavior.

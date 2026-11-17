@@ -22968,7 +22968,7 @@ typedef struct
 #define HRTIM_CR1_ADC4USRC            HRTIM_CR1_ADC4USRC_Msk                   /*!< ADC Trigger 4 update source */
 #define HRTIM_CR1_ADC4USRC_0          (0x1UL << HRTIM_CR1_ADC4USRC_Pos)         /*!< 0x02000000 */
 #define HRTIM_CR1_ADC4USRC_1          (0x2UL << HRTIM_CR1_ADC4USRC_Pos)         /*!< 0x04000000 */
-#define HRTIM_CR1_ADC4USRC_2          (0x0UL << HRTIM_CR1_ADC4USRC_Pos)         /*!< 0x0800000 */
+#define HRTIM_CR1_ADC4USRC_2          (0x4UL << HRTIM_CR1_ADC4USRC_Pos)         /*!< 0x08000000 */
 
 /**** Bit definition for Common HRTIM Timer control register 2 ****************/
 #define HRTIM_CR2_MSWU_Pos            (0U)
