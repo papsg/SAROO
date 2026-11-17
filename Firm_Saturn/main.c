@@ -11,6 +11,7 @@
 #include "main.h"
 #ifdef SAROO_SAVE_GENERATION
 #include "command_gate.h"
+#include "menu_channel.h"
 #endif
 #include "smpc.h"
 #include "vdp2.h"
@@ -625,6 +626,7 @@ static void file_cache_purge(u32 address, u32 size, int mirrored)
 
 #ifdef SAROO_SAVE_GENERATION
 #include "command_gate.c"
+#include "menu_channel.c"
 #define OWNED_TRANSPORT(name) name##_owned
 #else
 #define OWNED_TRANSPORT(name) name
@@ -1069,10 +1071,17 @@ static void fill_selmenu(void)
 
 static void select_notify(int index)
 {
+#ifdef SAROO_SAVE_GENERATION
+    if (sel_mode == 0) {
+        int result = menu_select_notify(page * MENU_ITEMS + index);
+        if (result) menu_error(&sel_menu, "Preview unavailable: %d", result);
+    }
+#else
 	if(sel_mode==0 && !menu_command_wait()){
 		SS_ARG = page*MENU_ITEMS + index;
 		SS_CMD = SSCMD_SELECT | menu_ack;
 	}
+#endif
 }
 
 
@@ -1213,14 +1222,29 @@ static int sel_handle(int ctrl)
 		int retv;
 
 		if(sel_mode==0){
+#ifndef SAROO_SAVE_GENERATION
 			retv = menu_command_wait();
 			if (retv) {
 				menu_error(menu, TT("游戏启动失败! %d"), retv);
 				return 0;
 			}
+#endif
 			menu_status(menu, TT("游戏启动中......"));
 
 			u8 overlay_version = REG8(SYSINFO_ADDR + 0x3c);
+#ifdef SAROO_SAVE_GENERATION
+			int command;
+			int argument;
+			if (!skip_patch && !no_game_patches && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
+				argument = index;
+				command = overlay_version >= 4 ? SSCMD_ROMDISC : SSCMD_FIRSTDISC;
+			} else {
+				argument = index | (!skip_patch && !no_game_patches && overlay_version >= 1 && overlay_version < 3 ?
+				                  SD_OVERLAY_REQUEST : 0u);
+				command = SSCMD_LOADDISC;
+			}
+			retv = menu_request(command, argument);
+#else
 			if (!skip_patch && !no_game_patches && overlay_version >= 3 && overlay_version <= SD_OVERLAY_VERSION) {
 				SS_ARG = index;
 				SS_CMD = overlay_version >= 4 ? SSCMD_ROMDISC : SSCMD_FIRSTDISC;
@@ -1232,6 +1256,7 @@ static int sel_handle(int ctrl)
 			while(SS_CMD);
 
 			retv = (signed short)SS_ARG;
+#endif
 			if(retv==0){
 				retv = bios_cd_cmd(0);
 			}
@@ -1255,6 +1280,9 @@ static int sel_handle(int ctrl)
 		if(sel_mode==0){
 			int index = page*MENU_ITEMS + menu->current;
 
+#ifdef SAROO_SAVE_GENERATION
+			retv = menu_request(SSCMD_LOADDISC, index);
+#else
 			retv = menu_command_wait();
 			if (retv) {
 				menu_error(menu, TT("游戏启动失败! %d"), retv);
@@ -1265,6 +1293,7 @@ static int sel_handle(int ctrl)
 			while(SS_CMD);
 
             retv = (signed short)SS_ARG;
+#endif
             if (retv) {
                 menu_error(menu, TT("游戏启动失败! %d"), retv);
             } else {
@@ -1514,12 +1543,28 @@ static void bin_browser(void)
     sel_mode = 0;
 }
 
+#ifdef SAROO_SAVE_GENERATION
+int select_bins(void)
+#else
 void select_bins(void)
+#endif
 {
 	if (menu_ack && LE32((void *)(SYSINFO_ADDR + 0x34)) == BIN_DIRECTORY_VERSION) {
 		bin_browser();
+#ifdef SAROO_SAVE_GENERATION
+        return 0;
+#else
 		return;
+#endif
 	}
+#ifdef SAROO_SAVE_GENERATION
+    int result = menu_request(SSCMD_LISTBINS, 0);
+    if (result) return result;
+    select_game();
+    result = menu_request(SSCMD_LISTDISC, 0);
+    if (!result) sel_mode = 0;
+    return result;
+#else
 	if (menu_command_wait()) return;
 	SS_CMD = SSCMD_LISTBINS;
 	while(SS_CMD);
@@ -1530,6 +1575,7 @@ void select_bins(void)
 	SS_ARG = 0;
 	SS_CMD = SSCMD_LISTDISC;
 	while(SS_CMD);
+#endif
 }
 
 
@@ -1549,11 +1595,22 @@ static int category_handle(int ctrl)
 	if(BUTTON_DOWN(ctrl, PAD_A)){
 		int index = menu->current;
 
+#ifdef SAROO_SAVE_GENERATION
+        int result = menu_request(SSCMD_LISTDISC, index);
+        if (result) {
+            menu_error(menu, "Directory unavailable: %d", result);
+            return 0;
+        }
+#else
 		if (menu_command_wait()) return 0;
 		SS_ARG = index;
 		SS_CMD = SSCMD_LISTDISC;
 		while(SS_CMD);
+#endif
 
+#ifdef SAROO_SAVE_GENERATION
+		sel_mode = 0;
+#endif
 		select_game();
 		return MENU_RESTART;
 	}else if(BUTTON_DOWN(ctrl, PAD_C)){
@@ -1620,6 +1677,17 @@ int main_handle(int ctrl)
 		return 0;
 
 	if(index==0){
+#ifdef SAROO_SAVE_GENERATION
+        /* A failed BIN catalog restoration must be retried before the game
+         * selector interprets the shared directory as a disc catalog. */
+        if (sel_mode) {
+            int result = menu_request(SSCMD_LISTDISC, 0);
+            if (result) {
+                menu_error(&main_menu, "Directory unavailable: %d", result);
+                return 0;
+            }
+        }
+#endif
 		sel_mode = 0;
 		select_category();
 		return MENU_RESTART;
@@ -1667,6 +1735,14 @@ int main_handle(int ctrl)
 
 		// 停止正在播放的背景音乐。
 		// Stop currently playing background music.
+#ifdef SAROO_SAVE_GENERATION
+        retv = menu_request(SSCMD_LOADDISC, 0xffff);
+        if (retv) {
+            menu_error(&main_menu, TT("游戏启动失败! %d"), retv);
+            menu_cd_power(&main_menu, 0, 0);
+            return 0;
+        }
+#else
 		retv = menu_command_wait();
 		if (retv) {
 			menu_error(&main_menu, TT("游戏启动失败! %d"), retv);
@@ -1675,6 +1751,7 @@ int main_handle(int ctrl)
 		}
 		SS_ARG = 0xffff;
 		SS_CMD = SSCMD_LOADDISC;
+#endif
 
 		menu_status(&main_menu, TT("游戏启动中......"));
 		if(BUTTON_DOWN(ctrl, PAD_C)){
@@ -1688,7 +1765,15 @@ int main_handle(int ctrl)
 		return 0;
 	}else if(index==3){
 		sel_mode = 1;
+#ifdef SAROO_SAVE_GENERATION
+        int result = select_bins();
+        if (result) {
+            menu_error(&main_menu, TT("文件加载失败! %d"), result);
+            return 0;
+        }
+#else
 		select_bins();
+#endif
 		return MENU_RESTART;
 	}else if(index==4){
 		menu_status(&main_menu, "Open serial console ...");
@@ -1696,6 +1781,13 @@ int main_handle(int ctrl)
 		sci_shell();
 		return MENU_EXIT;
 	}else if(index==update_index){
+#ifdef SAROO_SAVE_GENERATION
+		menu_status(&main_menu, TT("升级中,请勿断电..."));
+        int result = menu_request(SSCMD_UPDATE, 0);
+        menu_status(&main_menu, result ? TT("升级失败!") :
+                                   TT("升级完成,请重新开机!"));
+        while (1);
+#else
 		if (menu_command_wait()) return 0;
 		menu_status(&main_menu, TT("升级中,请勿断电..."));
 		SS_ARG = 0;
@@ -1707,6 +1799,7 @@ int main_handle(int ctrl)
 			menu_status(&main_menu, TT("升级完成,请重新开机!"));
 		}
 		while(1);
+#endif
 	}
 
 	return 0;
@@ -1716,6 +1809,11 @@ int main_handle(int ctrl)
 
 int check_update(void)
 {
+#ifdef SAROO_SAVE_GENERATION
+    int result = menu_request(SSCMD_CHECK, 0);
+    printk("check_update: %02x\n", result);
+    return result;
+#else
 	if (menu_command_wait()) return 0;
 	SS_ARG = 0;
 	SS_CMD = SSCMD_CHECK;
@@ -1723,6 +1821,7 @@ int check_update(void)
 
 	printk("check_update: %02x\n", SS_ARG);
 	return SS_ARG;
+#endif
 }
 
 
@@ -1740,7 +1839,11 @@ void menu_init(void)
 	for(i=0; i<menu_str_nr; i++){
 		add_menu_item(&main_menu, TT(menu_str[i]));
 	}
+#ifdef SAROO_SAVE_GENERATION
+	if(check_update() > 0){
+#else
 	if(check_update()){
+#endif
 		add_menu_item(&main_menu, TT(update_str));
 		update_index = i;
 	}
@@ -1807,6 +1910,13 @@ void detect_bios_type(void)
 static int start_menu_services(void)
 {
     menu_ack = LE32((void *)(SYSINFO_ADDR + 0x2c)) == MENU_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+#ifdef SAROO_SAVE_GENERATION
+    save_ack = LE32((void *)(SYSINFO_ADDR + 0x10)) == SAVE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+    file_ack = LE32((void *)(SYSINFO_ADDR + 0x14)) == FILE_ACK_VERSION ? SSCMD_SAVE_ACK : 0;
+    archive_ack = LE32((void *)(SYSINFO_ADDR + 0x18)) == ARCHIVE_IO_VERSION ? SSCMD_SAVE_ACK : 0;
+    menu_channel_init(LE32((void *)(SYSINFO_ADDR + 0x2c)));
+    return menu_request(SSCMD_STARTUP, 0);
+#else
     int result = menu_command_wait();
     if (result) return result;
     SS_ARG = 0;
@@ -1815,6 +1925,7 @@ static int start_menu_services(void)
     result = menu_command_wait();
     if (result) return result;
     return (SS_ARG & menu_ack) ? 0 : -1;
+#endif
 }
 
 int _main(void)

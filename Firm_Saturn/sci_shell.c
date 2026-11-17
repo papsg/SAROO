@@ -1,5 +1,8 @@
 
 #include "main.h"
+#ifdef SAROO_SAVE_GENERATION
+#include "menu_channel.h"
+#endif
 #include "smpc.h"
 
 /**********************************************************/
@@ -376,9 +379,14 @@ void sci_shell(void)
 		}
 
 		CMD(listb){
+#ifdef SAROO_SAVE_GENERATION
+            int result = menu_request(SSCMD_LISTBINS, 0);
+            if (result) printk("listb: %d\n", result);
+#else
 			if (menu_command_wait()) continue;
 			SS_CMD = SSCMD_LISTBINS;
 			while(SS_CMD);
+#endif
 		}
 		CMD(loadb){
 			int run_binary(int index, int run);

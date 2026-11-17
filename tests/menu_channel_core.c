@@ -114,7 +114,8 @@ static void capability_and_ownership(void)
 static void reply_domains(void)
 {
     const int commands[] = {SSCMD_CHECK, SSCMD_UPDATE, SSCMD_LISTDISC,
-                            SSCMD_STARTUP, SSCMD_LOADDISC};
+                            SSCMD_LISTBINS, SSCMD_STARTUP, SSCMD_LOADDISC,
+                            SSCMD_FIRSTDISC, SSCMD_ROMDISC};
     unsigned cases = 0;
     for (unsigned raw = 0; raw <= UINT16_MAX; raw++) {
         reset(1);
@@ -149,7 +150,7 @@ static void reply_domains(void)
             cases++;
         }
     }
-    assert(cases == 6u * 65536u);
+    assert(cases == 9u * 65536u);
     printf("PASS reply cases=%u\n", cases);
 }
 

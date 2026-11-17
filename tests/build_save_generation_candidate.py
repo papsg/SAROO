@@ -52,12 +52,19 @@ def main():
             raise SystemExit(result.returncode)
         receipt = json.loads((output / "receipt.json").read_text())
         resources = receipt["resources"]
+        direct_stack = receipt["compiler_direct_stack"]
         print(json.dumps({
             "code_data_bytes": resources["code_data_bytes"],
             "bss_bytes": resources["bss_bytes"],
             "body_margin_bytes": resources["body_margin_bytes"],
             "reserved_stack_bytes": resources["reserved_stack_bytes"],
             "image_sha256": resources["image_sha256"],
+            "largest_direct_frame_bytes": {
+                name: max((entry["bytes"] for entry in direct_stack[name]),
+                          default=0)
+                for name in ("main.su", "conio.su", "game_load.su",
+                             "game_save.su", "save_journal.su")
+            },
         }, sort_keys=True))
 
 

@@ -9,6 +9,9 @@
  */
 
 #include "main.h"
+#ifdef SAROO_SAVE_GENERATION
+#include "menu_channel.h"
+#endif
 #include "smpc.h"
 #include "vdp2_display.h"
 
@@ -856,12 +859,22 @@ int menu_run(MENU_DESC *menu)
 {
 	u32 ctrl;
 	int retv;
+#ifdef SAROO_SAVE_GENERATION
+    int channel_error = 0;
+#endif
 
 _restart:
 	draw_menu_frame(menu);
 
 #if 1
 	while(1){
+#ifdef SAROO_SAVE_GENERATION
+        int status = menu_channel_poll();
+        if (status < 0 && status != -16 && status != channel_error) {
+            menu_error(menu, "MCU menu unavailable: %d", status);
+            channel_error = status;
+        }
+#endif
 		ctrl = conio_getc();
 		if(ctrl==0){
 			menu_timer(menu);

@@ -567,3 +567,62 @@ the lease. Host execution models completed file operations and selected
 interruption points; it does not establish physical power-loss atomicity,
 dual-CPU arbitration, Saturn behavior or SD durability. The standard image
 and installed firmware remain unchanged.
+
+## Synchronous menu caller ownership (staged, not enabled)
+
+This checkpoint adapts **paps-g**'s private menu-channel routing `139fd48f`
+and selected `607267b9` integration to the public menu's current synchronous
+callers. With `SAROO_SAVE_GENERATION=1`, game preview, game load (including
+overlay preparation), category and legacy BIN listing, physical-disc stop,
+firmware check/update, STARTUP, the serial console's existing BIN listing, and
+optical `LSAVE` pass through the command channel. The normal branch of every
+route remains compiled exactly as before. Capability words are latched before
+the staged STARTUP request, so the channel can refuse an incomplete peer.
+The selected channel and gate are included in the alternate menu image.
+
+The parent menu has 15 direct command-register writers after preprocessing.
+The alternate now has six: two owned transport requests, two channel requests,
+and **two remaining asynchronous folder-browser requests**. Its serial console
+listing goes from one direct writer to zero. A source-level route test checks
+these counts and the actual call sites; the host command-channel model covers
+all eight synchronous command families plus SELECT, including tagged replies,
+busy ownership, queued preview retirement and timeout. The 13 existing
+menu/MCU completion methods still pass under ASan/UBSan and O2, as do the
+backup binding and launch-model suites. A failed legacy BIN catalog restore
+keeps its selection state, and the game selector retries restoration before
+using that shared directory.
+
+Reproduce with:
+
+```sh
+python3 -B -m unittest tests.test_menu_caller_routes \
+  tests.test_menu_channel_core -q
+SAROO_MENU_CHANNEL_PROFILE=release python3 -B -m unittest \
+  tests.test_menu_channel_core -q
+PYTHONPATH=tests python3 -B -m unittest test_menu_command_completion -q
+PYTHONPATH=tests SAROO_FILE_PROFILE=release python3 -B -m unittest \
+  test_menu_command_completion -q
+python3 -B tests/build_save_generation_candidate.py
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/menu-channel-sync-default-final
+```
+
+The pinned SuperH opt-in link uses 96,568 code/data bytes, 9,540 BSS, a
+16,384-byte reserved stack and leaves 8,580 body bytes. The standard menu
+remains byte-identical at 88,040 code/data, 9,508 BSS and 17,140 body-margin
+bytes, with SHA-256
+`d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+Both paths reuse the same 65,536-byte transfer workspace. Compiler stack
+reports show unchanged largest direct frames in main/conio/game-load/game-save
+(268/88/84/92 bytes), plus 80 bytes for the journal core; these do not bound
+nested calls or interrupts.
+The existing [SH7604 Hardware Manual](https://antime.kapsi.fi/sega/files/sh7604.pdf)
+§7.10 (printed p. 203) provides the command gate's TAS basis; the tagged
+commands are SAROO's protocol, documented by the public MCU dispatcher and
+menu wire constants. These host and target results are not physical
+dual-CPU, reset, SD, Saturn or game qualification.
+
+The alternate build remains **uninstallable**. The asynchronous folder
+browser still writes commands without a lease, and launch callbacks have not
+yet been enabled for startup/game/return. No save-generation recovery occurs
+in the standard menu or this incomplete alternate.

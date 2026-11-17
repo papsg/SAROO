@@ -1,5 +1,8 @@
 
 #include "main.h"
+#ifdef SAROO_SAVE_GENERATION
+#include "menu_channel.h"
+#endif
 #include "smpc.h"
 
 
@@ -600,11 +603,15 @@ int bios_cd_cmd(int type)
 	if(type>0 && use_sys_bup==0){
 		// 光盘游戏。需要通知MCU加载SAVE。
 		// Optical disc game. Need to notify MCU to load SAVE.
+#ifdef SAROO_SAVE_GENERATION
+        if (menu_load_save((u8 *)0x06002020)) return -1;
+#else
 		if (menu_command_wait()) return -1;
 		memcpy((void*)(TMPBUFF_ADDR+0x10), (u8*)0x06002020, 16);
 		*(u8*)(TMPBUFF_ADDR+0x20) = 0;
 
         if (save_command(SSCMD_LSAVE, 0)) return -1;
+#endif
 	}
 
 	// 模拟执行18fe()
