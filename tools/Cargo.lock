@@ -29,8 +29,6 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 [[package]]
 name = "cpufeatures"
 version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -59,6 +57,7 @@ dependencies = [
 name = "firmware-build"
 version = "0.1.0"
 dependencies = [
+ "cpufeatures",
  "generic-array",
  "serde_json",
  "sha2",

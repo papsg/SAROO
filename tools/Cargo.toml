@@ -1,8 +1,9 @@
 [workspace]
 members = ["crates/menu-assets", "crates/web-assets", "crates/firmware-build", "crates/sector-overlay"]
-exclude = ["vendor/generic-array"]
+exclude = ["vendor/generic-array", "vendor/cpufeatures"]
 default-members = ["crates/menu-assets"]
 resolver = "2"
 
 [patch.crates-io]
 generic-array = { path = "vendor/generic-array" }
+cpufeatures = { path = "vendor/cpufeatures" }

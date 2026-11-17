@@ -12,3 +12,4 @@ sha2 = "=0.10.9"
 
 [dev-dependencies]
 generic-array = "=0.14.7"
+cpufeatures = "=0.2.17"
