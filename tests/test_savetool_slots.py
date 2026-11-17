@@ -51,6 +51,28 @@ class SaveSlotTests(NativeSaveTest):
             self.assertEqual(self.invoke(directory, '-c', 'NEW').returncode, 0)
             self.assertEqual(struct.unpack_from('>IHH', archive.read_bytes(), 2 * UNIT + 8)[:2], (UNIT, 128))
 
+    def test_listing_uses_selected_slot_geometry_in_mixed_archives(self):
+        for size in (0, 1, 28, 29, 86, 87, 128, 992, 29550):
+            with self.subTest(size=size), self.case() as temp:
+                directory = Path(temp)
+                payload = bytes((i * 13 + 7) % 251 for i in range(size))
+                mixed, _ = slot_fixture(gameids=(b'GAME', b'LEGACY'))
+                native = native_slot_fixture([(b'NATIVE00001', payload)])
+                old, _ = slot_fixture([(b'LEGACY00001', payload)], gameids=(b'LEGACY',))
+                mixed[UNIT:2 * UNIT] = native[UNIT:]
+                mixed[2 * UNIT:3 * UNIT] = old[UNIT:]
+                archive = directory / 'archive.bin'
+                archive.write_bytes(mixed)
+                for slot, expected in ((1, 1 + (size + 29) // 58),
+                                       (2, 1 + (size + 127) // 128)):
+                    result = self.invoke(directory, '-t', slot)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(f'block={expected}'.encode(), result.stdout)
+                    self.assertEqual(self.invoke(directory, '-t', slot, '-s', 0).returncode, 0)
+                    filename = 'NATIVE00001.SRO' if slot == 1 else 'LEGACY00001.SRO'
+                    self.assertEqual((directory / filename).read_bytes()[64:], payload)
+                self.assertEqual(archive.read_bytes(), mixed)
+
     def test_bad_slot_indices_and_missing_file_storage_are_rejected(self):
         image, _ = slot_fixture()
         for slot in (-2, 0, 2, 4095, 4096, 2147483647):

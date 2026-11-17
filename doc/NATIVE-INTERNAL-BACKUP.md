@@ -94,3 +94,10 @@ Boundary payloads, 510 empty native saves, resize, round trips, and
 overcapacity/corruption/pending-journal refusal are covered. The source file
 is hashed before and after conversion and never overwritten. These checks do
 not establish physical save compatibility or power-loss behavior.
+
+The [mixed-format listing control](../tests/test_savetool_slots.py) reconciles
+private SSR-045: `sr_bup_list` uses the selected slot's logical allocation
+cost rather than the private 128-byte transport stride. It lists a 992-byte
+native save as 18 blocks and a 992-byte old-format save as nine, and checks
+both complete payload exports without changing the archive. This is a host
+display correction; it makes no claim about game-side directory behavior.
