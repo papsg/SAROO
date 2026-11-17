@@ -771,3 +771,50 @@ these standard linked images. In the atomic-1 QEMU fixture, the direct SVC
 Put frame grows 24→32 bytes; this is not a complete stack or timing bound.
 No ordinary shipping caller, game failure, MDK link, physical interrupt
 timing or Saturn behavior is established. No device was touched.
+
+## SSR-161: restore priority only from inheriting mutexes
+
+The pinned [CMSIS-RTOS2 API 2.1.3 mutex flags](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/Include/cmsis_os2.h#L190-L195)
+give priority inheritance its own opt-in attribute, `osMutexPrioInherit`.
+[Arm's Mutex Management reference](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__MutexMgmt.html)
+defines the protocol. The pinned RTX 5.5.1 `rtx_mutex.c` instead considered
+waiting threads on *every* remaining owned mutex when restoring a thread's
+priority after release or delete. A waiter on an ordinary mutex could therefore
+leave the owner spuriously boosted. SAROO creates a default-attribute filesystem
+mutex; a selected mixed-attribute caller has not been established. This is a
+conditional API defect, without an established game symptom.
+
+This ports paps-g `5cc06c78` / SSR-161 into the public project's owned RTX
+source layout. One shared helper starts from the owner's base priority and
+considers waiters only on remaining inheritance-enabled mutexes. Release and
+delete use it without changing ownership, recursive counts, waiter transfer or
+dispatch. Both MDK targets explicitly select the licensed
+[`rtx_mutex.c`](../Firm_MCU/RTE/CMSIS/RTX/rtx_mutex.c); the GNU builder checks
+that selection and the [source provenance](../Firm_MCU/RTE/CMSIS/RTX/provenance.json).
+The exact pinned raw source hash is
+`b46b725600c31028ae3d57083012248f3390f0130939abd2347513689ec1efe5`;
+the selected source hash is
+`44beeb75dc334c674523f0eff71b9c1a7ba1ad983a195df6e751c840b2b93832`.
+Removing the public attribution comment and reversing only the original narrow
+correction reconstructs the complete raw source byte for byte. Arm's Apache
+2.0 notice remains intact. No original tpunix issue or PR was identified.
+
+The public [Cortex-M7/QEMU fixture](../tests/rtos_mutex.c) runs real CMSIS
+calls, RTX SVC/scheduling, three owned mutexes and actual waiting threads.
+It covers 1,152 release/delete combinations across inheritance masks, list
+order, recursion, base priorities, queued waiters and robust attributes. The
+raw provider reports 192 wrong post-operation priorities and 288 wrong cleanup
+priorities in both ordinary and LTO builds; the selected provider reports zero.
+Neighboring all-inheriting and higher-base cases remain valid in both. Selected
+stock-archive selection also passes. The mixed archive-plus-LTO QEMU link fails
+before execution for both raw and selected providers, so that combination is
+unqualified; ordinary LTO and archive checks are separate. Reproduce using
+[`rtos-check --case mutex`](../tools/README.md#actual-rtx-api-contracts-offline)
+with fresh output directories and `--baseline` for the raw source.
+
+Fresh standard GNU App LTO/non-LTO builds retain all 166 vectors and 50,904
+static DTCM bytes. The selected helper raises image load from 59,632 to 59,640
+bytes with LTO, and from 63,960 to 63,972 bytes without LTO; free ITCM is
+5,896/1,564 bytes. The BootLoader object check, Rust unit/RTL tests, formatting
+and strict Clippy pass. Host emulation and GNU links do not qualify MDK linking,
+physical scheduler timing, Saturn or games. No device was touched.

@@ -335,6 +335,15 @@ pub fn build(
     {
         return fail("RTX thread owner must be selected once in App and BootLoader");
     }
+    let selected_mutex = app.join("RTE/CMSIS/RTX/rtx_mutex.c");
+    if selected_mutex.is_file()
+        && project
+            .matches("<FilePath>.\\RTE\\CMSIS\\RTX\\rtx_mutex.c</FilePath>")
+            .count()
+            != 2
+    {
+        return fail("RTX mutex owner must be selected once in App and BootLoader");
+    }
     // MDK selects this configured component through RTE rather than FilePath.
     let config = app.join("RTE/CMSIS/RTX_Config.c");
     if !sources.contains(&config) {

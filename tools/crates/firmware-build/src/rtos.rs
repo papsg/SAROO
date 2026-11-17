@@ -610,6 +610,15 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             }
         }
     }
+    let selected_mutex = owned.join("rtx_mutex.c");
+    if selected_mutex.is_file() {
+        let expected = pins["selected_mutex_sha256"]
+            .as_str()
+            .ok_or("Missing selected mutex source pin")?;
+        if sha(&fs::read(selected_mutex)?) != expected {
+            return fail("Selected mutex source differs from the declared correction");
+        }
+    }
     Ok(())
 }
 
@@ -627,6 +636,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "retire" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
         "thread-flags" => "rtx_thread.c",
+        "mutex" => "rtx_mutex.c",
         _ => return fail("Unknown RTOS contract case"),
     };
     let (atomic, phase, inside) = pool_options(case, &args[15..])?;
@@ -736,6 +746,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 "syscounter" => "rtos_syscounter.c",
                 "thread-flags" => "rtos_thread_admission.c",
                 "message-get" => "rtos_message_get_admission.c",
+                "mutex" => "rtos_mutex.c",
                 _ => name,
             }
         } else {
@@ -1020,6 +1031,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     format!("-DEXCLUSIVE_ACCESS={atomic}"),
                 ]);
             }
+            if case == "mutex" {
+                command.arg("-DOBSERVE_PRIORITIES=1");
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -1100,6 +1114,17 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             &mut commands,
             deadline,
         )?;
+        if case == "mutex" {
+            let log = fs::read_to_string(out.join("build.log"))?;
+            let expected = if baseline {
+                "SUMMARY cases=0x00000480 wrong_after=0x000000c0 wrong_cleanup=0x00000120"
+            } else {
+                "SUMMARY cases=0x00000480 wrong_after=0x00000000 wrong_cleanup=0x00000000"
+            };
+            if !log.contains(expected) {
+                return fail("Mutex priority summary differs from the selected or raw contract");
+            }
+        }
         Ok(())
     })();
     fs::write(
@@ -1109,7 +1134,14 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         )?,
     )?;
     result?;
-    println!("RTOS {case} contract passes; {}", out.display());
+    if case == "mutex" && baseline {
+        println!(
+            "RTOS mutex raw-provider defect reproduced; {}",
+            out.display()
+        );
+    } else {
+        println!("RTOS {case} contract passes; {}", out.display());
+    }
     Ok(())
 }
 
