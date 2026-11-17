@@ -5518,7 +5518,15 @@ FRESULT f_readdir (
 {
 	FRESULT res;
 	FATFS *fs;
+#if FF_USE_LFN == 2 && FF_FS_EXFAT
+	/* Enumeration consumes only the representation for the mounted filesystem. */
+	union {
+		WCHAR lbuf[FF_MAX_LFN + 1];
+		BYTE dbuf[MAXDIRB(FF_MAX_LFN)];
+	} names;
+#else
 	DEF_NAMBUF
+#endif
 
 
 	res = validate(&dp->obj, &fs);	/* Check validity of the directory object */
@@ -5526,7 +5534,12 @@ FRESULT f_readdir (
 		if (!fno) {
 			res = dir_sdi(dp, 0);		/* Rewind the directory object */
 		} else {
+#if FF_USE_LFN == 2 && FF_FS_EXFAT
+			fs->lfnbuf = names.lbuf;
+			fs->dirbuf = names.dbuf;
+#else
 			INIT_NAMBUF(fs);
+#endif
 			res = DIR_READ_FILE(dp);		/* Read an item */
 			if (res == FR_NO_FILE) res = FR_OK;	/* Ignore end of directory */
 			if (res == FR_OK) {				/* A valid entry is found */
