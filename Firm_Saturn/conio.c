@@ -348,36 +348,42 @@ int fb_draw_font(int x, int y, int color, u8 *font_data, int lb, int rb)
 static int utf8_to_ucs(char **ustr)
 {
 	u8 *str = (u8*)*ustr;
-	int ucs = 0;
+	int ucs, length, i;
 
-	if(*str==0){
-		return 0;
-	}else if(*str<0x80){
-		*ustr = str+1;
-		return *str;
-	}else if(*str<0xe0){
-		if(str[1]<0x80){
-			ucs = '?';
-			*ustr = str+1;
-		}else{
-			ucs = ((str[0]&0x1f)<<6) | (str[1]&0x3f);
-			*ustr = str+2;
-		}
-		return ucs;
+	if(!str[0]) return 0;
+	*ustr = (char*)(str+1);
+	if(str[0]<0x80) return str[0];
+
+	if(str[0]>=0xc2 && str[0]<=0xdf){
+		ucs = str[0]&0x1f;
+		length = 2;
+	}else if(str[0]>=0xe0 && str[0]<=0xef){
+		ucs = str[0]&0x0f;
+		length = 3;
+	}else if(str[0]>=0xf0 && str[0]<=0xf4){
+		ucs = str[0]&0x07;
+		length = 4;
 	}else{
-		if(str[1]<0x80){
-			ucs = '?';
-			*ustr = str+1;
-		}else if(str[2]<0x80){
-			ucs = '?';
-			*ustr = str+2;
-		}else{
-			ucs = ((str[0]&0x0f)<<12) | ((str[1]&0x3f)<<6) | (str[2]&0x3f);
-			*ustr = str+3;
-		}
-		return ucs;
+		return '?';
 	}
 
+	for(i=1; i<length; i++){
+		/* RFC 3629 ranges exclude overlongs, surrogates and >U+10FFFF.
+		 * A bad/truncated sequence consumes its valid prefix only, leaving
+		 * the next character (including NUL) for the following call. */
+		if((str[i]&0xc0)!=0x80 || (i==1 &&
+		   ((str[0]==0xe0 && str[i]<0xa0) ||
+		    (str[0]==0xed && str[i]>=0xa0) ||
+		    (str[0]==0xf0 && str[i]<0x90) ||
+		    (str[0]==0xf4 && str[i]>=0x90)))){
+			*ustr = (char*)(str+i);
+			return '?';
+		}
+		ucs = (ucs<<6) | (str[i]&0x3f);
+	}
+	/* Keep supplementary scalars intact: find_font supplies one square. */
+	*ustr = (char*)(str+length);
+	return ucs;
 }
 
 

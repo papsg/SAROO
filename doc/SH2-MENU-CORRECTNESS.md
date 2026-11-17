@@ -377,3 +377,43 @@ bytes/hash stay unchanged. Direct `_main`/`lang_init`/`sci_shell` frames remain
 pins remain exact. Source/privacy/whitespace and private preservation checks
 pass. No device, installed firmware, MCU/FPGA source or physical gameplay is
 changed or qualified.
+
+## SSR-158: decode complete UTF-8 scalars in menu labels
+
+[RFC 3629 §§3–4](https://www.rfc-editor.org/rfc/rfc3629#section-3) defines
+one-to-four-byte UTF-8 encodings and excludes overlong sequences, surrogates
+and values above U+10FFFF. The [public menu decoder](../Firm_Saturn/conio.c)
+handled a valid four-byte sequence with its three-byte calculation: for example
+U+1F600 became U+07D8, leaving a second character. Filename and menu-label
+paths can carry UTF-8, so this is a conditional display defect. No physical
+occurrence or file-selection error has been established.
+
+This ports paps-g `20c97a9d` / SSR-158 as a direct edit of
+`utf8_to_ucs`. The decoder now returns the complete scalar and advances past
+its full encoding. Malformed or truncated input consumes the maximal valid
+prefix and displays one `?`, leaving the next byte or NUL for the following
+call. That question mark is SAROO display policy; RFC 3629 does not prescribe
+it. Existing NUL-terminated string behavior remains. Supplementary scalars
+are not added to the font: the existing lookup renders one fallback square.
+No original tpunix issue or PR was identified.
+
+The exact public parent fails four maintained methods: complete scalar value
+and byte extent, malformed subparts, named supplementary controls and the
+real lookup/raster fallback. The corrected decoder passes all four. The test
+compares every 1,112,063 nonzero Unicode scalar against 4,382,591 bytes from
+Python's independent encoder, plus 69,469 guarded strings and 260,381 exact
+scalar/subpart calls from its strict decoder. Seven named controls cover ASCII,
+BMP, supplementary and maximum values. The real font lookup and guarded raster
+produce exactly one square for a supplementary label while retaining a distinct
+BMP glyph. Three existing menu text tests and nine font coverage tests pass.
+Run `make -C tests check-menu-text` or the standalone
+[`test_menu_utf8.py`](../tests/test_menu_utf8.py); set
+`SAROO_MENU_UTF8_SOURCE` to an original `conio.c` copy for the parent witness.
+
+Paired isolated SH-2 menu builds differ in exactly `Firm_Saturn/conio.c` among
+their complete source inputs. Both retain the 488,770-byte image, unchanged
+357,698-byte font/hash and 9,508-byte BSS. Linked code/data grows
+87,928→88,040 bytes; body margin falls 17,252→17,140 bytes. The compiler's
+direct decoder frame grows 0→32 bytes, which does not measure complete stack
+high-water. Host sanitizers and target linking do not qualify Saturn rendering,
+timing or games. No device was touched.

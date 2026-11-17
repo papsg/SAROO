@@ -37,8 +37,8 @@ def latin_bytes():
     return bytes(int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{2})", array))
 
 
-def build_renderer(directory, fixture="font_lookup.c", extra_functions=()):
-    source = (ROOT / "Firm_Saturn/conio.c").read_text()
+def build_renderer(directory, fixture="font_lookup.c", extra_functions=(), source_path=None):
+    source = (Path(source_path) if source_path else ROOT / "Firm_Saturn/conio.c").read_text()
     functions = []
     signatures = ("static u8 *find_ucs", "static u8 *find_font", "int fb_draw_font_buf", "static int utf8_to_ucs")
     for signature in (*signatures, *extra_functions):

@@ -214,6 +214,7 @@ check-language-catalog:
 
 check-menu-text:
 	$(PYTHON) -B -m unittest discover -s . -p test_menu_text.py -v
+	$(PYTHON) -B -m unittest discover -s . -p test_menu_utf8.py -v
 
 check-language: $(BUILD_DIR)/language
 	UBSAN_OPTIONS=halt_on_error=1 $(BUILD_DIR)/language
