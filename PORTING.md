@@ -3286,3 +3286,19 @@ operation was involved. Original authorship, Arm notices, source citations,
 fresh public controls, costs and remaining limits are recorded per row. The
 later SSR-136/137 core-header work and native internal-backup migration remain
 separate candidates, outside this completed six-checkpoint series.
+
+## Save-generation recovery series — 2026-11-17
+
+Ordered scope: journal record core; allocator planner; bounded menu runtime and
+command ownership; launch/return binding; production activation. The existing
+public archive-owner transport and optional command acknowledgments are
+prerequisites already on main. The diagnostic shell/XMODEM, USB stack, new CDON
+recipes and native-backup migration are excluded. Port the selected behavior as
+direct source, with one verified and pushed checkpoint before the next.
+
+| Original contribution | Public checkpoint | Validation and limits |
+| --- | --- | --- |
+| paps-g `3c773b0d`, `6ff1e686`, `d4847f56`, refined in `5e318867` — SJR1 record core, streamed publication and bounded replay | [`1d8ae90`](https://github.com/papsg/SAROO/commit/1d8ae90), on main | The selected 364-line core and header are staged but unlinked. Three focused methods pass under ASan/UBSan and O2: 2,960 record/bounds/corruption/publication checks, 67,388 split cases, 317 replay cases and independent Python wire/CRC decoding. Strict freestanding C99 SuperH object compiles: 3,537 text/constant, zero data/BSS and largest direct frame 80 bytes. Two isolated menu builds before/after the strict-compile assertion adaptation pass with identical image/ELF, 88,040 code/data, 9,508 BSS and 17,140 body margin. The Makefile object list is unchanged. [Sega Backup API, FatFs sync, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/1d8ae90/doc/SAVE-GENERATION-RECOVERY.md). The current save path still writes in place; no power-loss, physical SD, Saturn or game qualification is claimed. |
+
+The allocator planner and production integration remain to be ported and
+verified. The private repository and Saturn are untouched. No PR was opened.
