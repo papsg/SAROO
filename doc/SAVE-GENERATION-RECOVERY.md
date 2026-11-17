@@ -194,3 +194,65 @@ they remain part of ownership and activation acceptance. The selected public
 source has no new heap, task, handle or resident payload. BIOS delegated
 internal saves remain on their existing path; the excluded native-backup
 migration is not implied by this checkpoint.
+
+## Shared command gate (staged; not enabled)
+
+The fourth checkpoint stages `command_gate.c` and its current public API. The
+ordinary menu has no lease around its direct shared command register writes;
+this source is **not yet included in `main.c` or linked**. Callers, startup
+drain, launch/return transitions and the menu/MCU protocol still require their
+own checkpoints before the journal can be enabled.
+
+**paps-g** authored the gate in private `e4fe5cff`, the sticky reply fault in
+`bc592d82`, the reset-owner fence in `dfa2f1d1` and `90ff71c0`, and the
+selected integration in `607267b9`. This public port keeps the gate logic,
+adapts `file_cache_purge` to the current three-argument menu helper, and limits
+the header to implemented core functions. The host and target compile fixtures
+are public adaptations. Diagnostic shell functions and their declarations are
+excluded.
+
+The SH-2 `TAS.B` instruction acquires a byte lease through the uncached address
+alias. The [SH7604 Hardware Manual §7.10, printed p. 203](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=218)
+specifies that bus ownership is retained across the read/write portions of
+`TAS`; [§8.4.4, printed p. 221](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=237)
+describes its memory and cache behavior. The gate checks that the previous
+FPGA command has retired before admitting a new owner. It records an inherited
+command on first entry after a Saturn CPU reset and quarantines the lease
+after a malformed tagged reply. The [manual's cache-coherency discussion,
+§8.5.3, printed p. 228](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=244)
+requires software to coordinate stale data between CPUs; `backup_enter` uses
+the existing bounded menu cache purge before touching shared allocator state.
+The exact purge cost and cartridge-bus timing need physical measurement.
+
+Reproduce the checks with `python3 -B -m unittest
+tests.test_command_gate_core -v` and the same command under
+`SAROO_COMMAND_GATE_PROFILE=release`. Each ASan/UBSan and O2 profile checks
+boot ownership, the sticky fault, 655,360 signed/tagged reply combinations and
+40,000 two-thread admission attempts. The test includes the production source
+but replaces the target `TAS` and address alias with host atomics. A strict
+freestanding C99 SuperH fixture compiles that source at `-m2 -mb -Os -Wall
+-Wextra -Werror -fstack-usage`; its disassembly contains `tas.b` on the
+`0x20000000` alias. The fixture object has 288 text bytes, two BSS bytes and
+at most a four-byte direct function frame. Its purge stub cannot measure the
+actual target helper or whole-call-chain stack.
+
+```sh
+docker run --rm --pull=never --platform linux/amd64 --network none \
+  -v "$PWD":/work \
+  'ijacquez/yaul@sha256:b6d272204767cd0a734139dd3a2ab298ef5912fb7b7224b78e6d9fac1a7825a6' \
+  /opt/tool-chains/sh2eb-elf/bin/sh2eb-elf-gcc \
+  -m2 -mb -ffreestanding -fno-builtin -fomit-frame-pointer \
+  -std=c99 -Os -Wall -Wextra -Werror -fstack-usage \
+  -I /work/Firm_Saturn -c /work/tests/target_command_gate.c \
+  -o /work/tests/build/command-gate-core/target_command_gate.o
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/command-gate-stage-menu
+```
+
+The standard menu build still links 88,040 code/data and 9,508 BSS bytes with
+17,140 body bytes free. The menu image SHA-256 remains
+`d3ec0d5a6b96f14d00c7d502cdd4a9d518747f4b9c3bc8cc81a7409fdae61fc2`.
+No installed firmware or release behavior changes at this checkpoint. The
+host atomic model and target instruction compile do not qualify inter-CPU
+arbitration, resets with an outstanding MCU request, actual Saturn execution
+or game behavior.
