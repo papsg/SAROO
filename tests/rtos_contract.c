@@ -116,6 +116,13 @@ static void queue_constructor_contract(void) {
 #include "rtos_pool_contract.inc"
 #elif defined(TEST_RTX_TIMERS)
 #include "rtos_timer_contract.inc"
+#elif defined(TEST_RTX_DISPATCH)
+#include "rtos_dispatch_contract.inc"
+static void main_task(void *argument) {
+    CHECK(argument==(void *)0x9173);
+    output("PASS dispatch assertions=");number(assertions);output("\n");
+    finish(0);
+}
 #elif defined(TEST_RTX_ALLOC_RANGE)
 #include "rtos_alloc_range_contract.inc"
 static void main_task(void *argument) {
@@ -193,6 +200,9 @@ void Reset_Handler(void) {
     if (failed) finish(1);
 #endif
     CHECK(osKernelInitialize()==osOK);
+#ifdef TEST_RTX_DISPATCH
+    dispatch_contract();
+#endif
     osThreadAttr_t attr={.name="svc-main",.priority=osPriorityNormal};
     CHECK(osThreadNew(main_task,(void *)0x9173,&attr));
     (void)osKernelStart();

@@ -654,6 +654,15 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             return fail("Selected memory source differs from the declared range guard");
         }
     }
+    let selected_system = owned.join("rtx_system.c");
+    if selected_system.is_file() {
+        let expected = pins["selected_system_sha256"]
+            .as_str()
+            .ok_or("Missing selected system source pin")?;
+        if sha(&fs::read(selected_system)?) != expected {
+            return fail("Selected system source differs from the declared dispatch layout");
+        }
+    }
     Ok(())
 }
 
@@ -669,6 +678,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "message-get" => "rtx_msgqueue.c",
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
+        "dispatch" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
         "svc" => "rtx_kernel.c",
         "alloc-range" => "rtx_memory.c",
@@ -779,6 +789,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_retire_contract.inc",
         "rtos_svc_contract.inc",
         "rtos_alloc_range_contract.inc",
+        "rtos_dispatch_contract.inc",
     ] {
         let input = if name == "rtos_contract.c" {
             match case {
@@ -1087,6 +1098,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             if case == "alloc-range" {
                 command.arg("-DTEST_RTX_ALLOC_RANGE=1");
             }
+            if case == "dispatch" {
+                command.arg("-DTEST_RTX_DISPATCH=1");
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -1191,6 +1205,14 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 || !log.contains("PASS oversized-stack cleanup=0x00000004")
             {
                 return fail("RTX allocation range and valid-capacity controls did not pass");
+            }
+        }
+        if case == "dispatch" {
+            let log = fs::read_to_string(out.join("build.log"))?;
+            if !log.contains(
+                "DISPATCH objects=0x00001000 callbacks=0x00000060\nPASS dispatch assertions=",
+            ) {
+                return fail("RTX callback matrix did not cover every ID and ring offset");
             }
         }
         Ok(())
@@ -1348,14 +1370,17 @@ mod tests {
         fs::write(sdk.join("rtx_memory.c"), b"upstream memory").unwrap();
         fs::write(owned.join("rtx_memory.c"), b"selected memory").unwrap();
         fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
+        fs::write(sdk.join("rtx_system.c"), b"upstream system").unwrap();
+        fs::write(owned.join("rtx_system.c"), b"selected system").unwrap();
         fs::write(
             owned.join("provenance.json"),
             serde_json::to_vec(&json!({
                 "headers":{"rtx_lib.h":sha(b"header"),"rtx_core_cm.h":sha(b"upstream core")},
-                "providers":{"rtx_delay.c":sha(b"provider"),"rtx_memory.c":sha(b"upstream memory")},
+                "providers":{"rtx_delay.c":sha(b"provider"),"rtx_memory.c":sha(b"upstream memory"),"rtx_system.c":sha(b"upstream system")},
                 "selected_core_cm_sha256":sha(b"selected core"),
                 "selected_kernel_sha256":sha(b"selected kernel"),
-                "selected_memory_sha256":sha(b"selected memory")
+                "selected_memory_sha256":sha(b"selected memory"),
+                "selected_system_sha256":sha(b"selected system")
             }))
             .unwrap(),
         )
@@ -1370,6 +1395,9 @@ mod tests {
         fs::write(owned.join("rtx_kernel.c"), b"modified kernel").unwrap();
         assert!(validate(&app, &root.join("sdk")).is_err());
         fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
+        fs::write(owned.join("rtx_system.c"), b"modified system").unwrap();
+        assert!(validate(&app, &root.join("sdk")).is_err());
+        fs::write(owned.join("rtx_system.c"), b"selected system").unwrap();
         fs::write(owned.join("rtx_lib.h"), b"modified").unwrap();
         assert!(validate(&app, &root.join("sdk")).is_err());
         fs::write(owned.join("rtx_lib.h"), b"header").unwrap();

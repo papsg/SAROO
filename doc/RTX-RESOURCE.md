@@ -122,3 +122,52 @@ Both App builds and BootLoader object compile, and actual Cortex-M7/QEMU LTO
 `syscounter` and `delay` contracts pass. These checks establish source and
 simulator behavior; they do not measure physical timing, exception cost or
 game responsiveness. No firmware was installed.
+
+## Keep deferred callback dispatch compact
+
+Original investigation: **paps-g**, private commit `4f0f37ae`, AUD-RES-034.
+The preceding public RTX owner still uses a `switch` over sparse object IDs.
+Its GNU LTO image contains a nine-entry jump table for the deferred callback
+router. The public adaptation reads the object ID once and uses independent
+equality branches. The IDs are distinct, so exactly one registered callback
+can run for an object; unrecognized IDs run none. The public message-queue
+callback route added by SSR-068 is retained. The final thread dispatch stays
+after complete queue drainage. No global compiler option, new scheduler state,
+or change to other command dispatchers is introduced.
+
+The pinned [Arm RTX 5.5.1 PendSV and post-process source](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_system.c#L163-L213)
+defines the original callback routing and final thread dispatch. This public
+version also retains its earlier selected queue-object route and Arm's
+Apache-2.0 notice. The private experiment used a function-local GNU
+`optimize("no-jump-tables")` attribute; the public version obtains the same
+linked savings through ordinary C branches. [GCC 14.3's function-attribute
+reference](https://gcc.gnu.org/onlinedocs/gcc-14.3.0/gcc/Common-Function-Attributes.html#index-optimize-function-attribute)
+advises against using that attribute in production; its
+[code-generation reference](https://gcc.gnu.org/onlinedocs/gcc-14.3.0/gcc/Code-Gen-Options.html#index-fno-jump-tables)
+describes jump-table suppression. The source rewrite is a local adaptation of
+paps-g's finding, not a newly discovered RTX correctness defect.
+
+On exact public parent `bb1da82`, the GNU LTO App loads 59,376 bytes and its
+linked `osRtxPendSV_Handler` occupies 148 bytes. This version loads **59,344**
+and the handler occupies **116**, saving 32 bytes. The no-LTO image falls from
+63,616 to **63,588** bytes and its handler from 160 to **132**, saving 28.
+Static DTCM remains 50,904 bytes. Both 166-vector App builds and the
+BootLoader object compile. An alternative `else if` source layout gave no
+image saving; the attribute and final independent branches gave the same
+32/28-byte results. These are linked sizes, not measured runtime latency.
+
+The new `rtos-check --case dispatch` runs the actual selected Cortex-M7 RTX
+provider in QEMU. It posts all 256 possible object IDs at all 16 ring offsets:
+4,096 objects, 96 expected callbacks, and complete ring drainage. The exact
+parent and final source pass with identical 5,157 assertions in LTO; the final
+source also passes without LTO. Existing actual deferred-ring retirement
+controls pass with both RTX atomic settings, and the ISR message control
+passes. A pinned-Arm-provider negative control fails at the exact callback
+assertion for the SAROO-added message-queue ID; it deliberately omits earlier
+public queue routing and is not the exact parent for this size comparison.
+The builder pins the final selected `rtx_system.c` hash alongside the
+original pinned Arm provider. Reproduce with the explicit pinned arguments in
+[the offline MCU and RTOS instructions](../tools/README.md#actual-rtx-api-contracts-offline),
+using a new output directory for each parent/candidate mode. IRQs are masked
+for the callback matrix; QEMU and GNU linking do not establish concurrent
+hardware timing, MDK output, installed firmware behavior, or Saturn games.

@@ -191,32 +191,29 @@ void osRtxTick_Handler (void) {
 //lint -esym(765,osRtxPendSV_Handler) "Global scope"
 void osRtxPendSV_Handler (void) {
   os_object_t *object;
+  uint8_t id;
 
   for (;;) {
     object = isr_queue_get();
     if (object == NULL) {
       break;
     }
-    switch (object->id) {
-      case osRtxIdThread:
-        osRtxInfo.post_process.thread(osRtxThreadObject(object));
-        break;
-      case osRtxIdEventFlags:
-        osRtxInfo.post_process.event_flags(osRtxEventFlagsObject(object));
-        break;
-      case osRtxIdSemaphore:
-        osRtxInfo.post_process.semaphore(osRtxSemaphoreObject(object));
-        break;
-      case osRtxIdMemoryPool:
-        osRtxInfo.post_process.memory_pool(osRtxMemoryPoolObject(object));
-        break;
-      case osRtxIdMessageQueue:
-      case osRtxIdMessage:
-        osRtxInfo.post_process.message(osRtxMessageObject(object));
-        break;
-      default:
-        // Should never come here
-        break;
+    /* paps-g AUD-RES-034: route each sparse object ID directly. */
+    id = object->id;
+    if (id == osRtxIdThread) {
+      osRtxInfo.post_process.thread(osRtxThreadObject(object));
+    }
+    if (id == osRtxIdEventFlags) {
+      osRtxInfo.post_process.event_flags(osRtxEventFlagsObject(object));
+    }
+    if (id == osRtxIdSemaphore) {
+      osRtxInfo.post_process.semaphore(osRtxSemaphoreObject(object));
+    }
+    if (id == osRtxIdMemoryPool) {
+      osRtxInfo.post_process.memory_pool(osRtxMemoryPoolObject(object));
+    }
+    if ((id == osRtxIdMessageQueue) || (id == osRtxIdMessage)) {
+      osRtxInfo.post_process.message(osRtxMessageObject(object));
     }
   }
 

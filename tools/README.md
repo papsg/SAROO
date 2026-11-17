@@ -448,11 +448,11 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|message-get|event|retire|syscounter|thread-flags|mutex|svc|alloc-range`.
+arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|message-get|event|retire|dispatch|syscounter|thread-flags|mutex|svc|alloc-range`.
 Choose a fresh `--out tests/build/...`
-for each invocation. `--baseline` selects the original provider for that case
-and intentionally fails the contract after displaying its false-success results,
-except `message-get`, which uses `--get-variant=parent` for the exact public parent;
+for each invocation. `--baseline` selects the original provider for that case;
+for the defect cases below, it intentionally fails after displaying the raw
+result. `message-get` uses `--get-variant=parent` for the exact public parent;
 `mutex --baseline` instead verifies the raw provider's complete wrong-priority
 summary while preserving its valid controls.
 `svc --baseline` restores only the pinned original core header in the staged
@@ -462,6 +462,15 @@ the selected header passes all eight probes in both MSP and PSP contexts.
 nonzero after reporting a non-null pointer for the wrapped request with
 unchanged pool usage. The selected owner passes the range, capacity and
 oversized-thread-stack recovery cases.
+
+`--case dispatch --lto` runs the selected RTX deferred callback router on a
+Cortex-M7 QEMU model. It posts all 256 possible one-byte object IDs at each of
+the 16 ring offsets, checks all 96 expected callbacks and every ring drain,
+then starts an ordinary thread. This tests callback routing and queue
+bookkeeping under masked interrupts, not concurrent ISR scheduling or physical
+latency. Compare the exact public parent and candidate with separate fresh
+output directories; `--case dispatch --baseline` selects the pinned upstream
+system provider and thus omits earlier public RTX changes.
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
 a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 `mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
