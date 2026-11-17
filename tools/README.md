@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5 --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -574,6 +574,8 @@ command-word assertions while its lower-mode, bank and refresh controls pass;
 the owned H750 header passes both. `alias` applies only to `version`.
 For `qspi`, the fixture covers all 32 threshold values, the missing high
 helper, high-to-low replacement and adjacent control fields.
+For `ccr5`, it checks all eight legal grouping combinations with four compare
+values, value-only replacement, neighboring CCR6 and register offsets.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).

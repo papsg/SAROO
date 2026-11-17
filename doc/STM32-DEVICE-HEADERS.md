@@ -125,3 +125,39 @@ loaded bytes and 50,904 static DTCM bytes, with 166 vectors each. The prior
 version and SDRAM contracts pass against the selected header. No FIFO timing,
 interrupt signaling, target execution, MDK compile, physical MCU or Saturn/game
 qualification is claimed. No device was touched.
+
+## SSR-141: separate timer compare values from channel grouping
+
+[ST RM0433 Rev. 8, §38.4.24, printed pp.1615–1617](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines TIM1/TIM8 `CCR5` as a 16-bit compare value at bits 15:0, with
+independent grouping controls `GC5C1/2/3` at bits 29–31. The raw DFP 2.3.1
+header masked all 32 bits as the compare value. Thus reading a compare value
+with grouping set includes grouping bits; a masked value-only update clears
+those controls. This happens with legal register values and requires no
+reserved-bit assumption. The locally preserved ST CMSIS-H7 V1.10.7 release
+notes (4 February 2026) also identify a CCR5 definition correction. No direct
+`CCR5` consumer was found in selected application source.
+
+This ports paps-g `a126b1b8` / SSR-141 on top of SSR-140. Only the compare
+mask/comment line changes to `0x0000ffff`; the register remains 32 bits,
+grouping masks and adjacent CCR6 remain intact. The selected H750 SHA-256 is
+`2735a958d50ba09181e77c6e7b3d02270d200d00fe6b1782d4389a9f123ab242`.
+The exact raw source and ST BSD terms remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The raw target compiler fails 58 assertions: mask/disjointness plus value reads
+and updates across seven nonzero legal grouping combinations and four compare
+values. The zero-group combinations, group helper bits, adjacent CCR6 and
+register offsets pass as valid controls. The owned header passes all eight
+group combinations and four values, including updates that retain grouping;
+the raw-provider reversal still fails the contract and passes controls. Use
+[`stm32-check --case ccr5`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with each provider/mode and fresh ignored outputs. These are compiler
+expressions without timer execution.
+
+Both standard GNU App images remain byte-identical to SSR-140 at 59,632/63,960
+loaded bytes and 50,904 static DTCM bytes, with 166 vectors each. The prior
+version, SDRAM and QSPI contracts pass against the selected header. Timer
+preload, update-event and output behavior, MDK compilation, physical MCU and
+Saturn/game qualification remain untested. No device was touched.
