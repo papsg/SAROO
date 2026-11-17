@@ -645,6 +645,15 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             return fail("Selected semaphore source differs from the declared allocation policy");
         }
     }
+    let selected_memory = owned.join("rtx_memory.c");
+    if selected_memory.is_file() {
+        let expected = pins["selected_memory_sha256"]
+            .as_str()
+            .ok_or("Missing selected memory source pin")?;
+        if sha(&fs::read(selected_memory)?) != expected {
+            return fail("Selected memory source differs from the declared range guard");
+        }
+    }
     Ok(())
 }
 
@@ -662,6 +671,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "retire" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
         "svc" => "rtx_kernel.c",
+        "alloc-range" => "rtx_memory.c",
         "thread-flags" => "rtx_thread.c",
         "mutex" => "rtx_mutex.c",
         _ => return fail("Unknown RTOS contract case"),
@@ -768,6 +778,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_event_nested.inc",
         "rtos_retire_contract.inc",
         "rtos_svc_contract.inc",
+        "rtos_alloc_range_contract.inc",
     ] {
         let input = if name == "rtos_contract.c" {
             match case {
@@ -1073,6 +1084,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             if case == "svc" {
                 command.arg("-DTEST_RTX_SVC=1");
             }
+            if case == "alloc-range" {
+                command.arg("-DTEST_RTX_ALLOC_RANGE=1");
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -1168,6 +1182,15 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             let log = fs::read_to_string(out.join("build.log"))?;
             if !log.contains("MSP probes failed=0x00000000\nPSP probes failed=0x00000000\nPASS SVC probes=0x00000010") {
                 return fail("SVC service contract did not pass both exception contexts");
+            }
+        }
+        if case == "alloc-range" {
+            let log = fs::read_to_string(out.join("build.log"))?;
+            if !log.contains("RANGE wrapped pointer=0x00000000")
+                || !log.contains("PASS allocation cases=0x00000195")
+                || !log.contains("PASS oversized-stack cleanup=0x00000004")
+            {
+                return fail("RTX allocation range and valid-capacity controls did not pass");
             }
         }
         Ok(())
@@ -1322,19 +1345,25 @@ mod tests {
         fs::write(owned.join("rtx_core_cm.h"), b"selected core").unwrap();
         fs::write(sdk.join("rtx_core_cm.h"), b"upstream core").unwrap();
         fs::write(sdk.join("rtx_delay.c"), b"provider").unwrap();
+        fs::write(sdk.join("rtx_memory.c"), b"upstream memory").unwrap();
+        fs::write(owned.join("rtx_memory.c"), b"selected memory").unwrap();
         fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
         fs::write(
             owned.join("provenance.json"),
             serde_json::to_vec(&json!({
                 "headers":{"rtx_lib.h":sha(b"header"),"rtx_core_cm.h":sha(b"upstream core")},
-                "providers":{"rtx_delay.c":sha(b"provider")},
+                "providers":{"rtx_delay.c":sha(b"provider"),"rtx_memory.c":sha(b"upstream memory")},
                 "selected_core_cm_sha256":sha(b"selected core"),
-                "selected_kernel_sha256":sha(b"selected kernel")
+                "selected_kernel_sha256":sha(b"selected kernel"),
+                "selected_memory_sha256":sha(b"selected memory")
             }))
             .unwrap(),
         )
         .unwrap();
         assert!(validate(&app, &root.join("sdk")).is_ok());
+        fs::write(owned.join("rtx_memory.c"), b"modified memory").unwrap();
+        assert!(validate(&app, &root.join("sdk")).is_err());
+        fs::write(owned.join("rtx_memory.c"), b"selected memory").unwrap();
         fs::write(owned.join("rtx_core_cm.h"), b"modified core").unwrap();
         assert!(validate(&app, &root.join("sdk")).is_err());
         fs::write(owned.join("rtx_core_cm.h"), b"selected core").unwrap();

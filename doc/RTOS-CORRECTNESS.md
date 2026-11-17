@@ -860,3 +860,42 @@ DTCM stays 50,904 bytes. Both 166-vector App builds, BootLoader object,
 builder tests, formatting and strict Clippy checks pass. These are source,
 GNU build and simulator results. MDK output, physical timing, stack high-water,
 Saturn and game behavior remain unqualified. No firmware was installed.
+
+## AUD-MCU-036: refuse wrapped RTX allocation sizes
+
+Original discovery and correction: **paps-g**, private commit `e8dc1006`.
+The pinned RTX 5.5.1 variable-block allocator adds its eight-byte header to
+the requested size and then rounds to eight bytes using 32-bit arithmetic.
+For `0xfffffff8`, the charge wraps to zero. On the exact public parent,
+the actual Cortex-M7/QEMU provider returns a non-null pointer while pool usage
+stays at 16 bytes. That pointer cannot represent the requested storage and
+could overlap a later allocation. The pinned
+[Arm allocator source](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_memory.c#L105-L143)
+shows the two unchecked additions; [RTX memory-pool configuration](https://arm-software.github.io/CMSIS_5/RTOS2/html/config_rtx5.html)
+documents the project pools. No normal game call using such a size has been
+established.
+
+The public adaptation selects licensed
+[`rtx_memory.c`](../Firm_MCU/RTE/CMSIS/RTX/rtx_memory.c) in both original MDK
+targets and the GNU App. Its existing parameter check refuses any request
+larger than `UINT32_MAX - sizeof(mem_block_t) - 7` before pool traversal or
+mutation, through the existing failure-event path. Valid sizes, allocation
+type, capacity and free behavior retain their original paths. The raw and
+selected provider hashes are recorded in [RTX provenance](../Firm_MCU/RTE/CMSIS/RTX/provenance.json).
+
+The public [Cortex-M7/QEMU fixture](../tests/rtos_alloc_range_contract.inc)
+reproduces the raw pointer/unchanged-usage failure. The selected provider
+passes 405 direct range, fragmentation, valid-size, capacity and recovery
+cases in both LTO and no-LTO builds. Every oversized refusal preserves all
+pool bytes and emits a failure event; valid allocations/freeing still work.
+Four oversized thread-stack requests leave the common pool unchanged, followed
+by successful creation and termination of a normal thread. Reproduce with
+[`rtos-check --case alloc-range`](../tools/README.md#actual-rtx-api-contracts-offline)
+and a fresh `--baseline` output; the raw control intentionally exits nonzero.
+
+Against public parent `b269347`, GNU App load changes 59,372→**59,376** bytes
+with LTO and 63,612→**63,616** without LTO; static DTCM remains 50,904 bytes.
+Both 166-vector App builds and BootLoader object compile. QEMU checks and GNU
+builder unit tests, formatting and strict Clippy also pass. These checks do
+not establish MDK output, physical timing, a Saturn game trigger or runtime
+stack high-water. No firmware was installed.

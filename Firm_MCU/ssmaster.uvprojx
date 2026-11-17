@@ -705,6 +705,11 @@
               <FilePath>.\RTE\CMSIS\RTX\rtx_semaphore.c</FilePath>
             </File>
             <File>
+              <FileName>rtx_memory.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_memory.c</FilePath>
+            </File>
+            <File>
               <FileName>rtx_evflags.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_evflags.c</FilePath>
@@ -1474,6 +1479,11 @@
               <FileName>rtx_semaphore.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\RTE\CMSIS\RTX\rtx_semaphore.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtx_memory.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\RTE\CMSIS\RTX\rtx_memory.c</FilePath>
             </File>
             <File>
               <FileName>rtx_evflags.c</FileName>

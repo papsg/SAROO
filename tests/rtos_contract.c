@@ -116,6 +116,14 @@ static void queue_constructor_contract(void) {
 #include "rtos_pool_contract.inc"
 #elif defined(TEST_RTX_TIMERS)
 #include "rtos_timer_contract.inc"
+#elif defined(TEST_RTX_ALLOC_RANGE)
+#include "rtos_alloc_range_contract.inc"
+static void main_task(void *argument) {
+    CHECK(argument==(void *)0x9173);
+    range_contract();
+    range_thread_contract();
+    finish(0);
+}
 #elif defined(TEST_RTX_SVC)
 #include "rtos_svc_contract.inc"
 static void main_task(void *argument) {

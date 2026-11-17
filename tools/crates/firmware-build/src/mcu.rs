@@ -105,7 +105,7 @@ fn app_sources(project: &str) -> Result<Vec<PathBuf>> {
         }
         paths.push(path);
     }
-    if paths.is_empty() || paths.len() > 32 {
+    if paths.is_empty() || paths.len() > 33 {
         return fail("Unexpected App source count");
     }
     Ok(paths)
@@ -352,6 +352,15 @@ pub fn build(
             != 2
     {
         return fail("RTX semaphore owner must be selected once in App and BootLoader");
+    }
+    let selected_memory = app.join("RTE/CMSIS/RTX/rtx_memory.c");
+    if selected_memory.is_file()
+        && project
+            .matches("<FilePath>.\\RTE\\CMSIS\\RTX\\rtx_memory.c</FilePath>")
+            .count()
+            != 2
+    {
+        return fail("RTX variable allocator must be selected once in App and BootLoader");
     }
     // MDK selects this configured component through RTE rather than FilePath.
     let config = app.join("RTE/CMSIS/RTX_Config.c");
