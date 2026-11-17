@@ -1,5 +1,5 @@
-/* When integrated, include this after file_cache_purge and put every direct
- * menu command and launch/reset path under the lease. The host fixture
+/* Included after file_cache_purge; direct menu commands and launch/reset
+ * paths use this lease. The host fixture
  * substitutes only the SH-2 atomic operation/address mapping; cartridge-bus
  * behavior still requires physical qualification. */
 static volatile u8 command_lock;

@@ -1,4 +1,4 @@
-/* When integrated, include this after command_gate.c. The metadata lock never
+/* Included after command_gate.c. The metadata lock never
  * grants another caller a command lease: only this channel retires its own
  * SELECT request. Explicit requests retain both locks until completion. */
 enum { MENU_ENABLED = 1, MENU_QUEUED = 2, MENU_ACTIVE = 4, MENU_FAULT = 8 };

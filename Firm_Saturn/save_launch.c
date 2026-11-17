@@ -1,4 +1,4 @@
-/* When integrated, include after save_runtime.c. No command may replace a
+/* Included after save_runtime.c. No command may replace a
  * save session until its previous work is settled. */
 int save_launch_begin_owned(void)
 {

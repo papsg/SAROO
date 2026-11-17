@@ -45,6 +45,8 @@ static u16 *test_command(void)
 #define BUP_BROKEN 4
 static u32 mblk_bmp[2];
 #define menu_command_wait() 0
+/* The extracted legacy allocator body omits game_save.c's top-level alias. */
+#define SAVE_COMMAND save_command
 #include "menu-command.inc"
 
 static unsigned checks;

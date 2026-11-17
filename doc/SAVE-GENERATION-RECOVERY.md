@@ -1,5 +1,11 @@
 # Save-generation recovery
 
+The standard menu now includes save-generation recovery with the matching
+public MCU protocol. The sections below retain the chronological staged
+evidence; see [Standard-firmware activation](#standard-firmware-activation)
+for the current build and remaining qualification limits. No device image was
+installed during this port.
+
 ## Journal record core (staged; not enabled)
 
 This checkpoint adds the record encoder, bounded publisher and validator/replayer
@@ -747,3 +753,80 @@ build and host model do not prove physical power-loss ordering, SD durability,
 Saturn startup timing, overlay-game execution or return from a real game.
 The opt-in image remains a candidate and was not installed. Production
 activation still requires a final source/peer audit and validation gate.
+
+## Standard-firmware activation
+
+The final checkpoint selects `SAROO_SAVE_GENERATION=1` as the normal menu
+Makefile profile. This follows **paps-g**'s selected private activation in
+`607267b9`, adapted to the public direct-source layout and its checked-overlay
+launch variants. The prior menu remains selectable with
+`SAROO_SAVE_GENERATION=0` for controlled comparisons. The MCU source and wire
+constants are unchanged: its published save, file, archive and menu capability
+words match the menu headers; its dispatcher completes the tagged startup,
+preview, three game-load, physical-save, file and archive requests. Unknown or
+incomplete peers are refused before a journal operation. The selected SJR1
+path reads and validates a pending record before ordinary menu startup, uses
+the existing primary archive owner for replay, and retains the command lease
+through each backup and launch transaction. It does not migrate BIOS-delegated
+internal backup or add any CDON recipe, USB feature or diagnostic command.
+
+The source/peer audit accounts for all six direct writes in active `main.c`:
+two owned file/archive transport requests, two menu-channel requests, and
+two asynchronous folder-browser requests under its retained channel lease.
+The backup allocator's separate direct writer runs under its backup lease.
+The standard SuperH link contains `journal_start_owned`, both launch callbacks,
+`save_journal_load` and `save_journal_replay`. The standard menu and paired
+MCU GNU App builds pass with the pinned offline tools. Focused host checks
+pass for the actual backup API and allocator, SJR1 publication/replay cut
+points, input and journal corruption refusal, command ownership, launch/return
+selection, folder browse, MCU save/disc behavior and tagged command replies.
+The legacy save-ack fixture now restores the normal source's top-level
+`SAVE_COMMAND` alias when extracting its old control path; its five methods
+pass. That fixture edit changes no firmware source.
+
+Reproduce the acceptance with:
+
+```sh
+python3 -B -m unittest tests.test_save_journal_binding \
+  tests.test_save_journal_runtime tests.test_save_journal_plan \
+  tests.test_save_journal_core -q
+SAROO_SAVE_JOURNAL_PROFILE=release python3 -B -m unittest \
+  tests.test_save_journal_binding tests.test_save_journal_runtime \
+  tests.test_save_journal_plan tests.test_save_journal_core -q
+python3 -B -m unittest tests.test_menu_channel_core \
+  tests.test_command_transport_binding tests.test_command_gate_core \
+  tests.test_menu_caller_routes tests.test_save_launch_core -q
+PYTHONPATH=tests python3 -B -m unittest \
+  test_menu_command_completion test_save_ack test_mcu_save_disc -q
+PYTHONPATH=tests SAROO_MENU_BIN_OWNER=1 python3 -B -m unittest \
+  test_menu_bin_browser -q
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-generation-standard-final
+```
+
+For the paired MCU, use `firmware-build mcu` with the pinned local Arm GNU,
+CMSIS Core, STM32 and RTX SDK roots shown in the build receipt. It is an
+offline App compile/link, not a device install. Both builds report success.
+The menu links 97,000 code/data bytes and 9,540 BSS bytes, retains the
+16,384-byte stack reservation and 65,536-byte transfer workspace, and leaves
+8,148 body-margin bytes. Relative to the previous normal menu, linked
+code/data grows 8,960 bytes, BSS grows 32 bytes and body margin falls
+8,992 bytes. The padded image remains 488,770 bytes, SHA-256
+`8e4fa6798d649665b97ca3176c7fa9823cefa7f561176eff46d260ad545984e4`.
+Compiler-reported largest direct frames are 268/88/84/92 bytes in
+main/conio/game-load/game-save and 80 in the journal core; these do not
+establish a whole-call-chain or interrupt stack maximum. The matching MCU
+GNU App has 59,344 image-load bytes, 50,904 DTCM data/BSS bytes, 6,192 free
+ITCM bytes and 166 vectors. Its source and image are unchanged by menu
+activation.
+
+Sega's [Backup Library §2.1, printed p. 42](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=47)
+and [§2.3 function No. 5, printed p. 45](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50)
+define the backup directory, data size and write-result contract. The
+[SH7604 Hardware Manual §7.10, printed p. 203](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=218)
+supports the TAS lease operation; [FatFs `f_sync`](https://elm-chan.org/fsw/ff/doc/sync.html)
+describes file synchronization. SJR1, tagged command ownership and archive
+replay are SAROO-defined behavior. Host fault injection and successful target
+links do not prove physical power-loss ordering, SD controller persistence,
+dual-CPU timing, Saturn startup, save behavior in games or a safe field
+upgrade. The firmware has not been installed or tested on a Saturn.

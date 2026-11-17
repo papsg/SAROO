@@ -35,8 +35,9 @@ OBJ	=	obj/crt0.o  \
 		obj/tiny_xm.o \
 		obj/version.o
 
-# Save-generation integration remains opt-in while the complete paired
-# startup/launch/return contract is qualified. The ordinary image is unchanged.
+# Keep the previous menu available for a controlled paired-build comparison.
+# Standard firmware includes the owned save-generation recovery path.
+SAROO_SAVE_GENERATION ?= 1
 ifeq ($(SAROO_SAVE_GENERATION),1)
 FLAGS += -DSAROO_SAVE_GENERATION -DSAROO_MENU_SAVE_LAUNCH
 OBJ += obj/save_journal.o
