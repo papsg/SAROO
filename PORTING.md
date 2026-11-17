@@ -3179,3 +3179,15 @@ The final read-only preservation receipt matches all 3,272 private tracked
 paths, index, HEAD, branch, refs, stashes, status and worktrees against the
 pre-series snapshot. The cited local RM0433 Rev. 8 PDF matches its recorded
 SHA-256 `9ba54135736a47a302cdc28fdc7ca8f23c6eed5a646fa0a639af6ed2ad71336e`.
+
+## STM32 device-header fields, SSR-149–154
+
+Ordered follow-up from public `1c71586`. Port each independently verified
+definition directly to main, with one focused source commit, a reproducing
+target-compiler contract, valid controls, an exact local RM0433 citation and
+paps-g attribution. No PRs, USB, diagnostics, new CDON recipes or device
+operations. The private source and evidence are read-only references.
+
+| Private finding and source | Public checkpoint | Validation and limits |
+| --- | --- | --- |
+| SSR-149, paps-g `5b37a2f0` | [`bf21ce0`](https://github.com/papsg/SAROO/commit/bf21ce0992f6966e3e04b45064d8426fd0b4cf56), on main | Removed the unsupported SAI FIFO-request clear position, mask and alias. The exact public parent and pinned raw provider fail three compiler assertions; all valid clear/status/interrupt/layout controls pass. Corrected selected header passes, and all eleven earlier selected contracts remain green. Twenty-one Rust unit tests, two RTL checks, formatting and both 166-vector GNU App builds pass; LTO/non-LTO ELFs and flat images match SSR-148 byte for byte at 59,632/63,960 loaded and 50,904 DTCM bytes. [RM0433 Rev. 8 §§51.6.12–15 pp. 2293–2298, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/STM32-DEVICE-HEADERS.md#ssr-149-remove-an-unsupported-sai-fifo-clear-command). No normal SAI clear caller, MDK build, audio behavior or Saturn/game qualification is established. |
