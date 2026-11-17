@@ -818,3 +818,45 @@ bytes with LTO, and from 63,960 to 63,972 bytes without LTO; free ITCM is
 5,896/1,564 bytes. The BootLoader object check, Rust unit/RTL tests, formatting
 and strict Clippy pass. Host emulation and GNU links do not qualify MDK linking,
 physical scheduler timing, Saturn or games. No device was touched.
+
+## AUD-MCU-034: preserve RTX SVC compiler effects
+
+Original discovery and correction: **paps-g**, private commit `dfbad441`.
+The pinned RTX 5.5.1 GCC wrappers use `asm volatile("svc 0")` but omit the
+compiler memory effect. A service can read the pointed-to attributes, write
+kernel memory and resume another thread. The pinned Cortex-M7 handler also
+writes **both R0 and R1** into the exception frame, while the two- through
+four-argument wrappers declared R1 as an unchanged input. Those declarations
+allow the compiler to discard an initialization store or reuse an obsolete
+register value after the service. [GCC's extended-assembly contract](https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html)
+defines the `memory` clobber and input/output operands. The pinned
+[RTX exception handler](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/GCC/irq_cm4f.S#L47-L70)
+shows the R0/R1 stores. This is a compiler contract defect in the selected
+RTX provider; no specific Saturn symptom is established. The public FAT
+configuration has `FF_FS_REENTRANT=0`, so the historical FatFs mutex example
+from the private image is not a public application witness.
+
+The public adaptation changes only the owned
+[`rtx_core_cm.h`](../Firm_MCU/RTE/CMSIS/RTX/rtx_core_cm.h) GCC wrapper macros.
+Every SVC call declares memory effects; the return operands describe the
+handler's R0/R1 stores. Ten selected RTX provider units resolve the owned
+header, and the three raw SDK units that remain have no SVC wrapper. The
+original Arm Apache-2.0 notice, raw SDK hash and selected-header hash are
+retained in [provenance](../Firm_MCU/RTE/CMSIS/RTX/provenance.json).
+
+The public [Cortex-M7/QEMU SVC fixture](../tests/rtos_svc_contract.inc) calls
+zero- through four-argument services from the startup MSP and running-thread
+PSP contexts. Replacing only the staged header with the exact pinned original
+reproduces a `0xef` failure mask: seven of eight probes fail before kernel
+startup. The selected header passes all eight in MSP and all eight in PSP,
+then creates and deletes a named priority-inheriting mutex. Reproduce with
+[`rtos-check --case svc`](../tools/README.md#actual-rtx-api-contracts-offline)
+and a fresh output for `--baseline`. The baseline command intentionally exits
+nonzero. Adjacent LTO QEMU delay, mutex and pool contracts pass.
+
+Against public parent `134566b`, the GNU App load changes
+59,340→**59,372** bytes with LTO and remains **63,612** without LTO. Static
+DTCM stays 50,904 bytes. Both 166-vector App builds, BootLoader object,
+builder tests, formatting and strict Clippy checks pass. These are source,
+GNU build and simulator results. MDK output, physical timing, stack high-water,
+Saturn and game behavior remain unqualified. No firmware was installed.

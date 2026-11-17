@@ -601,12 +601,20 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             if Some(sha(&original).as_str()) != expected.as_str() {
                 return fail("RTX SDK differs from the selected 5.5.1 provider");
             }
-            if section == "headers"
-                && !header_matches(name, &original, &fs::read(owned.join(name))?)
-            {
-                return fail(
-                    "RTX support header differs beyond the declared postprocess prototype",
-                );
+            if section == "headers" {
+                let selected = fs::read(owned.join(name))?;
+                if name == "rtx_core_cm.h" {
+                    let selected_hash = pins["selected_core_cm_sha256"]
+                        .as_str()
+                        .ok_or("Missing selected RTX core header pin")?;
+                    if sha(&selected) != selected_hash {
+                        return fail("RTX core header differs from the declared SVC contract");
+                    }
+                } else if !header_matches(name, &original, &selected) {
+                    return fail(
+                        "RTX support header differs beyond the declared postprocess prototype",
+                    );
+                }
             }
         }
     }
@@ -653,6 +661,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "event" => "rtx_evflags.c",
         "retire" => "rtx_system.c",
         "syscounter" => "rtx_kernel.c",
+        "svc" => "rtx_kernel.c",
         "thread-flags" => "rtx_thread.c",
         "mutex" => "rtx_mutex.c",
         _ => return fail("Unknown RTOS contract case"),
@@ -758,6 +767,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "rtos_event_contract.inc",
         "rtos_event_nested.inc",
         "rtos_retire_contract.inc",
+        "rtos_svc_contract.inc",
     ] {
         let input = if name == "rtos_contract.c" {
             match case {
@@ -783,6 +793,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     let result = (|| -> Result<()> {
         let kernel = out.join("rtos/RTX/Source");
         let owned = out.join("config/RTX");
+        if case == "svc" && baseline {
+            let original = fs::read(kernel.join("rtx_core_cm.h"))?;
+            fs::write(owned.join("rtx_core_cm.h"), &original)?;
+            instrumentation =
+                json!({"core_header":"pinned original RTX 5.5.1", "sha256":sha(&original)});
+        }
         let mut sources = fs::read_dir(&kernel)?
             .map(|e| e.map(|e| e.path()))
             .collect::<std::io::Result<Vec<_>>>()?;
@@ -803,7 +819,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let mut kernel_objects = Vec::new();
         for source in &mut sources {
             let name = source.file_name().ok_or("Missing kernel source name")?;
-            if owned.join(name).is_file() && !(baseline && name == provider && case != "retire") {
+            if owned.join(name).is_file()
+                && !(baseline && name == provider && case != "retire" && case != "svc")
+            {
                 direct.push(owned.join(name));
                 if !archive {
                     *source = owned.join(name);
@@ -1052,6 +1070,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             if case == "mutex" {
                 command.arg("-DOBSERVE_PRIORITIES=1");
             }
+            if case == "svc" {
+                command.arg("-DTEST_RTX_SVC=1");
+            }
             if lto {
                 command.args(["-flto=4", "-flto-partition=one"]);
             }
@@ -1141,6 +1162,12 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             };
             if !log.contains(expected) {
                 return fail("Mutex priority summary differs from the selected or raw contract");
+            }
+        }
+        if case == "svc" {
+            let log = fs::read_to_string(out.join("build.log"))?;
+            if !log.contains("MSP probes failed=0x00000000\nPSP probes failed=0x00000000\nPASS SVC probes=0x00000010") {
+                return fail("SVC service contract did not pass both exception contexts");
             }
         }
         Ok(())
@@ -1292,19 +1319,25 @@ mod tests {
         fs::create_dir_all(&sdk).unwrap();
         fs::write(owned.join("rtx_lib.h"), b"header").unwrap();
         fs::write(sdk.join("rtx_lib.h"), b"header").unwrap();
+        fs::write(owned.join("rtx_core_cm.h"), b"selected core").unwrap();
+        fs::write(sdk.join("rtx_core_cm.h"), b"upstream core").unwrap();
         fs::write(sdk.join("rtx_delay.c"), b"provider").unwrap();
         fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
         fs::write(
             owned.join("provenance.json"),
             serde_json::to_vec(&json!({
-                "headers":{"rtx_lib.h":sha(b"header")},
+                "headers":{"rtx_lib.h":sha(b"header"),"rtx_core_cm.h":sha(b"upstream core")},
                 "providers":{"rtx_delay.c":sha(b"provider")},
+                "selected_core_cm_sha256":sha(b"selected core"),
                 "selected_kernel_sha256":sha(b"selected kernel")
             }))
             .unwrap(),
         )
         .unwrap();
         assert!(validate(&app, &root.join("sdk")).is_ok());
+        fs::write(owned.join("rtx_core_cm.h"), b"modified core").unwrap();
+        assert!(validate(&app, &root.join("sdk")).is_err());
+        fs::write(owned.join("rtx_core_cm.h"), b"selected core").unwrap();
         fs::write(owned.join("rtx_kernel.c"), b"modified kernel").unwrap();
         assert!(validate(&app, &root.join("sdk")).is_err());
         fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();

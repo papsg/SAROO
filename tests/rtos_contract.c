@@ -116,6 +116,20 @@ static void queue_constructor_contract(void) {
 #include "rtos_pool_contract.inc"
 #elif defined(TEST_RTX_TIMERS)
 #include "rtos_timer_contract.inc"
+#elif defined(TEST_RTX_SVC)
+#include "rtos_svc_contract.inc"
+static void main_task(void *argument) {
+    CHECK(argument==(void *)0x9173);
+    unsigned failed=svc_probe_mask();
+    output("PSP probes failed=");number(failed);output("\n");
+    CHECK(failed==0);
+    osMutexAttr_t attr={.name="svc-mutex",.attr_bits=osMutexPrioInherit};
+    osMutexId_t mutex=osMutexNew(&attr);
+    CHECK(mutex && strcmp(osMutexGetName(mutex),"svc-mutex")==0);
+    CHECK((osRtxMutexId(mutex)->attr & osMutexPrioInherit)!=0);
+    CHECK(osMutexDelete(mutex)==osOK);
+    output("PASS SVC probes=");number(svc_probe_runs);output("\n");finish(0);
+}
 #else
 static void main_task(void *argument) {
 #ifdef TEST_RTX_QUEUE
@@ -165,6 +179,11 @@ void Reset_Handler(void) {
     for (uint32_t *p=_sbss;p<_ebss;p++) *p=0;
     SCB->CPACR|=0xfu<<20; __DSB(); __ISB();
     NVIC_SetPriorityGrouping(3);
+#ifdef TEST_RTX_SVC
+    unsigned failed=svc_probe_mask();
+    output("MSP probes failed=");number(failed);output("\n");
+    if (failed) finish(1);
+#endif
     CHECK(osKernelInitialize()==osOK);
     osThreadAttr_t attr={.name="svc-main",.priority=osPriorityNormal};
     CHECK(osThreadNew(main_task,(void *)0x9173,&attr));

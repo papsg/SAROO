@@ -448,13 +448,16 @@ For a complete menu build with a cached Yaul GCC 13.2.0 environment, see
 ### Actual RTX API contracts, offline
 
 `firmware-build rtos-check` uses the same explicit compiler/CMSIS/STM32/RTX
-arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|message-get|event|retire|syscounter|thread-flags|mutex`.
+arguments as `mcu`, plus `--case delay|queue|timer|pool|pool-free|message|message-get|event|retire|syscounter|thread-flags|mutex|svc`.
 Choose a fresh `--out tests/build/...`
 for each invocation. `--baseline` selects the original provider for that case
 and intentionally fails the contract after displaying its false-success results,
 except `message-get`, which uses `--get-variant=parent` for the exact public parent;
 `mutex --baseline` instead verifies the raw provider's complete wrong-priority
 summary while preserving its valid controls.
+`svc --baseline` restores only the pinned original core header in the staged
+QEMU inputs and should exit nonzero after `MSP probes failed=0x000000ef`;
+the selected header passes all eight probes in both MSP and PSP contexts.
 `--lto` repeats with LTO and `--archive` checks owned-source selection against
 a stock-kernel GNU archive. Requires local `qemu-system-arm` supporting
 `mps2-an500`. Inputs, exact commands, logs and receipts remain in the output.
