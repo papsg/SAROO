@@ -47,3 +47,45 @@ The definition is an exported, conditional compile-time correction; it does
 not establish a normal game defect. GNU dependency checks establish the owned
 header selection; an MDK compile, optional profiles, physical MCU behavior and
 Saturn/game qualification remain untested. No device was touched.
+
+## SSR-139: encode the third SDRAM command-mode bit as bit 2
+
+[ST RM0433 Rev. 8, §22.9.5, printed pp.873–874](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines `FMC_SDCMR.MODE` at bits 2:0. The legal command values include load-mode
+register `100`, self-refresh `101` and power-down `110`; value `111` is reserved.
+Bank 1 is independently selected at bit 4. The exact DFP 2.3.1
+[`stm32h750xx.h`](../Firm_MCU/inc/stm32h750xx.h) instead defined its individual
+`MODE_2` helper as `0x3`, overlapping bits 0 and 1. A bank-1 load-mode word
+thus became `0x13` rather than `0x14`. The locally preserved ST CMSIS-H7
+V1.10.4 release notes (15 March 2024) independently identify `0x4` as the
+correction. This is a header-encoding defect; no selected firmware caller of
+`FMC_SDCMR` was found.
+
+This ports paps-g `2789ea4e` / SSR-139. The owned H750 header is the exact
+2.3.1 raw file except line 11545, which changes the helper and its numeric
+comment to `0x4`. The raw SHA-256 is
+`bf0d085e5063e8da5000dea16acdc76c212aec382d1685ae9263113da5ffa8a2`;
+the selected SHA-256 is
+`9b628779956b51e260bf9544ccfae05eb472dd10f83fe92db93b9ba1a7bc6afe`.
+The wrapper's own `SSR-138` bytes are unchanged. GNU dependencies confirm
+both owned headers are selected; the raw DFP remains available as a control.
+The full ST source notice and [license](../Firm_MCU/inc/LICENSE-ST-CMSIS) are
+retained. No original tpunix issue or PR was identified.
+
+With the public SSR-138 wrapper and raw peripheral header, the target compiler
+fails nine independent `SSR-139` assertions: bit position/disjointness and
+the upper legal command/bank words. All lower-mode, target-bank and
+refresh-count controls pass. The owned header passes the same contract and
+controls; the exact raw-provider reversal still fails only the contract.
+The fixture checks value `7` as algebra only, without treating that reserved
+encoding as an operational command. The adjacent SSR-138 version, component
+and alias checks all pass after the H750 header is owned. Use
+[`stm32-check --case sdram`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with each provider/mode and a fresh ignored output.
+
+Fresh standard 166-vector GNU App LTO and non-LTO images are byte-identical
+to SSR-138 at 59,632/63,960 loaded bytes and 50,904 static DTCM bytes. The
+large owned header affects public definitions, not currently linked code.
+These checks do not issue an SDRAM command, prove a populated SDRAM bank,
+resolve the separate mode-register-width question, or qualify MDK, physical
+timing, Saturn hardware or games. No device was touched.
