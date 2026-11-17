@@ -591,3 +591,37 @@ in fresh ignored output directories. No current direct OCxREF-clear caller was
 found. Capability membership does not authorize every channel or mode,
 exercise an ETR stimulus, qualify output timing or errata applicability,
 compile with MDK or establish Saturn/game behavior.
+
+## SSR-156: bind the legacy TIM1 update/TIM10 handler
+
+[ST RM0433 Rev. 8, Table 145, printed p. 751](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places the H750 TIM1 update interrupt at vector position 25, between TIM1 break
+and trigger/commutation. The [selected H750 header](../Firm_MCU/inc/stm32h750xx.h)
+promises STM32F7 interrupt migration and already maps the legacy
+`TIM1_UP_TIM10_IRQn` to that native update IRQ, but mapped the corresponding
+handler name as `TIM1_UP_TIM9_IRQHandler`. The latter is the break interrupt's
+legacy companion, not the update handler. A strong legacy update function would
+therefore retain its old name instead of binding the native update vector.
+
+This ports paps-g `a922f865` / SSR-156 directly to the public header layout.
+Only that handler alias changes from TIM9 to TIM10; the three IRQ-number aliases,
+neighboring handler aliases, project startup and raw ST pack stay unchanged.
+The selected header SHA-256 is
+`ba2d71a69f67f90d85edb47e78a2f8f6e3afabbaad8da415a02485e0cbdf7319`;
+its original pack hash and BSD notice remain in the adjacent
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The exact public parent and pinned raw provider each fail the two independent
+target-compiler checks for the missing TIM10 alias and spurious TIM9 alias.
+Neighboring handler names and all three IRQ numbers pass in both providers.
+The corrected selected provider passes contract and controls; the raw contract
+retains both expected failures. All seventeen earlier selected header contracts,
+21 Rust unit tests, two RTL checks and formatting pass. Both standard 166-vector
+GNU App LTO/non-LTO builds pass; their ELFs and flat images are byte-identical
+to SSR-154 at 59,632/63,960 loaded bytes and 50,904 static DTCM bytes. Run
+[`stm32-check --case timer_migration`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+with fresh output directories to reproduce the compile checks. This conditional
+SDK migration fix has no identified current TIM1 handler consumer; compiler
+aliases and GNU links do not establish MDK, physical interrupt, Saturn or game
+qualification.

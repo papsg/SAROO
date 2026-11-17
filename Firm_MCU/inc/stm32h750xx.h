@@ -26550,7 +26550,7 @@ typedef struct
 /* Aliases for __IRQHandler */
 #define   RNG_IRQHandler               HASH_RNG_IRQHandler
 #define TIM1_BRK_TIM9_IRQHandler       TIM1_BRK_IRQHandler
-#define TIM1_UP_TIM9_IRQHandler        TIM1_UP_IRQHandler
+#define TIM1_UP_TIM10_IRQHandler       TIM1_UP_IRQHandler
 #define TIM1_TRG_COM_TIM11_IRQHandler  TIM1_TRG_COM_IRQHandler
 #define PVD_IRQHandler                 PVD_AVD_IRQHandler
 
