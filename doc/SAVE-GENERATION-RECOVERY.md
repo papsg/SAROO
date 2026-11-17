@@ -256,3 +256,65 @@ No installed firmware or release behavior changes at this checkpoint. The
 host atomic model and target instruction compile do not qualify inter-CPU
 arbitration, resets with an outstanding MCU request, actual Saturn execution
 or game behavior.
+
+## Menu command channel (staged; not enabled)
+
+The fifth checkpoint stages the selected four-byte menu channel and its public
+interface. The channel coalesces pending previews, keeps an active `SELECT`
+request under the shared command lease until exact tagged completion, and holds
+its metadata lock while an explicit action drains that preview and issues its
+own request. A timeout during the drain retains the active request and lease
+for later polling. The optical `LSAVE` helper copies the 16-byte identity only
+after it owns both locks. It accepts only the negotiated menu-completion version
+from the existing [public wire constants](../Firm_Saturn/main.h); the existing
+[MCU completion tests](../tests/test_menu_command_completion.py) separately
+cover tagged `STARTUP`/`SELECT` completion and legacy behavior.
+
+**paps-g** authored the original channel in private `139fd48f`; `afb17879`
+bounded the preview drain, `bc592d82` retained faulted ownership, `dfa2f1d1`
+and `90ff71c0` refined hot-reset admission, and `5b7729cc` added the optional
+launch hook. This
+port copies its production state machine, limits the public header to functions
+implemented in that file, and adds host and SuperH compile fixtures. The BIN
+catalog/console helper, menu loop conversion, launch binding and diagnostic
+shell remain separate integration work. The channel is **not included in the
+ordinary menu**; no standard behavior or firmware installation changes here.
+The SH-2 metadata and command locks use the atomic/cache rules cited in the
+[command gate section](#shared-command-gate-staged-not-enabled), including the
+[SH7604 Hardware Manual §7.10, printed p. 203](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=218).
+
+The host fixture includes the production channel and command gate, substitutes
+host atomics and a small command-completion peer, and extracts every tested
+opcode/tag constant from the public menu header. Both ASan/UBSan and O2 profiles
+pass capability refusal, foreign-owner deferral, queued-preview retirement,
+sticky fault propagation, ownership of a full optical key, and a stalled drain
+that later completes. They also check 393,216 raw reply cases: all 65,536 values
+for asynchronous `SELECT` and each of five explicit command families. Existing
+public MCU tests pass 13 menu-completion and five save-ack methods. These are
+separate host models; they do not establish a complete simultaneous MCU/menu
+runtime or Saturn timing.
+
+```sh
+python3 -B -m unittest tests.test_menu_channel_core -v
+SAROO_MENU_CHANNEL_PROFILE=release python3 -B -m unittest tests.test_menu_channel_core -v
+PYTHONPATH=tests python3 -B -m unittest test_menu_command_completion test_save_ack -v
+docker run --rm --pull=never --platform linux/amd64 --network none \
+  -v "$PWD":/work \
+  'ijacquez/yaul@sha256:b6d272204767cd0a734139dd3a2ab298ef5912fb7b7224b78e6d9fac1a7825a6' \
+  /opt/tool-chains/sh2eb-elf/bin/sh2eb-elf-gcc \
+  -m2 -mb -ffreestanding -fno-builtin -fomit-frame-pointer \
+  -std=gnu99 -Os -Wall -Wextra -Werror -fstack-usage \
+  -I /work/Firm_Saturn -c /work/tests/target_menu_channel.c \
+  -o /work/tests/build/menu-channel-core/target_menu_channel.o
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/menu-channel-stage-menu
+```
+
+The strict SuperH fixture emits a combined channel-plus-gate object with 1,260
+text bytes, six BSS bytes and a largest direct function frame of 20 bytes. It
+uses a no-op cache-purge stub and is neither a linked size delta nor a complete
+stack bound. The standard menu remains byte-identical at 88,040 code/data,
+9,508 BSS, 17,140 body bytes free and image SHA-256
+`d3ec0d5a6b96f14d00c7d502cdd4a9d518747f4b9c3bc8cc81a7409fdae61fc2`.
+Caller conversion, a compatible production MCU/menu pair, normal-game behavior,
+actual reset handoff and physical bus timing remain unqualified.
