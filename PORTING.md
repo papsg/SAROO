@@ -3239,3 +3239,16 @@ All six ordered checkpoints are verified and pushed to public main. The
 private repository and Saturn were not changed. No PR, USB stack, runtime
 diagnostic or new CDON recipe was added; no private identifiers or credentials
 were introduced.
+
+## Locked host dependency corrections: SSR-169, SSR-171, SSR-172
+
+Ordered scope: generic-array hexadecimal precision, cpufeatures x86 AVX OS
+state, then cpufeatures Linux/Android AArch64 grouped capability masks. These
+are host Rust dependency corrections; normal SAROO callers triggering the
+conditional defects are unestablished. Each checkpoint is verified and pushed
+directly to public main before the next. Original paps-g work remains credited;
+upstream package licenses and metadata are preserved.
+
+| Finding / historical reference | Public checkpoint | Validation, citations and limits |
+| --- | --- | --- |
+| SSR-169, paps-g `7a787e2d` | [`138ebe4`](https://github.com/papsg/SAROO/commit/138ebe4), on main | The exact locked generic-array 0.14.7 registry package fails four maintained host methods with real bounds panics for excessive hex precision; default and smaller-precision controls execute correctly. The vendored package differs in exactly two formatter lines. All four methods (39,592 format calls), locked offline workspace tests, release build and format check pass. [Rust formatting precision, original attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/HOST-DEPENDENCY-CORRECTNESS.md#ssr-169-bound-generic-array-hexadecimal-precision). The local-path package exposes four pre-existing cfg warnings; no firmware, Saturn or game effect is claimed. |
