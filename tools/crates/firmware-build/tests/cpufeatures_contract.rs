@@ -126,3 +126,24 @@ fn native_public_cache_matches_host_feature_detection() {
         assert_eq!(native::init().get(), value);
     }
 }
+
+// Compile and execute this contract on AArch64 Linux/Android. Other hosts
+// retain the x86 predicate and native API tests above.
+#[cfg(all(
+    target_arch = "aarch64",
+    any(target_os = "linux", target_os = "android")
+))]
+#[path = "support/cpufeatures_arm_contract.rs"]
+mod arm_contract;
+
+#[cfg(all(
+    target_arch = "aarch64",
+    any(target_os = "linux", target_os = "android")
+))]
+#[test]
+fn linux_existing_hwcap_masks_require_all_members_and_allow_supersets() {
+    let result = arm_contract::run();
+    assert_eq!(result.states, 512);
+    assert_eq!(result.comparisons, 2560);
+    assert!(result.passed(), "{result:?}");
+}

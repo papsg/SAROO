@@ -75,3 +75,45 @@ type-checks. This public regression uses a query facade; it does not execute
 XGETBV on an x86 guest or test every OS. Normal SAROO tooling has no identified
 caller of the explicit AVX selector, so no runtime fault, performance change,
 Saturn effect or game qualification is claimed.
+
+## SSR-172: require complete AArch64 capability groups
+
+The Linux/Android AArch64 selector in locked `cpufeatures` 0.2.17 combines
+several individual OS capability bits into one requested Rust feature. Its old
+predicate accepted any overlap with that mask, so a machine advertising only
+one component could be treated as supporting both. The existing groups are
+AES with PMULL, SHA3 with SHA512, and SM3 with SM4. Linux publishes these as
+separate HWCAP flags, while the Rust target-feature definitions name the paired
+features: [Linux arm64 ELF HWCAP documentation](https://www.kernel.org/doc/html/v5.16/arm64/elf_hwcaps.html),
+[Rust Reference, AArch64 target features](https://doc.rust-lang.org/reference/attributes/codegen.html#target_feature).
+
+This adapts paps-g `1d27efe8` (SSR-172) after SSR-171. The predicate now
+requires every bit of each existing mask; extra unrelated bits remain valid.
+Only one line in `src/aarch64.rs` changes. The Apple branch, mask definitions,
+single-bit checks, public cache and x86 correction remain unchanged. Original
+package licenses and source attribution are retained in the vendor directory.
+No original tpunix issue or PR was identified for this independent correction.
+
+```sh
+cargo check --offline --locked --manifest-path tools/Cargo.toml -p firmware-build --tests --target aarch64-unknown-linux-gnu
+cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build --test cpufeatures_contract
+cargo build --offline --locked --release --manifest-path tools/Cargo.toml --workspace
+```
+
+On an AArch64 Linux/Android test host, run the contract with
+`cargo test --offline --locked --manifest-path tools/Cargo.toml -p firmware-build --test cpufeatures_contract`;
+it exercises 512 capability
+inputs and 2,560 complete-provider comparisons. The current Mac builds that
+test for Linux but cannot execute it as a native Cargo test. For acceptance,
+a temporary bare AArch64 QEMU guest linked the current public vendor package
+and locked `libc` 0.2.191, supplying `getauxval` values explicitly. The original
+predicate produced seven false positives in 18 public API cases and 768 group
+errors in the 512-state matrix; 11 public controls and all single-bit checks
+passed. The corrected predicate produced zero errors and retained positive and
+extra-bit controls. The temporary guest was kept outside this repository; no
+device operation or product diagnostic was added.
+
+The guest supplies OS capability data rather than reading a Linux kernel's
+actual auxiliary vector. Neither a physical partial-feature CPU, Android
+execution, cryptographic instruction use, normal SAROO caller nor Saturn/game
+effect is established. Separate implied-feature mapping questions remain open.

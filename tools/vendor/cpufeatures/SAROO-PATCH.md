@@ -18,3 +18,13 @@ This workspace patch does not alter the global registry cache. The public
 `firmware-build` contract test checks the complete x86 predicate over explicit
 CPUID/XCR0 inputs and the native public cache against host feature detection.
 It does not execute guest XCR0 state changes or qualify other platforms.
+
+SSR-172: Linux/Android AArch64 predicates require every bit in each existing
+HWCAP group. AES/PMULL, SHA3/SHA512 and SM3/SM4 no longer pass when only one
+component is present. Existing single-bit checks and unrelated capability
+supersets retain their behavior. This changes only one predicate line in
+`src/aarch64.rs`; the Apple branch and SSR-171 x86 row remain unchanged.
+The public Linux AArch64 contract test covers all group combinations and
+supersets. The QEMU acceptance used a temporary bare guest with explicit
+`getauxval` inputs and is described in the public correctness note; it is not
+a claim about a physical partial-feature CPU or ordinary SAROO behavior.
