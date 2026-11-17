@@ -70,3 +70,65 @@ Saturn execution or game behavior. A CRC detects modeled corruption but does
 not authenticate a record. The core allocates no new task, heap object or
 resident payload; integrating it must still prove exclusive workspace and
 save-owner lifetimes.
+
+## Allocator projection (staged; not enabled)
+
+This second checkpoint adds the selected planner as direct source. It is still
+unlinked, and the normal menu image is byte-identical to the preceding public
+checkpoint. The planner uses the existing backup allocator's directory, header,
+bitmap and pending-save state to describe the bytes a transaction will publish.
+For an internal-save change, the allocator first updates its RAM shadow; a
+root-only journal record then references the complete 64 KiB shadow. For an
+expansion-cart write, the planner copies only the 8 KiB root and 1 KiB selected
+header into a bounded prefix and references the caller's payload. This avoids a
+second resident 479 KiB payload. It performs no file I/O and must run while the
+allocator state, work buffers and caller payload are exclusively owned.
+
+**paps-g** authored the original planner in private `3c773b0d` and the split
+representation in `6ff1e686`, later selected by `5e318867`. This public port
+keeps the two production planner paths. It excludes the older experimental
+contiguous internal-save projection: that path assumed a different internal
+layout and is not called by the selected runtime. The public tests and target
+compile fixture are new adaptations of that work; the existing public save
+storage model and allocator source supply their behavior oracle. The planner
+does not change the game's backup API. Sega's [Backup Library §2.1, printed
+p. 42](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=47)
+defines the directory and payload size, while [§2.3 function No. 5, printed
+p. 45](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=50)
+defines writes and their results. SJR1 and the planner are SAROO mechanisms,
+not Sega-defined formats.
+
+Run `python3 -B -m unittest tests.test_save_journal_plan -v`, then repeat with
+`SAROO_SAVE_JOURNAL_PROFILE=release`. Each profile compares the planned record
+to the **complete** persisted archive in 44 cases: new writes, overwrites,
+inline and block boundary sizes, the maximum 479 KiB expansion payload, and
+deletion for both devices. It checks neighboring saves after a modeled RAM
+discard/reload, rejects misaligned work/header pointers, a mismatched size and
+an invalid expansion block, checks workspace guards, and confirms planning
+adds no storage commands or changes live root/header bytes. The target compile
+fixture `tests/target_save_journal_plan.c` includes the actual menu allocator
+and planner; it passes with the pinned offline Yaul SuperH compiler using C99,
+`-Os -Wall -Wextra -Werror -Wno-sign-compare`. The signedness exception covers
+an unrelated pre-existing date comparison in `game_save.c`.
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest test_firmware_save_resize -v
+docker run --rm --pull=never --platform linux/amd64 --network none \
+  -v "$PWD":/work:ro \
+  'ijacquez/yaul@sha256:b6d272204767cd0a734139dd3a2ab298ef5912fb7b7224b78e6d9fac1a7825a6' \
+  /opt/tool-chains/sh2eb-elf/bin/sh2eb-elf-gcc \
+  -m2 -mb -ffreestanding -fno-builtin -fomit-frame-pointer \
+  -std=c99 -Os -Wall -Wextra -Werror -Wno-sign-compare -fstack-usage \
+  -I /work/Firm_Saturn -c /work/tests/target_save_journal_plan.c \
+  -o /tmp/save-journal-plan.o
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-journal-plan-menu
+```
+
+The normal menu build still links 88,040 code/data and 9,508 BSS bytes with
+17,140 bytes of body margin and the same image SHA-256
+`d3ec0d5a6b96f14d00c7d502cdd4a9d518747f4b9c3bc8cc81a7409fdae61fc2`.
+This proves no release behavior change at this stage. The modeled store does
+not prove FatFs durability, power-loss ordering, actual Saturn behavior, or
+recovery from an interrupted transaction. Those require the later runtime,
+command ownership, launch binding and activation checkpoints.
