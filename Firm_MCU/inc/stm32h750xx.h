@@ -12337,7 +12337,7 @@ typedef struct
 #define HSEM_R_PROCID_Msk         (0xFFUL << HSEM_R_PROCID_Pos)                /*!< 0x000000FF */
 #define HSEM_R_PROCID             HSEM_R_PROCID_Msk                            /*!<Semaphore ProcessID */
 #define HSEM_R_COREID_Pos         (8U)
-#define HSEM_R_COREID_Msk         (0xFFUL << HSEM_R_COREID_Pos)                /*!< 0x0000FF00 */
+#define HSEM_R_COREID_Msk         (0xFUL << HSEM_R_COREID_Pos)                /*!< 0x00000F00 */
 #define HSEM_R_COREID             HSEM_R_COREID_Msk                            /*!<Semaphore CoreID.   */
 #define HSEM_R_LOCK_Pos           (31U)
 #define HSEM_R_LOCK_Msk           (0x1UL << HSEM_R_LOCK_Pos)                   /*!< 0x80000000 */
@@ -12348,7 +12348,7 @@ typedef struct
 #define HSEM_RLR_PROCID_Msk       (0xFFUL << HSEM_RLR_PROCID_Pos)              /*!< 0x000000FF */
 #define HSEM_RLR_PROCID           HSEM_RLR_PROCID_Msk                          /*!<Semaphore ProcessID */
 #define HSEM_RLR_COREID_Pos       (8U)
-#define HSEM_RLR_COREID_Msk       (0xFFUL << HSEM_RLR_COREID_Pos)              /*!< 0x0000FF00 */
+#define HSEM_RLR_COREID_Msk       (0xFUL << HSEM_RLR_COREID_Pos)              /*!< 0x00000F00 */
 #define HSEM_RLR_COREID           HSEM_RLR_COREID_Msk                          /*!<Semaphore CoreID.   */
 #define HSEM_RLR_LOCK_Pos         (31U)
 #define HSEM_RLR_LOCK_Msk         (0x1UL << HSEM_RLR_LOCK_Pos)                 /*!< 0x80000000 */
@@ -12748,7 +12748,7 @@ typedef struct
 
 /********************  Bit definition for HSEM_CR register  *****************/
 #define HSEM_CR_COREID_Pos        (8U)
-#define HSEM_CR_COREID_Msk        (0xFFUL << HSEM_CR_COREID_Pos)               /*!< 0x0000FF00 */
+#define HSEM_CR_COREID_Msk        (0xFUL << HSEM_CR_COREID_Pos)               /*!< 0x00000F00 */
 #define HSEM_CR_COREID            HSEM_CR_COREID_Msk                           /*!<CoreID of semaphores to be cleared. */
 #define HSEM_CR_KEY_Pos           (16U)
 #define HSEM_CR_KEY_Msk           (0xFFFFUL << HSEM_CR_KEY_Pos)                /*!< 0xFFFF0000 */

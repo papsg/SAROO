@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -587,6 +587,9 @@ unaffected formats and register layout as controls.
 For `exti`, it checks the D3 line-25 pending mask, enable/clear word construction
 and preservation of other supported lines. Neighboring lines, the separate
 clear-source selector and register offsets are controls.
+For `hsem`, it checks all three hardware-semaphore owner mask widths and
+arbitrary-value clipping. The real CPU ID, process/key/lock fields and member
+layout are controls; no read-lock or clear operation is executed.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).

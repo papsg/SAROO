@@ -294,3 +294,35 @@ byte for byte: 59,632/63,960 loaded bytes for LTO/non-LTO and 50,904 static
 DTCM bytes. No direct `EXTI_D3PMR1` application consumer was found. Word
 construction does not qualify an actual pending request, D3 power routing,
 MDK compilation or physical Saturn/game behavior.
+
+## SSR-146: clip hardware-semaphore owner fields
+
+[ST RM0433 Rev. 8, §§10.4.1–10.4.2 and 10.4.7, printed pp. 524–525 and
+527–528](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places `MASTERID` in bits 11:8 of the HSEM R, RLR and CR registers. Bits 15:12
+are reserved. The selected DFP 2.3.1 H750 header calls these fields `COREID`
+and gives all three an eight-bit `0xff00` mask. Passing an arbitrary wider
+integer to a generic field helper retains reserved bits; the actual CPU's
+documented master ID 3 remains within the correct four-bit range.
+
+This directly ports paps-g `262a8306` / SSR-146 after SSR-145. Only three mask
+factors/comments change from `0xff`/`0xff00` to `0xf`/`0x0f00`. Names,
+positions, process IDs, locks, clear key, CPU aliases and register layout remain
+unchanged. The selected H750 SHA-256 is
+`c7bc6266a43d9c408f64e0e002203e9d7764e7d14b669eb632b8e9801d5f548c`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public parent and pinned raw provider fail six target-compiler assertions:
+three independent widths, reserved-bit exclusion, arbitrary-input clipping and
+key/owner packing. Documented CPU ID 3, process/key/lock fields and layout pass
+as valid controls. Corrected selected control/contract and all eight earlier
+selected header contracts pass; raw contract retains the failures. Run
+[`stm32-check --case hsem`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. Both standard 166-vector GNU App images
+and ELFs match SSR-145 byte for byte: 59,632/63,960 loaded bytes for
+LTO/non-LTO and 50,904 static DTCM bytes. No direct HSEM owner-token consumer
+was found. These compiler words do not perform read-lock, clear/unlock, key or
+bus transactions; they do not qualify authorization, MDK compilation or
+physical Saturn/game behavior.
