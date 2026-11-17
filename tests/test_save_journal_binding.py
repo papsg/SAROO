@@ -62,10 +62,12 @@ int command_memcmp(void *, void *, int);
             raise ValueError("unknown profile")
         flags = (["-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
                  if profile == "sanitizer" else ["-O2"])
+        cls.native = os.environ.get("SAROO_NATIVE_INTERNAL_BACKUP_TEST") == "1"
         cls.binary = target / "test"
         command = [*shlex.split(os.environ.get("CC", "cc")), "-std=gnu11", "-g",
                    "-fno-strict-aliasing", "-Wno-int-to-pointer-cast",
                    "-Wno-pointer-to-int-cast", "-DSAROO_SAVE_GENERATION",
+                   *(["-DSAROO_NATIVE_INTERNAL_BACKUP"] if cls.native else []),
                    *flags, "-I", str(target), "-I", str(target / "crc"),
                    "-I", str(ROOT / "Firm_Saturn"),
                    str(ROOT / "tests/firmware_save_journal_runtime.c"),
@@ -92,7 +94,10 @@ int command_memcmp(void *, void *, int);
                         self.assertEqual(result.returncode, 0,
                                          result.stdout + result.stderr)
                         self.assertIn("PASS", result.stdout)
-            for size in (0, 960, 961, 32768, 479 * 1024 if dev else 16384):
+            sizes = ((0, 960, 961, 32768, 479 * 1024) if dev else
+                     (0, 1, 28, 29, 86, 87, 960, 961,
+                      16384, 29434 if self.native else 32768))
+            for size in sizes:
                 with self.subTest(dev=dev, size=size):
                     result = subprocess.run(
                         [str(self.binary), str(dev), str(size), "new", "none"],

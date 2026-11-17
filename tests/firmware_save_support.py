@@ -29,7 +29,8 @@ class FirmwareSaveTest(unittest.TestCase):
             "-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         command = [*shlex.split(os.environ.get("CC", "cc")), "-std=gnu11", "-g",
                    "-fno-strict-aliasing", "-Wno-int-to-pointer-cast", "-Wno-pointer-to-int-cast",
-                   *flags, "-I", str(target), str(ROOT / "tests" / (cls.fixture+".c")),
+                   *flags, *getattr(cls, "extra_cflags", ()),
+                   "-I", str(target), str(ROOT / "tests" / (cls.fixture+".c")),
                    "-o", str(cls.binary)]
         result = subprocess.run(command, capture_output=True, timeout=60)
         (BUILD / (cls.fixture+".compile.log")).write_bytes(result.stdout+result.stderr)

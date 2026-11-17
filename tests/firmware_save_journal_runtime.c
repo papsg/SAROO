@@ -143,6 +143,14 @@ static void baseline(int dev, const char *change, BUPDIR *dir, u8 *bytes,
 {
     journal_state = JOURNAL_LEGACY;
     initialize();
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    if (!dev && !strcmp(change, "format")) {
+        /* Format must clear the complete 64 KiB transport slot, including
+         * bytes beyond native device-0's reported 32 KiB capacity. */
+        memset(test_shared + 32768, 0xa5, 32768);
+        memcpy(slot_disk, test_shared, sizeof(slot_disk));
+    }
+#endif
     BUPDIR neighbor = directory("KEEP0000001", 32);
     u8 *keep = payload(32, 7);
     assert(sro_bup_write(dev, &neighbor, keep, 0) == 0);
@@ -156,6 +164,11 @@ static void baseline(int dev, const char *change, BUPDIR *dir, u8 *bytes,
     memcpy(before_slot, slot_disk, sizeof(slot_disk));
     memcpy(before_mems, mems_disk, sizeof(mems_disk));
     assert(operation(dev, change, dir, bytes) == 0);
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    if (!dev && !strcmp(change, "format"))
+        for (unsigned i = 32768; i < sizeof(slot_disk); i++)
+            assert(slot_disk[i] == 0);
+#endif
     memcpy(expected_slot, slot_disk, sizeof(slot_disk));
     memcpy(expected_mems, mems_disk, sizeof(mems_disk));
     memcpy(slot_disk, before_slot, sizeof(slot_disk));

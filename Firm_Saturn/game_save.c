@@ -328,12 +328,31 @@ static int chksum(u8 *data, int size)
 }
 #endif
 
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+/* Device 0 keeps a 64 KiB SD transport slot with 128-byte private spacing.
+ * Its public allocation is native: two reserved 64-byte blocks, 28 bytes in
+ * each save header and 58 bytes in each continuation block. */
+static u32 save_limit(int dev)
+{
+    return dev ? 479u * 1024 : 510u * 58 - 30;
+}
+
+static u32 save_data_blocks(int dev, u32 size)
+{
+    return dev ? (size <= 960 ? 0 : (size + 1023) / 1024) : (size + 29) / 58;
+}
+#endif
+
 static int access_data(int block, u8 *data, int type)
 {
 	u8 *bp, *bmp;
 	int dsize, asize, bsize;
 
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+	bsize = (bup_dev==0) ? 58 : 1024;
+#else
 	bsize = (bup_dev==0) ? 128 : 1024;
+#endif
 
 	bp = get_block_addr(START_BLOCK|block);
     if (!bp) return BUP_BROKEN;
@@ -349,6 +368,26 @@ static int access_data(int block, u8 *data, int type)
         return BUP_BROKEN;
     }
 
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+	if(!bup_dev || dsize<=960){
+		int inline_size = bup_dev ? dsize : (dsize < 28 ? dsize : 28);
+		u8 *inline_data = bp + (bup_dev ? 64 : 32);
+		if(type==0){ // read
+			memcpy(data, inline_data, inline_size);
+		}else if(type==1){
+			if(memcmp(data, inline_data, inline_size)){
+				return BUP_NO_MATCH;
+			}
+		}else{       // write
+			memcpy(inline_data, data, inline_size);
+		}
+
+		data += inline_size;
+		dsize -= inline_size;
+		if (!dsize) return 0;
+	}
+
+#else
 	if(bup_dev==1 && dsize<=960){
 		if(type==0){ // read
 			memcpy(data, bp+0x40, dsize);
@@ -363,6 +402,7 @@ static int access_data(int block, u8 *data, int type)
 		return 0;
 	}
 
+#endif
 	bmp = bp+0x40;
 	block = 0;
 	while(dsize>0){
@@ -474,7 +514,11 @@ static int checked_free, checked_saves;
 
 static int claim_block(int block)
 {
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    int first = bup_dev ? 8 : 2;
+#else
     int first = bup_dev ? 8 : 1;
+#endif
     int total = bup_dev ? 8064 : 512;
     u8 *bitmap = bup_dev ? (u8 *)MEMS->bitmap : (u8 *)BUPMEM->bitmap;
     if (block < first || block >= total ||
@@ -490,12 +534,20 @@ static int validate_save_layout(u8 *bp, u8 *entry)
     if (!bp) return BUP_BROKEN;
     u32 size = *(u32 *)(bp + 12);
     int count = 0, expected, i, block;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    if (!bp[0] || size > save_limit(bup_dev) ||
+#else
     if (!bp[0] || size > (bup_dev ? 479u * 1024 : 510u * 128) ||
+#endif
         (entry && memcmp(bp, entry, 11)))
         return BUP_BROKEN;
     if (bup_dev && size <= 960)
         return 0; /* Inline bytes are payload, not a pointer table. */
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    expected = save_data_blocks(bup_dev, size);
+#else
     expected = (size + (bup_dev ? 1023 : 127)) / (bup_dev ? 1024 : 128);
+#endif
     for (i = 0; i < (bup_dev ? expected : 512); i++) {
         if (bup_dev) {
             block = *(u16 *)(bp + 64 + i * 2);
@@ -623,8 +675,13 @@ static int check_backup(int dev)
     if (dev == 0) {
         if (BUPMEM->magic0 != 0x5361726f || BUPMEM->magic1 != 0x53617665)
             return BUP_UNFORMAT;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+        if (BUPMEM->total_size != 32768 || BUPMEM->block_size != 64 ||
+            (BUPMEM->bitmap[0] & 3) != 3)
+#else
         if (BUPMEM->total_size != 65536 || BUPMEM->block_size != 128 ||
             !(BUPMEM->bitmap[0] & 1))
+#endif
             return BUP_BROKEN;
         bitmap = (u8 *)BUPMEM->bitmap;
     } else {
@@ -671,7 +728,11 @@ static int check_backup(int dev)
     /* Extra allocated blocks remain reserved. Recount rather than trusting the
      * persisted free count; publish a corrected count only during a mutation. */
     checked_free = 0;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    for (i = dev ? 8 : 2; i < (dev ? 8064 : 512); i++)
+#else
     for (i = dev ? 8 : 1; i < (dev ? 8064 : 512); i++)
+#endif
         if (!(bitmap[i / 8] & (1u << (i % 8))))
             checked_free++;
     return 0;
@@ -737,17 +798,37 @@ int sro_bup_format(int dev)
     }
 
 	if(dev==0){
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+		memset((u8*)BUP_MEM_ADDR, 0, 0x10000);
+#else
 		memset((u8*)BUP_MEM_ADDR, 0, 0x8000);
+#endif
 		// SaroSave
 		BUPMEM->magic0 = 0x5361726f;
 		BUPMEM->magic1 = 0x53617665;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+		BUPMEM->total_size = 0x8000;
+#else
 		BUPMEM->total_size = 0x10000;
+#endif
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+		BUPMEM->block_size = 0x40;
+#else
 		BUPMEM->block_size = 0x80;
+#endif
 		memcpy((u8 *)BUPMEM->gameid, (u8*)0x06000c20, 16);
 		memset((u8 *)BUPMEM->bitmap, 0, 0x40);
 		BUPMEM->first_save = 0x0000;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+		BUPMEM->free_block = 512-2;
+#else
 		BUPMEM->free_block = 512-1;
+#endif
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+		BUPMEM->bitmap[0] = 0x03;
+#else
 		BUPMEM->bitmap[0] = 0x01;
+#endif
 
 		return commit_save(dev, BUPSAVE);
 	}else{
@@ -774,23 +855,44 @@ int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
         return BUP_BROKEN;
 #endif
     int result = check_backup(dev);
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    u32 count, limit = save_limit(dev);
+#else
     u32 count, limit = dev ? 479u * 1024 : 510u * 128;
+#endif
     if (result)
         return result;
     if (stat == NULL)
         return BUP_BROKEN;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    stat->total_size = dev ? 0x800000 : 32768;
+#else
     stat->total_size = dev ? 0x800000 : 65536;
+#endif
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    stat->block_size = dev ? 1024 : 64;
+#else
     stat->block_size = dev ? 1024 : 128;
+#endif
     /* The cartridge bitmap admits 8064 blocks, including its directory. */
     stat->total_block = dev ? 8192 : 512;
     stat->free_block = checked_free;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    stat->free_size = !dev ? (checked_free ? checked_free * 58 - 30 : 0) :
+                      (checked_free ? (checked_free - 1) * 1024 : 0);
+#else
     stat->free_size = checked_free ? (checked_free - 1) * stat->block_size : 0;
+#endif
     if (dev && checked_free == 1)
         stat->free_size = 960; /* Payload stored inside the header block. */
     stat->data_num = 0;
     if ((u32)dsize <= limit) {
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+        count = save_data_blocks(dev, dsize);
+#else
         count = dev && dsize <= 960 ? 0 :
                 ((u32)dsize + stat->block_size - 1) / stat->block_size;
+#endif
         stat->data_num = checked_free / (count + 1);
         if (dev && stat->data_num > (u32)(448 - checked_saves))
             stat->data_num = 448 - checked_saves;
@@ -801,11 +903,19 @@ int sro_bup_stat(int dev, int dsize, BUPSTAT *stat)
 
 static int resize_save(int header, u32 new_size)
 {
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    int first = bup_dev ? 8 : 2;
+#else
     int first = bup_dev ? 8 : 1;
+#endif
     int total = bup_dev ? 8064 : 512;
     int bsize = bup_dev ? 1024 : 128;
     int bitmap_size = bup_dev ? 1008 : 64;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    u32 limit = save_limit(bup_dev);
+#else
     u32 limit = bup_dev ? 479u * 1024 : 510u * 128;
+#endif
     u8 *bitmap = bup_dev ? (u8 *)MEMS->bitmap : (u8 *)BUPMEM->bitmap;
     u8 *bp;
     u32 old_size;
@@ -821,8 +931,13 @@ static int resize_save(int header, u32 new_size)
     old_size = *(u32 *)(bp + 12);
     if (old_size > limit)
         return BUP_BROKEN;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    old_count = save_data_blocks(bup_dev, old_size);
+    new_count = save_data_blocks(bup_dev, new_size);
+#else
     old_count = bup_dev && old_size <= 960 ? 0 : (old_size + bsize - 1) / bsize;
     new_count = bup_dev && new_size <= 960 ? 0 : (new_size + bsize - 1) / bsize;
+#endif
     memcpy(resize_bitmap, bitmap, bitmap_size);
     if (!(resize_bitmap[header / 8] & (1u << (header % 8))))
         return BUP_BROKEN;
@@ -943,7 +1058,11 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
 #endif
     if (!dir || !dir->file_name[0] || (dir->data_size && !data))
         return BUP_BROKEN;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    if (dir->data_size > save_limit(dev))
+#else
     if (dir->data_size > (dev ? 479u * 1024 : 510u * 128))
+#endif
         return BUP_NOT_ENOUGH_MEMORY;
 #ifdef SAROO_SAVE_GENERATION
     if ((journal_state != JOURNAL_LEGACY &&
@@ -959,7 +1078,11 @@ int sro_bup_write(int dev, BUPDIR *dir, u8 *data, int mode)
         return result;
 
     int bsize = dev ? 1024 : 128;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    int blocks = save_data_blocks(dev, dir->data_size);
+#else
     int blocks = dev && dir->data_size <= 960 ? 0 : (dir->data_size + bsize - 1) / bsize;
+#endif
     int last;
     int header = find_exact_save(dir->file_name, &last);
     u8 *bp;
@@ -1122,7 +1245,11 @@ static void directory_record(BUPDIR *dir, u8 *bp, int dev)
     if (dev)
         dir->block_size = dir->data_size <= 960 ? 1 : 1 + (dir->data_size + 1023) / 1024;
     else
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+        dir->block_size = 1 + save_data_blocks(0, dir->data_size);
+#else
         dir->block_size = (dir->data_size + 127) / 128;
+#endif
 }
 
 int sro_bup_dir(int dev, char *file_name, int tbsize, BUPDIR *dir)

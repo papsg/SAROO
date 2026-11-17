@@ -77,10 +77,17 @@ static void initialize(void)
     reload_model();
     BUPMEM->magic0 = MEMS->magic0 = 0x5361726f;
     BUPMEM->magic1 = 0x53617665;
+#ifdef SAROO_NATIVE_INTERNAL_BACKUP
+    BUPMEM->total_size = 32768;
+    BUPMEM->block_size = 64;
+    BUPMEM->free_block = 510;
+    BUPMEM->bitmap[0] = 3;
+#else
     BUPMEM->total_size = 65536;
     BUPMEM->block_size = 128;
     BUPMEM->free_block = 511;
     BUPMEM->bitmap[0] = 1;
+#endif
     MEMS->magic1 = 0x4d656d73;
     MEMS->total_size = sizeof(mems_disk);
     MEMS->free_block = 8056;

@@ -43,6 +43,13 @@ FLAGS += -DSAROO_SAVE_GENERATION -DSAROO_MENU_SAVE_LAUNCH
 OBJ += obj/save_journal.o
 endif
 
+# Native internal geometry is staged until an explicit archive conversion is
+# available. The standard image still reads the existing expanded save format.
+SAROO_NATIVE_INTERNAL_BACKUP ?= 0
+ifeq ($(SAROO_NATIVE_INTERNAL_BACKUP),1)
+FLAGS += -DSAROO_NATIVE_INTERNAL_BACKUP
+endif
+
 define ECHO_CMD
 	$(if $(V), , @echo "    "$(1)" " $(2))
 	$(if $(V), $(3), @$(3))

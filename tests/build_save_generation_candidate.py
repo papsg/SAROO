@@ -22,6 +22,9 @@ def run(*args, cwd=None):
 
 
 def main():
+    if sys.argv[1:] not in ([], ["--native-internal"]):
+        raise SystemExit("usage: build_save_generation_candidate.py [--native-internal]")
+    native_internal = sys.argv[1:] == ["--native-internal"]
     if not BUILDER.is_file():
         raise SystemExit("build the offline firmware-build tool first")
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -37,7 +40,10 @@ def main():
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, destination)
         makefile = repo / "Firm_Saturn/Makefile"
-        makefile.write_bytes(b"SAROO_SAVE_GENERATION=1\n" + makefile.read_bytes())
+        selection = b"SAROO_SAVE_GENERATION=1\n"
+        if native_internal:
+            selection += b"SAROO_NATIVE_INTERNAL_BACKUP=1\n"
+        makefile.write_bytes(selection + makefile.read_bytes())
         run("git", "init", "-q", cwd=repo)
         run("git", "add", "Firm_Saturn", cwd=repo)
         run("git", "-c", "user.name=SAROO Build Fixture",
