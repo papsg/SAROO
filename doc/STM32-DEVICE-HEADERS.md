@@ -424,3 +424,37 @@ caller was found; SAROO's existing CD audio source uses SPI2/I2S. This is an
 SDK header correction, not a demonstrated audio repair. Compiler expressions
 do not exercise an SAI register, FIFO timing, MDK compilation, physical Saturn
 or game behavior.
+
+## SSR-150: preserve complete extended timer output modes
+
+[ST RM0433 Rev. 8, §§38.4.8, 38.4.10 and 38.4.23, printed pp. 1599–1603 and 1615–1616](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+places the fourth output-mode bit for TIM1/TIM8 channels 3 and 5 at bit 16
+and channels 4 and 6 at bit 24. Their low three bits remain at bits 6:4 or
+14:12. The selected DFP 2.3.1 H750 header masked away the fourth bit for
+all four channels; its channel 4/6 high helpers pointed to reserved bit 20.
+Mode changes from combined PWM1 (12) to ordinary PWM1 (6) could therefore
+retain the old high bit when using those masks. Correct field values alone do
+not establish live waveform or preload/COM-event behavior.
+
+This directly ports paps-g `5955f4d4` / SSR-150 after SSR-149. Four masks,
+two high helpers and their numeric/field comments change in the owned H750
+header. Channel 1/2 fields, low helpers, neighboring bits, register layout,
+the pinned raw DFP source, ST notice and BSD license remain unchanged. The
+selected H750 SHA-256 is
+`9dbcc5d0596cea0aaf46da88b5bc24093845c7dd880f5805d991a5374f7bbe48`.
+See [source provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail five grouped
+target-compiler assertions for high-bit masks/helpers and high-to-low mode
+replacement while channels 1/2 and register offsets pass as controls. The
+corrected selected provider passes both modes; the pinned raw contract retains
+the failures. All twelve earlier selected header contracts, 21 Rust unit tests,
+two RTL checks and formatting pass. Both standard 166-vector GNU App builds
+pass with LTO/non-LTO flat images, ELFs and resources byte-identical to SSR-149
+at 59,632/63,960 loaded bytes and 50,904 static DTCM bytes. Run
+[`stm32-check --case timer_modes`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No direct current output-mode consumer
+was found. This tests compiler values, not all supported timer/channel/mode
+combinations, LOCK/preload/COM sequencing, physical waveforms, MDK compilation
+or Saturn/game behavior.
