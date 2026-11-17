@@ -232,3 +232,34 @@ ELFs byte-identical to SSR-142: 59,632/63,960 loaded bytes for LTO/non-LTO and
 50,904 static DTCM bytes. No direct `ETH_DMADSR` application consumer was found.
 These compile expressions do not execute the Ethernet peripheral or establish
 an existing SAROO network/game failure, MDK build result or physical behavior.
+
+## SSR-144: preserve DMA2D packed color components
+
+[ST RM0433 Rev. 8, §§18.5.16–18.5.17, printed pp. 742–743](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+defines the RGB565 output red/green fields as bits 15:11/10:5 and the ARGB1555
+red/green fields as bits 14:10/9:5. The selected DFP 2.3.1 H750 header shifts
+the values `0xf8`, `0x7e`, `0x7c` and `0x3e` by the correct starting positions
+to make masks. Those values are too wide once shifted: the resulting masks
+include neighboring or reserved bits and omit part of the intended component.
+
+This directly ports paps-g `4cfad282` / SSR-144 after SSR-143. Four mask factors
+become `0x1f`, `0x3f`, `0x1f` and `0x1f` for RGB565 red/green and ARGB1555
+red/green, respectively. Positions, names, neighboring components, other color
+formats and register layout remain unchanged. The selected H750 SHA-256 is
+`87691b861be57fe4542c92ea75a6ca3bee93997064c71cd8f2a045bf3dc65edd`.
+The pinned raw source, complete ST notice and BSD license remain recorded in
+[provenance](../Firm_MCU/inc/stm32h750xx-provenance.json). No original tpunix
+issue or PR was identified.
+
+The public target-compiler contract fails each of the four mask widths on the
+public parent and pinned raw provider, plus disjointness, full-scale extraction
+and neighbor-preserving replacement; unaffected component/format and layout
+controls pass. After correction, the selected provider passes control and
+contract while the raw provider still fails the seven contract assertions.
+Run [`stm32-check --case dma2d`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. All six earlier selected header contracts
+pass. Both standard 166-vector GNU App images and ELFs match SSR-143 byte for
+byte: 59,632/63,960 loaded bytes for LTO/non-LTO and 50,904 static DTCM bytes.
+No direct DMA2D output-color consumer was found. Compiler expressions cannot
+qualify transfer timing, CLUT access rules, rendered pixels, MDK compilation or
+physical Saturn/game behavior.

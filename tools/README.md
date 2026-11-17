@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi|ccr5|dac|ethernet --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5|dac|ethernet|dma2d --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -581,6 +581,9 @@ including channel-two underrun without channel-one busy, and adjacent flags.
 For `ethernet`, it checks all seven documented receive states against all seven
 documented transmit states and both bit-zero values. Its control mode checks
 independent field extraction, transmit names and register layout.
+For `dma2d`, it checks each packed RGB565/ARGB1555 component mask, full-scale
+extraction and replacement without altering neighboring colors, with
+unaffected formats and register layout as controls.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).

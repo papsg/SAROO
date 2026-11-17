@@ -9541,10 +9541,10 @@ typedef struct
 #define DMA2D_OCOLR_BLUE_2_Msk     (0x1FUL <<DMA2D_OCOLR_BLUE_2_Pos)            /*0x0000001FU*/
 #define DMA2D_OCOLR_BLUE_2         DMA2D_OCOLR_BLUE_2_Msk                      /*!< Output BLUE Value */
 #define DMA2D_OCOLR_GREEN_2_Pos    (5U)
-#define DMA2D_OCOLR_GREEN_2_Msk    (0x7EUL << DMA2D_OCOLR_GREEN_2_Pos)          /* 0x000007E0U */
+#define DMA2D_OCOLR_GREEN_2_Msk    (0x3FUL << DMA2D_OCOLR_GREEN_2_Pos)          /* 0x000007E0U */
 #define DMA2D_OCOLR_GREEN_2        DMA2D_OCOLR_GREEN_2_Msk                     /*!< Output GREEN Value  */
 #define DMA2D_OCOLR_RED_2_Pos      (11U)
-#define DMA2D_OCOLR_RED_2_Msk      (0xF8UL<<DMA2D_OCOLR_RED_2_Pos)              /*0x0000F800U*/
+#define DMA2D_OCOLR_RED_2_Msk      (0x1FUL<<DMA2D_OCOLR_RED_2_Pos)              /*0x0000F800U*/
 #define DMA2D_OCOLR_RED_2          DMA2D_OCOLR_RED_2_Msk                       /*!< Output Red Value */
 
 /*!<Mode_ARGB1555 */
@@ -9552,10 +9552,10 @@ typedef struct
 #define DMA2D_OCOLR_BLUE_3_Msk     (0x1FUL << DMA2D_OCOLR_BLUE_3_Pos)           /*0x0000001FU*/
 #define DMA2D_OCOLR_BLUE_3         DMA2D_OCOLR_BLUE_3_Msk                      /*!< Output BLUE Value */
 #define DMA2D_OCOLR_GREEN_3_Pos    (5U)
-#define DMA2D_OCOLR_GREEN_3_Msk    (0x3EUL << DMA2D_OCOLR_GREEN_3_Pos)          /*0x000003E0U*/
+#define DMA2D_OCOLR_GREEN_3_Msk    (0x1FUL << DMA2D_OCOLR_GREEN_3_Pos)          /*0x000003E0U*/
 #define DMA2D_OCOLR_GREEN_3        DMA2D_OCOLR_GREEN_3_Msk                     /*!< Output GREEN Value  */
 #define DMA2D_OCOLR_RED_3_Pos      (10U)
-#define DMA2D_OCOLR_RED_3_Msk      (0x7CUL << DMA2D_OCOLR_RED_3_Pos)            /* 0x00007C00U*/
+#define DMA2D_OCOLR_RED_3_Msk      (0x1FUL << DMA2D_OCOLR_RED_3_Pos)            /* 0x00007C00U*/
 #define DMA2D_OCOLR_RED_3          DMA2D_OCOLR_RED_3_Msk                       /*!< Output Red Value */
 #define DMA2D_OCOLR_ALPHA_3_Pos    (15U)
 #define DMA2D_OCOLR_ALPHA_3_Msk    (0x1UL << DMA2D_OCOLR_ALPHA_3_Pos)           /*0x00008000U*/
