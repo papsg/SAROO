@@ -12,11 +12,15 @@ Browser downloads do not write directly to an SD card or prove Saturn acceptance
 
 | Archive | Supported behavior and capacity |
 | --- | --- |
-| `SS_SAVE.BIN` | Public v0.8 SAROO layout: up to 4,095 game slots, 511 empty saves per slot, 65,280 payload bytes per save |
+| `SS_SAVE.BIN` | Old 65,536/128 slots: 511 empty saves or 65,280 payload bytes per save. Native 32,768/64 slots: 510 empty saves or 29,550 payload bytes per save. Up to 4,095 game slots in either archive. |
 | `SS_MEMS.BIN` | 8 MiB memory card: 448 directory entries and up to 479 × 1,024 = 490,496 payload bytes per save |
 | Saturn backup | Complete 32 KiB logical or odd-byte 64 KiB physical image, read-only; up to 510 headers and 29,550 payload bytes per save |
 
-The SAROO writer uses the baseline's 128-byte blocks and 64 KiB game slots.
+Both SAROO formats retain 64 KiB transport slots and 128-byte private spacing.
+The editor reads and edits either valid layout. New slots still use the old
+format until native firmware activation; opening an old archive does not convert
+it. Use the explicit [archive converter](../../README.md#native-internal-backup-archive-conversion)
+before using an opt-in native firmware build.
 Existing game IDs retain all sixteen bytes. A damaged or unsupported named slot
 is preserved while other healthy slots remain accessible; selecting it never
 automatically reformats it. Unmodified exports retain the complete original file.

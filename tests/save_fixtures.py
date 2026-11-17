@@ -112,6 +112,42 @@ def slot_fixture(entries=(), gameids=(b'GAME',)):
     struct.pack_into('>H', image, base + 14, 512 - next_block)
     return image, locations
 
+def native_slot_fixture(entries=(), gameid=b'GAME'):
+    """Encode device-0's 64-byte logical blocks in 128-byte private slots."""
+    image = bytearray(2 * UNIT)
+    image[:16] = b'Saroo Save File\0'
+    image[16:16 + len(gameid)] = gameid
+    base = UNIT
+    image[base:base + 8] = b'SaroSave'
+    struct.pack_into('>IHH', image, base + 8, 32768, 64, 510)
+    image[base + 32:base + 32 + len(gameid)] = gameid
+    image[base + 64] = 3
+    next_block, last = 2, 0
+    for name, data in entries:
+        header = next_block
+        next_block += 1
+        assert header < 512 and len(data) <= 29550
+        bp = base + header * 128
+        struct.pack_into('>H', image, base + last * 128 + 62, header)
+        image[bp:bp + len(name)] = name
+        struct.pack_into('>I', image, bp + 12, len(data))
+        image[bp + 16:bp + 26] = b'Generated!'
+        image[bp + 27] = 1
+        image[bp + 28:bp + 32] = b'\x01\x02\x03\x04'
+        image[bp + 32:bp + 32 + min(28, len(data))] = data[:28]
+        for offset in range(28, len(data), 58):
+            block = next_block
+            next_block += 1
+            assert block < 512
+            image[bp + 64 + block // 8] |= 1 << (block % 8)
+            chunk = data[offset:offset + 58]
+            image[base + block * 128:base + block * 128 + len(chunk)] = chunk
+        last = header
+    for block in range(2, next_block):
+        image[base + 64 + block // 8] |= 1 << (block % 8)
+    struct.pack_into('>H', image, base + 14, 512 - next_block)
+    return image
+
 def saturn_fixture(entries):
     """Encode metadata, terminated block IDs, then payload as one logical stream.
 
@@ -157,17 +193,19 @@ def fixtures(root):
 
     # The existing Python encoders predate and are independent of this JS core.
     for kind, sizes in [('saroo', [0, 1, 127, 128, 129, 4097, 65280]),
+                        ('native-saroo', [0, 1, 27, 28, 29, 58, 86, 87, 29550]),
                         ('mems', [0, 1, 959, 960, 961, 1024, 1025, 490496]),
                         ('saturn', [0, 1, 2, 27, 28, 29, 30, 31, 86, 87, 144, 145,
                                     782, 783, 840, 841, 898, 899, 2580, 2581, 29548, 29549, 29550])]:
         for size in sizes:
             data = bytes((i * 13 + 17) % 251 for i in range(size))
             if kind == 'saroo': image, _ = slot_fixture([(b'SAVE_A00001', data)])
+            elif kind == 'native-saroo': image = native_slot_fixture([(b'SAVE_A00001', data)])
             elif kind == 'mems': image, _ = mems_fixture([(447, b'SAVE_A00001', data)])
             else: image, _ = saturn_fixture([(b'SAVE_A00001', data)])
             for odd in ([False, True] if kind == 'saturn' else [False]):
                 name = write(f'{kind}-{size}-{int(odd)}.bin', disk_bytes(image, odd))
-                manifest['reads'].append(dict(file=name, type=kind, size=size, odd=odd,
+                manifest['reads'].append(dict(file=name, type='saroo' if kind == 'native-saroo' else kind, size=size, odd=odd,
                     payload_sha256=hashlib.sha256(data).hexdigest()))
 
     for kind in ['saroo', 'mems']:
@@ -239,6 +277,7 @@ def fixtures(root):
     write('saroo-empty.bin', slot_fixture()[0])
     write('mems-empty.bin', mems_fixture([])[0])
     write('saroo-directory-full.bin', slot_fixture([(f'S{i:010}'.encode(), b'') for i in range(511)])[0])
+    write('native-saroo-directory-full.bin', native_slot_fixture([(f'N{i:010}'.encode(), b'') for i in range(510)]))
     write('mems-directory-full.bin', mems_fixture([(i, f'S{i:010}'.encode(), b'') for i in range(448)])[0])
     write('saturn-directory-full.bin', saturn_fixture([(f'S{i:010}'.encode(), b'') for i in range(510)])[0])
     # Fully owned exhaustion, without orphaned allocations: one inline save,

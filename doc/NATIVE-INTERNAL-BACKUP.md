@@ -74,3 +74,23 @@ These are host models and target links. They do not qualify SD durability,
 physical power loss, Saturn timing, retail games, or use of old archives
 with the opt-in firmware. Standard activation must wait for explicit
 conversion and verified host-tool support.
+
+## Staged host migration support
+
+The [Rust archive converter](../tools/README.md#native-internal-backup-archive-conversion)
+and existing [C CLI](../tools/savetool/sr_bup.c) and
+[browser editor](../tools/savetool/web/src/save-codec.mjs) now understand the
+native layout. The converter is an adapted subset of private `24a4b069`'s
+`saroo-save-native`; the C layout handling adapts its
+`savetool-native-backup.patch`, and the browser layout handling adapts the
+same commit's `src/host/web/save-codec.mjs`. Public adaptations keep new-slot
+creation in the old format until the standard firmware switches. Existing
+old and native slots can be read and edited without implicit conversion.
+
+Independent Python encoders produce old/native archives for the Rust,
+sanitized C and browser checks. A mixed archive converts byte for byte to
+the independent native encoder while an unnamed slot stays untouched.
+Boundary payloads, 510 empty native saves, resize, round trips, and
+overcapacity/corruption/pending-journal refusal are covered. The source file
+is hashed before and after conversion and never overwritten. These checks do
+not establish physical save compatibility or power-loss behavior.

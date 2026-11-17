@@ -49,13 +49,16 @@ typedef struct {
 
 #define BUPMEM  ((BUPHEADER*)(bup_mem))
 
+static int native_slot;
+static unsigned slot_blocks(unsigned size) { return native_slot ? (size + 29) / 58 : (size + 127) / 128; }
+static unsigned slot_limit(void) { return native_slot ? 510u * 58 - 30 : 510u * 128; }
 static u16 block_size;
 static u16 free_block;
 
 static int claim_slot_block(u8 *seen, unsigned block)
 {
     unsigned mask = 1u << (block % 8);
-    if (block < 1 || block >= 512 || !(BUPMEM->bitmap[block / 8] & mask) ||
+    if (block < (native_slot ? 2u : 1u) || block >= 512 || !(BUPMEM->bitmap[block / 8] & mask) ||
         (seen[block / 8] & mask))
         return -1;
     seen[block / 8] |= mask;
@@ -66,10 +69,12 @@ static int validate_slot(void)
 {
     u8 seen[64] = {0};
     unsigned header, block, count, available = 0;
+    native_slot = get_be32(&BUPMEM->total_size) == 32768 && get_be16(&BUPMEM->block_size) == 64;
     if (get_be32(&BUPMEM->magic0) != 0x5361726f ||
         get_be32(&BUPMEM->magic1) != 0x53617665 ||
-        get_be32(&BUPMEM->total_size) != 65536 ||
-        get_be16(&BUPMEM->block_size) != 128 || !(BUPMEM->bitmap[0] & 1))
+        get_be32(&BUPMEM->total_size) != (native_slot ? 32768 : 65536) ||
+        get_be16(&BUPMEM->block_size) != (native_slot ? 64 : 128) ||
+        (BUPMEM->bitmap[0] & (native_slot ? 3 : 1)) != (native_slot ? 3 : 1))
         return -1;
     /* Reserve all headers before admitting data; repeated headers are cycles. */
     header = get_be16(&BUPMEM->first_save);
@@ -82,7 +87,7 @@ static int validate_slot(void)
     while (header) {
         u8 *bp = bup_mem + header * 128;
         u32 size = get_be32(bp + 12);
-        if (!bp[0] || size > 510u * 128)
+        if (!bp[0] || size > slot_limit())
             return -1;
         count = 0;
         for (block = 0; block < 512; block++) {
@@ -92,11 +97,11 @@ static int validate_slot(void)
                 count++;
             }
         }
-        if (count != (size + 127) / 128)
+        if (count != slot_blocks(size))
             return -1;
         header = get_be16(bp + 62);
     }
-    for (block = 1; block < 512; block++)
+    for (block = native_slot ? 2 : 1; block < 512; block++)
         if (!(BUPMEM->bitmap[block / 8] & (1u << (block % 8))))
             available++;
     block_size = 128;
@@ -111,14 +116,14 @@ static int resize_slot_save(unsigned header, u32 size)
     u8 bitmap[64], data_bitmap[64] = {0};
     u8 *bp = bup_mem + header * 128;
     unsigned block, needed, count = 0, available = 0;
-    if (size > 510u * 128)
+    if (size > slot_limit())
         return -1;
     memcpy(bitmap, BUPMEM->bitmap, sizeof(bitmap));
-    for (block = 1; block < 512; block++)
+    for (block = native_slot ? 2 : 1; block < 512; block++)
         if (bp[64 + block / 8] & (1u << (block % 8)))
             bitmap[block / 8] &= ~(1u << (block % 8));
-    needed = (size + 127) / 128;
-    for (block = 1; block < 512; block++) {
+    needed = slot_blocks(size);
+    for (block = native_slot ? 2 : 1; block < 512; block++) {
         unsigned mask = 1u << (block % 8);
         if (!(bitmap[block / 8] & mask)) {
             if (count < needed) {
@@ -189,11 +194,18 @@ static int access_data(int block, u8 *data, int type)
 	u8 *bp, *bmp;
 	int dsize, asize, bsize;
 
-	bsize = block_size;
+	bsize = native_slot ? 58 : block_size;
 
 	bp = get_block_addr(block);
 	bmp = bp+0x40;
 	dsize = get_be32(bp+0x0c);
+    if (native_slot && dsize) {
+        int size = dsize < 28 ? dsize : 28;
+        if (type == 0) memcpy(data, bp + 32, size);
+        else memcpy(bp + 32, data, size);
+        data += size;
+        dsize -= size;
+    }
 	block = 0;
 
 	while(dsize>0){
@@ -379,9 +391,9 @@ int sr_bup_import(int slot_id, int save_id, char *save_name)
 
 	// 计算所需的块数量。起始块+块列表块+数据块
 	int dsize = get_be32(&save->data_size);
-	if (!save->file_name[0] || dsize > 510 * 128)
+	if (!save->file_name[0] || (unsigned)dsize > slot_limit())
 		return -1;
-	block_need = (dsize+block_size-1)/(block_size);
+	block_need = slot_blocks(dsize);
 	printf("block_need=%d\n", block_need+1);
 	if((block_need+1) > free_block){
 		return -1;
@@ -527,7 +539,7 @@ int sr_bup_list(int slot_id)
 			bp = get_block_addr(block);
 
 			dsize = get_be32(bp+0x0c);
-			bsize = (dsize+block_size-1)/(block_size);
+			bsize = slot_blocks(dsize);
 			bsize += 1;
 
 			printf("  Save_%-3d: %.11s  size=%5x  block=%d\n", i, bp, dsize, bsize);

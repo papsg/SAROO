@@ -50,6 +50,39 @@ test('all supported formats, boundary lengths and fragmented Saturn tables read 
   }
 });
 
+test('native internal slots resize and preserve unrelated bytes through export and reopen', async () => {
+  const input = await fixture('native-saroo-87-0.bin');
+  input[500] = 0xa5;
+  const archive = await SaveArchive.open(new Blob([input]));
+  assert.equal(archive.stats(1).reserved, 2);
+  for (const size of [0, 1, 27, 28, 29, 58, 86, 87, 29550, 35]) {
+    const data = sequence(size, 19);
+    archive.update(1, 0, { data, date: size });
+    assert.deepEqual(archive.read(1, 0), data);
+    const reopened = await SaveArchive.open(new Blob([await bytes(archive)]));
+    assert.deepEqual(reopened.save(1, 0), archive.save(1, 0));
+    assert.equal((await bytes(reopened))[500], 0xa5);
+  }
+  const before = await bytes(archive), revision = archive.revision;
+  assert.throws(() => archive.update(1, 0, { data: new Uint8Array(29551) }), /capacity/);
+  assert.equal(archive.revision, revision);
+  assert.deepEqual(await bytes(archive), before);
+  await emit(archive, 1, 'native-saroo-resize');
+});
+
+test('native internal slot admits all 510 empty saves and refuses a 511th', async () => {
+  const archive = await open('native-saroo-directory-full.bin');
+  assert.equal(archive.stats(1).saves, 510);
+  assert.equal(archive.stats(1).free, 0);
+  const original = await bytes(archive);
+  assert.throws(() => archive.update(1, null, { rawFilename: name('EXTRA'), data: new Uint8Array() }));
+  assert.deepEqual(await bytes(archive), original);
+  archive.remove(1, 11);
+  archive.update(1, null, { rawFilename: name('REPLACED'), data: new Uint8Array() });
+  assert.equal(archive.stats(1).saves, 510);
+  assert.equal(archive.stats(1).free, 0);
+});
+
 test('damaged inputs are rejected without reformatting; independent healthy slots remain readable', async () => {
   for (const item of manifest.rejects) {
     const input = await fixture(item.file), blob = new Blob([input]);

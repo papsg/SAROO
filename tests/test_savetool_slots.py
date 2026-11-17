@@ -6,7 +6,7 @@ import struct
 import subprocess
 import unittest
 
-from save_fixtures import raw_save, bup_save, slot_fixture
+from save_fixtures import raw_save, bup_save, slot_fixture, native_slot_fixture
 from savetool_support import NativeSaveTest
 
 UNIT = 65536
@@ -21,6 +21,35 @@ class SaveSlotTests(NativeSaveTest):
         self.assertNotIn(b'runtime error:', result.stderr)
         self.assertNotIn(b'AddressSanitizer', result.stderr)
         return result
+
+    def test_native_slot_boundaries_resize_and_legacy_creation_control(self):
+        for size in (0, 1, 28, 29, 86, 87, 29550):
+            with self.subTest(size=size), self.case() as temp:
+                directory = Path(temp)
+                original = native_slot_fixture([(b'SAVE_A00001', b'old')])
+                archive = directory / 'archive.bin'
+                archive.write_bytes(original)
+                data = bytes((i * 7 + 11) % 251 for i in range(size))
+                (directory / 'incoming.SRO').write_bytes(raw_save(b'SAVE_A00001', data))
+                result = self.invoke(directory, '-t', 1, '-s', 0, '-i', 'incoming.SRO')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                actual = archive.read_bytes()
+                self.assertEqual(actual[:UNIT], original[:UNIT])
+                self.assertEqual(struct.unpack_from('>IHH', actual, UNIT + 8)[:2], (32768, 64))
+                self.assertEqual(struct.unpack_from('>H', actual, UNIT + 14)[0],
+                                 509 - (size + 29) // 58)
+                self.assertEqual(self.invoke(directory, '-t', 1, '-s', 0).returncode, 0)
+                self.assertEqual((directory / 'SAVE_A00001.SRO').read_bytes()[64:], data)
+                before = archive.read_bytes()
+                (directory / 'oversized.SRO').write_bytes(raw_save(b'SAVE_A00001', bytes(29551)))
+                self.assertNotEqual(self.invoke(directory, '-t', 1, '-s', 0, '-i', 'oversized.SRO').returncode, 0)
+                self.assertEqual(archive.read_bytes(), before)
+        with self.case() as temp:
+            directory = Path(temp)
+            archive = directory / 'archive.bin'
+            archive.write_bytes(slot_fixture()[0])
+            self.assertEqual(self.invoke(directory, '-c', 'NEW').returncode, 0)
+            self.assertEqual(struct.unpack_from('>IHH', archive.read_bytes(), 2 * UNIT + 8)[:2], (UNIT, 128))
 
     def test_bad_slot_indices_and_missing_file_storage_are_rejected(self):
         image, _ = slot_fixture()

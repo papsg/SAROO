@@ -37,10 +37,12 @@ class BlockPlan {
 
 function validateSlot(read) {
   const global = read(0), bitmap = global.subarray(64, 128), seen = new Uint8Array(64);
-  require(matches(global, 0, 'SaroSave') && be32(global, 8) === SLOT_BYTES && be16(global, 12) === 128 && bit(bitmap, 0),
+  const native = be32(global, 8) === 32768 && be16(global, 12) === 64, reserved = native ? 2 : 1;
+  require(matches(global, 0, 'SaroSave') && be32(global, 8) === (native ? 32768 : SLOT_BYTES) &&
+          be16(global, 12) === (native ? 64 : 128) && bit(bitmap, 0) && (!native || bit(bitmap, 1)),
           'Invalid SAROO slot header; existing slot contents were not reformatted.');
   const claim = block => {
-    require(block > 0 && block < 512 && bit(bitmap, block) && !bit(seen, block), 'Invalid or shared SAROO allocation.');
+    require(block >= reserved && block < 512 && bit(bitmap, block) && !bit(seen, block), 'Invalid or shared SAROO allocation.');
     mark(seen, block, true);
   };
   const records = [];
@@ -48,8 +50,9 @@ function validateSlot(read) {
     claim(block); records.push({ block });
   }
   for (const record of records) {
-    const header = read(record.block), dataBitmap = header.subarray(64), size = be32(header, 12), needed = Math.ceil(size / 128);
-    require(header[0] && size <= 510 * 128, 'Invalid SAROO save name or size.');
+    const header = read(record.block), dataBitmap = header.subarray(64), size = be32(header, 12);
+    const needed = native ? Math.floor((size + 29) / 58) : Math.ceil(size / 128);
+    require(header[0] && size <= (native ? 510 * 58 - 30 : 510 * 128), 'Invalid SAROO save name or size.');
     const blocks = new Uint16Array(needed); let count = 0;
     for (let block = 0; block < 512; block++) if (bit(dataBitmap, block)) {
       claim(block); require(count < needed, 'SAROO allocation exceeds the save size.'); blocks[count++] = block;
@@ -58,8 +61,8 @@ function validateSlot(read) {
     Object.assign(record, { size, blocks });
   }
   let free = 0;
-  for (let block = 1; block < 512; block++) if (!bit(bitmap, block)) free++;
-  return { records, free, storedFree: be16(global, 14), total: 512, reserved: 1 };
+  for (let block = reserved; block < 512; block++) if (!bit(bitmap, block)) free++;
+  return { records, free, storedFree: be16(global, 14), total: 512, reserved, native };
 }
 
 function validateMems(read) {
@@ -229,6 +232,16 @@ export class SaveArchive {
     unsigned(offset, record.size, 'Payload offset'); length ??= record.size - offset;
     unsigned(length, record.size - offset, 'Payload length');
     const output = new Uint8Array(length); if (!length) return output;
+    if (this.#type === 'saroo' && this.#select(volume).native) {
+      let position = 0, done = 0;
+      for (let i = -1; i < record.blocks.length && done < length; i++) {
+        const bytes = i < 0 ? read(record.block).subarray(32, 60) : read(record.blocks[i]).subarray(0, 58);
+        const start = Math.max(0, offset - position), count = Math.min(bytes.length - start, length - done);
+        if (count > 0) { output.set(bytes.subarray(start, start + count), done); done += count; }
+        position += bytes.length;
+      }
+      return output;
+    }
     if (this.#type === 'mems' && !record.blocks.length) { output.set(read(record.block).subarray(64 + offset, 64 + offset + length)); return output; }
     let position = 0, done = 0, cursor = this.#type === 'saturn' ? record.cursor : 0;
     let start = this.#type === 'saturn' ? record.offset : 0;
@@ -263,8 +276,9 @@ export class SaveArchive {
     require(old || payload !== undefined, 'A new save needs a payload, including an empty byte array.');
     require(payload === undefined || (payload instanceof Uint8Array && payload.length <= MAX_SAVE_BYTES), 'Invalid save payload.');
     const size = payload === undefined ? old.size : payload.length;
-    const mems = this.#type === 'mems', width = mems ? 1024 : 128, limit = mems ? 8064 : 512, reserved = mems ? 8 : 1;
-    require(size <= (mems ? 479 * 1024 : 510 * 128), 'Replacement exceeds this format’s per-save capacity.');
+    const mems = this.#type === 'mems', native = !!selected.native;
+    const width = mems ? 1024 : native ? 58 : 128, limit = mems ? 8064 : 512, reserved = mems ? 8 : native ? 2 : 1;
+    require(size <= (mems ? 479 * 1024 : native ? 510 * 58 - 30 : 510 * 128), 'Replacement exceeds this format’s per-save capacity.');
     const data = payload?.slice();
     const plan = new BlockPlan(this.#reader(volume));
     let block = old?.block, entry = old?.entry, blocks = old?.blocks;
@@ -280,7 +294,7 @@ export class SaveArchive {
         for (let i = reserved; i < limit; i++) if (!bit(bitmap, i)) { block = i; mark(bitmap, i, true); break; }
         require(block !== undefined, 'No free header block is available.');
       }
-      const needed = mems && size <= 960 ? 0 : Math.ceil(size / width);
+      const needed = mems && size <= 960 ? 0 : native ? Math.floor((size + 29) / 58) : Math.ceil(size / width);
       blocks = new Uint16Array(needed); let count = 0, free = 0;
       for (let i = reserved; i < limit; i++) if (!bit(bitmap, i)) {
         if (count < needed) { blocks[count++] = i; mark(bitmap, i, true); } else free++;
@@ -304,7 +318,10 @@ export class SaveArchive {
       directory.set(meta.rawFilename, offset); put16(directory, offset + 14, block);
     }
     if (data) {
-      if (mems && !blocks.length) header.set(data, 64);
+      if (native) {
+        header.set(data.subarray(0, 28), 32);
+        for (let i = 0; i < blocks.length; i++) plan.write(blocks[i]).set(data.subarray(28 + i * 58, 28 + (i + 1) * 58));
+      } else if (mems && !blocks.length) header.set(data, 64);
       else for (let i = 0; i < blocks.length; i++) plan.write(blocks[i]).set(data.subarray(i * width, (i + 1) * width));
     }
     return this.#commit(volume, plan);

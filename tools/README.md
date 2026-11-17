@@ -343,6 +343,31 @@ external Saturn/MCU/SDRAM interfaces remain unqualified even when reported slack
 passes. No hardware, clock-domain, signal-integrity or game acceptance follows.
 Host-tool checks remain part of `make -C tests check-host-tools`.
 
+## Native internal backup archive conversion
+
+The opt-in [native device-0 candidate](../doc/NATIVE-INTERNAL-BACKUP.md) needs
+an explicit conversion of an old `SS_SAVE.BIN` archive. `saroo-save-native` is
+adapted from paps-g's private `saroo-save-native` host utility at `24a4b069`;
+this public port keeps its inspect and convert commands, not its separate ABI
+checker. [Sega ST-162, Backup Library §§2.1–2.3, printed pp. 39,
+41–48](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf) defines the
+device-0 API and geometry; the native allocation formula comes from the
+preserved BIOS analysis described in the linked candidate document.
+
+```sh
+cargo build --locked --manifest-path tools/Cargo.toml -p save-native
+tools/target/debug/saroo-save-native inspect /path/to/SS_SAVE.BIN
+tools/target/debug/saroo-save-native convert /path/to/SS_SAVE.BIN /path/to/SS_SAVE.native.BIN
+```
+
+`inspect` reports per-slot fit and a complete source hash without writing.
+`convert` checks every named slot, payload allocation and companion journal,
+then writes a new archive exclusively. It refuses capacity loss or an existing
+output. The source and unrelated directory/unnamed-slot bytes stay unchanged;
+the new archive is read back and hashed before publication. Keep the original
+archive as the rollback copy. Conversion does not install firmware or access a
+device. These are host checks, not Saturn or SD durability qualification.
+
 ## Browser and font assets
 
 The [offline save editor](savetool/web/README.md) and

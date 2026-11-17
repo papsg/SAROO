@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/menu-assets", "crates/web-assets", "crates/firmware-build", "crates/sector-overlay"]
+members = ["crates/menu-assets", "crates/web-assets", "crates/firmware-build", "crates/sector-overlay", "crates/save-native"]
 exclude = ["vendor/generic-array", "vendor/cpufeatures"]
 default-members = ["crates/menu-assets"]
 resolver = "2"
