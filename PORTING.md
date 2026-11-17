@@ -3261,6 +3261,12 @@ clean and synchronized.
 The private repository and Saturn were not changed; no PR, USB stack, product
 diagnostic, new CDON recipe, secret or private identifier was introduced.
 
+## Older linker and backup follow-up — 2026-11-17
+
+| Original contribution | Public disposition | Verification and limits |
+| --- | --- | --- |
+| paps-g `3f7673b7`, AUD-RES-029 — place unwind metadata before MCU text | **No source change.** The private correction filled an existing eight-byte vector-to-text hole while preserving all function addresses. Public GNU App `.text` starts immediately after the 664-byte vector table at `0x298`, so that premise does not hold. | Relinking the exact same public objects with only `.ARM.extab`/`.ARM.exidx` moved ahead of `.text` saves 3 bytes in the standard LTO qualification image (59,344→59,341) and 0 in the no-LTO control (63,588→63,588). In both, `.text`, `Reset_Handler` and `SVC_Handler` move eight bytes; the eight-byte `cantunwind` record remains valid. Both pairs link and preserve all 166 vector entries, but there is no address-preserving eight-byte saving to port. The GNU App linker is a compile/link qualification artifact, not the installed MDK image; no hardware behavior is inferred. Baseline flat-image SHA-256: LTO `d4770c0eda8082a82c30b01b16e24350cf18c0fdb1460e987567de5aaa8c29b8`, no-LTO `9b05f7b68d50d731b1c18fcf641c59e67dc79ec7ae48af4c3a4a025113adfdce`. The candidate used the same inputs and link command from each receipt, with only linker section order changed. |
+
 ## Older RTX resource and service series — 2026-11-17
 
 A full private-history review found six earlier selected RTX changes not yet
