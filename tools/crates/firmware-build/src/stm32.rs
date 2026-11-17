@@ -25,6 +25,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         "lptim",
         "hrtim",
         "timer_burst",
+        "timer_ocref",
     ]
     .contains(&case)
         || !["selected", "original"].contains(&provider)

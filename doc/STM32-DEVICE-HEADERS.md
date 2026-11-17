@@ -555,3 +555,39 @@ in fresh ignored output directories. No current direct DMA-burst predicate
 caller was found. Membership does not authorize every timer register or DMA
 request, establish transfer width/routing, exercise an actual bus transfer,
 qualify MDK compilation or demonstrate Saturn/game behavior.
+
+## SSR-154: include TIM4/5/8 OCxREF clearing capability
+
+[ST RM0433 Rev. 8, §§38.3.18 and 39.3.12, printed pp. 1569–1570 and 1659–1660](https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+documents clearing the output-compare reference signal from a filtered
+external trigger for TIM1/8 and TIM2–5. This uses `OCxCE` in appropriate
+output modes, with the external trigger prescaler and external clock mode 2
+disabled. The selected DFP 2.3.1 H750 header's
+`IS_TIM_OCXREF_CLEAR_INSTANCE` predicate recognized only TIM1/2/3, incorrectly
+rejecting TIM4, TIM5 and TIM8. A locally preserved ST ES0392 Rev. 15 §2.16.4
+excerpt reports a timing limitation for combined PWM1 and asymmetric PWM1/2;
+it does not establish that these timers lack the feature. That excerpt was not
+a complete errata review or silicon-revision qualification.
+
+This directly ports paps-g `67e23e05` / SSR-154 after SSR-153. Only TIM4,
+TIM5 and TIM8 are added to this capability predicate in the owned H750
+header. Existing members, nonmembers, channel limits and unrelated
+capabilities stay unchanged. The pinned raw DFP source, ST notice and BSD
+license remain. The selected H750 SHA-256 is
+`b0447225fc9afbf5d97f4d0da24f3cb7da078b3dbe5111597feafd26b2c960d4`.
+See [source provenance](../Firm_MCU/inc/stm32h750xx-provenance.json).
+No original tpunix issue or PR was identified.
+
+The exact public parent and pinned raw provider fail three target-compiler
+membership assertions, one per omitted timer. Three existing members, eight
+nonmembers, channel limits and `OCxCE`/ETR field/layout controls pass. The
+corrected selected provider passes contract and controls; the raw contract
+retains the failures. All sixteen earlier selected header contracts, 21 Rust
+unit tests, two RTL checks and formatting pass. Both standard 166-vector GNU
+App builds pass; LTO/non-LTO flat images, ELFs and resources match SSR-153
+byte for byte at 59,632/63,960 loaded and 50,904 static DTCM bytes. Run
+[`stm32-check --case timer_ocref`](../tools/README.md#pinned-stm32-device-header-contracts-offline)
+in fresh ignored output directories. No current direct OCxREF-clear caller was
+found. Capability membership does not authorize every channel or mode,
+exercise an ETR stimulus, qualify output timing or errata applicability,
+compile with MDK or establish Saturn/game behavior.

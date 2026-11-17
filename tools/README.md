@@ -562,7 +562,7 @@ addition; all other bytes and the original SDK hashes must match.
 
 `firmware-build stm32-check --repo . --out tests/build/UNUSED-DIRECTORY
 --toolchain ARM-GNU-ROOT --cmsis CMSIS-ROOT --stm32 DEVICE-INCLUDE
---case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc|sai|timer_modes|lptim|hrtim|timer_burst --provider selected|original --mode contract|control|alias`
+--case version|sdram|qspi|ccr5|dac|ethernet|dma2d|exti|hsem|jpeg|ltdc|sai|timer_modes|lptim|hrtim|timer_burst|timer_ocref --provider selected|original --mode contract|control|alias`
 compiles the public fixture against the exact DFP 2.3.1 headers with the App's
 include order. It checks compiler dependencies, the original/owned header
 hashes and both project targets before compiling. `original contract` exposes
@@ -611,6 +611,9 @@ are controls; no ADC trigger or conversion is executed.
 For `timer_burst`, it checks DMA-burst membership for TIM15–17. Six existing
 members, five nonmembers and the DCR/DMAR field/layout definitions are controls.
 No DMA request or transfer is executed.
+For `timer_ocref`, it checks OCxREF-clear membership for TIM4/5/8. Existing
+members, eight nonmembers, channel limits and OCxCE/ETR field definitions are
+controls; no ETR stimulus or waveform is generated.
 Each run needs a fresh ignored output directory; receipts and compiler errors
 stay there. This tests header expressions, not executed firmware or hardware.
 See [STM32 header corrections](../doc/STM32-DEVICE-HEADERS.md).

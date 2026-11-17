@@ -26348,7 +26348,10 @@ typedef struct
 #define IS_TIM_OCXREF_CLEAR_INSTANCE(INSTANCE)\
   (((INSTANCE) == TIM1)    || \
    ((INSTANCE) == TIM2)    || \
-   ((INSTANCE) == TIM3))
+   ((INSTANCE) == TIM3)    || \
+   ((INSTANCE) == TIM4)    || \
+   ((INSTANCE) == TIM5)    || \
+   ((INSTANCE) == TIM8))
 
 /****************** TIM Instances : TIM_32B_COUNTER ***************************/
 #define IS_TIM_32B_COUNTER_INSTANCE(INSTANCE)\
