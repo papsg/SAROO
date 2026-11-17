@@ -11,7 +11,7 @@ related requests and relevant primary documentation are credited in commits and 
 USB integration, custom diagnostics and private patch-application machinery
 are excluded. This solo-maintainer workflow was authorized by the owner.
 
-Last updated: 2026-11-16.
+Last updated: 2026-11-17.
 
 | Contribution | Original request | Fork commit / status | Dependencies and qualification |
 | --- | --- | --- | --- |
@@ -3256,6 +3256,24 @@ upstream package licenses and metadata are preserved.
 | SSR-172, paps-g `1d27efe8` | [`a4aeb86`](https://github.com/papsg/SAROO/commit/a4aeb86), on main | The exact SSR-171 parent produces seven false positives in 18 public API cases and 768 grouped predicate errors in a temporary Linux-target AArch64 QEMU guest using explicit `getauxval` inputs and the locked libc 0.2.191 bindings; 11 public controls and single-bit checks pass. The one-line correction yields zero errors, retains positive/superset controls, and matches the private source-only change. A public 512-state/2,560-comparison contract is cross-target type-checked; locked offline workspace tests/release build and formatting pass. [Linux arm64 HWCAP and Rust AArch64 feature definitions, attribution, reproduction and limits](https://github.com/papsg/SAROO/blob/main/doc/HOST-DEPENDENCY-CORRECTNESS.md#ssr-172-require-complete-aarch64-capability-groups). The guest has an OS-input facade, not a Linux kernel or physical CPU; Android, normal SAROO use, Saturn and games remain unqualified. |
 
 All three ordered host-dependency checkpoints are verified and pushed directly
-to public main. The public main and ledger worktrees are clean and synchronized.
+to public main. At that checkpoint, the public main and ledger worktrees were
+clean and synchronized.
 The private repository and Saturn were not changed; no PR, USB stack, product
 diagnostic, new CDON recipe, secret or private identifier was introduced.
+
+## Older RTX resource and service series — 2026-11-17
+
+A full private-history review found six earlier selected RTX changes not yet
+represented on public main. Evaluate and integrate them in their original order,
+one at a time. A measured public benefit or reproduced public defect is required
+before a source change; otherwise record the disposition. The later SSR-136/137
+core-header corrections and native internal-backup migration are separate scope.
+
+| Original contribution | Public disposition | Verification and limits |
+| --- | --- | --- |
+| paps-g `b483124c`, AUD-RES-024 — disabled round-robin specialization | [`614562f`](https://github.com/papsg/SAROO/commit/614562f), on main | Current public configuration has `OS_ROBIN_ENABLE=0`. The exact parent and selected GNU LTO App images load 59,640/59,576 bytes, saving 64 with unchanged 50,904-byte static DTCM. The enabled tick body compiles to 69 matching instruction/directive lines in both versions; four configured RTX methods, Cortex-M7 QEMU/LTO delay, no-LTO App and BootLoader object pass. [Arm RTX configuration/source citations, original attribution, reproducible checks and physical limits](https://github.com/papsg/SAROO/blob/614562f/doc/RTX-RESOURCE.md#omit-round-robin-work-when-the-configured-scheduler-disables-it). No MDK or Saturn qualification. |
+| paps-g `b483124c`, AUD-RES-020 — configured allocation policy | Pending public-parent revalidation | Check all configured fixed-pool and common-pool paths and measure the complete public App before selecting a source adaptation. |
+| paps-g `b7ae381d`, AUD-RES-027 — privileged tick read | Pending public-parent revalidation | Check privilege and Event Recorder ownership in the selected public profile, including unprivileged controls. |
+| paps-g `dfbad441`, AUD-MCU-034 — RTX SVC compiler contract | Pending public-parent reproduction | Verify common wrapper selection and actual Cortex-M7 memory/register effects; preserve Arm ABI and license. |
+| paps-g `e8dc1006`, AUD-MCU-036 — RTX allocation-size range | Pending public-parent reproduction | Bind the selected external allocator and prove oversized refusal plus valid pool recovery. |
+| paps-g `4f0f37ae`, AUD-RES-034 — deferred-dispatch layout | Pending public-parent revalidation | Compare complete linked size and every routed object type after prior RTX changes. |
