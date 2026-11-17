@@ -1,4 +1,4 @@
-"""Run the actual opt-in game_save.c binding against a host storage model."""
+"""Run the actual standard game_save.c binding against a host storage model."""
 
 import os
 from pathlib import Path
@@ -62,7 +62,7 @@ int command_memcmp(void *, void *, int);
             raise ValueError("unknown profile")
         flags = (["-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
                  if profile == "sanitizer" else ["-O2"])
-        cls.native = os.environ.get("SAROO_NATIVE_INTERNAL_BACKUP_TEST") == "1"
+        cls.native = os.environ.get("SAROO_NATIVE_INTERNAL_BACKUP_TEST", "1") == "1"
         cls.binary = target / "test"
         command = [*shlex.split(os.environ.get("CC", "cc")), "-std=gnu11", "-g",
                    "-fno-strict-aliasing", "-Wno-int-to-pointer-cast",

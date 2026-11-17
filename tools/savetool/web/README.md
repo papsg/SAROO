@@ -17,10 +17,10 @@ Browser downloads do not write directly to an SD card or prove Saturn acceptance
 | Saturn backup | Complete 32 KiB logical or odd-byte 64 KiB physical image, read-only; up to 510 headers and 29,550 payload bytes per save |
 
 Both SAROO formats retain 64 KiB transport slots and 128-byte private spacing.
-The editor reads and edits either valid layout. New slots still use the old
-format until native firmware activation; opening an old archive does not convert
-it. Use the explicit [archive converter](../../README.md#native-internal-backup-archive-conversion)
-before using an opt-in native firmware build.
+The editor reads and edits either valid layout. New slots use native geometry;
+opening an old archive does not convert it. Use the explicit
+[archive converter](../../README.md#native-internal-backup-archive-conversion)
+before using native firmware.
 Existing game IDs retain all sixteen bytes. A damaged or unsupported named slot
 is preserved while other healthy slots remain accessible; selecting it never
 automatically reformats it. Unmodified exports retain the complete original file.
@@ -127,7 +127,11 @@ make -C tests check-web-save-capacity
 The capacity target creates and downloads a synthetic 256 MiB archive. Ordinary
 host checks do not launch a browser. No test opens personal saves or a device.
 
-Fresh qualification uses Node 25.9.0 and Chrome 156.0.8078.80 on macOS:
+The original browser qualification used Node 25.9.0 and Chrome
+156.0.8078.80 on macOS. Its baseline controls remain below; the native
+activation additionally passes the current 23 archive-core Node cases,
+five Python browser/linked-bundle methods, and all 18 offline browser
+workflows, including creation and export of a 29,550-byte native save.
 
 - Seven Python methods pass 421 Node tests/subtests: 21 archive, 9 worker,
   5 text/calendar and 386 XML checks. All 2,057 independent Gregorian dates,
@@ -143,7 +147,8 @@ Fresh qualification uses Node 25.9.0 and Chrome 156.0.8078.80 on macOS:
   surviving a worker error. No accidental page errors or HTTP requests occur.
 - The complete 4,095-slot application test selects/edits the last save, refuses
   another slot, downloads all 268,435,456 bytes and compares every unedited byte.
-  The full-size SAROO regression checks the public v0.8 layout.
+  The complete-archive regression retains old-format v0.8 slots as a
+  compatibility control; the new-slot maximum checks native geometry.
 - HTML regeneration, linked module exports, parser identity rejection, Rust
   formatting/clippy and boundary/failure tests pass.
 

@@ -1,7 +1,7 @@
-# Native internal backup candidate
+# Native internal backup
 
-Adapted from paps-g private commit `24a4b069` (NATIVE-BUP-001). This
-checkpoint stages only the missing device-0 allocation behavior. The
+Adapted from paps-g private commit `24a4b069` (NATIVE-BUP-001). The first
+checkpoint staged the missing device-0 allocation behavior. The
 extended-cartridge accounting from public `f40702b` and the game-facing
 Hitachi SH-2 register boundary from public `b52b40d` remain in place.
 Their earlier [attribution and source citations](FIRMWARE-SAVE-SAFETY.md)
@@ -15,8 +15,8 @@ blocks, one header block per save, its first 28 data bytes in the header,
 then 58 data bytes per continuation block. This is a virtual implementation
 of the native API, not a physical SRAM image.
 
-The candidate continues to transport one 65,536-byte `SaroSave` slot per
-selected game. Its private blocks remain 128 bytes apart. The candidate's
+The implementation continues to transport one 65,536-byte `SaroSave` slot per
+selected game. Its private blocks remain 128 bytes apart. The native
 header identifies the new format with total size 32,768 and block size 64;
 the previous format identifies itself with 65,536 and 128. A valid
 old-format header is rejected as broken by the native path before reading
@@ -28,14 +28,33 @@ read, verify and delete. The existing [save-generation journal](../Firm_Saturn/s
 still publishes the complete device-0 transport slot; its command and
 recovery ownership remain unchanged.
 
-## Admission and current status
+## Admission and migration
 
-`SAROO_NATIVE_INTERNAL_BACKUP=0` is the [standard menu build](../Firm_Saturn/Makefile).
-The old expanded-format service therefore remains active until the archive
-converter and both host editors can safely handle existing saves. The
-opt-in build is source and host qualified here; it has not been installed.
-Do not use an old archive with the opt-in image. Conversion and final
-standard activation are separate required checkpoints.
+The [standard menu build](../Firm_Saturn/Makefile) now selects
+`SAROO_NATIVE_INTERNAL_BACKUP=1`. Setting it to `0` explicitly builds the
+previous expanded-format service. **An existing old-format `SS_SAVE.BIN` must
+be inspected and converted explicitly before using the native standard
+firmware.** Keep the original archive as a rollback copy. The native firmware
+refuses an old-format named slot rather than reformatting it; no device archive
+is migrated automatically. The [converter](../tools/README.md#native-internal-backup-archive-conversion)
+never overwrites its source. The C and browser save tools create native slots
+by default and still read/edit valid old slots.
+
+The opt-in checkpoint `658e8ee` preceded activation. Its resource
+numbers and image hashes below describe that historical stage; standard-build
+numbers after activation are recorded separately below.
+
+The standard SuperH menu links to 96,984 code/data bytes, 9,540 BSS bytes,
+16,384 bytes reserved stack and 8,164 bytes of body margin. Its complete
+image SHA-256 is
+`e67f3ec93c8b795d118b6935afd289be782424262b4cc63cb9201985e2369f39`,
+exactly the previously verified opt-in image. The explicit legacy override
+links to the previously verified old-format image
+`8e4fa6798d649665b97ca3176c7fa9823cefa7f561176eff46d260ad545984e4`,
+with 97,000 code/data bytes and 8,148 bytes of body margin. Both linked
+profiles pass all 11 backup entry points, 64 modeled register clobbers and
+three broken-restore controls. The standard menu and legacy override were
+built in isolated source copies; neither was installed.
 
 The public parent is `d955fe7`. Its source fails the native geometry
 fixture at the initial Stat call; the candidate passes. The
@@ -51,9 +70,11 @@ case seeds the upper transport half and checks that format clears it.
 
 ```sh
 python3 -m unittest discover -s tests -p test_firmware_save_native.py -v
-SAROO_NATIVE_INTERNAL_BACKUP_TEST=1 \
+python3 -m unittest discover -s tests -p test_save_journal_binding.py -v
+SAROO_NATIVE_INTERNAL_BACKUP_TEST=0 \
   python3 -m unittest discover -s tests -p test_save_journal_binding.py -v
-python3 -B tests/build_save_generation_candidate.py --native-internal
+python3 -B tests/build_save_generation_candidate.py
+python3 -B tests/build_save_generation_candidate.py --legacy-internal
 ```
 
 Both native host methods pass under ASan/UBSan and `-O2`. The default
@@ -72,8 +93,7 @@ not change. Direct function frames are not a whole-call-chain stack bound.
 
 These are host models and target links. They do not qualify SD durability,
 physical power loss, Saturn timing, retail games, or use of old archives
-with the opt-in firmware. Standard activation must wait for explicit
-conversion and verified host-tool support.
+with native firmware.
 
 ## Staged host migration support
 
@@ -83,9 +103,10 @@ and existing [C CLI](../tools/savetool/sr_bup.c) and
 native layout. The converter is an adapted subset of private `24a4b069`'s
 `saroo-save-native`; the C layout handling adapts its
 `savetool-native-backup.patch`, and the browser layout handling adapts the
-same commit's `src/host/web/save-codec.mjs`. Public adaptations keep new-slot
-creation in the old format until the standard firmware switches. Existing
-old and native slots can be read and edited without implicit conversion.
+same commit's `src/host/web/save-codec.mjs`. Public adaptations originally
+kept new-slot creation in the old format; the standard activation switched
+C and browser creation to native. Existing old and native slots can be read
+and edited without implicit conversion.
 
 Independent Python encoders produce old/native archives for the Rust,
 sanitized C and browser checks. A mixed archive converts byte for byte to

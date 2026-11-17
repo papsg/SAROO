@@ -345,7 +345,7 @@ Host-tool checks remain part of `make -C tests check-host-tools`.
 
 ## Native internal backup archive conversion
 
-The opt-in [native device-0 candidate](../doc/NATIVE-INTERNAL-BACKUP.md) needs
+The [native device-0 firmware](../doc/NATIVE-INTERNAL-BACKUP.md) needs
 an explicit conversion of an old `SS_SAVE.BIN` archive. `saroo-save-native` is
 adapted from paps-g's private `saroo-save-native` host utility at `24a4b069`;
 this public port keeps its inspect and convert commands, not its separate ABI

@@ -22,7 +22,7 @@ class SaveSlotTests(NativeSaveTest):
         self.assertNotIn(b'AddressSanitizer', result.stderr)
         return result
 
-    def test_native_slot_boundaries_resize_and_legacy_creation_control(self):
+    def test_native_slot_boundaries_resize_and_creation(self):
         for size in (0, 1, 28, 29, 86, 87, 29550):
             with self.subTest(size=size), self.case() as temp:
                 directory = Path(temp)
@@ -49,7 +49,12 @@ class SaveSlotTests(NativeSaveTest):
             archive = directory / 'archive.bin'
             archive.write_bytes(slot_fixture()[0])
             self.assertEqual(self.invoke(directory, '-c', 'NEW').returncode, 0)
-            self.assertEqual(struct.unpack_from('>IHH', archive.read_bytes(), 2 * UNIT + 8)[:2], (UNIT, 128))
+            self.assertEqual(struct.unpack_from('>IHH', archive.read_bytes(), 2 * UNIT + 8)[:2], (32768, 64))
+            maximum = bytes((i * 11 + 3) % 251 for i in range(29550))
+            (directory / 'maximum.SRO').write_bytes(raw_save(b'MAXIMUM0001', maximum))
+            self.assertEqual(self.invoke(directory, '-t', 2, '-i', 'maximum.SRO').returncode, 0)
+            self.assertEqual(self.invoke(directory, '-t', 2, '-s', 0).returncode, 0)
+            self.assertEqual((directory / 'MAXIMUM0001.SRO').read_bytes()[64:], maximum)
 
     def test_listing_uses_selected_slot_geometry_in_mixed_archives(self):
         for size in (0, 1, 28, 29, 86, 87, 128, 992, 29550):

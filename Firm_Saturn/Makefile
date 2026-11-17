@@ -45,7 +45,7 @@ endif
 
 # Native internal geometry is staged until an explicit archive conversion is
 # available. The standard image still reads the existing expanded save format.
-SAROO_NATIVE_INTERNAL_BACKUP ?= 0
+SAROO_NATIVE_INTERNAL_BACKUP ?= 1
 ifeq ($(SAROO_NATIVE_INTERNAL_BACKUP),1)
 FLAGS += -DSAROO_NATIVE_INTERNAL_BACKUP
 endif

@@ -1,6 +1,6 @@
-"""Build the opt-in save-generation menu in an isolated tracked-source copy.
+"""Build standard or selected save-generation menu profiles in an isolated copy.
 
-No device operation or standard-firmware artifact is performed. Run after
+No device operation or installation is performed; the linked output is temporary. Run after
 building tools/target/debug/firmware-build with the project's offline toolchain.
 """
 
@@ -22,9 +22,10 @@ def run(*args, cwd=None):
 
 
 def main():
-    if sys.argv[1:] not in ([], ["--native-internal"]):
-        raise SystemExit("usage: build_save_generation_candidate.py [--native-internal]")
+    if sys.argv[1:] not in ([], ["--native-internal"], ["--legacy-internal"]):
+        raise SystemExit("usage: build_save_generation_candidate.py [--native-internal|--legacy-internal]")
     native_internal = sys.argv[1:] == ["--native-internal"]
+    legacy_internal = sys.argv[1:] == ["--legacy-internal"]
     if not BUILDER.is_file():
         raise SystemExit("build the offline firmware-build tool first")
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -43,6 +44,8 @@ def main():
         selection = b"SAROO_SAVE_GENERATION=1\n"
         if native_internal:
             selection += b"SAROO_NATIVE_INTERNAL_BACKUP=1\n"
+        if legacy_internal:
+            selection += b"SAROO_NATIVE_INTERNAL_BACKUP=0\n"
         makefile.write_bytes(selection + makefile.read_bytes())
         run("git", "init", "-q", cwd=repo)
         run("git", "add", "Firm_Saturn", cwd=repo)
@@ -56,6 +59,8 @@ def main():
         if result.returncode:
             sys.stderr.write(result.stdout + result.stderr)
             raise SystemExit(result.returncode)
+        run(sys.executable, str(ROOT / "tests/check_backup_abi_sh2.py"),
+            str(output / "source/ssfirm.elf"))
         receipt = json.loads((output / "receipt.json").read_text())
         resources = receipt["resources"]
         direct_stack = receipt["compiler_direct_stack"]

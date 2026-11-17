@@ -350,7 +350,7 @@ export class SaveArchive {
     }
     require(empty && empty <= this.bytes / SLOT_BYTES, 'SAROO slot directory is full.');
     const bytes = new Uint8Array(SLOT_BYTES); bytes.set(new TextEncoder().encode('SaroSave'));
-    put32(bytes, 8, SLOT_BYTES); put16(bytes, 12, 128); put16(bytes, 14, 511); bytes.set(id, 32); bytes[64] = 1;
+    put32(bytes, 8, 32768); put16(bytes, 12, 64); put16(bytes, 14, 510); bytes.set(id, 32); bytes[64] = 3;
     const append = empty === this.bytes / SLOT_BYTES, extra = append ? this.#extra.concat([bytes]) : this.#extra;
     const volumes = new Uint16Array(this.#volumes.length + 1); let index = 0;
     for (let slot = 1; slot < 4096; slot++) if (slot === empty || this.#source[slot * 16]) volumes[index++] = slot;

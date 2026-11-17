@@ -17,7 +17,7 @@ def prepare(root):
     text=(xml/'case-7.xml').read_text()
     (xml/'case-7-notes.xml').write_text(text.replace('<optional />','<optional><author>Fixture author</author></optional>'))
     (root/'incoming.SRO').write_bytes(raw_save(b'IMPORTED',bytes(range(251))*7))
-    (root/'saroo-maximum.SRO').write_bytes(raw_save(b'MAXIMUM0001',bytes((i*7+27)%251 for i in range(65280))))
+    (root/'saroo-maximum.SRO').write_bytes(raw_save(b'MAXIMUM0001',bytes((i*7+27)%251 for i in range(29550))))
     (root/'bad.xml').write_text('<Sega_Saturn_Save><mandatory><data>Incomplete')
     image,_=mems_fixture([(0,b'<save>&',b'original')]);(root/'literal.bin').write_bytes(image)
     original=(root/'saroo-preserve.bin').read_bytes();damaged=bytearray(original);damaged[65536]=0

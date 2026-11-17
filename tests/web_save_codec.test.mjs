@@ -188,7 +188,7 @@ for (const type of ['saroo', 'mems']) {
   });
 
   test(`${type}: creating an archive and importing maximum payload retains the full format capacity`, async () => {
-    const archive = SaveArchive.create(type), data = sequence(type === 'saroo' ? 65280 : 490496, 27);
+    const archive = SaveArchive.create(type), data = sequence(type === 'saroo' ? 29550 : 490496, 27);
     if (type === 'saroo') archive.createSlot(name('GAME'));
     assert(archive.dirty); archive.update(volume, null, { rawFilename: name('MAXIMUM0001'), data });
     assert.deepEqual(archive.read(volume, 0), data);

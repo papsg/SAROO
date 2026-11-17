@@ -241,14 +241,14 @@ static int sr_bup_format(u8 *gameid)
 	// SaroSave
 	put_be32(&BUPMEM->magic0, 0x5361726f);
 	put_be32(&BUPMEM->magic1, 0x53617665);
-	put_be32(&BUPMEM->total_size, 0x10000);
-	put_be16(&BUPMEM->block_size, 0x80);
-	put_be16(&BUPMEM->free_block, 512-1);
+	put_be32(&BUPMEM->total_size, 0x8000);
+	put_be16(&BUPMEM->block_size, 0x40);
+	put_be16(&BUPMEM->free_block, 512-2);
 	memcpy(&BUPMEM->gameid, gameid, 16);
 	put_be16(&BUPMEM->first_save, 0x0000);
 
 	memset(&BUPMEM->bitmap, 0, 0x40);
-	BUPMEM->bitmap[0] = 0x01;
+	BUPMEM->bitmap[0] = 0x03;
 
 	return 0;
 }

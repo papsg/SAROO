@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from save_fixtures import fixtures, slot_fixture
+from save_fixtures import fixtures, native_slot_fixture, slot_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "tools/savetool/web"
@@ -77,8 +77,8 @@ class BrowserSaveTests(unittest.TestCase):
                                     "format": extension, "sha256": hashlib.sha256(actual.read_bytes()).hexdigest()})
         self.assertTrue(checked)
         maximum = (self.directory / "saroo-maximum-native.bin").read_bytes()
-        expected, locations = slot_fixture([(b"MAXIMUM0001", bytes((i*7+27)%251 for i in range(65280)))])
-        header = locations[0][0]
+        expected = native_slot_fixture([(b"MAXIMUM0001", bytes((i*7+27)%251 for i in range(29550)))])
+        header = 65536 + 2 * 128
         expected[header+16:header+26] = bytes(10)
         expected[header+27:header+32] = bytes(5)
         self.assertEqual(maximum, expected)

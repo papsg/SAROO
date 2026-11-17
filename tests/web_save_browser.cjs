@@ -36,19 +36,19 @@ async function workflow(name,action){if(process.env.SAROO_BROWSER_CASE&&process.
       assert.equal(decoded.volumeCount,1);assert.equal(decoded.stats(1).saves,1);assert.equal(decoded.read(1,0).length,0);
       assert.equal(new TextDecoder().decode(decoded.metadata(1,0).rawFilename).replace(/\0.*$/s,''),'MY_SAVE');
     });
-    await workflow('maximum SAROO save uses the public v0.8 slot layout',async()=>{
+    await workflow('maximum SAROO save uses native internal slot layout',async()=>{
       await page.locator('#new-saroo').click();await page.waitForFunction(()=>!document.getElementById('add-slot').hidden);
       dialogAction=dialog=>dialog.accept('GAME_MAX');await page.locator('#add-slot').click();dialogAction=dialog=>dialog.accept();
       await page.waitForFunction(()=>!document.getElementById('add-save').disabled);await page.locator('#add-save').click();
       await pick('#import-save','saroo-maximum.SRO');
-      await page.waitForFunction(()=>document.getElementById('save-size').textContent==='65,280 payload bytes');
+      await page.waitForFunction(()=>document.getElementById('save-size').textContent==='29,550 payload bytes');
       await page.locator('#apply').click();
       await page.waitForFunction(()=>document.querySelectorAll('#saves .save-row').length===1||document.getElementById('editor-error').textContent);
       assert.equal(await page.locator('#editor-error').textContent(),'');await rows(1);
       const image=await archive('maximum-saroo.bin'),incoming=await fs.readFile(path.join(root,'saroo-maximum.SRO'));
-      assert.equal(image.length,131072);assert.equal(image.readUInt32BE(65536+8),65536);assert.equal(image.readUInt16BE(65536+12),128);
-      assert.equal(image.readUInt16BE(65536+62),1);assert.equal(image.readUInt32BE(65536+128+12),65280);
-      assert.deepEqual(image.subarray(65536+256),incoming.subarray(64));
+      assert.equal(image.length,131072);assert.equal(image.readUInt32BE(65536+8),32768);assert.equal(image.readUInt16BE(65536+12),64);
+      assert.equal(image.readUInt16BE(65536+62),2);assert.equal(image.readUInt32BE(65536+256+12),29550);
+      const decoded=await SaveArchive.open(new Blob([image]));assert.deepEqual(decoded.read(1,0),new Uint8Array(incoming.subarray(64)));
     });
     await workflow('unmodified archive download preserves every byte',async()=>{
       await open('mems-preserve.bin');await rows(2);assert.deepEqual(await archive('unchanged.bin'),await fs.readFile(path.join(root,'mems-preserve.bin')));
