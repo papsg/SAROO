@@ -24,6 +24,7 @@
  */
 
 #include "rtx_lib.h"
+#include "RTX_Config.h"
 
 /* SAROO/papsg: SSR-068 queue callbacks; SSR-069 admission after paps-g
  * d3b1f4d5, with slot-retirement prerequisite 6e96f528. */
@@ -157,7 +158,7 @@ void osRtxTick_Handler (void) {
   osRtxThreadDispatch(NULL);
 
   // Check Round Robin timeout
-  if (osRtxInfo.thread.robin.timeout != 0U) {
+  if ((OS_ROBIN_ENABLE != 0) && (osRtxInfo.thread.robin.timeout != 0U)) {
     if (osRtxInfo.thread.robin.thread != osRtxInfo.thread.run.next) {
       // Reset Round Robin
       osRtxInfo.thread.robin.thread = osRtxInfo.thread.run.next;
