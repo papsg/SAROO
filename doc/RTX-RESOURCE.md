@@ -88,3 +88,37 @@ on public parent `614562f` and this checkpoint, using fresh output directories.
 Run `firmware-build rtos-check --case delay`, `--case mutex` and `--case pool`
 with `--lto` and the same pinned dependencies. MDK output, physical allocation
 timing and Saturn games remain unqualified.
+
+## Read ticks directly in the privileged RTX profile
+
+Original implementation: **paps-g**, private commit `b7ae381d`, AUD-RES-027.
+The selected RTX 5.5.1 configuration sets `OS_PRIVILEGE_MODE=1`. Its kernel
+startup selects privileged Thread mode, and its thread creation takes the
+exception-return privilege bit from that same configuration. The selected
+provider has no per-thread privilege override. The public adaptation reads
+the aligned 32-bit tick through a volatile lvalue in this configuration,
+retaining one non-inlined `osKernelGetTickCount` owner and the original Event
+Recorder callback. The unprivileged configuration retains the original
+IRQ/mask decision and SVC route. No wait, lock or scheduler mutation uses
+this shortcut.
+
+[Arm's RTX privilege configuration](https://arm-software.github.io/CMSIS_5/RTOS2/html/config_rtx5.html)
+defines this processor-mode switch. The
+[CMSIS tick API](https://arm-software.github.io/CMSIS_5/RTOS2/html/group__CMSIS__RTOS__KernelCtrl.html)
+returns a rolling kernel tick and may be called from an ISR. The pinned
+[RTX 5.5.1 kernel source](https://github.com/ARM-software/CMSIS_5/blob/b5f0603d6a584d1724d952fd8b0737458b90d62b/CMSIS/RTOS2/RTX/Source/rtx_kernel.c#L622-L653)
+shows the original SVC/IRQ routing; the project's selected thread provider
+supplies the configuration-based privilege state. Arm's license remains in
+the source and the selected source hash is recorded in RTX provenance.
+
+On public parent `9caafd8`, the GNU App loads 59,380 bytes with LTO and 63,648
+without. The selected images load **59,340** and **63,612** bytes, saving 40
+and 36 respectively; static DTCM remains 50,904 bytes. The linked getter is
+12 bytes instead of the original 40-byte wrapper plus 12-byte SVC reader.
+The no-LTO selected object still refers to `EvrRtxKernelGetTickCount`, so a
+configured callback is not silently removed. With `OS_PRIVILEGE_MODE=0`,
+the exact-parent and selected target disassemblies match across 759 lines.
+Both App builds and BootLoader object compile, and actual Cortex-M7/QEMU LTO
+`syscounter` and `delay` contracts pass. These checks establish source and
+simulator behavior; they do not measure physical timing, exception cost or
+game responsiveness. No firmware was installed.

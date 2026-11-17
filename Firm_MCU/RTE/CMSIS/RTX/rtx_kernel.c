@@ -24,6 +24,7 @@
  */
 
 #include "rtx_lib.h"
+#include "RTX_Config.h"
 
 /* papsg: preserve destructive SysTick rollover observations until tick
  * retirement. Adapted from paps-g 3feed85e (SSR-132). */
@@ -650,7 +651,15 @@ void osKernelResume (uint32_t sleep_ticks) {
 }
 
 /// Get the RTOS kernel tick count.
+#if (OS_PRIVILEGE_MODE != 0)
+__attribute__((noinline))
+#endif
 uint32_t osKernelGetTickCount (void) {
+#if (OS_PRIVILEGE_MODE != 0)
+  uint32_t count = *(volatile const uint32_t *)&osRtxInfo.kernel.tick;
+  EvrRtxKernelGetTickCount(count);
+  return count;
+#else
   uint32_t count;
 
   if (IsIrqMode() || IsIrqMasked()) {
@@ -659,6 +668,7 @@ uint32_t osKernelGetTickCount (void) {
     count =  __svcKernelGetTickCount();
   }
   return count;
+#endif
 }
 
 /// Get the RTOS kernel tick frequency.

@@ -610,6 +610,15 @@ fn validate_owned(owned: &Path, rtx: &Path) -> Result<()> {
             }
         }
     }
+    let selected_kernel = owned.join("rtx_kernel.c");
+    if selected_kernel.is_file() {
+        let expected = pins["selected_kernel_sha256"]
+            .as_str()
+            .ok_or("Missing selected kernel source pin")?;
+        if sha(&fs::read(selected_kernel)?) != expected {
+            return fail("Selected kernel source differs from the declared tick reader");
+        }
+    }
     let selected_mutex = owned.join("rtx_mutex.c");
     if selected_mutex.is_file() {
         let expected = pins["selected_mutex_sha256"]
@@ -1284,16 +1293,21 @@ mod tests {
         fs::write(owned.join("rtx_lib.h"), b"header").unwrap();
         fs::write(sdk.join("rtx_lib.h"), b"header").unwrap();
         fs::write(sdk.join("rtx_delay.c"), b"provider").unwrap();
+        fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
         fs::write(
             owned.join("provenance.json"),
             serde_json::to_vec(&json!({
                 "headers":{"rtx_lib.h":sha(b"header")},
-                "providers":{"rtx_delay.c":sha(b"provider")}
+                "providers":{"rtx_delay.c":sha(b"provider")},
+                "selected_kernel_sha256":sha(b"selected kernel")
             }))
             .unwrap(),
         )
         .unwrap();
         assert!(validate(&app, &root.join("sdk")).is_ok());
+        fs::write(owned.join("rtx_kernel.c"), b"modified kernel").unwrap();
+        assert!(validate(&app, &root.join("sdk")).is_err());
+        fs::write(owned.join("rtx_kernel.c"), b"selected kernel").unwrap();
         fs::write(owned.join("rtx_lib.h"), b"modified").unwrap();
         assert!(validate(&app, &root.join("sdk")).is_err());
         fs::write(owned.join("rtx_lib.h"), b"header").unwrap();
