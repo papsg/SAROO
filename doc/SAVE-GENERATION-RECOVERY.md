@@ -682,3 +682,68 @@ The host mailbox and target link do not qualify Saturn CPU interleaving, a
 physical reset, SD durability or game behavior. Launch/return callbacks are
 still unbound, so neither the alternate nor the standard image performs
 save-generation recovery yet.
+
+## Menu launch and return ownership (opt-in candidate)
+
+This checkpoint links the already staged launch callbacks into the isolated
+`SAROO_SAVE_GENERATION=1` menu build. The standard menu still does not include
+the journal. With a complete menu/file/archive-acknowledgment peer, the opt-in
+menu replays a pending journal before its tagged `STARTUP` command, and settles
+the previous save session before a game-load or physical-save request. After
+a successful load, it reads the MCU's canonical 16-byte game key and resolves
+its archive slot while the command lease is still held. Returning from a game
+reenters the menu startup path and repeats admission before another launch.
+
+**paps-g** authored the original callbacks in private `5b7729cc` and selected
+them in `607267b9`. The public adaptation also includes `FIRSTDISC` and
+`ROMDISC` in the game-load callback set. The current public selector sends
+these for checked overlay and companion-ROM launches, and the MCU dispatches
+both to `load_disc(..., start_save)` with a save load and result key. The
+staged callback previously skipped both: a source-extracted host control
+reproduced that gap with `admission_calls == 0` for the first checked load.
+The corrected callback covers all three load commands, ordinary stop/audio
+loads with an empty result key, legacy sessions and physical `LSAVE`. It
+clears the output key before every request, never treats the MCU's selected
+save state as its output, and refuses absent capabilities or an uncertain
+reply.
+
+Reproduce with:
+
+```sh
+python3 -B -m unittest tests.test_save_launch_core -q
+SAROO_SAVE_LAUNCH_PROFILE=release python3 -B -m unittest \
+  tests.test_save_launch_core -q
+python3 -B -m unittest tests.test_menu_caller_routes -q
+PYTHONPATH=tests python3 -B -m unittest test_menu_launch_errors -q
+PYTHONPATH=tests python3 -B -m unittest \
+  test_mcu_save_disc.DiscSaveSessionTests.test_explicit_menu_load_still_selects_requested_save \
+  test_mcu_save_disc.DiscSaveSessionTests.test_optical_boot_stop_unloads_without_save_io_and_is_idempotent -q
+PYTHONPATH=tests SAROO_MENU_BIN_OWNER=1 python3 -B -m unittest \
+  test_menu_bin_browser -q
+python3 -B tests/build_save_generation_candidate.py
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/menu-launch-owner-default
+```
+
+All three launch-model methods pass under ASan/UBSan and O2 after the new
+checked-load assertions. The source-route, six ordinary selector and staged
+browser checks pass, as do two MCU disc-save controls for explicit load and
+optical stop. The selector fixture now extracts the current public
+button helper rather than retaining an obsolete implicit declaration.
+The paired SuperH candidate links 97,000 code/data and 9,540 BSS bytes, with
+a 16,384-byte reserved stack and 8,148 bytes of body margin. The direct frame
+maxima remain 268/88/84/92 bytes in main/conio/game-load/game-save and 80 in
+the journal core; whole-call-chain and interrupt stack use are not measured.
+The 65,536-byte transfer workspace remains shared, not replicated. The normal
+menu is byte-identical to its predecessor: 88,040 code/data, 9,508 BSS,
+17,140 body margin, image SHA-256
+`d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+
+Sega's [Backup Library §2.1, printed p. 42](https://antime.kapsi.fi/sega/files/ST-162-R1-092994.pdf#page=47)
+defines the archive-facing directory and data sizes. [FatFs `f_sync`](https://elm-chan.org/fsw/ff/doc/sync.html)
+describes the file synchronization needed by the selected owner; the SJR1
+record, command tags and launch leases are SAROO mechanisms. The alternate
+build and host model do not prove physical power-loss ordering, SD durability,
+Saturn startup timing, overlay-game execution or return from a real game.
+The opt-in image remains a candidate and was not installed. Production
+activation still requires a final source/peer audit and validation gate.

@@ -36,6 +36,8 @@ static volatile u16 *wire_register(void)
         if ((wire_command & ~SSCMD_SAVE_ACK) == SSCMD_LSAVE)
             memcpy(sent_key, request + 0x10, 16);
         if (publish_key && ((wire_command & ~SSCMD_SAVE_ACK) == SSCMD_LOADDISC ||
+                            (wire_command & ~SSCMD_SAVE_ACK) == SSCMD_FIRSTDISC ||
+                            (wire_command & ~SSCMD_SAVE_ACK) == SSCMD_ROMDISC ||
                             (wire_command & ~SSCMD_SAVE_ACK) == SSCMD_LSAVE))
             memcpy(sysinfo + 0x1c, next_key, 16);
         completions++;
@@ -131,15 +133,18 @@ static void normal_launches(void)
     assert(startups == 1 && purges == 1 && completions == 1);
     assert(journal_state == JOURNAL_READY && !journal_slot && !command_lock);
 
-    reset();
-    memcpy(next_key, "NEW-GAME-KEY-001", 16);
-    publish_key = 1;
-    assert(!menu_request(SSCMD_LOADDISC, 7));
-    assert(last_command == (SSCMD_LOADDISC | SSCMD_SAVE_ACK) && last_argument == 7);
-    assert(admission_calls == 1 && pending_calls[0] == 1 && pending_calls[1] == 1);
-    assert(purges == 1 && lookups == 1 && journal_state == JOURNAL_READY);
-    assert(journal_slot == 0x30000 && !memcmp(journal_key, next_key, 16));
-    assert(!memcmp(looked_up_key, next_key, 16) && !command_lock);
+    const int game_commands[] = {SSCMD_LOADDISC, SSCMD_FIRSTDISC, SSCMD_ROMDISC};
+    for (unsigned i = 0; i < sizeof game_commands / sizeof *game_commands; ++i) {
+        reset();
+        memcpy(next_key, "NEW-GAME-KEY-001", 16);
+        publish_key = 1;
+        assert(!menu_request(game_commands[i], 7));
+        assert(last_command == (game_commands[i] | SSCMD_SAVE_ACK) && last_argument == 7);
+        assert(admission_calls == 1 && pending_calls[0] == 1 && pending_calls[1] == 1);
+        assert(purges == 1 && lookups == 1 && journal_state == JOURNAL_READY);
+        assert(journal_slot == 0x30000 && !memcmp(journal_key, next_key, 16));
+        assert(!memcmp(looked_up_key, next_key, 16) && !command_lock);
+    }
 
     reset();
     assert(!menu_request(SSCMD_LOADDISC, 0xffff));

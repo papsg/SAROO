@@ -4,7 +4,9 @@
 
 static int menu_launch_before(int command)
 {
-    if (command != SSCMD_STARTUP && command != SSCMD_LOADDISC && command != SSCMD_LSAVE)
+    int game = command == SSCMD_LOADDISC || command == SSCMD_FIRSTDISC ||
+               command == SSCMD_ROMDISC;
+    if (command != SSCMD_STARTUP && !game && command != SSCMD_LSAVE)
         return 0;
     /* These callbacks require the known complete primary-owner contract. The
      * normal legacy menu remains separate; never guess at a partial peer. */
@@ -23,7 +25,8 @@ static int menu_launch_before(int command)
 
 static int menu_launch_after(int command, int result)
 {
-    if (!result && (command == SSCMD_LOADDISC || command == SSCMD_LSAVE))
+    if (!result && (command == SSCMD_LOADDISC || command == SSCMD_FIRSTDISC ||
+                    command == SSCMD_ROMDISC || command == SSCMD_LSAVE))
         return save_launch_finish_owned(SAVE_RESULT_KEY) ? -2 : 0;
     return result;
 }

@@ -35,10 +35,10 @@ OBJ	=	obj/crt0.o  \
 		obj/tiny_xm.o \
 		obj/version.o
 
-# Save-generation integration remains opt-in until every menu command producer
-# joins the same lease. The ordinary image and object list stay unchanged.
+# Save-generation integration remains opt-in while the complete paired
+# startup/launch/return contract is qualified. The ordinary image is unchanged.
 ifeq ($(SAROO_SAVE_GENERATION),1)
-FLAGS += -DSAROO_SAVE_GENERATION
+FLAGS += -DSAROO_SAVE_GENERATION -DSAROO_MENU_SAVE_LAUNCH
 OBJ += obj/save_journal.o
 endif
 

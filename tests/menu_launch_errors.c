@@ -3,9 +3,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+typedef uint8_t u8;
+typedef uint32_t u32;
 #include "constants.inc"
 
-typedef uint8_t u8;
 typedef struct { int current, num; } MENU_DESC;
 static MENU_DESC sel_menu = {.current = 3, .num = MENU_ITEMS};
 static int page = 2, total_disc, total_page, sel_mode, use_sys_load, cover_top;

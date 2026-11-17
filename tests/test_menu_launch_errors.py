@@ -35,6 +35,8 @@ class MenuLaunchErrorTests(unittest.TestCase):
         definitions = b''.join(
             re.search(rb'^#define ' + name + rb'\b[^\r\n]+', header, re.M).group() + b'\n'
             for name in names)
+        helper = header.index(b'static inline int button_pressed(')
+        definitions += header[helper:header.index(b'\n}', helper) + 3] + b'\n'
         if choice:
             definitions += b'#define HAS_LAUNCH_CHOICE 1\n'
 
