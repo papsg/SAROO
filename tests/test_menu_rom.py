@@ -19,6 +19,7 @@ class MenuROMTests(unittest.TestCase):
     def setUpClass(cls):
         source = Path(os.environ.get('SAROO_MENU_ROM_SOURCE', ROOT / 'Firm_Saturn/game_patch.c'))
         raw = source.read_bytes()
+        cls.raw = raw
         cls.legacy = b'int prepare_game_rom(' not in raw
         code = b''
         if not cls.legacy:
@@ -82,6 +83,32 @@ class MenuROMTests(unittest.TestCase):
             self.skipTest('The baseline has no ROM preflight')
         for kind in range(3):
             self.case(3, kind)
+
+    def test_save_transfer_window_cannot_overwrite_live_rom(self):
+        if self.legacy:
+            self.skipTest('The baseline has no ROM preflight')
+        for kind in range(3):
+            self.case(4, kind)
+
+    def test_layout_guard_rejects_save_overlap_and_artwork_overflow(self):
+        if self.legacy:
+            self.skipTest('The baseline has no ROM preflight')
+        block = self.raw[self.raw.index(b'#define ROM_IMAGE_ADDR'):
+                         self.raw.index(b'enum rom_kind')]
+        self.assertEqual(block.count(b'#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x10100)'), 1)
+        cases = (block,
+                 block.replace(b'#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x10100)',
+                               b'#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x100)'),
+                 block.replace(b'#define ROM_IMAGE_SIZE 0x200000',
+                               b'#define ROM_IMAGE_SIZE 0x400000'))
+        for index, variant in enumerate(cases):
+            with self.subTest(index=index):
+                result = subprocess.run([*shlex.split(os.environ.get('CC', 'cc')),
+                                         '-std=c11', '-Werror', '-x', 'c', '-c',
+                                         '-o', os.devnull, '-'],
+                                        input=b'#define TMPBUFF_ADDR 0x220c7000u\n' + variant,
+                                        capture_output=True, timeout=15)
+                self.assertEqual(result.returncode == 0, index == 0, result.stderr)
 
 
 if __name__ == '__main__':

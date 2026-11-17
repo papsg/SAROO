@@ -114,6 +114,12 @@ int main(int argc,char **argv)
     } else if(mode==3){
         assert(!prepare_game_rom(id));
         no_handoff(kind==2 ? 1 : 2);
+    } else if(mode==4){
+        assert(!prepare_game_rom(id));
+        /* A physical save binding may reuse the complete 64 KiB transfer
+         * window after ROM preflight and before the late ROM callback. */
+        memset(bus(TMPBUFF_ADDR + 0x100, 0x10000), 0x5a, 0x10000);
+        complete_copy(kind);
     } else return 2;
 #endif
     puts("ROM admission and handoff pass");return 0;

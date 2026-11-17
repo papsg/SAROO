@@ -75,7 +75,11 @@ class OverlayROMTests(unittest.TestCase):
             address,data=symbols[name]
             self.assertEqual(body[address-base:address-base+len(data)],data)
         header=(ROOT/'Firm_Saturn/main.h').read_bytes()
-        staging=int(re.search(rb'^#define TMPBUFF_ADDR\s+(0x[0-9a-f]+)',header,re.M)[1],16)+0x100
+        buffer_base=int(re.search(rb'^#define TMPBUFF_ADDR\s+(0x[0-9a-f]+)',header,re.M)[1],16)
+        patch=(ROOT/'Firm_Saturn/game_patch.c').read_bytes()
+        offset=int(re.search(rb'^#define ROM_IMAGE_ADDR\s+\(TMPBUFF_ADDR\s*\+\s*(0x[0-9a-f]+)\)',
+                             patch,re.M)[1],16)
+        staging=buffer_base+offset
         copy_at,copy=symbols['_jump_copy_code']
         op=int.from_bytes(copy[:2],'big');self.assertEqual(op>>8,0xd2)
         literal=((copy_at+4)&~3)+(op&255)*4

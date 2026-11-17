@@ -393,3 +393,53 @@ reserve the existing 64 KiB journal window exclusively. The current companion
 ROM staging range overlaps that window during physical save binding; it must
 be moved and verified before the binding is linked. Actual Saturn reset,
 physical media, electrical power loss and game behavior remain unqualified.
+
+## Companion ROM workspace separation (enabled)
+
+This checkpoint moves the existing 2 MiB companion-ROM staging area from
+`0x220c7100..0x222c7100` to `0x220d7100..0x222d7100`. The 256-byte request
+and following 64 KiB file/journal window end exactly at the new start. The
+late copy still moves forward to `0x22000000..0x22200000`, and the staged end
+remains below the live artwork workspace at `0x22400000`. The source keeps the
+original game predicates and load/callback behavior. The live address union
+grows by 65,536 bytes; no new BSS object, heap buffer, request, copy or
+companion file is added. This is a change in the **standard** menu source,
+required before the staged physical-save binding can safely use that window.
+
+**paps-g** identified and corrected this private integration regression in
+`b57a578a`. This public adaptation changes the direct
+[ROM source](../Firm_Saturn/game_patch.c), adds an actual-source save-window
+collision control, and updates the linked-ROM fixture to read the current
+staging constant. The parent source's normal complete-ROM and failed-read
+controls pass, but a modeled 64 KiB save-window write between ROM preflight
+and late copy corrupts all three KOF95/Ultraman predicates. The moved stage
+passes all three. Compile-time assertions reject both a return to the old
+overlap and an extent reaching beyond artwork.
+
+Reproduce the focused checks with:
+
+```sh
+PYTHONPATH=tests python3 -B -m unittest test_menu_rom -v
+SAROO_MENU_SAFETY_PROFILE=release PYTHONPATH=tests python3 -B -m unittest test_menu_rom -v
+PYTHONPATH=tests python3 -B -m unittest test_menu_overlay_rom test_menu_cd_boot_handoff -v
+PYTHONPATH=tests python3 -B -m unittest \
+  test_menu_file_transfer.MenuFileTransferTests.test_one_mib_binary_and_two_mib_companion_loads -v
+tools/target/debug/firmware-build menu --repo "$PWD" \
+  --out tests/build/save-rom-separation-menu
+SAROO_OVERLAY_MENU_ELF=tests/build/save-rom-separation-menu/source/ssfirm.elf \
+  PYTHONPATH=tests python3 -B -m unittest \
+  test_menu_overlay_rom.OverlayROMTests.test_linked_launch_installs_fragments_then_executes_complete_native_forward_copy -v
+```
+
+Seven actual-source ROM methods pass in both ASan/UBSan and O2 profiles,
+including full 2 MiB copies and failed/stale callback controls. Six generic
+overlay-ROM host methods, five CD boot handoff methods, the focused 2 MiB file
+transfer method and a linked SuperH instruction simulation pass. The linked
+copy's literal is `0x220d7100`, and its two launch phases preserve the complete
+modeled cart/WRAM/stack poststate. The standard menu still links 88,040
+code/data and 9,508 BSS bytes with 17,140 body bytes free; its padded image is
+488,770 bytes with SHA-256
+`d95fd722bb9fb9634939c8003c4de9d7560739a03596bafee9067035b49982f4`.
+The changed bytes reflect the staging address, not save-generation activation.
+The host and instruction models do not establish physical cartridge mapping,
+live game behavior, electrical reset or SD durability.

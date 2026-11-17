@@ -212,11 +212,14 @@ void Metal_Slug_A_patch(void)
 // ULTRAMAN
 // 2MB ROM cart
 
-/* The existing file transfer workspace leaves live artwork untouched. */
-#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x100)
+/* Keep the complete ROM live beyond the 256-byte request and 64 KiB save/file
+ * window. The late forward copy still moves toward lower addresses. */
+#define ROM_IMAGE_ADDR (TMPBUFF_ADDR + 0x10100)
 #define ROM_IMAGE_SIZE 0x200000
-_Static_assert((ROM_IMAGE_ADDR & 3) == 0 && ROM_IMAGE_ADDR + ROM_IMAGE_SIZE <= 0x22400000,
-               "Companion ROM must fit before the artwork workspace");
+_Static_assert((ROM_IMAGE_ADDR & 3) == 0 &&
+               ROM_IMAGE_ADDR >= TMPBUFF_ADDR + 0x10100 &&
+               ROM_IMAGE_ADDR + ROM_IMAGE_SIZE <= 0x22400000,
+               "Companion ROM must avoid the save window and artwork workspace");
 
 enum rom_kind { ROM_NONE, ROM_KOF95, ROM_ULTRAMAN };
 static enum rom_kind rom_ready;
