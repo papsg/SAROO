@@ -951,7 +951,7 @@ static void bitmap_case(const char *kind, unsigned value)
     if (!(formatted || exact || padded)) {
         assert(mount == FR_NO_FILESYSTEM && !fs.fs_type && !writes);
         if (large_heap)
-            assert(reads == 1);
+            assert(reads == 13); /* VBR plus the 12-sector boot checksum pass. */
     }
     assert(f_mount(NULL, "0:", 0) == FR_OK);
 }
@@ -1033,7 +1033,7 @@ static void exfat_mount_extent(unsigned which)
     reads = writes = 0;
     FRESULT result = f_mount(&fs, "0:", 1);
     printf("exFAT case %u: result %u, reads %u\n", which, result, reads);
-    if (which < EXACT_FAT) assert(result == FR_NO_FILESYSTEM && !fs.fs_type && reads == 1 && !writes);
+    if (which < EXACT_FAT) assert(result == FR_NO_FILESYSTEM && !fs.fs_type && reads == 13 && !writes);
     else {
         BYTE expected[] = {0x42, 0x7e};
         assert(result == FR_OK && fs.fs_type == FS_EXFAT);

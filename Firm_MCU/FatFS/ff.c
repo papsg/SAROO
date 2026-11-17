@@ -3807,6 +3807,32 @@ static UINT check_fs (	/* 0:FAT/FAT32 VBR, 1:exFAT VBR, 2:Not FAT and valid BS, 
 /* Find an FAT volume */
 /* (It supports only generic partitioning rules, MBR, GPT and SFD) */
 
+#if FF_FS_EXFAT
+/* Admit only the main boot region; backup recovery is not selected here.
+ * Recognition has not consumed geometry. Use the physical sector size, and
+ * restore the VBR window before discovery or mount reads its parameters. */
+static UINT check_exfat_boot (FATFS *fs, LBA_t first, LBA_t span)
+{
+    DWORD sum = 0;
+    UINT sector, offset;
+
+    if ((span && span < 12) || first > (LBA_t)-1 - 11) return 3;
+    for (sector = 0; sector < 11; sector++) {
+        if (move_window(fs, first + sector) != FR_OK) return 4;
+        for (offset = 0; offset < SS(fs); offset++) {
+            if (sector == 0 && (offset == 106 || offset == 107 || offset == 112)) continue;
+            sum = ((sum >> 1) | (sum << 31)) + fs->win[offset];
+        }
+    }
+    if (move_window(fs, first + 11) != FR_OK) return 4;
+    for (offset = 0; offset < SS(fs); offset += 4) {
+        if (ld_dword(fs->win + offset) != sum) return 3;
+    }
+    return move_window(fs, first) == FR_OK ? 1 : 4;
+}
+#endif
+
+
 static UINT find_volume (	/* Returns BS status found in the hosting drive */
 	FATFS* fs,		/* Filesystem object */
 	UINT part		/* Partition to fined = 0:find as SFD and partitions, >0:forced partition number */
@@ -3817,6 +3843,9 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 
 
 	fmt = check_fs(fs, 0);				/* Load sector 0 and check if it is an FAT VBR as SFD format */
+#if FF_FS_EXFAT
+    if (fmt == 1) fmt = check_exfat_boot(fs, 0, 0);
+#endif
 	if (fmt != 2 && (fmt >= 3 || part == 0)) return fmt;	/* Returns if it is an FAT VBR as auto scan, not a BS or disk error */
 
 	/* Sector 0 is not an FAT VBR or forced partition number wants a partition */
@@ -3835,7 +3864,13 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 			ofs = i * SZ_GPTE % SS(fs);												/* Offset in the sector */
 			if (!memcmp(fs->win + ofs + GPTE_PtGuid, GUID_MS_Basic, 16)) {	/* MS basic data partition? */
 				v_ent++;
-				fmt = check_fs(fs, ld_qword(fs->win + ofs + GPTE_FstLba));	/* Load VBR and check status */
+                LBA_t first = ld_qword(fs->win + ofs + GPTE_FstLba);
+                LBA_t last = ld_qword(fs->win + ofs + GPTE_LstLba);
+                fmt = check_fs(fs, first); /* Recognition only; no BPB geometry consumed. */
+                if (fmt == 1) {
+                    fmt = last >= first && last - first >= 11
+                        ? check_exfat_boot(fs, first, 0) : 3;
+                }
 				if (part == 0 && fmt <= 1) return fmt;			/* Auto search (valid FAT volume found first) */
 				if (part != 0 && v_ent == part) return fmt;		/* Forced partition order (regardless of it is valid or not) */
 			}
@@ -3854,6 +3889,9 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 		fmt = mbr_pt[i] && mbr_size[i] &&
 			(LBA_t)mbr_size[i] - 1 <= (LBA_t)-1 - mbr_pt[i]
 			? check_fs(fs, mbr_pt[i]) : 3;
+#if FF_FS_EXFAT
+        if (fmt == 1) fmt = check_exfat_boot(fs, mbr_pt[i], mbr_size[i]);
+#endif
 		if (fmt <= 1) {
 #if FF_FS_EXFAT
 			if (fmt == 1) {

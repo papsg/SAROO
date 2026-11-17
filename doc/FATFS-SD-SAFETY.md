@@ -894,3 +894,44 @@ bytes; its BSS is unchanged. In the selected host configuration, `FATFS`
 grows from 688 to 1,720 bytes per volume. These are object and host-structure
 measurements, not an optional linked firmware admission or complete stack and
 timing qualification. Physical SD, Saturn and game behavior remain untested.
+
+## SSR-164: validate the selected exFAT boot region before using it
+
+On the public parent `556a980`, the optional exFAT path mounts an image whose
+main and backup Boot Checksum sectors have both been altered. The valid control
+also mounts, and the two images differ at only byte offsets 5,632 and 11,776.
+The parent therefore uses volume geometry without verifying the selected main
+region. [Microsoft's exFAT specification §§3.1 and 3.4](https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification)
+requires checksum validation before boot-region contents are used. Section 3.4
+covers eleven sectors, excludes first-sector offsets 106, 107 and 112, and
+requires the checksum to fill every four-byte word of sector eleven.
+
+This port adapts paps-g `a817842e929820e5879a30c9103fb2c5f2a88e67`.
+It validates the main boot region in the existing SFD, MBR and GPT discovery
+paths before mount consumes the VBR parameters. The check uses configured
+sector size, bounds the LBA and known partition span, checks every checksum
+word and restores the VBR window. An invalid main region is refused even when
+the backup is valid; backup recovery is outside the existing selection policy.
+FAT32 and standard FAT32-only firmware remain on their previous path.
+
+Run `python3 -B -m unittest discover -s tests -p test_fatfs_boot_checksum.py -v`.
+Seven sanitizer-backed methods make 97 compile/API calls and check 3,840
+individual checksum-word corruptions at 512, 1,024, 2,048 and 4,096-byte
+sector sizes. They also cover covered bytes and exclusions, read errors and
+remount, SFD/MBR/GPT bases, short extents, 32/64-bit LBA bounds, read-only
+mounts and the retained main/backup policy. To reproduce the parent, export
+`Firm_MCU/FatFS` from `556a980` into a temporary directory, set
+`SAROO_BOOT_CHECKSUM_SOURCE` to that folder and
+`SAROO_BOOT_CHECKSUM_BASELINE=1`, then run the same test command. The baseline
+method verifies a damaged main and backup still mount and read `KEEP.BIN`.
+The fixture supplies file-backed sectors and host mutexes; it does not model
+power loss or every possible on-disk validity rule.
+
+The existing exFAT geometry and bitmap-refusal tests now expect thirteen
+reads: recognition plus the twelve-sector main boot validation. Their refusal
+and zero-write checks remain; the FAT32 one-read control is unchanged.
+
+Both standard GNU App builds pass and their LTO/non-LTO flat images remain
+byte-identical to SSR-163. The isolated optional Cortex-M7 `ff.c` object grows
+from 18,509 to 18,733 text bytes, with BSS unchanged. An optional linked
+image, whole-call-chain stack and physical SD/Saturn timing are unqualified.
