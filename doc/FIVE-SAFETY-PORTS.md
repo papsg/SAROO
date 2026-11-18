@@ -10,8 +10,8 @@ physical Saturn qualification.
 | Order | Correction and source | Public commit | Verification and remaining limit |
 | --- | --- | --- | --- |
 | 1 | MCU formatter bounds; paps-g `c5c8df385f3f1d571a47e1885c3a4130784751e4`, adapted from [original formatter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/printk.c) | [`3f1cd8e`](https://github.com/papsg/SAROO/commit/3f1cd8e) | See below. No device test. |
-| 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | This change | See below. No device test. |
-| 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df` | Pending | Pending. |
+| 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | [`6968ad3`](https://github.com/papsg/SAROO/commit/6968ad3) | See below. No device test. |
+| 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df36d2c10305508c5c94d3d229e430bc1a`, adapting the [pinned upstream FatFs source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c) | This change | See below. No device test. |
 | 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3` | Pending | Pending. |
 | 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6` | Pending | Pending. |
 
@@ -54,3 +54,24 @@ correction, all four test methods pass under ASan/UBSan, covering 16 processes.
 The offline GNU App compile/link passes with a 59,364-byte load image and
 6,172 ITCM bytes free. Injected results do not measure the SDRAM hardware,
 electrical cause, LED timing or a physical startup.
+
+## 3. FatFs directory-error name policy
+
+`f_readdir` can fill a file name and then return an error while advancing to
+the next item. Errors before filling an item can leave a caller's old name in
+place. The version-matched FatFs R0.15 documentation promises an empty name at
+normal end of directory; it does **not** promise an empty name on error. Current
+SAROO callers check `FRESULT` before using the name, so this is a stricter
+repository policy, not a demonstrated catalog bug or upstream contract defect.
+The correction clears only `fname[0]` when a nonnull output accompanies an error;
+result, metadata, cursor and null-output rewind stay unchanged.
+
+`python3 tests/test_fatfs_readdir.py -v` compiles the selected FAT32 and optional
+multi-format provider with ASan/UBSan. It builds five sparse images, enumerates
+40 files in each, injects each observed directory read failure in turn, retries
+and checks all file contents and rewind behavior. Before the change, all five
+cases finish those checks but fail the empty-on-error policy assertion. After
+the change, all five pass. Offline GNU App compile/link and BootLoader object
+checks pass. The App load image is 59,376 bytes with 6,160 ITCM bytes free.
+These host block failures do not establish physical SD fault rates or Saturn
+behavior.

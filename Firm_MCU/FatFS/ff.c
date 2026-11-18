@@ -5550,6 +5550,8 @@ FRESULT f_readdir (
 			FREE_NAMBUF();
 		}
 	}
+	/* A later dir_next failure can leave the current entry's name populated. */
+	if (fno && res != FR_OK) fno->fname[0] = 0;
 	LEAVE_FF(fs, res);
 }
 
