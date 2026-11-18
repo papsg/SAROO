@@ -27,14 +27,20 @@ int main(int argc,char **argv)
     assert(!(seed&0x40));status_register=seed;
     if(ready_at==1) status_register|=0x40;
     uint64_t budget=timeout>0?(uint64_t)timeout*1500:0;
-    int expected=ready_at && ready_at<=budget?0x48:-1;
-    uint64_t expected_accesses=expected>=0?ready_at+1:budget; /* Ready acknowledgement adds one store. */
+    /* An error-only first probe reads RDR and writes SSR once before polling
+     * again. The synthetic readiness counter includes that write. */
+    unsigned error_clear=budget && (seed&0x38) && ready_at!=1;
+    int expected=ready_at && ready_at<=budget+error_clear?0x48:-1;
+    uint64_t expected_accesses=expected>=0?ready_at+1:budget+error_clear;
+    if(error_clear && ready_at==2) expected_accesses++; /* clear hides that event */
+    unsigned expected_data_reads=(unsigned)(expected>=0)+error_clear;
+    u8 expected_status=budget ? seed&0x87 : seed|(ready_at==1?0x40:0);
     int actual=sci_getc(timeout);
     printf("sci timeout=%d ready=%llu result=%d accesses=%llu expected=%llu data_reads=%llu\n",
         timeout,(unsigned long long)ready_at,actual,(unsigned long long)accesses,
         (unsigned long long)expected_accesses,(unsigned long long)data_reads);
     assert(actual==expected && accesses==expected_accesses);
-    assert(data_reads==(unsigned)(expected>=0));
-    assert(status_register==(seed|(timeout<=0 && ready_at==1?0x40:0)));
+    assert(data_reads==expected_data_reads);
+    assert(status_register==expected_status);
     return 0;
 }

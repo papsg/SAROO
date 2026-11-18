@@ -487,11 +487,15 @@ void msleep(u32 ms)
 void sci_init(void)
 {
 	SCR = 0x00;     /* set TE,RE to 0 */
+	u8 status = SSR;
+	(void)RDR;
+	SSR = status & 0x87; /* discard retained receive data/errors */
 	SMR = 0x00;     /* set SMR to 8n1 async mode */
 //	BRR = 0x15;     /* set BRR to 9600 bps */
 //	BRR = 0x01;     /* set BRR to 104980 bps */
 	BRR = 0x00;     /* set BRR to 209960 bps */
-	SCR = 0xcd;     /* set TIE RIE MPIE TEIE CKE1 CKE0 */
+	SCR = 0x01;     /* internal clock, SCK outputs the bit clock */
+	usleep(5);      /* at least one 209960-bps bit interval */
 	SCR = 0x31;     /* set TE RE to 1 */
 
 	printk_putc = sci_putc;
@@ -511,10 +515,15 @@ int sci_getc(int timeout)
 	while(timeout > 0){
 		int polls = 1500;
 		do {
-			if(SSR&0x40){
+			u8 status = SSR;
+			if(status & 0x40){
 				ch = RDR;
-				SSR &= 0xbf;
+				SSR = status & 0x87;
 				return ch;
+			}
+			if(status & 0x38){
+				(void)RDR;
+				SSR = status & 0x87;
 			}
 		} while(--polls);
 		--timeout;

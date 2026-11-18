@@ -50,6 +50,6 @@ class MenuSCITimeoutTests(unittest.TestCase):
         for timeout,ready in cases:
             with self.subTest(timeout=timeout,ready=ready):self.case(timeout,ready)
 
-    def test_original_safe_domain_and_error_bits_are_preserved(self):
-        for timeout,ready in [(1,0),(1,1),(1,1500),(2,3000),(0,1)]:
+    def test_original_safe_domain_recovers_receive_errors(self):
+        for timeout,ready in [(1,0),(1,1),(1,2),(1,1500),(2,3000),(0,1)]:
             with self.subTest(timeout=timeout,ready=ready):self.case(timeout,ready,0x38)

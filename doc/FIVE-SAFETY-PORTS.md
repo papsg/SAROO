@@ -12,8 +12,8 @@ physical Saturn qualification.
 | 1 | MCU formatter bounds; paps-g `c5c8df385f3f1d571a47e1885c3a4130784751e4`, adapted from [original formatter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/printk.c) | [`3f1cd8e`](https://github.com/papsg/SAROO/commit/3f1cd8e) | See below. No device test. |
 | 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | [`6968ad3`](https://github.com/papsg/SAROO/commit/6968ad3) | See below. No device test. |
 | 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df36d2c10305508c5c94d3d229e430bc1a`, adapting the [pinned upstream FatFs source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c) | [`4631c65`](https://github.com/papsg/SAROO/commit/4631c65) | See below. No device test. |
-| 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3f87fa0df9059c9f1e86f361e127bb474`, adapting the [original menu routine](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/cdblock.c) | This change | See below. Physical disc unqualified. |
-| 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6` | Pending | Pending. |
+| 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3f87fa0df9059c9f1e86f361e127bb474`, adapting the [original menu routine](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/cdblock.c) | [`2798b2e`](https://github.com/papsg/SAROO/commit/2798b2e) | See below. Physical disc unqualified. |
+| 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6c13dfe3189d43a6420547a895fb26f57`, adapting the [original serial setup](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/main.c) | This change | See below. Physical serial use unqualified. |
 
 ## 1. MCU formatter bounds
 
@@ -102,3 +102,29 @@ addresses to low-WRAM code; reproduce with `python3
 tests/check_menu_cd_raw_copy.py tests/build/raw-hirq-menu-20261117/source/dump.txt`
 after the [isolated menu build](../tools/README.md#isolated-firmware-qualification).
 No optical disc, CD Block timing or physical recovery has been qualified.
+
+## 5. Stock menu SCI initialization and receive-error recovery
+
+The menu enabled SCI interrupt bits even though it installs no SCI interrupt
+handler, then immediately enabled transmit and receive after setting the baud
+rate. It also left receive errors set. The correction disables the channel,
+discards retained receive state, selects the existing internal clock with
+interrupts off, waits five microseconds, then enables transmit and receive.
+When a valid byte and an error coexist, it returns that earlier valid byte and
+clears the receive flags; an error without a byte is cleared before polling
+continues. The existing bounded timeout-chunk correction remains in place.
+The [Hitachi SH7604 Hardware Manual, §13.3.1, printed pp. 356–357](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=372)
+requires the one-bit wait before TE/RE. Its [§13.2.6–13.2.7, printed pp.
+340–345](https://antime.kapsi.fi/sega/files/sh7604.pdf#page=356) describes
+retained receive flags, clearing, and overrun behavior.
+
+`python3 -B -m unittest discover -s tests -p 'test_menu_sci*.py' -v` runs
+actual-source register fixtures under ASan/UBSan. Before the change, the
+initialization test fails on the missing one-bit wait. Afterward, the register
+contract and full signed timeout-domain tests pass, including error-only
+recovery and preservation of a valid byte during overrun. The timeout methods
+also pass in the release profile, and all 11 adjacent timer methods pass.
+The isolated SuperH menu build passes with 96,696 code/data bytes, 9,540 BSS
+bytes and 8,452 bytes of body margin. Its disassembly calls `usleep` with
+argument five between SCR writes `0x01` and `0x31`. This does not qualify
+physical serial startup, a noisy line or XMODEM transfer on a Saturn.
