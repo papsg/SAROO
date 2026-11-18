@@ -9,8 +9,8 @@ physical Saturn qualification.
 
 | Order | Correction and source | Public commit | Verification and remaining limit |
 | --- | --- | --- | --- |
-| 1 | MCU formatter bounds; paps-g `c5c8df385f3f1d571a47e1885c3a4130784751e4`, adapted from [original formatter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/printk.c) | This change | See below. No device test. |
-| 2 | Existing SDRAM self-test failure gate; paps-g `f3399085` | Pending | Pending. |
+| 1 | MCU formatter bounds; paps-g `c5c8df385f3f1d571a47e1885c3a4130784751e4`, adapted from [original formatter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/printk.c) | [`3f1cd8e`](https://github.com/papsg/SAROO/commit/3f1cd8e) | See below. No device test. |
+| 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | This change | See below. No device test. |
 | 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df` | Pending | Pending. |
 | 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3` | Pending | Pending. |
 | 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6` | Pending | Pending. |
@@ -36,3 +36,21 @@ methods pass. The offline GNU App compile/link check passes with a 59,360-byte
 load image and 6,176 ITCM bytes free; the BootLoader object check passes.
 The GNU link and host sanitizer checks do not prove a Keil build or device
 behavior.
+
+## 2. Existing SDRAM self-test failure gate
+
+The stock optional test scans the 8 MiB SDRAM region before loading the menu.
+With the one-pass flag and a failed test, startup signaled the error but then
+cleared it and continued to use memory that had just failed. The correction
+returns after the loop if the last test failed. Continuous-test mode keeps its
+existing repeat behavior even after errors, and disabled or passing tests
+continue as before. It changes neither the test algorithm nor its flag meanings.
+The source block comes from the [original upstream test](https://github.com/tpunix/SAROO/commit/19b2e5c180ad4716c3b1fbd46067cf4059a47fb3).
+
+`python3 tests/test_mcu_sdram_gate.py -v` extracts that block from the current
+MCU source and injects test results. Before correction, all four failed
+one-pass cases fail; disabled, passing and continuous controls pass. After
+correction, all four test methods pass under ASan/UBSan, covering 16 processes.
+The offline GNU App compile/link passes with a 59,364-byte load image and
+6,172 ITCM bytes free. Injected results do not measure the SDRAM hardware,
+electrical cause, LED timing or a physical startup.

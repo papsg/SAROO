@@ -1314,13 +1314,14 @@ void saturn_config(void)
 			retv = mem_test(0x61000000, 0x00800000);
 			if(retv){
 				led_event(LEDEV_SDRAM_ERROR);
-				//return;
 			}
 			if((debug_flags&0x40000000)==0)
 				break;
 			cnt += 1;
 			printk("  times: %d\n", cnt);
 		}
+		/* Continuous testing stays in the loop even after an error. */
+		if(retv) return;
 		led_event(LEDEV_NONE);
 	}
 
