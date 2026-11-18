@@ -101,7 +101,8 @@ class MenuClockResetTests(unittest.TestCase):
     def test_player_disables_then_purges_then_enables_cache(self): self.scenario('cache')
     def test_player_stops_dma_before_reconfiguring_channels(self): self.scenario('dma')
     def test_clock_restores_complete_an_abus_read_before_asr0(self): self.scenario('abus')
-    def test_player_does_not_replace_work_ram_on_reset_failure(self): self.scenario('player-failure')
+    def test_player_restores_pad_owner_without_replacing_work_ram_on_reset_failure(self):
+        self.scenario('player-failure')
 
 
 if __name__ == '__main__':

@@ -13,7 +13,7 @@ static u8 sf, command, reply;
 static u32 asr, aref, save_vector, player_vector, published;
 static unsigned copies;
 static int rom_path, player_path;
-static unsigned suspended, clock_copied, work_ram_replaced, reject_reply;
+static unsigned suspended, resumed, clock_copied, work_ram_replaced, reject_reply;
 static unsigned cache_writes;
 static int check_cache, check_dma;
 static unsigned dma_step;
@@ -121,6 +121,13 @@ static void pad_suspend(void)
     suspended = 1;
 }
 
+static __attribute__((unused)) void pad_resume(void)
+{
+    assert(player_path && suspended && calls == 2);
+    suspended = 0;
+    resumed++;
+}
+
 static void player_prepare(int type)
 {
     assert(suspended && !calls && type == 3);
@@ -205,7 +212,7 @@ static void reset(int path)
 {
     rom_path = path == 1;
     player_path = path == 2;
-    suspended = clock_copied = work_ram_replaced = reject_reply = 0;
+    suspended = resumed = clock_copied = work_ram_replaced = reject_reply = 0;
     sf_reads = latch_reads = counter_reads = pre_busy = post_busy = unsafe = 0;
     calls = issued = completed = external = last_busy = last_line = 0;
     sf = command = reply = 0;
@@ -235,7 +242,7 @@ static void player(int fail)
     post_busy = 4;
     if (!fail) {
         my_cdplayer();
-        assert(suspended && calls == 2 && issued == 1 && completed);
+        assert(suspended && !resumed && calls == 2 && issued == 1 && completed);
         assert(command == 0x1a && work_ram_replaced == 1 && latch_reads == 3);
         return;
     }
@@ -244,17 +251,20 @@ static void player(int fail)
     my_cdplayer();
     assert(!issued && !counter_reads && !work_ram_replaced);
     assert(sf_reads == BUDGET && latch_reads == BUDGET - 3);
+    assert(!suspended && resumed == 1);
 
     reset(2);
     post_busy = BUDGET;
     my_cdplayer();
     assert(issued == 1 && !completed && !work_ram_replaced);
     assert(sf_reads == BUDGET + 1);
+    assert(!suspended && resumed == 1);
 
     reset(2);
     reject_reply = 1;
     my_cdplayer();
     assert(issued == 1 && completed && !work_ram_replaced);
+    assert(!suspended && resumed == 1);
 }
 
 int main(int argc, char **argv)
