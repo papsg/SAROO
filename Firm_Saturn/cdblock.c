@@ -701,85 +701,84 @@ int cdc_abort_file(void)
 /**********************************************************/
 
 
-void cdc_auth_hram(CDCMD *resp, int delay)
+static __attribute__((always_inline)) inline int cdc_raw_wait(int mask)
 {
-	int status;
+	int i;
 
-	// cdc_put_data(0, 150);
-	HIRQ = ~(HIRQ_CMOK|HIRQ_EHST);
-	CR1 = 0x6400;
-	CR2 = 0x0000;
-	CR3 = 0x0000;
-	CR4 = 150;
-	while(HIRQ&HIRQ_CMOK);
+	for(i=0; i<0x240000; i++){
+		if(HIRQ & mask) return 0;
+	}
+	return -3;
+}
+
+
+int cdc_auth_hram(CDCMD *resp, int delay)
+{
+	int phase = 0;
+	int clear, command, argument, completion;
+
+	clear = HIRQ_CMOK | HIRQ_EHST;
+	command = 0x6400;
+	argument = 150;
+	completion = HIRQ_DRDY | HIRQ_EHST;
+	goto issue;
+end_transfer:
+	clear = HIRQ_CMOK | HIRQ_EHST;
+	command = 0x0600;
+	argument = 0;
+	completion = HIRQ_EHST;
+	goto issue;
+move_data:
+	clear = HIRQ_CMOK | HIRQ_ECPY;
+	command = 0x6600;
+	argument = 50;
+	completion = HIRQ_ECPY;
+	goto issue;
+authenticate:
+	clear = HIRQ_CMOK | HIRQ_DCHG | HIRQ_EFLS;
+	command = 0xe000;
+	argument = 0;
+	completion = HIRQ_EFLS;
+
+issue:
+	HIRQ = ~clear;
+	CR1 = command;
+	CR2 = 0;
+	CR3 = 0;
+	CR4 = argument;
+	int retv = cdc_raw_wait(HIRQ_CMOK);
+	if(retv) return retv;
 	resp->cr1 = CR1;
 	resp->cr2 = CR2;
 	resp->cr3 = CR3;
 	resp->cr4 = CR4;
-	status = resp->cr1>>8;
-	if(status&0x80){
-		printk("CMD WAIT! HIRQ=%04x status=%02x cdc_put_data\n", HIRQ, status);
-	}
+	int status = resp->cr1 >> 8;
+	if(status == 0xff) return -5;
+	if(status & 0x80) return -6;
+	retv = cdc_raw_wait(completion);
+	if(retv) return retv;
 
-	for(int i=0; i<2352*150; i+=4){
-		REG(0x25818000) = 0x00020002;
+	if(phase == 0){
+		if(!(HIRQ & HIRQ_DRDY)) return -4;
+		HIRQ = ~HIRQ_DRDY;
+		for(int i=0; i<2352*150; i+=4){
+			REG(0x25818000) = 0x00020002;
+		}
+		phase = 1;
+		goto end_transfer;
 	}
-
-	// cdc_end_trans
-	HIRQ = ~(HIRQ_CMOK|HIRQ_EHST);
-	CR1 = 0x0600;
-	CR2 = 0x0000;
-	CR3 = 0x0000;
-	CR4 = 0x0000;
-	while(HIRQ&HIRQ_CMOK);
-	resp->cr1 = CR1;
-	resp->cr2 = CR2;
-	resp->cr3 = CR3;
-	resp->cr4 = CR4;
-	status = resp->cr1>>8;
-	if(status&0x80){
-		printk("CMD WAIT! HIRQ=%04x status=%02x cdc_end_trans\n", HIRQ, status);
+	if(phase == 1){
+		for(int i=0; i<delay; i++){
+			__asm volatile("":::"memory");
+		}
+		phase = 2;
+		goto move_data;
 	}
-	while(HIRQ&HIRQ_EHST);
-	HIRQ = ~(HIRQ_DRDY);
-
-	for(int i=0; i<delay; i++){
-		__asm volatile("":::"memory"); // 防止被gcc优化掉
-		// Prevent gcc from optimizing it away
+	if(phase == 2){
+		phase = 3;
+		goto authenticate;
 	}
-
-	// cdc_move_data(0,0,0,50);
-	HIRQ = ~(HIRQ_CMOK);
-	CR1 = 0x6600;
-	CR2 = 0x0000;
-	CR3 = 0x0000;
-	CR4 = 50;
-	while(HIRQ&HIRQ_CMOK);
-	resp->cr1 = CR1;
-	resp->cr2 = CR2;
-	resp->cr3 = CR3;
-	resp->cr4 = CR4;
-	status = resp->cr1>>8;
-	if(status&0x80){
-		printk("CMD WAIT! HIRQ=%04x status=%02x cdc_put_data\n", HIRQ, status);
-	}
-
-	// cdc_auth
-	HIRQ = ~(HIRQ_CMOK|HIRQ_DCHG|HIRQ_EFLS);
-	CR1 = 0xe000;
-	CR2 = 0x0000;
-	CR3 = 0x0000;
-	CR4 = 0x0000;
-	while(HIRQ&HIRQ_CMOK);
-	resp->cr1 = CR1;
-	resp->cr2 = CR2;
-	resp->cr3 = CR3;
-	resp->cr4 = CR4;
-	status = resp->cr1>>8;
-	if(status&0x80){
-		printk("CMD WAIT! HIRQ=%04x status=%02x cdc_auth\n", HIRQ, status);
-	}
-	while(HIRQ&HIRQ_EFLS);
+	return 0;
 }
 
 
@@ -793,7 +792,7 @@ int jhl_auth_hack(int delay)
 	int waiting = 0;
 
 	memcpy((u8*)0x06080000, cdc_auth_hram, 0x400);
-	void (*go)(CDCMD*, int) = (void*)0x06080000;
+	int (*go)(CDCMD*, int) = (void*)0x06080000;
 
 #if 1
 	while(1){
@@ -817,7 +816,8 @@ int jhl_auth_hack(int delay)
 	retv = cdc_set_size(3);
 	if(retv) return retv;
 
-	go(&resp, delay);
+	retv = go(&resp, delay);
+	if(retv) goto restore_size;
 	waiting = 0;
 
 	int old = 0xffffffff;

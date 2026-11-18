@@ -29,8 +29,8 @@ class MenuCDQueryTests(unittest.TestCase):
         for original, replacement in (
             (b'memcpy((u8*)0x06080000, cdc_auth_hram, 0x400);',
              b'memcpy(auth_copy, cdc_auth_hram, 0x400);'),
-            (b'void (*go)(CDCMD*, int) = (void*)0x06080000;',
-             b'void (*go)(CDCMD*, int) = auth_go;'),
+            (b'int (*go)(CDCMD*, int) = (void*)0x06080000;',
+             b'int (*go)(CDCMD*, int) = auth_go;'),
         ):
             assert code.count(original) == 1
             code = code.replace(original, replacement)
@@ -88,6 +88,9 @@ class MenuCDQueryTests(unittest.TestCase):
 
     def test_two_progressing_auth_waits_use_separate_budgets(self):
         self.scenario('slow-auth')
+
+    def test_relocated_auth_failure_restores_sector_size(self):
+        self.scenario('auth-raw-failure')
 
 
 if __name__ == '__main__':

@@ -11,8 +11,8 @@ physical Saturn qualification.
 | --- | --- | --- | --- |
 | 1 | MCU formatter bounds; paps-g `c5c8df385f3f1d571a47e1885c3a4130784751e4`, adapted from [original formatter](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/Main/printk.c) | [`3f1cd8e`](https://github.com/papsg/SAROO/commit/3f1cd8e) | See below. No device test. |
 | 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | [`6968ad3`](https://github.com/papsg/SAROO/commit/6968ad3) | See below. No device test. |
-| 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df36d2c10305508c5c94d3d229e430bc1a`, adapting the [pinned upstream FatFs source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c) | This change | See below. No device test. |
-| 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3` | Pending | Pending. |
+| 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df36d2c10305508c5c94d3d229e430bc1a`, adapting the [pinned upstream FatFs source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c) | [`4631c65`](https://github.com/papsg/SAROO/commit/4631c65) | See below. No device test. |
+| 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3f87fa0df9059c9f1e86f361e127bb474`, adapting the [original menu routine](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/cdblock.c) | This change | See below. Physical disc unqualified. |
 | 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6` | Pending | Pending. |
 
 ## 1. MCU formatter bounds
@@ -75,3 +75,30 @@ the change, all five pass. Offline GNU App compile/link and BootLoader object
 checks pass. The App load image is 59,376 bytes with 6,160 ITCM bytes free.
 These host block failures do not establish physical SD fault rates or Saturn
 behavior.
+
+## 4. Native physical-CD raw authentication
+
+The stock high-WRAM authentication routine cleared an event and then waited
+while that event was **set**, so the ordinary cleared state skipped the wait.
+It did that for four command responses and two completions, sent raw-sector
+bytes before data-ready, and issued authentication before sector movement
+completed. The port waits for CMOK and each command's completion, acknowledges
+the relevant old event, bounds each wait, and stops on REJECT or WAIT. The
+caller restores sector size even when the copied routine fails, retaining the
+first error. This follows [Sega ST-162-062094, register and HIRQ definitions,
+printed pp. 27–32](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=15)
+and [command completion rules, printed pp. 62–63](https://antime.kapsi.fi/sega/files/ST-162-062094.pdf#page=50).
+
+`python3 tests/test_menu_cd_raw_hirq.py -v` extracts the current production
+routine for a host event fixture. Before correction its required command/event
+sequence fails; after correction the sequence, eight bounded-wait failures,
+unavailable write buffer, and REJECT/WAIT at all four commands pass. An adjacent
+actual-source caller fixture checks transfer-size restoration after a relocated
+routine failure. Both ASan/UBSan and release-profile runs of all 77 menu CD
+methods pass. The isolated SuperH menu build passes with 96,648 code/data bytes,
+9,540 BSS bytes and 8,500 bytes of body margin. The linked copied routine is
+four-byte aligned, 304 bytes long, contains its literals, and has no calls or
+addresses to low-WRAM code; reproduce with `python3
+tests/check_menu_cd_raw_copy.py tests/build/raw-hirq-menu-20261117/source/dump.txt`
+after the [isolated menu build](../tools/README.md#isolated-firmware-qualification).
+No optical disc, CD Block timing or physical recovery has been qualified.

@@ -33,10 +33,12 @@ static u8 cdc_auth_hram[0x400], auth_copy[0x400];
 struct step { unsigned command; int result; CDCMD reply; };
 static struct step steps[100];
 static unsigned step_count, position, go_count, wait_count, print_count;
+static int auth_go_result;
 
 static void reset(void)
 {
     step_count=position=go_count=wait_count=print_count=0;
+    auth_go_result=0;
     raw_status = STATUS_PAUSE << 8;
     raw_reads = pause_read = tick = tick_step = tick_reads = 0;
     memset(auth_copy, 0, sizeof auth_copy);
@@ -73,12 +75,13 @@ static void printk(const char *format, ...)
     (void)format;
     ++print_count;
 }
-static void auth_go(CDCMD *resp, int delay)
+static int auth_go(CDCMD *resp, int delay)
 {
     (void)resp;
     assert(delay==100000);
     assert(!memcmp(cdc_auth_hram,auth_copy,sizeof auth_copy));
     ++go_count;
+    return auth_go_result;
 }
 
 static int timer_reached(u32 now, u32 deadline) __attribute__((unused));
@@ -277,6 +280,18 @@ static void test_slow_auth(void)
     assert(raw_reads == 3 && go_count == 1 && position == step_count);
 }
 
+static void test_auth_raw_failure(void)
+{
+    for (unsigned cleanup=0; cleanup<2; ++cleanup) {
+        reset();
+        auth_go_result=-3;
+        expect(0x6003,0,0,0,0,0);
+        expect(0x6000,cleanup ? -5 : 0,0,0,0,0);
+        assert(jhl_auth_hack(100000)==-3);
+        assert(go_count==1 && position==step_count && !print_count);
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc==2);
@@ -292,6 +307,7 @@ int main(int argc, char **argv)
         test_post_timeout(strstr(argv[1], "-wrap") != NULL,
                           strstr(argv[1], "-cleanup") ? -5 : 0);
     else if (!strcmp(argv[1], "slow-auth")) test_slow_auth();
+    else if (!strcmp(argv[1], "auth-raw-failure")) test_auth_raw_failure();
     else assert(0);
     return 0;
 }
