@@ -1016,6 +1016,23 @@ static int total_disc, total_page, page;
 static int sel_mode; // 0: game, 1: flat binary list, 2: binary folders
 enum { BIN_FOLDER_MODE = 2 };
 
+/* The serial console can replace the shared game catalog with a BIN list. */
+static int restore_game_catalog(void)
+{
+#ifdef SAROO_SAVE_GENERATION
+    int result = menu_request(SSCMD_LISTDISC, 0);
+#else
+    int result = menu_command_wait();
+    if (!result) {
+        SS_ARG = 0;
+        SS_CMD = SSCMD_LISTDISC;
+        result = menu_command_wait();
+    }
+#endif
+    if (!result) sel_mode = 0;
+    return result;
+}
+
 MENU_DESC sel_menu;
 
 static char *bin_catalog_name(int index, int *directory)
@@ -1856,6 +1873,12 @@ int main_handle(int ctrl)
 		menu_status(&main_menu, "Open serial console ...");
 		sci_init();
 		sci_shell();
+		int result = restore_game_catalog();
+		if (result) {
+			sel_mode = 1;
+			menu_error(&main_menu, "Game catalog unavailable: %d", result);
+			return 0;
+		}
 		return MENU_EXIT;
 	}else if(index==update_index){
 #ifdef SAROO_SAVE_GENERATION
@@ -2080,6 +2103,12 @@ int _main(void)
 	lang_init();
 	if((debug_flag&0x0003)==0x0003){
 		sci_shell();
+		int result = restore_game_catalog();
+		if (result) {
+			nbg1_on();
+			printk("SAROO game catalog did not reload: %d\n", result);
+			return -1;
+		}
 	}
 
 	while(1){

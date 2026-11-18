@@ -42,3 +42,35 @@ ASan/UBSan and `SAROO_MENU_CD_PROFILE=release`. The isolated offline SuperH menu
 build succeeds with 96,696 code/data bytes, 9,540 BSS bytes and 8,452 bytes of
 body margin. This does not establish how often reset-disable fails on hardware
 or whether the old polling fallback was visibly impaired.
+
+## MENU-SHELL-CATALOG-RESTORE: reload games after the serial console
+
+Adapted from the startup ordering in paps-g private `139fd48f`
+(`saroo-menu-channel.patch`). The optional serial console's
+[`listb` command](../Firm_Saturn/sci_shell.c)
+requests a BIN listing in the shared `IMGINFO` catalog. The MCU dispatch in
+[`saturn_main.c`](../Firm_MCU/Saturn/saturn_main.c) uses `list_bins` for that
+request and `list_disc` for the game listing. In the old public menu,
+[`main.c`](../Firm_Saturn/main.c) ran STARTUP before the early serial console;
+exiting the console could therefore leave BIN entries displayed as games.
+Returning from the later menu console had the same catalog ownership gap.
+
+The correction reloads the game catalog when either console exits, using the
+existing acknowledged menu request in the standard build and the existing
+bounded command wait in the legacy build. It marks game mode only after a
+successful reload. A standard-build reload failure after the early console
+stops before entering the game menu; a failure after the later console stays
+in the menu so the ordinary game-selection path can retry.
+
+`python3 -m unittest discover -s tests -p test_menu_language_startup.py -v`
+extracts the actual `listb`, startup, restoration and menu-console branches.
+For a baseline reproduction, extract `main.c` from public commit `db3f130`
+and pass its path as `SAROO_MENU_STARTUP_SOURCE`; all three `listb` language
+cases then fail because the BIN catalog remains selected, while the existing
+language and debug controls pass. After the correction, all nine methods pass
+with ASan/UBSan and `SAROO_MENU_SAFETY_PROFILE=release`. Both
+standard and legacy offline SuperH menu builds succeed. The standard build
+uses 96,872 code/data bytes, 9,540 BSS bytes and has 8,276 bytes of body
+margin. The legacy host case models a pre-existing BIN listing; it does not
+run the legacy `listb` busy wait. These checks do not qualify the serial
+console or catalog handoff on a physical Saturn.

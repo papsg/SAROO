@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
+from test_menu_cdplayer import function
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,9 +31,23 @@ class MenuLanguageStartupTests(unittest.TestCase):
         begin = main.index(b'int _main(void)'); end = main.index(b'\n}', begin)
         begin = main.index(b'    cdblock_off();', begin, end)
         inputs['startup.inc'] = b'static int startup_tail(void)\n{\n' + main[begin:end] + b'\n}\n'
+        inputs['restore.inc'] = (function(main, 'restore_game_catalog')
+                                 if b'static int restore_game_catalog(' in main else b'')
+        begin = main.index(b'}else if(index==4){')
+        end = main.index(b'}else if(index==update_index)', begin)
+        inputs['main_console.inc'] = (b'static int main_console_case(void)\n{\n'
+                                      b'    int index = 4;\n    if(0){' + main[begin:end]
+                                      + b'}\n    return -99;\n}\n')
         commands = re.findall(rb'\bCMD\(menu\)\s*\{[^}]*\}', shell)
         assert len(commands) == 1
         inputs['shell_menu.inc'] = commands[0] + b'\n'
+        listb_start = shell.index(b'CMD(listb){')
+        listb_end = shell.index(b'CMD(loadb){', listb_start)
+        inputs['shell_listb.inc'] = shell[listb_start:listb_end]
+        opcodes = (b'#define SSCMD_LISTDISC ', b'#define SSCMD_LISTBINS ')
+        inputs['opcodes.inc'] = b'\n'.join(line for line in header.splitlines()
+                                         if line.startswith(opcodes)) + b'\n'
+        assert len(inputs['opcodes.inc'].splitlines()) == 2
         handler = main[main.index(b'int main_handle('):main.index(b'void menu_init(')]
         cycles = re.findall(rb'if\(BUTTON_DOWN\(ctrl, PAD_LT\)\)\{[^}]*\}', handler)
         assert len(cycles) == 1 and b'lang_next();' in cycles[0]
@@ -51,19 +67,30 @@ class MenuLanguageStartupTests(unittest.TestCase):
         flags = ['-O2'] if os.environ.get('SAROO_MENU_SAFETY_PROFILE') == 'release' else [
             '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
         cls.binary = cls.target / 'startup'
-        command = [os.environ.get('CC', 'cc'), '-std=c99', '-g', '-Wall', '-Wextra', '-Werror',
-                   *flags, '-I', str(cls.target), str(cls.target / 'fixture.c'), '-o', str(cls.binary)]
-        (cls.target / 'compile-command.json').write_text(json.dumps(command, indent=2) + '\n')
-        result = subprocess.run(command, capture_output=True, timeout=45)
-        (cls.target / 'compile.log').write_bytes(result.stdout + result.stderr); result.check_returncode()
+        cls.legacy_binary = cls.target / 'startup-legacy'
+        for name, binary, defines in (('standard', cls.binary, ['-DSAROO_SAVE_GENERATION=1']),
+                                      ('legacy', cls.legacy_binary, [])):
+            command = [os.environ.get('CC', 'cc'), '-std=c99', *defines,
+                       '-g', '-Wall', '-Wextra', '-Werror', *flags,
+                       '-I', str(cls.target), str(cls.target / 'fixture.c'), '-o', str(binary)]
+            (cls.target / f'compile-{name}-command.json').write_text(
+                json.dumps(command, indent=2) + '\n')
+            result = subprocess.run(command, capture_output=True, timeout=45)
+            (cls.target / f'compile-{name}.log').write_bytes(result.stdout + result.stderr)
+            result.check_returncode()
 
     @classmethod
     def tearDownClass(cls):
         (cls.target / 'results.json').write_text(json.dumps(cls.results, indent=2) + '\n')
 
-    def case(self, language, debug=0, cycling=1):
-        command = [str(self.binary), str(language), str(debug), str(cycling)]
-        with self.subTest(language=language, debug=debug, cycling=cycling):
+    def case(self, language, debug=0, cycling=1, listing=0, restore_error=0,
+             menu_entry=0, legacy=0):
+        command = [str(self.legacy_binary if legacy else self.binary),
+                   str(language), str(debug), str(cycling),
+                   str(listing), str(restore_error), str(menu_entry)]
+        with self.subTest(language=language, debug=debug, cycling=cycling,
+                          listing=listing, restore_error=restore_error,
+                          menu_entry=menu_entry, legacy=legacy):
             result = subprocess.run(command, capture_output=True, text=True, timeout=10,
                 env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
             self.results.append(dict(command=command, exit=result.returncode,
@@ -82,6 +109,21 @@ class MenuLanguageStartupTests(unittest.TestCase):
 
     def test_debug_bit_dispatch(self):
         for debug in (0, 1, 2, 3, 4, 5, 7, 8, 11): self.case(1, debug)
+
+    def test_console_listb_restores_game_catalog_before_menu(self):
+        for language in (0, 1, 18): self.case(language, 3, 0, listing=1)
+
+    def test_failed_catalog_restore_does_not_enter_menu(self):
+        self.case(1, 3, 0, listing=1, restore_error=1)
+
+    def test_menu_console_restores_catalog_on_return(self):
+        self.case(1, 3, 0, listing=1, menu_entry=1)
+
+    def test_menu_console_restore_failure_keeps_menu_open(self):
+        self.case(1, 3, 0, listing=1, restore_error=1, menu_entry=1)
+
+    def test_legacy_console_restores_existing_bin_catalog(self):
+        self.case(1, 3, 0, menu_entry=1, legacy=1)
 
 
 if __name__ == '__main__': unittest.main()
