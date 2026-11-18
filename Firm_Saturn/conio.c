@@ -860,10 +860,13 @@ int menu_run(MENU_DESC *menu)
 	u32 ctrl;
 	int retv;
 #ifdef SAROO_SAVE_GENERATION
-    int channel_error = 0;
+    int channel_error;
 #endif
 
 _restart:
+#ifdef SAROO_SAVE_GENERATION
+    channel_error = 0;
+#endif
 	draw_menu_frame(menu);
 
 #if 1
