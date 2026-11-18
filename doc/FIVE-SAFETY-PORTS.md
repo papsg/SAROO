@@ -13,7 +13,7 @@ physical Saturn qualification.
 | 2 | Existing SDRAM self-test failure gate; paps-g `f3399085a262b9d6bcf5b050c99a63d591d63c92`, related to [upstream issue #79](https://github.com/tpunix/SAROO/issues/79) | [`6968ad3`](https://github.com/papsg/SAROO/commit/6968ad3) | See below. No device test. |
 | 3 | FatFs `f_readdir` error-name clearing; paps-g `399d72df36d2c10305508c5c94d3d229e430bc1a`, adapting the [pinned upstream FatFs source](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_MCU/FatFS/ff.c) | [`4631c65`](https://github.com/papsg/SAROO/commit/4631c65) | See below. No device test. |
 | 4 | Native physical-CD raw-auth HIRQ transaction; paps-g `232758b3f87fa0df9059c9f1e86f361e127bb474`, adapting the [original menu routine](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/cdblock.c) | [`2798b2e`](https://github.com/papsg/SAROO/commit/2798b2e) | See below. Physical disc unqualified. |
-| 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6c13dfe3189d43a6420547a895fb26f57`, adapting the [original serial setup](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/main.c) | This change | See below. Physical serial use unqualified. |
+| 5 | Stock menu SCI initialization and receive-error recovery; paps-g `3c4823d6c13dfe3189d43a6420547a895fb26f57`, adapting the [original serial setup](https://github.com/tpunix/SAROO/blob/ba387b083bb9d2a001ae6a22a24d6e6785e515bd/Firm_Saturn/main.c) | [`9149c07`](https://github.com/papsg/SAROO/commit/9149c07) | See below. Physical serial use unqualified. |
 
 ## 1. MCU formatter bounds
 
